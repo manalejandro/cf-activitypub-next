@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CF ActivityPub
+
+> A Mastodon-compatible ActivityPub server built for the edge — powered by Cloudflare Workers, D1, and the open web.
+
+## Overview
+
+**CF ActivityPub** is a fully functional social server implementing the [ActivityPub](https://www.w3.org/TR/activitypub/) protocol with [Mastodon REST API](https://docs.joinmastodon.org/api/) compatibility. It runs entirely on [Cloudflare Workers](https://workers.cloudflare.com/) — no traditional servers, no Docker.
+
+- **Zero cold starts** — Cloudflare's V8 isolate model starts instantly in 300+ edge locations
+- **Mastodon client compatible** — works with Ivory, Elk, Tusky, Megalodon, and any Mastodon app
+- **Federated** — follows, boosts, likes and mentions across the fediverse
+- **Cryptographically secure** — HTTP Signatures via Web Crypto API
+- **Fully open source** — MIT licensed
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Runtime | Cloudflare Workers |
+| Framework | Next.js 16 App Router via @opennextjs/cloudflare |
+| Database | Cloudflare D1 (SQLite) |
+| Cache / Sessions | Cloudflare KV |
+| Media storage | Cloudflare R2 |
+| Async delivery | Cloudflare Queues |
+| Crypto | Web Crypto API (RSASSA-PKCS1-v1_5 + PBKDF2) |
+| Styling | Tailwind CSS v4 |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+, npm
+- A [Cloudflare](https://dash.cloudflare.com) account
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+
+### Install
+
+```bash
+git clone https://github.com/manalejandro/cf-activitypub-next.git
+cd cf-activitypub-next
+npm install
+```
+
+### Create Cloudflare resources
+
+```bash
+wrangler login
+wrangler d1 create cf-activitypub
+wrangler kv namespace create CF_ACTIVITYPUB_KV
+wrangler r2 bucket create cf-activitypub-media
+wrangler queues create cf-activitypub-delivery
+```
+
+Copy the generated IDs into `wrangler.toml`.
+
+### Database migrations
+
+```bash
+npm run db:migrate          # local
+npm run db:migrate:remote   # production
+```
+
+### Run locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Deploy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run deploy
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Features
 
-## Learn More
+### ActivityPub Federation
+- WebFinger actor discovery
+- Actor profiles, Inbox/Outbox, Followers/Following collections
+- Shared inbox for efficient fan-out
+- HTTP Signatures on all federated requests
+- Handles: Create, Follow, Accept, Reject, Undo, Like, Announce, Delete, Update
+- NodeInfo support
 
-To learn more about Next.js, take a look at the following resources:
+### Mastodon API
+- OAuth 2.0 (password + client_credentials)
+- Account registration, profile management, follow/unfollow
+- Status create/delete, favourite, reblog
+- Home and public timelines
+- Notifications (follow, mention, favourite, reblog)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

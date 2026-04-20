@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Hexagonal background -->
+  <polygon points="60,4 108,30 108,90 60,116 12,90 12,30" fill="#6366f1" />
+  <!-- Cloud shape for Cloudflare nod -->
+  <path d="M38 72 C28 72 24 62 30 55 C28 49 33 44 40 46 C42 40 48 37 56 38 C64 30 78 31 82 42 C88 41 95 46 94 54 C100 56 100 65 94 68" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- Activity pulse waves -->
+  <path d="M40 80 L50 65 L56 75 L64 58 L70 72 L76 64 L82 70 L88 64" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Fediverse dots -->
+  <circle cx="38" cy="80" r="2.5" fill="#a5b4fc"/>
+  <circle cx="88" cy="64" r="2.5" fill="#a5b4fc"/>
+</svg>

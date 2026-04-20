@@ -1,12 +1,16 @@
 {
-  "name": "cf-activitypub-next",
+  "name": "cf-activitypub",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preview": "opennextjs-cloudflare build && wrangler dev",
+    "deploy": "opennextjs-cloudflare build && wrangler deploy",
+    "db:migrate": "wrangler d1 execute cf-activitypub --local --file=lib/db/schema.sql",
+    "db:migrate:remote": "wrangler d1 execute cf-activitypub --file=lib/db/schema.sql"
   },
   "dependencies": {
     "next": "16.2.4",
@@ -14,6 +18,8 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250409.0",
+    "@opennextjs/cloudflare": "^1.3.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -21,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.10.0"
   }
 }

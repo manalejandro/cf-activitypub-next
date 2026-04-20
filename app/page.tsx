@@ -1,65 +1,125 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="flex flex-col flex-1">
+      {/* Nav */}
+      <nav style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+        <div className="container-wide flex items-center justify-between py-4">
+          <div className="flex items-center gap-3">
+            <Image src="/logo.svg" alt="CF ActivityPub" width={36} height={36} />
+            <span className="font-bold text-lg" style={{ color: "var(--text-primary)" }}>
+              CF ActivityPub
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="btn btn-outline btn-sm">Sign in</Link>
+            <Link href="/register" className="btn btn-primary btn-sm">Join</Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="flex flex-col items-center justify-center text-center py-28 px-6 flex-1 relative overflow-hidden">
+        {/* glow */}
+        <div
+          style={{
+            position: "absolute", inset: 0, background:
+              "radial-gradient(ellipse 70% 50% at 50% 20%, rgba(99,102,241,0.15) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+
+        <div className="animate-fade-in relative z-10 flex flex-col items-center gap-6 max-w-3xl">
+          <span className="badge badge-accent mb-2">Open · Federated · Edge-native</span>
+          <h1 style={{ fontSize: "clamp(2.5rem, 5vw, 4rem)", margin: 0 }}>
+            The{" "}
+            <span className="gradient-text">ActivityPub server</span>
+            <br />
+            for the modern web
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p style={{ fontSize: "1.2rem", color: "var(--text-secondary)", maxWidth: 560, margin: 0 }}>
+            Mastodon-compatible, globally distributed, and deployed at the edge — all on Cloudflare
+            Workers with zero cold starts.
           </p>
+
+          <div className="flex flex-wrap gap-4 justify-center mt-4">
+            <Link href="/register" className="btn btn-primary btn-lg">
+              Create an account
+            </Link>
+            <a
+              href="https://github.com/manalejandro/cf-activitypub-next"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline btn-lg"
+            >
+              View on GitHub
+            </a>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {/* Features */}
+      <section className="container-wide py-24">
+        <h2 className="text-center mb-14" style={{ fontSize: "1.8rem" }}>
+          Built for performance and openness
+        </h2>
+        <div className="grid gap-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+          {features.map((f) => (
+            <div key={f.title} className="card p-6 flex flex-col gap-3">
+              <div style={{ fontSize: "2rem" }}>{f.icon}</div>
+              <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{f.title}</h3>
+              <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}>{f.desc}</p>
+            </div>
+          ))}
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+        <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
+          <span>© {new Date().getFullYear()} CF ActivityPub — Open source & federated</span>
+          <div className="flex gap-5">
+            <a href="/.well-known/nodeinfo" style={{ color: "var(--text-muted)" }}>NodeInfo</a>
+            <a href="https://github.com/manalejandro/cf-activitypub-next" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)" }}>GitHub</a>
+          </div>
+        </div>
+      </footer>
+    </main>
   );
 }
+
+const features = [
+  {
+    icon: "⚡",
+    title: "Edge-native performance",
+    desc: "Runs on Cloudflare Workers in 300+ global locations with sub-millisecond cold starts.",
+  },
+  {
+    icon: "🌐",
+    title: "Mastodon compatible",
+    desc: "Full Mastodon REST API support — works with Ivory, Elk, Tusky, and any Mastodon client.",
+  },
+  {
+    icon: "🔗",
+    title: "ActivityPub federation",
+    desc: "Federation with any Mastodon, Pleroma, Misskey, or ActivityPub-compatible server.",
+  },
+  {
+    icon: "🔒",
+    title: "HTTP Signatures",
+    desc: "All federated activities are cryptographically signed and verified using RFC 9421.",
+  },
+  {
+    icon: "🗄️",
+    title: "Cloudflare D1 + KV",
+    desc: "Persistent data on Cloudflare D1 (SQLite), with KV for caching and R2 for media.",
+  },
+  {
+    icon: "📦",
+    title: "Zero dependencies",
+    desc: "Pure TypeScript, Web Crypto API, no Node.js runtime required. Deploy with one command.",
+  },
+];
+

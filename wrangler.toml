@@ -1,0 +1,39 @@
+name = "cf-activitypub"
+main = ".open-next/worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+assets = { directory = ".open-next/assets", binding = "ASSETS" }
+
+[vars]
+INSTANCE_TITLE = "CF ActivityPub"
+INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
+INSTANCE_VERSION = "0.1.0"
+NODE_ENV = "production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cf-activitypub"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "cf-activitypub-media"
+
+[[queues.producers]]
+binding = "DELIVERY_QUEUE"
+queue = "cf-activitypub-delivery"
+
+[[queues.consumers]]
+queue = "cf-activitypub-delivery"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 5
+dead_letter_queue = "cf-activitypub-delivery-dlq"
+
+[dev]
+port = 3000
+local_protocol = "http"

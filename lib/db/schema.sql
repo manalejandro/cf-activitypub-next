@@ -1,0 +1,230 @@
+-- CF ActivityPub D1 Database Schema
+-- Run with: wrangler d1 execute cf-activitypub --file=lib/db/schema.sql
+
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+
+-- ─────────────────────────────────────────
+-- Actors (local + cached remote)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS actors (
+  id              TEXT PRIMARY KEY,           -- full AP IRI
+  username        TEXT NOT NULL,
+  domain          TEXT NOT NULL,
+  display_name    TEXT,
+  summary         TEXT,
+  avatar_url      TEXT,
+  header_url      TEXT,
+  public_key_pem  TEXT NOT NULL,
+  private_key_pem TEXT,                       -- only for local accounts
+  is_local        INTEGER NOT NULL DEFAULT 0,
+  is_bot          INTEGER NOT NULL DEFAULT 0,
+  manually_approves_followers INTEGER NOT NULL DEFAULT 0,
+  discoverable    INTEGER NOT NULL DEFAULT 1,
+  followers_count INTEGER NOT NULL DEFAULT 0,
+  following_count INTEGER NOT NULL DEFAULT 0,
+  statuses_count  INTEGER NOT NULL DEFAULT 0,
+  email           TEXT UNIQUE,               -- only for local accounts
+  password_hash   TEXT,                      -- only for local accounts
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (username, domain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_actors_domain       ON actors(domain);
+CREATE INDEX IF NOT EXISTS idx_actors_is_local     ON actors(is_local);
+CREATE INDEX IF NOT EXISTS idx_actors_email        ON actors(email);
+
+-- ─────────────────────────────────────────
+-- Objects / Notes / Statuses
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS objects (
+  id              TEXT PRIMARY KEY,          -- full AP IRI
+  type            TEXT NOT NULL DEFAULT 'Note',
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  content         TEXT,
+  content_warning TEXT,
+  sensitive       INTEGER NOT NULL DEFAULT 0,
+  visibility      TEXT NOT NULL DEFAULT 'public',  -- public|unlisted|followers|direct
+  in_reply_to_id  TEXT,
+  language        TEXT,
+  url             TEXT,
+  replies_count   INTEGER NOT NULL DEFAULT 0,
+  reblogs_count   INTEGER NOT NULL DEFAULT 0,
+  favourites_count INTEGER NOT NULL DEFAULT 0,
+  published       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  is_local        INTEGER NOT NULL DEFAULT 0,
+  raw             TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
+CREATE INDEX IF NOT EXISTS idx_objects_published   ON objects(published DESC);
+CREATE INDEX IF NOT EXISTS idx_objects_visibility  ON objects(visibility);
+CREATE INDEX IF NOT EXISTS idx_objects_reply       ON objects(in_reply_to_id);
+
+-- ─────────────────────────────────────────
+-- Attachments
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS attachments (
+  id          TEXT PRIMARY KEY,
+  object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL DEFAULT 'image',
+  url         TEXT NOT NULL,
+  remote_url  TEXT,
+  description TEXT,
+  blurhash    TEXT,
+  width       INTEGER,
+  height      INTEGER,
+  file_size   INTEGER,
+  mime_type   TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_object ON attachments(object_id);
+
+-- ─────────────────────────────────────────
+-- Activities
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS activities (
+  id          TEXT PRIMARY KEY,
+  type        TEXT NOT NULL,
+  actor_id    TEXT NOT NULL,
+  object_id   TEXT,
+  target_id   TEXT,
+  to_list     TEXT NOT NULL DEFAULT '[]',   -- JSON array
+  cc_list     TEXT NOT NULL DEFAULT '[]',   -- JSON array
+  raw         TEXT NOT NULL DEFAULT '{}',
+  published   TEXT NOT NULL DEFAULT (datetime('now')),
+  is_local    INTEGER NOT NULL DEFAULT 0,
+  delivered   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_activities_actor    ON activities(actor_id);
+CREATE INDEX IF NOT EXISTS idx_activities_type     ON activities(type);
+CREATE INDEX IF NOT EXISTS idx_activities_published ON activities(published DESC);
+
+-- ─────────────────────────────────────────
+-- Follows
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS follows (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  state       TEXT NOT NULL DEFAULT 'pending',  -- pending|accepted|rejected
+  activity_id TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_follows_actor    ON follows(actor_id, state);
+CREATE INDEX IF NOT EXISTS idx_follows_target   ON follows(target_id, state);
+
+-- ─────────────────────────────────────────
+-- Likes / Favourites
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS likes (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  activity_id TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, object_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_likes_actor    ON likes(actor_id);
+CREATE INDEX IF NOT EXISTS idx_likes_object   ON likes(object_id);
+
+-- ─────────────────────────────────────────
+-- Boosts / Announces
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS announces (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  activity_id TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, object_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_announces_actor  ON announces(actor_id);
+CREATE INDEX IF NOT EXISTS idx_announces_object ON announces(object_id);
+
+-- ─────────────────────────────────────────
+-- Blocks
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS blocks (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+-- ─────────────────────────────────────────
+-- Notifications
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id                TEXT PRIMARY KEY,
+  type              TEXT NOT NULL,
+  account_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_account_id TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  object_id         TEXT,
+  is_read           INTEGER NOT NULL DEFAULT 0,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_notif_target   ON notifications(target_account_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notif_created  ON notifications(created_at DESC);
+
+-- ─────────────────────────────────────────
+-- OAuth Apps
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS oauth_apps (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  website       TEXT,
+  redirect_uri  TEXT NOT NULL,
+  scopes        TEXT NOT NULL DEFAULT 'read',
+  client_id     TEXT NOT NULL UNIQUE,
+  client_secret TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─────────────────────────────────────────
+-- OAuth Tokens
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  id           TEXT PRIMARY KEY,
+  actor_id     TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  app_id       TEXT NOT NULL REFERENCES oauth_apps(id) ON DELETE CASCADE,
+  access_token TEXT NOT NULL UNIQUE,
+  scope        TEXT NOT NULL DEFAULT 'read',
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_token  ON oauth_tokens(access_token);
+CREATE INDEX IF NOT EXISTS idx_tokens_actor  ON oauth_tokens(actor_id);
+
+-- ─────────────────────────────────────────
+-- Delivery queue state (fallback for failed deliveries)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS delivery_failures (
+  id          TEXT PRIMARY KEY,
+  activity_id TEXT NOT NULL,
+  inbox_url   TEXT NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  last_error  TEXT,
+  next_retry  TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─────────────────────────────────────────
+-- Remote object cache (for thread resolution)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS object_cache (
+  id          TEXT PRIMARY KEY,
+  raw         TEXT NOT NULL,
+  fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
