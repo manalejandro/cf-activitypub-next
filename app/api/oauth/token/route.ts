@@ -36,6 +36,11 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const app = client_id ? await getOAuthAppByClientId(env.DB, client_id) : null;
 
+    // Verify client_secret if app was found
+    if (app && client_secret && app.clientSecret !== client_secret) {
+      return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
+    }
+
     const accessToken = generateSecureToken();
     const refreshToken = generateSecureToken();
     const now = Math.floor(Date.now() / 1000);
@@ -43,7 +48,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     await createOAuthToken(env.DB, {
       id: accessToken,
-      appId: app?.id ?? "default",
+      appId: app?.id ?? null,
       actorId: actor.id,
       accessToken,
       refreshToken,

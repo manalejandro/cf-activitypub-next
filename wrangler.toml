@@ -1,5 +1,5 @@
 name = "cf-activitypub"
-main = ".open-next/worker.js"
+main = "src/worker.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 assets = { directory = ".open-next/assets", binding = "ASSETS" }
@@ -8,16 +8,21 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
 INSTANCE_VERSION = "0.1.0"
+INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
+
+[[routes]]
+pattern = "cf-ap.example.com"
+custom_domain = true
 
 [[d1_databases]]
 binding = "DB"
 database_name = "cf-activitypub"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = ""
 
 [[kv_namespaces]]
 binding = "KV"
-id = "YOUR_KV_NAMESPACE_ID"
+id = ""
 
 [[r2_buckets]]
 binding = "R2"
@@ -30,9 +35,22 @@ queue = "cf-activitypub-delivery"
 [[queues.consumers]]
 queue = "cf-activitypub-delivery"
 max_batch_size = 10
-max_batch_timeout = 30
-max_retries = 5
-dead_letter_queue = "cf-activitypub-delivery-dlq"
+max_batch_timeout = 5
+max_retries = 3
+
+[[durable_objects.bindings]]
+name = "TIMELINE_STREAM"
+class_name = "TimelineStreamDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TimelineStreamDO"]
+
+[triggers]
+crons = ["0 * * * *"]
+
+[observability]
+enabled = true
 
 [dev]
 port = 3000

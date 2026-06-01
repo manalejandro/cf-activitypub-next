@@ -1,7 +1,26 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorStatuses } from "@/lib/db";
+import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds } from "@/lib/db";
 import { buildActor, buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, objectIRI, actorIRI } from "@/lib/activitypub/utils";
+import type { APAttachment, LocalAttachment } from "@/lib/types";
+
+function toAPAttachment(att: LocalAttachment): APAttachment {
+  const mimeType = att.mimeType ?? "application/octet-stream";
+  let type: APAttachment["type"] = "Document";
+  if (mimeType.startsWith("image/")) type = "Image";
+  else if (mimeType.startsWith("video/")) type = "Video";
+  else if (mimeType.startsWith("audio/")) type = "Audio";
+  return {
+    id: att.url,
+    type,
+    mediaType: mimeType,
+    url: att.url,
+    ...(att.description ? { name: att.description } : {}),
+    ...(att.blurhash ? { blurhash: att.blurhash } : {}),
+    ...(att.width != null ? { width: att.width } : {}),
+    ...(att.height != null ? { height: att.height } : {}),
+  };
+}
 
 // GET /users/:username/outbox
 export async function GET(
@@ -25,10 +44,12 @@ export async function GET(
 
   const maxId = page !== "true" ? page : undefined;
   const statuses = await getActorStatuses(env.DB, actor.id, 20, maxId);
+  const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
 
   const items = statuses
     .filter((s) => s.visibility === "public")
     .map((s) => {
+      const attachments = (attachmentMap.get(s.id) ?? []).map(toAPAttachment);
       const note = buildNote(baseUrl, s.id, {
         actorUsername: username,
         content: s.content ?? "",
@@ -39,6 +60,9 @@ export async function GET(
         summary: s.contentWarning ?? undefined,
         language: s.language ?? undefined,
       });
+      if (attachments.length > 0) {
+        note.attachment = attachments;
+      }
       return buildCreate(baseUrl, actorIRI(baseUrl, username), note, s.id + "-create");
     });
 

@@ -138,11 +138,21 @@ export interface LocalActor {
   // auth
   email: string | null;
   passwordHash: string | null;
-  // computed for federation
+  // federation — stored for remote actors; computed for local
   inbox?: string;
   outbox?: string;
   followers?: string;
   following?: string;
+  autoDeleteAfter: number | null;
+}
+
+export interface ActorField {
+  id: string;
+  actorId: string;
+  name: string;
+  value: string;
+  position: number;
+  createdAt: string;
 }
 
 export interface LocalObject {
@@ -190,6 +200,24 @@ export interface LocalAnnounce {
   createdAt: string;
 }
 
+export interface LocalPoll {
+  id: string;
+  objectId: string;
+  expiresAt: string;
+  multiple: boolean;
+  votesCount: number;
+  votersCount: number;
+  createdAt: string;
+}
+
+export interface LocalPollOption {
+  id: string;
+  pollId: string;
+  title: string;
+  votesCount: number;
+  position: number;
+}
+
 export interface LocalNotification {
   id: string;
   type: "mention" | "status" | "reblog" | "follow" | "follow_request" | "favourite" | "poll" | "update";
@@ -197,6 +225,21 @@ export interface LocalNotification {
   targetAccountId: string; // who receives it
   objectId: string | null;
   read: boolean;
+  createdAt: string;
+}
+
+export interface LocalAttachment {
+  id: string;
+  objectId: string;
+  type: string;
+  url: string;
+  remoteUrl: string | null;
+  description: string | null;
+  blurhash: string | null;
+  width: number | null;
+  height: number | null;
+  fileSize: number | null;
+  mimeType: string | null;
   createdAt: string;
 }
 
@@ -214,7 +257,7 @@ export interface OAuthApp {
 export interface OAuthToken {
   id: string;
   actorId: string | null;
-  appId: string;
+  appId: string | null;
   accessToken: string;
   refreshToken: string | null;
   scope: string;
@@ -273,12 +316,25 @@ export interface MastodonStatus {
   tags: MastodonTag[];
   emojis: MastodonEmoji[];
   card: null;
-  poll: null;
+  poll: MastodonPoll | null;
   favourited: boolean;
   reblogged: boolean;
   muted: boolean;
   bookmarked: boolean;
   pinned?: boolean;
+}
+
+export interface MastodonPoll {
+  id: string;
+  expires_at: string | null;
+  expired: boolean;
+  multiple: boolean;
+  votes_count: number;
+  voters_count: number;
+  voted: boolean;
+  own_votes: number[];
+  options: { title: string; votes_count: number | null }[];
+  emojis: [];
 }
 
 export interface MastodonAttachment {
@@ -324,6 +380,7 @@ export interface MastodonSource {
   sensitive: boolean;
   language: string | null;
   follow_requests_count: number;
+  auto_delete_after: number | null;
 }
 
 export interface MastodonNotification {

@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useLocale } from "@/lib/i18n";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t, locale, setLocale } = useLocale();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +35,7 @@ export default function LoginPage() {
       localStorage.setItem("access_token", data.access_token);
       window.location.href = "/home";
     } catch {
-      setError("Network error. Please try again.");
+      setError(t.network_error);
     } finally {
       setLoading(false);
     }
@@ -41,14 +43,21 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-4" style={{ background: "var(--bg)" }}>
+      {/* Language toggle */}
+      <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", gap: "0.375rem" }}>
+        <button onClick={() => setLocale("en")} className="btn btn-ghost btn-sm"
+          style={{ fontWeight: locale === "en" ? 700 : 400, background: locale === "en" ? "var(--accent-bg)" : undefined, color: locale === "en" ? "var(--accent)" : "var(--text-muted)" }}>EN</button>
+        <button onClick={() => setLocale("es")} className="btn btn-ghost btn-sm"
+          style={{ fontWeight: locale === "es" ? 700 : 400, background: locale === "es" ? "var(--accent-bg)" : undefined, color: locale === "es" ? "var(--accent)" : "var(--text-muted)" }}>ES</button>
+      </div>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
           <Link href="/">
             <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
           </Link>
-          <h1 style={{ fontSize: "1.6rem", margin: 0 }}>Welcome back</h1>
+          <h1 style={{ fontSize: "1.6rem", margin: 0 }}>{t.login_title}</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}>
-            Sign in to your account
+            {t.login_sub}
           </p>
         </div>
 
@@ -70,7 +79,7 @@ export default function LoginPage() {
             )}
 
             <div className="flex flex-col gap-2">
-              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Email</label>
+              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{t.login_email}</label>
               <input
                 type="email"
                 className="input"
@@ -83,7 +92,7 @@ export default function LoginPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Password</label>
+              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{t.login_password}</label>
               <input
                 type="password"
                 className="input"
@@ -101,7 +110,7 @@ export default function LoginPage() {
               disabled={loading}
               style={{ marginTop: "0.5rem" }}
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? t.login_submitting : t.login_submit}
             </button>
           </form>
         </div>
@@ -114,9 +123,9 @@ export default function LoginPage() {
             marginTop: "1.5rem",
           }}
         >
-          Don&apos;t have an account?{" "}
+          {t.login_no_account}{" "}
           <Link href="/register" style={{ color: "var(--accent-light)" }}>
-            Create one
+            {t.login_register}
           </Link>
         </p>
       </div>

@@ -65,6 +65,7 @@ export function buildActor(
     followingCount?: number;
     statusesCount?: number;
     published?: string;
+    fields?: { name: string; value: string }[];
   }
 ): APActor {
   const id = actorIRI(baseUrl, username);
@@ -101,6 +102,13 @@ export function buildActor(
   if (options.headerUrl) {
     actor.image = { type: "Image", id: options.headerUrl, url: options.headerUrl, mediaType: "image/webp" };
   }
+  if (options.fields && options.fields.length > 0) {
+    actor.attachment = options.fields.map((f) => ({
+      type: "PropertyValue",
+      name: f.name,
+      value: f.value,
+    }));
+  }
 
   return actor;
 }
@@ -123,6 +131,8 @@ export function buildNote(
     language?: string;
     to?: string[];
     cc?: string[];
+    tags?: import("@/lib/types").APTag[];
+    attachments?: import("@/lib/types").APAttachment[];
   }
 ): APNote {
   const actorId = actorIRI(baseUrl, options.actorUsername);
@@ -157,10 +167,9 @@ export function buildNote(
     attributedTo: actorId,
     content: options.content,
     published: options.published,
-    updated: options.published,
     to,
     cc,
-    url: noteId,
+    url: `${baseUrl}/statuses/${id}`,
     sensitive: options.sensitive ?? false,
     replies: {
       id: `${noteId}/replies`,
@@ -177,6 +186,8 @@ export function buildNote(
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
   if (options.sensitive && options.summary) note.summary = options.summary;
   if (options.language) note.contentMap = { [options.language]: options.content };
+  if (options.tags && options.tags.length > 0) note.tag = options.tags;
+  if (options.attachments && options.attachments.length > 0) note.attachment = options.attachments;
 
   return note;
 }
@@ -273,6 +284,19 @@ export function buildAnnounce(
   };
 }
 
+export function buildUpdate(baseUrl: string, actorId: string, note: APNote, id: string): APActivity {
+  return {
+    "@context": DEFAULT_CONTEXT,
+    id: activityIRI(baseUrl, id),
+    type: "Update",
+    actor: actorId,
+    published: note.updated ?? note.published,
+    to: note.to,
+    cc: note.cc,
+    object: note,
+  };
+}
+
 export function buildDelete(baseUrl: string, actorId: string, objectId: string, id: string): APActivity {
   return {
     "@context": DEFAULT_CONTEXT,
@@ -282,6 +306,20 @@ export function buildDelete(baseUrl: string, actorId: string, objectId: string, 
     object: { id: objectId, type: "Tombstone" },
     to: [PUBLIC_ADDRESS],
     published: new Date().toISOString(),
+  };
+}
+
+export function buildUpdateActor(baseUrl: string, actor: APActor, id: string): APActivity {
+  const followersUrl = followersIRI(baseUrl, actor.preferredUsername);
+  return {
+    "@context": DEFAULT_CONTEXT,
+    id: activityIRI(baseUrl, id),
+    type: "Update",
+    actor: actor.id,
+    published: new Date().toISOString(),
+    to: [PUBLIC_ADDRESS],
+    cc: [followersUrl],
+    object: actor,
   };
 }
 

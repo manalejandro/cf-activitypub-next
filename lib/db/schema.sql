@@ -1,8 +1,5 @@
 -- CF ActivityPub D1 Database Schema
--- Run with: wrangler d1 execute cf-activitypub --file=lib/db/schema.sql
-
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
+-- Run with: wrangler d1 execute cf-activitypub --remote --file=lib/db/schema.sql
 
 -- ─────────────────────────────────────────
 -- Actors (local + cached remote)
@@ -26,6 +23,7 @@ CREATE TABLE IF NOT EXISTS actors (
   statuses_count  INTEGER NOT NULL DEFAULT 0,
   email           TEXT UNIQUE,               -- only for local accounts
   password_hash   TEXT,                      -- only for local accounts
+  inbox           TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (username, domain)
@@ -162,6 +160,17 @@ CREATE TABLE IF NOT EXISTS blocks (
 );
 
 -- ─────────────────────────────────────────
+-- Domain blocks (instance-level)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS domain_blocks (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  domain      TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, domain)
+);
+
+-- ─────────────────────────────────────────
 -- Notifications
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notifications (
@@ -195,13 +204,14 @@ CREATE TABLE IF NOT EXISTS oauth_apps (
 -- OAuth Tokens
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS oauth_tokens (
-  id           TEXT PRIMARY KEY,
-  actor_id     TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
-  app_id       TEXT NOT NULL REFERENCES oauth_apps(id) ON DELETE CASCADE,
-  access_token TEXT NOT NULL UNIQUE,
-  scope        TEXT NOT NULL DEFAULT 'read',
-  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  expires_at   TEXT
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT,
+  app_id        TEXT,
+  access_token  TEXT NOT NULL UNIQUE,
+  refresh_token TEXT,
+  scope         TEXT NOT NULL DEFAULT 'read',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at    TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tokens_token  ON oauth_tokens(access_token);
@@ -228,3 +238,56 @@ CREATE TABLE IF NOT EXISTS object_cache (
   raw         TEXT NOT NULL,
   fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ─────────────────────────────────────────
+-- Actor profile fields (key/value pairs)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS actor_fields (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  value       TEXT NOT NULL DEFAULT '',
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_actor_fields_actor ON actor_fields(actor_id);
+
+-- ─────────────────────────────────────────
+-- Polls
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS polls (
+  id            TEXT PRIMARY KEY,
+  object_id     TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  expires_at    TEXT NOT NULL,
+  multiple      INTEGER NOT NULL DEFAULT 0,
+  votes_count   INTEGER NOT NULL DEFAULT 0,
+  voters_count  INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_polls_object  ON polls(object_id);
+CREATE INDEX IF NOT EXISTS idx_polls_expires ON polls(expires_at);
+
+CREATE TABLE IF NOT EXISTS poll_options (
+  id           TEXT PRIMARY KEY,
+  poll_id      TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  votes_count  INTEGER NOT NULL DEFAULT 0,
+  position     INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_poll_opts_poll ON poll_options(poll_id, position);
+
+CREATE TABLE IF NOT EXISTS poll_votes (
+  id          TEXT PRIMARY KEY,
+  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  option_idx  INTEGER NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (poll_id, actor_id, option_idx)
+);
+
+CREATE INDEX IF NOT EXISTS idx_poll_votes_poll  ON poll_votes(poll_id);
+CREATE INDEX IF NOT EXISTS idx_poll_votes_actor ON poll_votes(actor_id);

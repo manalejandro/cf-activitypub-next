@@ -125,7 +125,10 @@ export async function collectFollowerInboxes(
           inboxes.push(shared);
         }
       } else {
-        inboxes.push(actor.inbox);
+        // Fall back to <actorId>/inbox, handling actors whose id ends with '/'
+        const base = actor.id.endsWith('/') ? actor.id.slice(0, -1) : actor.id;
+        const inbox = actor.inbox ?? `${base}/inbox`;
+        if (inbox) inboxes.push(inbox);
       }
     })
   );

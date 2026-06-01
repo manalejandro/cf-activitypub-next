@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { LocaleProvider } from "@/lib/i18n";
 import "./globals.css";
 
 const inter = Inter({
@@ -47,7 +48,23 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+  try {
+    const saved = localStorage.getItem("theme");
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme = saved === "light" || saved === "dark" ? saved : (systemDark ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch {}
+})();`,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col pb-14 md:pb-0">
+        <LocaleProvider>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

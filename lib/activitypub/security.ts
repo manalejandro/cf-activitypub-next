@@ -125,6 +125,23 @@ export async function verifySignature(
 }
 
 // ─────────────────────────────────────────
+// Key ID extraction (exported for inbox routes)
+// ─────────────────────────────────────────
+
+/**
+ * Extract the keyId value from the HTTP Signature header.
+ * This identifies the actor that actually signed the request —
+ * which may differ from the activity's `actor` field when the
+ * request was relayed / forwarded by a different server.
+ */
+export function extractSigningKeyId(headers: Record<string, string>): string | null {
+  const sigHeader = headers["signature"] || headers["Signature"];
+  if (!sigHeader) return null;
+  const parsed = parseSignatureHeader(sigHeader);
+  return parsed?.keyId ?? null;
+}
+
+// ─────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────
 

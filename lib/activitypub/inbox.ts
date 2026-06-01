@@ -3,7 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { APActivity, APNote, APActor } from "@/lib/types";
+import type { APActivity, APNote, APActor, APAttachment, LocalAttachment } from "@/lib/types";
 import {
   getActorById,
   getFollow,
@@ -12,6 +12,7 @@ import {
   deleteFollow,
   getObjectById,
   createObject,
+  createAttachment,
   deleteObject,
   createLike,
   deleteLike,
@@ -19,6 +20,11 @@ import {
   deleteAnnounce,
   createNotification,
   updateActor,
+  upsertRemoteActor,
+  getPollByObjectId,
+  getPollOptions,
+  getPollVotesByActor,
+  createPollVotes,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -26,12 +32,21 @@ import {
   activityIRI,
   extractUsername,
 } from "./utils";
-import { deliverToInbox } from "./federation";
+import { deliverToInbox, fetchRemoteObject } from "./federation";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
+import { serializeStatus } from "@/lib/mastodon/serializers";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DONamespace = { idFromName(name: string): any; get(id: any): { fetch(input: string | URL, init?: RequestInit): Promise<Response> } };
 
 interface InboxContext {
   db: D1Database;
   baseUrl: string;
   recipient?: { id: string; username: string; privateKeyPem: string } | null;
+  /** A local actor key to use when making signed HTTP GET requests to remote servers. */
+  signingKey?: { id: string; privateKeyPem: string } | null;
+  /** DO namespace for streaming — used to push notification events to connected clients. */
+  timelineStream?: DONamespace | null;
 }
 
 export async function processInboxActivity(
@@ -40,37 +55,41 @@ export async function processInboxActivity(
 ): Promise<void> {
   const type = (activity.type ?? "").toLowerCase();
 
-  switch (type) {
-    case "create":
-      await handleCreate(activity, ctx);
-      break;
-    case "follow":
-      await handleFollow(activity, ctx);
-      break;
-    case "accept":
-      await handleAccept(activity, ctx);
-      break;
-    case "reject":
-      await handleReject(activity, ctx);
-      break;
-    case "undo":
-      await handleUndo(activity, ctx);
-      break;
-    case "like":
-      await handleLike(activity, ctx);
-      break;
-    case "announce":
-      await handleAnnounce(activity, ctx);
-      break;
-    case "delete":
-      await handleDelete(activity, ctx);
-      break;
-    case "update":
-      await handleUpdate(activity, ctx);
-      break;
-    default:
-      // Ignore unknown activity types
-      break;
+  try {
+    switch (type) {
+      case "create":
+        await handleCreate(activity, ctx);
+        break;
+      case "follow":
+        await handleFollow(activity, ctx);
+        break;
+      case "accept":
+        await handleAccept(activity, ctx);
+        break;
+      case "reject":
+        await handleReject(activity, ctx);
+        break;
+      case "undo":
+        await handleUndo(activity, ctx);
+        break;
+      case "like":
+        await handleLike(activity, ctx);
+        break;
+      case "announce":
+        await handleAnnounce(activity, ctx);
+        break;
+      case "delete":
+        await handleDelete(activity, ctx);
+        break;
+      case "update":
+        await handleUpdate(activity, ctx);
+        break;
+      default:
+        // Ignore unknown activity types
+        break;
+    }
+  } catch (err) {
+    console.error(`[inbox] processInboxActivity error for type=${type} id=${activity.id}: ${err}\nactivity body: ${JSON.stringify(activity)}`);
   }
 }
 
@@ -84,9 +103,68 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const actorId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
 
-  // Ensure remote actor is cached
+  // ── Poll vote detection ──────────────────────────────────────────────────
+  // Mastodon sends votes as Create { object: { type: "Note", name: "<option>",
+  // inReplyTo: "<question-id>", content: undefined } }.
+  // The `name` field is the chosen option title; there is no `content`.
+  const voteName = (obj as Record<string, unknown>).name as string | undefined;
+  if (voteName && obj.inReplyTo && !obj.content) {
+    const pollObj = await getObjectById(ctx.db, obj.inReplyTo);
+    if (pollObj?.local) {
+      const pollDb = await getPollByObjectId(ctx.db, pollObj.id);
+      if (pollDb) {
+        const options = await getPollOptions(ctx.db, pollDb.id);
+        const idx = options.findIndex(
+          (o) => o.title.toLowerCase() === voteName.toLowerCase()
+        );
+        if (idx !== -1) {
+          // Deduplicate: only count if this actor hasn't voted yet
+          const existing = await getPollVotesByActor(ctx.db, pollDb.id, actorId);
+          if (existing.length === 0) {
+            await createPollVotes(ctx.db, pollDb.id, actorId, [idx]);
+          }
+        }
+      }
+    }
+    // Do NOT store the vote Note as a status or send notifications
+    return;
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Ensure the remote actor is cached so we can store it as the object's author.
+  // The actor may already be cached from signature verification in the route handler;
+  // if not, try the inline actor object first (cheaper), then fall back to a fetch.
+  // Prefer signed fetches when a local signing key is available (needed for servers
+  // with authorized_fetch / Secure Mode enabled).
+  const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
+
   let author = await getActorById(ctx.db, actorId);
-  if (!author) return; // Actor not cached, skip
+  if (!author) {
+    // Use inline actor data if the sender embedded the full actor in the activity
+    const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
+    if (inlineActor?.publicKey?.publicKeyPem) {
+      try { await upsertRemoteActor(ctx.db, inlineActor); } catch (e) { console.error(`[inbox] upsertRemoteActor (inline) error for ${actorId}: ${e}`); }
+    } else {
+      // Fall back to fetching from the network — sign the request when possible
+      try {
+        const fetched = await fetchRemoteObject(
+          actorId,
+          signingKey ? `${signingKey.id}#main-key` : undefined,
+          signingKey?.privateKeyPem
+        ) as APActor | null;
+        if (fetched?.publicKey?.publicKeyPem) {
+          await upsertRemoteActor(ctx.db, fetched);
+        } else {
+          console.error("[inbox] handleCreate: could not fetch actor %s (no publicKey in response)", actorId);
+        }
+      } catch (e) { console.error("[inbox] handleCreate: fetchRemoteObject error for %s: %s", actorId, e); }
+    }
+    author = await getActorById(ctx.db, actorId);
+  }
+  if (!author) {
+    console.error(`[inbox] handleCreate: dropping activity ${activity.id} — cannot resolve actor ${actorId}`);
+    return;
+  }
 
   const existing = await getObjectById(ctx.db, obj.id);
   if (existing) return; // Already stored
@@ -105,15 +183,69 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     repliesCount: 0,
     reblogsCount: 0,
     favouritesCount: 0,
-    published: obj.published,
+    published: obj.published ?? new Date().toISOString(),
     local: false,
     raw: JSON.stringify(obj),
   });
 
-  // Notify mentioned users
+  const storedAttachments: LocalAttachment[] = [];
+  if (Array.isArray(obj.attachment)) {
+    for (const attachment of obj.attachment as APAttachment[]) {
+      if (!attachment?.url) continue;
+      const localAttachment: LocalAttachment = {
+        id: attachment.id || generateId(),
+        objectId: obj.id,
+        type: attachment.type.toLowerCase(),
+        url: attachment.url,
+        remoteUrl: attachment.url,
+        description: attachment.name ?? null,
+        blurhash: attachment.blurhash ?? null,
+        width: attachment.width ?? null,
+        height: attachment.height ?? null,
+        fileSize: null,
+        mimeType: attachment.mediaType ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await createAttachment(ctx.db, localAttachment);
+        storedAttachments.push(localAttachment);
+      } catch (e) {
+        console.error(`[inbox] handleCreate: failed to store attachment for ${obj.id}: ${e}`);
+      }
+    }
+  }
+
+  // Notify mentioned users via the tag array (direct mentions like @user@domain)
+  const mentionedLocalIds = new Set<string>();
+  if (Array.isArray(obj.tag)) {
+    for (const tag of obj.tag as import("@/lib/types").APTag[]) {
+      if (tag.type === "Mention" && tag.href) {
+        // Only notify actors on this server
+        if (tag.href.startsWith(ctx.baseUrl + "/")) {
+          const mentionedActor = await getActorById(ctx.db, tag.href);
+          if (mentionedActor?.isLocal && !mentionedLocalIds.has(mentionedActor.id)) {
+            mentionedLocalIds.add(mentionedActor.id);
+            await createNotification(ctx.db, {
+              id: generateId(),
+              type: "mention",
+              accountId: actorId,
+              targetAccountId: mentionedActor.id,
+              objectId: obj.id,
+              read: false,
+              createdAt: new Date().toISOString(),
+            });
+            if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, mentionedActor.id).catch(() => {});
+          }
+        }
+      }
+    }
+  }
+
+  // Also notify when this is a reply to a local post
+  // (in case the reply author forgot to include the @mention tag)
   if (obj.inReplyTo) {
     const replyTarget = await getObjectById(ctx.db, obj.inReplyTo);
-    if (replyTarget?.actorId) {
+    if (replyTarget?.actorId && !mentionedLocalIds.has(replyTarget.actorId)) {
       const targetActor = await getActorById(ctx.db, replyTarget.actorId);
       if (targetActor?.isLocal) {
         await createNotification(ctx.db, {
@@ -125,6 +257,44 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           read: false,
           createdAt: new Date().toISOString(),
         });
+        if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, replyTarget.actorId).catch(() => {});
+      }
+    }
+  }
+
+  // Broadcast to timeline streaming clients (fire-and-forget)
+  if (ctx.timelineStream) {
+    const statusVisibility = resolveVisibility(obj.to, obj.cc);
+    if (statusVisibility === "public" || statusVisibility === "unlisted") {
+      const domain = new URL(ctx.baseUrl).hostname;
+      const published = obj.published ?? new Date().toISOString();
+      const serializedStatus = serializeStatus(
+        {
+          id: obj.id, type: "Note", actorId, content: obj.content ?? null,
+          contentWarning: obj.sensitive ? (obj.summary ?? null) : null,
+          sensitive: obj.sensitive ?? false, visibility: statusVisibility,
+          inReplyToId: obj.inReplyTo ?? null,
+          language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
+          url: obj.url ?? obj.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0,
+          published, updatedAt: published, local: false, raw: JSON.stringify(obj),
+        },
+        author,
+        domain,
+        { attachments: storedAttachments }
+      );
+      void broadcastPublicStatus(ctx.timelineStream, serializedStatus, false).catch(() => {});
+
+      // Broadcast to home feeds of local followers
+      try {
+        const localFollowers = await ctx.db
+          .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+          .bind(actorId)
+          .all<{ id: string }>();
+        for (const row of localFollowers.results) {
+          void broadcastHomeStatus(ctx.timelineStream, row.id, serializedStatus).catch(() => {});
+        }
+      } catch (e) {
+        console.error("[inbox] handleCreate: broadcastHomeStatus failed:", e);
       }
     }
   }
@@ -140,6 +310,10 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   const recipient = await getActorById(ctx.db, ctx.recipient.id);
   if (!recipient) return;
 
+  // Ensure the remote follower actor is in the DB before writing FK rows
+  const followerActor = await ensureActorCached(ctx.db, actorId);
+  if (!followerActor) return;
+
   const existing = await getFollow(ctx.db, actorId, targetId);
   if (!existing) {
     await createFollow(ctx.db, {
@@ -153,36 +327,40 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   }
 
   if (!recipient.manuallyApprovesFollowers) {
-    // Auto-accept: send Accept activity back
+    // Auto-accept: send Accept activity back to the remote server.
+    // This is safe to resend even for an already-existing follow (idempotent on remote side).
     const acceptId = generateId();
     const acceptActivity = buildAccept(ctx.baseUrl, ctx.recipient.id, activity, acceptId);
 
-    // Update follower count
-    await updateActor(ctx.db, ctx.recipient.id, {
-      followersCount: (recipient.followersCount ?? 0) + 1,
-    });
+    // Only update counts and create notification for brand-new follows.
+    if (!existing) {
+      await updateActor(ctx.db, ctx.recipient.id, {
+        followersCount: (recipient.followersCount ?? 0) + 1,
+      });
+      await createNotification(ctx.db, {
+        id: generateId(),
+        type: "follow",
+        accountId: actorId,
+        targetAccountId: ctx.recipient.id,
+        objectId: null,
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+      if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, ctx.recipient.id).catch(() => {});
+    }
 
     // Deliver Accept to requester
-    const requesterActor = await getActorById(ctx.db, actorId);
-    if (requesterActor?.inbox) {
+    // The actor is already cached from ensureActorCached above — just read inbox.
+    const requesterInbox = followerActor.inbox ?? null;
+    if (requesterInbox) {
       await deliverToInbox(
-        requesterActor.inbox,
+        requesterInbox,
         acceptActivity,
         `${ctx.recipient.id}#main-key`,
         ctx.recipient.privateKeyPem
       );
     }
-
-    await createNotification(ctx.db, {
-      id: generateId(),
-      type: "follow",
-      accountId: actorId,
-      targetAccountId: ctx.recipient.id,
-      objectId: null,
-      read: false,
-      createdAt: new Date().toISOString(),
-    });
-  } else {
+  } else if (!existing) {
     await createNotification(ctx.db, {
       id: generateId(),
       type: "follow_request",
@@ -192,6 +370,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
       read: false,
       createdAt: new Date().toISOString(),
     });
+    if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, ctx.recipient.id).catch(() => {});
   }
 }
 
@@ -204,21 +383,25 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
   const rows = await ctx.db
     .prepare("SELECT * FROM follows WHERE activity_id = ?")
     .bind(followActivityId)
-    .first<{ id: string; target_id: string; actor_id: string }>();
+    .first<{ id: string; target_id: string; actor_id: string; state: string }>();
 
   if (rows) {
+    const wasPending = rows.state === "pending";
     await updateFollowState(ctx.db, rows.id, "accepted");
-    const follower = await getActorById(ctx.db, rows.actor_id);
-    if (follower?.isLocal) {
-      await updateActor(ctx.db, rows.actor_id, {
-        followingCount: (follower.followingCount ?? 0) + 1,
-      });
-    }
-    const followed = await getActorById(ctx.db, rows.target_id);
-    if (followed) {
-      await updateActor(ctx.db, rows.target_id, {
-        followersCount: (followed.followersCount ?? 0) + 1,
-      });
+    // Only update counts if the follow was pending (not already accepted optimistically)
+    if (wasPending) {
+      const follower = await getActorById(ctx.db, rows.actor_id);
+      if (follower?.isLocal) {
+        await updateActor(ctx.db, rows.actor_id, {
+          followingCount: (follower.followingCount ?? 0) + 1,
+        });
+      }
+      const followed = await getActorById(ctx.db, rows.target_id);
+      if (followed) {
+        await updateActor(ctx.db, rows.target_id, {
+          followersCount: (followed.followersCount ?? 0) + 1,
+        });
+      }
     }
   }
 }
@@ -270,6 +453,10 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
   const objectId = typeof activity.object === "string" ? activity.object : (activity.object as APNote)?.id;
   if (!objectId) return;
 
+  // Ensure actor is in DB (FK on likes.actor_id)
+  const likerActor = await ensureActorCached(ctx.db, actorId);
+  if (!likerActor) return;
+
   const existing = await ctx.db
     .prepare("SELECT id FROM likes WHERE actor_id = ? AND object_id = ?")
     .bind(actorId, objectId)
@@ -297,6 +484,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
           read: false,
           createdAt: new Date().toISOString(),
         });
+        if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, obj.actorId).catch(() => {});
       }
     }
   }
@@ -306,6 +494,63 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
   const actorId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
   const objectId = typeof activity.object === "string" ? activity.object : (activity.object as APNote)?.id;
   if (!objectId) return;
+
+  // Ensure actor is in DB (FK on announces.actor_id)
+  const announcerActor = await ensureActorCached(ctx.db, actorId);
+  if (!announcerActor) return;
+
+  // If the boosted post is not yet stored locally, fetch and save it so it
+  // appears in the federated timeline regardless of whether we follow the author.
+  const knownObj = await getObjectById(ctx.db, objectId);
+  if (!knownObj && objectId.startsWith("https://")) {
+    try {
+      const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
+      let fetched = await fetchRemoteObject(
+        objectId,
+        signingKey ? `${signingKey.id}#main-key` : undefined,
+        signingKey?.privateKeyPem
+      ) as APNote | null;
+      // Retry without auth if signed fetch failed (some servers don't require it)
+      if (!fetched) {
+        fetched = await fetchRemoteObject(objectId) as APNote | null;
+      }
+      const NOTE_LIKE_TYPES = ["Note", "Article", "Page", "Video", "Audio", "Image"];
+      if (fetched && NOTE_LIKE_TYPES.includes((fetched as APNote).type as string)) {
+        const noteActorId = typeof fetched.attributedTo === "string"
+          ? fetched.attributedTo
+          : (fetched.attributedTo as APActor | undefined)?.id;
+        if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+        await createObject(ctx.db, {
+          id: fetched.id,
+          type: (fetched as APNote).type ?? "Note",
+          actorId: noteActorId ?? actorId,
+          content: fetched.content ?? null,
+          contentWarning: fetched.sensitive ? (fetched.summary ?? null) : null,
+          sensitive: fetched.sensitive ?? false,
+          visibility: resolveVisibility(fetched.to, fetched.cc),
+          inReplyToId: fetched.inReplyTo ?? null,
+          language: fetched.contentMap ? Object.keys(fetched.contentMap)[0] : null,
+          url: fetched.url ?? fetched.id,
+          repliesCount: 0,
+          reblogsCount: 0,
+          favouritesCount: 0,
+          published: fetched.published ?? new Date().toISOString(),
+          local: false,
+          raw: JSON.stringify(fetched),
+        });
+      }
+    } catch (e) {
+      console.error(`[inbox] handleAnnounce: failed to fetch boosted object ${objectId}: ${e}`);
+    }
+  }
+
+  // If the boosted object still isn't in the DB after the fetch attempt, we
+  // cannot create the announce — the FK on announces.object_id would fail.
+  const resolvedObj = await getObjectById(ctx.db, objectId);
+  if (!resolvedObj) {
+    console.warn(`[inbox] handleAnnounce: skipping announce for unfetchable object ${objectId}`);
+    return;
+  }
 
   const existing = await ctx.db
     .prepare("SELECT id FROM announces WHERE actor_id = ? AND object_id = ?")
@@ -321,20 +566,18 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
       createdAt: new Date().toISOString(),
     });
 
-    const obj = await getObjectById(ctx.db, objectId);
-    if (obj) {
-      const owner = await getActorById(ctx.db, obj.actorId);
-      if (owner?.isLocal) {
-        await createNotification(ctx.db, {
-          id: generateId(),
-          type: "reblog",
-          accountId: actorId,
-          targetAccountId: obj.actorId,
-          objectId,
-          read: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
+    const owner = await getActorById(ctx.db, resolvedObj.actorId);
+    if (owner?.isLocal) {
+      await createNotification(ctx.db, {
+        id: generateId(),
+        type: "reblog",
+        accountId: actorId,
+        targetAccountId: resolvedObj.actorId,
+        objectId,
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+      if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, resolvedObj.actorId).catch(() => {});
     }
   }
 }
@@ -375,10 +618,39 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
 // Helpers
 // ─────────────────────────────────────────
 
-function resolveVisibility(to: string[] = [], cc: string[] = []): "public" | "unlisted" | "followers" | "direct" {
-  const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
-  if (to.includes(PUBLIC)) return "public";
-  if (cc.includes(PUBLIC)) return "unlisted";
-  if (to.some((t) => t.includes("/followers"))) return "followers";
+/**
+ * Ensure a remote actor is present in the local DB before writing any row that
+ * references actors(id) via a FOREIGN KEY. Returns the local record, or null
+ * if the actor cannot be resolved.
+ */
+async function ensureActorCached(db: import("@cloudflare/workers-types").D1Database, actorId: string): Promise<import("@/lib/types").LocalActor | null> {
+  let actor = await getActorById(db, actorId);
+  if (!actor) {
+    try {
+      const fetched = await fetchRemoteObject(actorId) as APActor | null;
+      if (fetched?.publicKey?.publicKeyPem) {
+        await upsertRemoteActor(db, fetched);
+        actor = await getActorById(db, actorId);
+      }
+    } catch { /* ignore network errors */ }
+  }
+  return actor;
+}
+
+function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unlisted" | "followers" | "direct" {
+  // Some AP implementations send a plain string instead of an array when there
+  // is a single recipient — coerce to array so .includes() and .some() are safe.
+  const toArr: string[] = Array.isArray(to) ? to : (to ? [to as string] : []);
+  const ccArr: string[] = Array.isArray(cc) ? cc : (cc ? [cc as string] : []);
+  // Implementations may use the full IRI, the compact "as:Public", or just "Public".
+  // http:// and https:// variants both appear in the wild.
+  const isPublic = (v: string) =>
+    v === "https://www.w3.org/ns/activitystreams#Public" ||
+    v === "http://www.w3.org/ns/activitystreams#Public" ||
+    v === "as:Public" ||
+    v === "Public";
+  if (toArr.some(isPublic)) return "public";
+  if (ccArr.some(isPublic)) return "unlisted";
+  if (toArr.some((t) => t.includes("/followers"))) return "followers";
   return "direct";
 }

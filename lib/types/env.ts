@@ -4,6 +4,7 @@ export interface CloudflareEnv {
   R2: R2Bucket;
   DELIVERY_QUEUE: Queue;
   ASSETS: Fetcher;
+  TIMELINE_STREAM: DurableObjectNamespace;
   INSTANCE_TITLE: string;
   INSTANCE_DESCRIPTION: string;
   INSTANCE_VERSION: string;

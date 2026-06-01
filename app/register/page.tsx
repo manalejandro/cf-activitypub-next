@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useLocale } from "@/lib/i18n";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -10,6 +11,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t, locale, setLocale } = useLocale();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,7 +20,7 @@ export default function RegisterPage() {
 
     try {
       // First register the account
-      const regRes = await fetch("/api/api/v1/accounts", {
+      const regRes = await fetch("/api/v1/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email, password }),
@@ -44,7 +46,7 @@ export default function RegisterPage() {
 
       window.location.href = "/home";
     } catch {
-      setError("Network error. Please try again.");
+      setError(t.network_error);
     } finally {
       setLoading(false);
     }
@@ -52,14 +54,21 @@ export default function RegisterPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-4" style={{ background: "var(--bg)" }}>
+      {/* Language toggle */}
+      <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", gap: "0.375rem" }}>
+        <button onClick={() => setLocale("en")} className="btn btn-ghost btn-sm"
+          style={{ fontWeight: locale === "en" ? 700 : 400, background: locale === "en" ? "var(--accent-bg)" : undefined, color: locale === "en" ? "var(--accent)" : "var(--text-muted)" }}>EN</button>
+        <button onClick={() => setLocale("es")} className="btn btn-ghost btn-sm"
+          style={{ fontWeight: locale === "es" ? 700 : 400, background: locale === "es" ? "var(--accent-bg)" : undefined, color: locale === "es" ? "var(--accent)" : "var(--text-muted)" }}>ES</button>
+      </div>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
           <Link href="/">
             <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
           </Link>
-          <h1 style={{ fontSize: "1.6rem", margin: 0 }}>Create account</h1>
+          <h1 style={{ fontSize: "1.6rem", margin: 0 }}>{t.register_title}</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}>
-            Join the open social web
+            {t.register_sub}
           </p>
         </div>
 
@@ -81,7 +90,7 @@ export default function RegisterPage() {
             )}
 
             <div className="flex flex-col gap-2">
-              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Username</label>
+              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{t.register_username}</label>
               <input
                 type="text"
                 className="input"
@@ -94,12 +103,12 @@ export default function RegisterPage() {
                 autoComplete="username"
               />
               <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Letters, numbers and underscores only
+                {t.register_username_hint}
               </span>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Email</label>
+              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{t.register_email}</label>
               <input
                 type="email"
                 className="input"
@@ -112,7 +121,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>Password</label>
+              <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{t.register_password}</label>
               <input
                 type="password"
                 className="input"
@@ -131,7 +140,7 @@ export default function RegisterPage() {
               disabled={loading}
               style={{ marginTop: "0.5rem" }}
             >
-              {loading ? "Creating account…" : "Create account"}
+              {loading ? t.register_submitting : t.register_submit}
             </button>
           </form>
         </div>
@@ -144,9 +153,9 @@ export default function RegisterPage() {
             marginTop: "1.5rem",
           }}
         >
-          Already have an account?{" "}
+          {t.register_have_account}{" "}
           <Link href="/login" style={{ color: "var(--accent-light)" }}>
-            Sign in
+            {t.register_signin}
           </Link>
         </p>
       </div>

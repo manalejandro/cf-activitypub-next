@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername } from "@/lib/db";
+import { getActorByUsername, getActorFields } from "@/lib/db";
 import { buildActor } from "@/lib/activitypub/utils";
 
 // GET /users/:username
@@ -21,6 +21,7 @@ export async function GET(
   const actor = await getActorByUsername(env.DB, username, domain);
   if (!actor || !actor.isLocal) return notFound("Actor not found");
 
+  const fields = await getActorFields(env.DB, actor.id);
   const baseUrl = `https://${domain}`;
   const apActor = buildActor(baseUrl, actor.username, {
     displayName: actor.displayName ?? undefined,
@@ -32,6 +33,7 @@ export async function GET(
     discoverable: actor.discoverable,
     isBot: actor.isBot,
     published: actor.createdAt,
+    fields: fields.map((f) => ({ name: f.name, value: f.value })),
   });
 
   return activityJson(apActor);

@@ -3,8 +3,10 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateActor, createLike, deleteLike, getLike, createAnnounce, deleteAnnounce, getAnnounce } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildDelete, buildLike, buildAnnounce, buildUndo, generateId, followersIRI } from "@/lib/activitypub/utils";
 import { deliverToInboxes, collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 
 // GET /api/v1/statuses/:id
@@ -16,7 +18,7 @@ export async function GET(
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
-  const obj = await getObjectById(env.DB, decodeURIComponent(id));
+  const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
   const author = await getActorById(env.DB, obj.actorId);
@@ -38,7 +40,7 @@ export async function DELETE(
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const obj = await getObjectById(env.DB, decodeURIComponent(id));
+  const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
   if (obj.actorId !== actor.id) return json({ error: "Forbidden" }, 403);
 
@@ -49,19 +51,20 @@ export async function DELETE(
   // Deliver Delete activity
   if (actor.privateKeyPem) {
     const deleteActivity = buildDelete(baseUrl, actor.id, obj.id, generateId());
+    // Get IDs of actors who follow the current user (actor_id = follower, target_id = followed)
     const followers = await env.DB
-      .prepare("SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'")
+      .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
       .bind(actor.id)
-      .all<{ target_id: string }>();
+      .all<{ actor_id: string }>();
 
-    const followerIds = followers.results.map((r) => r.target_id);
+    const followerIds = followers.results.map((r) => r.actor_id);
     const fetchActor = async (id: string): Promise<APActor | null> => {
       const cached = await getActorById(env.DB, id);
       return cached as unknown as APActor | null;
     };
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
     if (inboxes.length > 0) {
-      await deliverToInboxes(inboxes, deleteActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), actor.id);
     }
   }
 

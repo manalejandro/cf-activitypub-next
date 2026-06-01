@@ -1,9 +1,11 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorByUsername } from "@/lib/db";
-import { verifySignature } from "@/lib/activitypub/security";
+import { getActorByUsername, getActorById, upsertRemoteActor, getObjectById, getAttachmentsByObjectIds, getPollsByObjectIds } from "@/lib/db";
+import { verifySignature, extractSigningKeyId } from "@/lib/activitypub/security";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
 
 // POST /users/:username/inbox
@@ -13,6 +15,7 @@ export async function POST(
 ): Promise<Response> {
   const { env } = getCloudflareContext();
   const { username } = await params;
+  console.log("[inbox/user] POST received for", username, "from", request.headers.get("user-agent") ?? "unknown");
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
@@ -47,25 +50,34 @@ export async function POST(
     return json({ error: "Missing actor" }, 400);
   }
 
+  // The HTTP Signature's keyId identifies the actor that actually signed the
+  // request. For relay / forwarded deliveries this will be the forwarding
+  // server's actor, NOT the activity's `actor` field.
+  const sigKeyId = extractSigningKeyId(headers);
+  const signingActorId = sigKeyId ? sigKeyId.replace(/#.*$/, "") : actorId;
+
   // Fetch remote actor to get public key
   let remoteActor: APActor | null = null;
   try {
     // Check cache first
     const cached = await env.DB
       .prepare("SELECT * FROM actors WHERE id = ?")
-      .bind(actorId)
+      .bind(signingActorId)
       .first<{ public_key_pem: string; inbox: string }>();
 
     if (cached) {
-      remoteActor = { id: actorId, publicKey: { id: `${actorId}#main-key`, owner: actorId, publicKeyPem: cached.public_key_pem }, type: "Person", preferredUsername: "", inbox: cached.inbox, outbox: "", followers: "", following: "" };
+      remoteActor = { id: signingActorId, publicKey: { id: sigKeyId ?? `${signingActorId}#main-key`, owner: signingActorId, publicKeyPem: cached.public_key_pem }, type: "Person", preferredUsername: "", inbox: cached.inbox, outbox: "", followers: "", following: "" };
     } else {
       const fetched = await fetchRemoteObject(
-        actorId,
+        signingActorId,
         `${recipient.id}#main-key`,
         recipient.privateKeyPem
       );
       if (fetched && "publicKey" in fetched) {
         remoteActor = fetched as APActor;
+        // Cache the remote actor so subsequent activities don't require a
+        // network round-trip and so handleCreate can find the author.
+        try { await upsertRemoteActor(env.DB, remoteActor); } catch { /* ignore */ }
       }
     }
   } catch {
@@ -73,26 +85,79 @@ export async function POST(
   }
 
   if (remoteActor?.publicKey?.publicKeyPem) {
+    // Use the canonical inbox URL (before middleware rewrite) for signature verification.
+    // Middleware rewrites /users/:username/inbox → /api/users/:username/inbox, but the
+    // sender signed against the original path.
+    const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
     const valid = await verifySignature(
       "POST",
-      request.url,
+      canonicalUrl,
       headers,
       remoteActor.publicKey.publicKeyPem
     );
     if (!valid && env.NODE_ENV !== "development") {
+      console.error("[inbox/user] Invalid signature from actor %s for %s inbox", actorId, username);
       return json({ error: "Invalid signature" }, 401);
     }
   }
 
-  await processInboxActivity(activity as never, {
-    db: env.DB,
-    baseUrl,
-    recipient: {
-      id: recipient.id,
-      username: recipient.username,
-      privateKeyPem: recipient.privateKeyPem,
-    },
-  });
+  try {
+    await processInboxActivity(activity as never, {
+      db: env.DB,
+      baseUrl,
+      recipient: {
+        id: recipient.id,
+        username: recipient.username,
+        privateKeyPem: recipient.privateKeyPem,
+      },
+      signingKey: {
+        id: recipient.id,
+        privateKeyPem: recipient.privateKeyPem,
+      },
+      timelineStream: env.TIMELINE_STREAM,
+    });
+  } catch (err) {
+    console.error("[inbox/user] processInboxActivity threw for %s inbox, activity %s: %s", username, (activity as { id?: string }).id, err);
+  }
+
+  // Broadcast newly created public statuses to streaming clients (best-effort)
+  const actType = (typeof activity.type === "string" ? activity.type : "").toLowerCase();
+  if (actType === "create") {
+    void (async () => {
+      try {
+        const obj = activity.object as { id?: string } | undefined;
+        const objId = typeof obj?.id === "string" ? obj.id : undefined;
+        if (!objId) return;
+
+        const stored = await getObjectById(env.DB, objId);
+        if (!stored) return;
+
+        const author = await getActorById(env.DB, stored.actorId);
+        if (!author) return;
+
+        const [attachmentMap, pollMap] = await Promise.all([
+          getAttachmentsByObjectIds(env.DB, [stored.id]),
+          getPollsByObjectIds(env.DB, [stored.id]),
+        ]);
+        const pollEntry = pollMap.get(stored.id);
+        const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
+        const serialized = serializeStatus(stored, author, domain, {
+          attachments: attachmentMap.get(stored.id) ?? [],
+          poll,
+        });
+
+        // Public timelines
+        if (stored.visibility === "public" || stored.visibility === "unlisted") {
+          await broadcastPublicStatus(env.TIMELINE_STREAM, serialized, stored.local);
+        }
+
+        // Recipient's home feed (this inbox belongs to the recipient)
+        await broadcastHomeStatus(env.TIMELINE_STREAM, recipient.id, serialized);
+      } catch (err) {
+        console.error("[inbox/user] streaming broadcast failed:", err);
+      }
+    })();
+  }
 
   return json({}, 202);
 }

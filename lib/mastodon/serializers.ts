@@ -4,13 +4,20 @@
 
 import type {
   LocalActor,
+  ActorField,
   LocalObject,
   LocalNotification,
+  LocalAttachment,
+  LocalPoll,
+  LocalPollOption,
   MastodonAccount,
+  MastodonAttachment,
+  MastodonPoll,
   MastodonStatus,
   MastodonNotification,
   MastodonInstance,
 } from "@/lib/types";
+import { encodeStatusId } from "@/lib/mastodon/statusId";
 
 // ─────────────────────────────────────────
 // Account serializer
@@ -22,7 +29,7 @@ const DEFAULT_HEADER = "/default-header.png";
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[] } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -39,7 +46,7 @@ export function serializeAccount(
     discoverable: actor.discoverable,
     created_at: actor.createdAt ?? new Date().toISOString(),
     note: actor.summary ?? "",
-    url: isLocal ? `https://${localDomain}/@${actor.username}` : actor.id,
+    url: isLocal ? `https://${localDomain}/users/${actor.username}` : actor.id,
     uri: actor.id,
     avatar: actor.avatarUrl ?? DEFAULT_AVATAR,
     avatar_static: actor.avatarUrl ?? DEFAULT_AVATAR,
@@ -50,17 +57,27 @@ export function serializeAccount(
     statuses_count: actor.statusesCount,
     last_status_at: null,
     emojis: [],
-    fields: [],
+    fields: (opts.fields ?? []).map((f) => ({
+      name: f.name,
+      value: f.value,
+      verified_at: null,
+    })),
   };
 
   if (opts.isCurrentUser) {
     account.source = {
-      note: actor.summary ?? "",
-      fields: [],
+      note: (actor.summary ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, ""),
+      // Plain-text version for edit textarea: strip HTML tags
+      fields: (opts.fields ?? []).map((f) => ({
+        name: f.name,
+        value: f.value,
+        verified_at: null,
+      })),
       privacy: "public",
       sensitive: false,
       language: null,
       follow_requests_count: 0,
+      auto_delete_after: actor.autoDeleteAfter ?? null,
     };
   }
 
@@ -75,7 +92,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -85,9 +102,14 @@ export function serializeStatus(
   };
 
   return {
-    id: obj.id,
+    id: encodeStatusId(obj.id, obj.local),
     created_at: obj.published,
-    in_reply_to_id: obj.inReplyToId ?? null,
+    in_reply_to_id: obj.inReplyToId
+      ? encodeStatusId(
+          obj.inReplyToId,
+          obj.inReplyToId.startsWith(`https://${localDomain}/objects/`)
+        )
+      : null,
     in_reply_to_account_id: null,
     sensitive: obj.sensitive,
     spoiler_text: obj.contentWarning ?? "",
@@ -98,21 +120,50 @@ export function serializeStatus(
     replies_count: obj.repliesCount,
     reblogs_count: obj.reblogsCount,
     favourites_count: obj.favouritesCount,
-    edited_at: null,
+    edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? obj.updatedAt : null,
     content: obj.content ?? "",
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain),
-    media_attachments: [],
+    media_attachments: (opts.attachments ?? []).map(serializeAttachment),
     mentions: [],
     tags: extractHashtags(obj.content ?? ""),
     emojis: [],
     card: null,
-    poll: null,
+    poll: opts.poll ?? null,
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
     muted: false,
     bookmarked: false,
+  };
+}
+
+// ─────────────────────────────────────────
+// Poll serializer
+// ─────────────────────────────────────────
+
+export function serializePoll(
+  poll: LocalPoll,
+  options: LocalPollOption[],
+  voted: boolean,
+  ownVotes: number[]
+): MastodonPoll {
+  const now = new Date();
+  const expired = now > new Date(poll.expiresAt);
+  return {
+    id: poll.id,
+    expires_at: poll.expiresAt,
+    expired,
+    multiple: poll.multiple,
+    votes_count: poll.votesCount,
+    voters_count: poll.votersCount,
+    voted,
+    own_votes: ownVotes,
+    options: options.map((opt) => ({
+      title: opt.title,
+      votes_count: voted || expired ? opt.votesCount : null,
+    })),
+    emojis: [],
   };
 }
 
@@ -192,6 +243,29 @@ export function serializeInstanceV2(
 // ─────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────
+
+function serializeAttachment(att: LocalAttachment): MastodonAttachment {
+  const mimeToType = (mime: string | null): MastodonAttachment["type"] => {
+    if (!mime) return "unknown";
+    if (mime.startsWith("image/gif")) return "gifv";
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("video/")) return "video";
+    if (mime.startsWith("audio/")) return "audio";
+    return "unknown";
+  };
+  return {
+    id: att.id,
+    type: mimeToType(att.mimeType),
+    url: att.url,
+    preview_url: att.url,
+    remote_url: att.remoteUrl ?? null,
+    description: att.description ?? null,
+    blurhash: att.blurhash ?? null,
+    meta: att.width && att.height
+      ? { original: { width: att.width, height: att.height } }
+      : undefined,
+  };
+}
 
 function extractHashtags(content: string): { name: string; url: string }[] {
   const matches = content.match(/#([a-zA-Z0-9_]+)/g) ?? [];

@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById } from "@/lib/db";
+import { getHomeTimeline, getActorById, getAttachmentsByObjectIds } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
@@ -14,17 +15,30 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
 
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 40);
-  const maxId = searchParams.get("max_id") ?? undefined;
-  const sinceId = searchParams.get("since_id") ?? undefined;
-  const minId = searchParams.get("min_id") ?? undefined;
+  const maxIdRaw = searchParams.get("max_id") ?? undefined;
+  const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
 
   const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId);
 
+  const attachmentMap = await getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id));
+
   const statuses = await Promise.all(
     objects.map(async (obj) => {
-      const author = await getActorById(env.DB, obj.actorId);
+      let author = await getActorById(env.DB, obj.actorId);
+      // Attempt a live fetch if the actor is not cached yet.
+      if (!author && obj.actorId.startsWith("https://")) {
+        try {
+          const { fetchRemoteObject } = await import("@/lib/activitypub/federation");
+          const { upsertRemoteActor } = await import("@/lib/db");
+          const fetched = await fetchRemoteObject(obj.actorId) as import("@/lib/types").APActor | null;
+          if (fetched?.publicKey?.publicKeyPem) {
+            await upsertRemoteActor(env.DB, fetched);
+            author = await getActorById(env.DB, obj.actorId);
+          }
+        } catch { /* ignore */ }
+      }
       if (!author) return null;
-      return serializeStatus(obj, author, domain);
+      return serializeStatus(obj, author, domain, { attachments: attachmentMap.get(obj.id) ?? [] });
     })
   );
 

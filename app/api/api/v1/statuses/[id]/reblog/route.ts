@@ -6,8 +6,11 @@ import {
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildAnnounce, generateId, followersIRI } from "@/lib/activitypub/utils";
-import { deliverToInboxes, collectFollowerInboxes } from "@/lib/activitypub/federation";
+import { collectFollowerInboxes } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import { broadcastNotificationEvent } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
 
 // POST /api/v1/statuses/:id/reblog
@@ -23,7 +26,7 @@ export async function POST(
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const obj = await getObjectById(env.DB, decodeURIComponent(id));
+  const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
   const author = await getActorById(env.DB, obj.actorId);
@@ -52,21 +55,23 @@ export async function POST(
         read: false,
         createdAt: new Date().toISOString(),
       });
+      void broadcastNotificationEvent(env.TIMELINE_STREAM, author.id).catch(() => {});
     }
 
     if (actor.privateKeyPem) {
+      // actor_id = follower, target_id = followed — deliver to our followers
       const followers = await env.DB
-        .prepare("SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'")
+        .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
         .bind(actor.id)
-        .all<{ target_id: string }>();
-      const followerIds = followers.results.map((r) => r.target_id);
+        .all<{ actor_id: string }>();
+      const followerIds = followers.results.map((r) => r.actor_id);
       const fetchActor = async (id: string): Promise<APActor | null> => {
         const cached = await getActorById(env.DB, id);
         return cached as unknown as APActor | null;
       };
       const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
       if (inboxes.length > 0) {
-        await deliverToInboxes(inboxes, announceActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+        await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(announceActivity), actor.id);
       }
     }
   }

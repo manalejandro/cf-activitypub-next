@@ -1,6 +1,30 @@
 @import "tailwindcss";
 
 :root {
+  --bg: #f4f4ff;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f0f0fa;
+  --bg-overlay: #e8e8f8;
+  --border: #d0d0e8;
+  --border-hover: #a0a0d0;
+  --text-primary: #1a1a3a;
+  --text-secondary: #4a4a7a;
+  --text-muted: #8080b0;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --accent-hover: #4f52cc;
+  --accent-bg: rgba(99, 102, 241, 0.08);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --radius-sm: 0.375rem;
+  --radius: 0.625rem;
+  --radius-lg: 1rem;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+}
+
+:root[data-theme="dark"] {
   --bg: #0f0f17;
   --bg-surface: #17172b;
   --bg-elevated: #1e1e38;
@@ -10,34 +34,25 @@
   --text-primary: #e8e8ff;
   --text-secondary: #9898cc;
   --text-muted: #6060a0;
-  --accent: #6366f1;
-  --accent-light: #818cf8;
-  --accent-hover: #4f52cc;
   --accent-bg: rgba(99, 102, 241, 0.12);
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --radius-sm: 0.375rem;
-  --radius: 0.625rem;
-  --radius-lg: 1rem;
   --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f4f4ff;
-    --bg-surface: #ffffff;
-    --bg-elevated: #f0f0fa;
-    --bg-overlay: #e8e8f8;
-    --border: #d0d0e8;
-    --border-hover: #a0a0d0;
-    --text-primary: #1a1a3a;
-    --text-secondary: #4a4a7a;
-    --text-muted: #8080b0;
-    --accent-bg: rgba(99, 102, 241, 0.08);
-    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #0f0f17;
+    --bg-surface: #17172b;
+    --bg-elevated: #1e1e38;
+    --bg-overlay: #262645;
+    --border: #2d2d52;
+    --border-hover: #4444a0;
+    --text-primary: #e8e8ff;
+    --text-secondary: #9898cc;
+    --text-muted: #6060a0;
+    --accent-bg: rgba(99, 102, 241, 0.12);
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
   }
 }
 

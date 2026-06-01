@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getActorById, getFollow, createFollow, deleteFollow, updateActor } from "@/lib/db";
+import { getActorById, getFollow, createFollow, deleteFollow, updateActor, createActor } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildFollow, buildUndo, generateId, actorIRI, followersIRI } from "@/lib/activitypub/utils";
 import { deliverToInbox } from "@/lib/activitypub/federation";
+import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import type { APActivity } from "@/lib/types";
 
 // POST /api/v1/accounts/:id/follow
@@ -19,7 +20,23 @@ export async function POST(
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const target = await getActorById(env.DB, decodeURIComponent(id));
+  const rawId = decodeURIComponent(id);
+  let target = await getActorById(env.DB, rawId);
+  let remoteInbox: string | null = null;
+
+  // If not cached locally and looks like a URL, fetch and cache the remote actor
+  if (!target && rawId.startsWith("https://")) {
+    const cached = await fetchAndCacheRemoteActor(env.DB, rawId);
+    if (cached) {
+      target = await getActorById(env.DB, cached.id);
+      remoteInbox = cached.inbox;
+    }
+  } else if (target && !target.isLocal && !target.inbox) {
+    // Actor is cached but inbox was never stored — refresh to get it
+    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId);
+    if (refreshed) remoteInbox = refreshed.inbox;
+  }
+
   if (!target) return notFound("Account not found");
 
   if (actor.id === target.id) {
@@ -52,9 +69,17 @@ export async function POST(
       await updateActor(env.DB, target.id, { followersCount: target.followersCount + 1 });
     }
   } else {
-    // Remote follow — deliver Follow activity
-    const inboxUrl = (target as unknown as Record<string, string>).inbox ?? `${target.id}/inbox`;
-    await deliverToInbox(inboxUrl, followActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+    // Remote follow — deliver Follow activity to the stored inbox URL
+    const inboxUrl = remoteInbox ?? target.inbox ?? `${target.id}/inbox`;
+    try {
+      await deliverToInbox(inboxUrl, followActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+    } catch {
+      // Delivery failure is non-fatal — follow is saved, will be retried or handled later
+    }
+    // Optimistically increment the local actor's following count (for non-locked remote accounts)
+    if (!target.manuallyApprovesFollowers) {
+      await updateActor(env.DB, actor.id, { followingCount: actor.followingCount + 1 });
+    }
   }
 
   return json({
