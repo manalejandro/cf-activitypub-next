@@ -70,6 +70,9 @@ const EN = {
   login_submitting: "Signing in…",
   login_no_account: "Don't have an account?",
   login_register: "Create one",
+  login_unverified: "Please verify your email address before signing in.",
+  login_verified_banner: "Email verified! You can now sign in.",
+  login_verify_error: "The verification link is invalid or has expired.",
   // Register
   register_title: "Create account",
   register_sub: "Join the open social web",
@@ -81,6 +84,14 @@ const EN = {
   register_submitting: "Creating account…",
   register_have_account: "Already have an account?",
   register_signin: "Sign in",
+  // Email verification flow
+  verify_email_title: "Check your email",
+  verify_email_sub: "We sent a verification link to",
+  verify_email_resend: "Resend verification email",
+  verify_email_resending: "Sending…",
+  verify_email_resent: "Email sent! Check your inbox.",
+  // Turnstile
+  turnstile_error: "Security check failed. Please try again.",
   // Profile
   profile_posts: "Posts",
   profile_media: "Media",
@@ -184,6 +195,9 @@ const ES: typeof EN = {
   login_submitting: "Iniciando sesión…",
   login_no_account: "¿No tienes cuenta?",
   login_register: "Créate una",
+  login_unverified: "Por favor, verifica tu correo electrónico antes de iniciar sesión.",
+  login_verified_banner: "¡Correo verificado! Ya puedes iniciar sesión.",
+  login_verify_error: "El enlace de verificación es inválido o ha expirado.",
   // Registro
   register_title: "Crear cuenta",
   register_sub: "Únete a la web social abierta",
@@ -195,6 +209,14 @@ const ES: typeof EN = {
   register_submitting: "Creando cuenta…",
   register_have_account: "¿Ya tienes cuenta?",
   register_signin: "Iniciar sesión",
+  // Flujo de verificación de correo
+  verify_email_title: "Verifica tu correo",
+  verify_email_sub: "Enviamos un enlace de verificación a",
+  verify_email_resend: "Reenviar correo de verificación",
+  verify_email_resending: "Enviando…",
+  verify_email_resent: "¡Correo enviado! Revisa tu bandeja de entrada.",
+  // Turnstile
+  turnstile_error: "Verificación de seguridad fallida. Inténtalo de nuevo.",
   // Perfil
   profile_posts: "Publicaciones",
   profile_media: "Multimedia",

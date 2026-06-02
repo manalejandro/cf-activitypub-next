@@ -22,6 +22,14 @@ import type {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 
+export interface EmailVerification {
+  id: string;
+  actorId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 function rowToActor(r: Row): LocalActor {
   return {
     id: r.id,
@@ -42,6 +50,7 @@ function rowToActor(r: Row): LocalActor {
     statusesCount: r.statuses_count ?? 0,
     email: r.email ?? null,
     passwordHash: r.password_hash ?? null,
+    emailVerified: Boolean(r.email_verified),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     inbox: r.inbox ?? null,
@@ -205,8 +214,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
         public_key_pem, private_key_pem, is_local, is_bot,
         manually_approves_followers, discoverable,
         followers_count, following_count, statuses_count,
-        email, password_hash
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        email, password_hash, email_verified
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       actor.id,
@@ -226,7 +235,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
       actor.followingCount,
       actor.statusesCount,
       actor.email ?? null,
-      actor.passwordHash ?? null
+      actor.passwordHash ?? null,
+      actor.emailVerified ? 1 : 0
     )
     .run();
 }
@@ -1130,6 +1140,55 @@ export async function createPollVotes(
   await db
     .prepare("UPDATE polls SET votes_count = votes_count + ?, voters_count = voters_count + 1 WHERE id = ?")
     .bind(choices.length, pollId)
+    .run();
+}
+
+// ─────────────────────────────────────────
+// Email verification tokens
+// ─────────────────────────────────────────
+
+export async function createEmailVerification(
+  db: D1Database,
+  actorId: string,
+  token: string,
+  expiresAt: string
+): Promise<void> {
+  // Remove any existing tokens for this actor before creating a new one
+  await db.prepare("DELETE FROM email_verifications WHERE actor_id = ?").bind(actorId).run();
+  await db
+    .prepare(
+      "INSERT INTO email_verifications (id, actor_id, token, expires_at) VALUES (?,?,?,?)"
+    )
+    .bind(crypto.randomUUID(), actorId, token, expiresAt)
+    .run();
+}
+
+export async function getEmailVerificationByToken(
+  db: D1Database,
+  token: string
+): Promise<EmailVerification | null> {
+  const row = await db
+    .prepare("SELECT * FROM email_verifications WHERE token = ?")
+    .bind(token)
+    .first<Row>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    token: row.token,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  };
+}
+
+export async function deleteEmailVerification(db: D1Database, token: string): Promise<void> {
+  await db.prepare("DELETE FROM email_verifications WHERE token = ?").bind(token).run();
+}
+
+export async function markEmailVerified(db: D1Database, actorId: string): Promise<void> {
+  await db
+    .prepare("UPDATE actors SET email_verified = 1, updated_at = datetime('now') WHERE id = ?")
+    .bind(actorId)
     .run();
 }
 

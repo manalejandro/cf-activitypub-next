@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS actors (
   statuses_count  INTEGER NOT NULL DEFAULT 0,
   email           TEXT UNIQUE,               -- only for local accounts
   password_hash   TEXT,                      -- only for local accounts
+  email_verified  INTEGER NOT NULL DEFAULT 0, -- 1 once the user clicks the verification link
   inbox              TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
   auto_delete_after  INTEGER,                   -- auto-delete posts after N seconds (null = disabled)
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -293,3 +294,17 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 
 CREATE INDEX IF NOT EXISTS idx_poll_votes_poll  ON poll_votes(poll_id);
 CREATE INDEX IF NOT EXISTS idx_poll_votes_actor ON poll_votes(actor_id);
+
+-- ─────────────────────────────────────────
+-- Email verification tokens
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id         TEXT PRIMARY KEY,
+  actor_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  token      TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verif_token ON email_verifications(token);
+CREATE INDEX IF NOT EXISTS idx_email_verif_actor ON email_verifications(actor_id);

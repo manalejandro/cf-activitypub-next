@@ -138,6 +138,7 @@ export interface LocalActor {
   // auth
   email: string | null;
   passwordHash: string | null;
+  emailVerified: boolean;
   // federation — stored for remote actors; computed for local
   inbox?: string;
   outbox?: string;

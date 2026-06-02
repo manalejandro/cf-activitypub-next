@@ -1,9 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
-import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId } from "@/lib/db";
+import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
+import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId, createEmailVerification } from "@/lib/db";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { actorIRI } from "@/lib/activitypub/utils";
 import { hashPassword, generateSecureToken } from "@/lib/auth";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+import { sendVerificationEmail } from "@/lib/email";
 
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
@@ -22,6 +24,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const { username, email, password } = body;
+  const turnstileToken = body["cf-turnstile-response"];
 
   if (!username || !email || !password) {
     return json({ error: "username, email and password are required" }, 422);
@@ -33,6 +36,17 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (password.length < 8) {
     return json({ error: "Password must be at least 8 characters" }, 422);
+  }
+
+  // If a Turnstile token is provided (web form), verify it.
+  // API clients (Mastodon apps) that don't send a Turnstile token skip this check.
+  const webRegistration = Boolean(turnstileToken);
+  if (webRegistration) {
+    const remoteIp = request.headers.get("CF-Connecting-IP") ?? undefined;
+    const valid = await verifyTurnstileToken(turnstileToken, env.TURNSTILE_SECRET, remoteIp);
+    if (!valid) {
+      return json({ error: "Security check failed. Please try again." }, 422);
+    }
   }
 
   const existing = await getActorByEmail(env.DB, email);
@@ -51,6 +65,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { publicKeyPem, privateKeyPem } = await generateKeyPair();
   const passwordHash = await hashPassword(password);
   const actorId = actorIRI(baseUrl, username);
+
+  // Web registrations require email verification; API registrations are auto-verified.
+  const emailVerified = !webRegistration;
 
   await createActor(env.DB, {
     id: actorId,
@@ -71,15 +88,36 @@ export async function POST(request: NextRequest): Promise<Response> {
     statusesCount: 0,
     email: email.toLowerCase(),
     passwordHash,
+    emailVerified,
     autoDeleteAfter: null,
   });
 
-  const actor = await env.DB
-    .prepare("SELECT * FROM actors WHERE id = ?")
-    .bind(actorId)
-    .first();
+  if (webRegistration) {
+    // Send verification email; do not issue a token yet.
+    const token = generateSecureToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await createEmailVerification(env.DB, actorId, token, expiresAt);
 
-  // Auto-create access token (Mastodon clients expect it on registration)
+    const instanceBaseUrl = getBaseUrl(env);
+    const verifyUrl = `${instanceBaseUrl}/api/auth/verify-email?token=${token}`;
+
+    try {
+      await sendVerificationEmail(env.EMAIL, {
+        to: email.toLowerCase(),
+        from: env.FROM_EMAIL,
+        verifyUrl,
+        instanceTitle: env.INSTANCE_TITLE,
+      });
+    } catch (err) {
+      console.error("[register] Failed to send verification email:", err);
+      // Continue — don't fail registration if email sending fails.
+      // The user can request a resend from the login page.
+    }
+
+    return json({ pending_verification: true }, 200);
+  }
+
+  // API registration: auto-create access token (Mastodon clients expect it on registration)
   const { client_id } = body;
   const app = client_id ? await getOAuthAppByClientId(env.DB, client_id) : null;
   const accessToken = generateSecureToken();
