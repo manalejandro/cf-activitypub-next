@@ -340,7 +340,7 @@ export default function HomePage() {
     obs.observe(el);
     return () => obs.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, loadingMore]);
+  }, [hasMore, loadingMore, statuses]);
 
   // Close emoji picker when clicking outside
   useEffect(() => {

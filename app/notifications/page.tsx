@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
@@ -42,6 +42,9 @@ export default function NotificationsPage() {
   const [me, setMe] = useState<Account | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -50,8 +53,27 @@ export default function NotificationsPage() {
     const res = await fetch("/api/v1/notifications?limit=40", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) setNotifications(await res.json() as Notification[]);
+    if (res.ok) {
+      const data = await res.json() as Notification[];
+      setNotifications(data);
+      setHasMore(data.length >= 40);
+    }
     setLoading(false);
+  }
+
+  async function loadMore() {
+    if (!token || loadingMore || !hasMore || notifications.length === 0) return;
+    setLoadingMore(true);
+    const lastId = notifications[notifications.length - 1].id;
+    const res = await fetch(`/api/v1/notifications?limit=40&max_id=${encodeURIComponent(lastId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json() as Notification[];
+      setNotifications((prev) => [...prev, ...data]);
+      setHasMore(data.length >= 40);
+    }
+    setLoadingMore(false);
   }
 
   async function fetchFollowRequests() {
@@ -114,6 +136,18 @@ export default function NotificationsPage() {
     void markAllRead();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Infinite scroll
+  useEffect(() => {
+    if (!bottomRef.current || !hasMore) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) void loadMore(); },
+      { rootMargin: "300px" }
+    );
+    obs.observe(bottomRef.current);
+    return () => obs.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, loadingMore, notifications]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
@@ -299,6 +333,9 @@ export default function NotificationsPage() {
                 </div>
               );
             })}
+            <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+              {loadingMore ? "Cargando…" : ""}
+            </div>
           </div>
         )}
           </>

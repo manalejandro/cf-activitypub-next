@@ -434,6 +434,13 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const [relationship, setRelationship] = useState<Relationship | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [hasMoreFollowers, setHasMoreFollowers] = useState(true);
+  const [loadingMoreFollowers, setLoadingMoreFollowers] = useState(false);
+  const [hasMoreFollowing, setHasMoreFollowing] = useState(true);
+  const [loadingMoreFollowing, setLoadingMoreFollowing] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // Edit form state
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -482,7 +489,11 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
       `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=20`,
       { headers: authHeaders }
     );
-    if (statusRes.ok) setStatuses(await statusRes.json() as Status[]);
+    if (statusRes.ok) {
+      const data = await statusRes.json() as Status[];
+      setStatuses(data);
+      setHasMorePosts(data.length >= 20);
+    }
     setTabLoaded((p) => ({ ...p, posts: true }));
 
     setLoading(false);
@@ -495,6 +506,78 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadMorePosts() {
+    if (!account || loadingMorePosts || !hasMorePosts || statuses.length === 0) return;
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    setLoadingMorePosts(true);
+    const oldestId = statuses[statuses.length - 1].id;
+    const res = await fetch(
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=20`,
+      { headers: authHeaders }
+    );
+    if (res.ok) {
+      const data = await res.json() as Status[];
+      setStatuses((prev) => [...prev, ...data]);
+      setHasMorePosts(data.length >= 20);
+    }
+    setLoadingMorePosts(false);
+  }
+
+  async function loadMoreFollowers() {
+    if (!account || loadingMoreFollowers || !hasMoreFollowers) return;
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    setLoadingMoreFollowers(true);
+    const nextPage = Math.floor(followers.length / 40);
+    const res = await fetch(
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=40&page=${nextPage}`,
+      { headers: authHeaders }
+    );
+    if (res.ok) {
+      const data = await res.json() as Account[];
+      setFollowers((prev) => [...prev, ...data]);
+      setHasMoreFollowers(data.length >= 40);
+    }
+    setLoadingMoreFollowers(false);
+  }
+
+  async function loadMoreFollowing() {
+    if (!account || loadingMoreFollowing || !hasMoreFollowing) return;
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    setLoadingMoreFollowing(true);
+    const nextPage = Math.floor(following.length / 40);
+    const res = await fetch(
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=40&page=${nextPage}`,
+      { headers: authHeaders }
+    );
+    if (res.ok) {
+      const data = await res.json() as Account[];
+      setFollowing((prev) => [...prev, ...data]);
+      setHasMoreFollowing(data.length >= 40);
+    }
+    setLoadingMoreFollowing(false);
+  }
+
+  // Infinite scroll for posts, followers, following tabs
+  useEffect(() => {
+    if (!bottomRef.current) return;
+    if (activeTab === "posts" && (!hasMorePosts || loadingMorePosts)) return;
+    if (activeTab === "followers" && (!hasMoreFollowers || loadingMoreFollowers)) return;
+    if (activeTab === "following" && (!hasMoreFollowing || loadingMoreFollowing)) return;
+    if (activeTab !== "posts" && activeTab !== "followers" && activeTab !== "following") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        if (activeTab === "posts") void loadMorePosts();
+        else if (activeTab === "followers") void loadMoreFollowers();
+        else if (activeTab === "following") void loadMoreFollowing();
+      },
+      { rootMargin: "300px" }
+    );
+    obs.observe(bottomRef.current);
+    return () => obs.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMorePosts, loadingMorePosts, statuses, activeTab, hasMoreFollowers, loadingMoreFollowers, followers, hasMoreFollowing, loadingMoreFollowing, following]);
 
   async function loadTab(tab: ActiveTab, acctId: string) {
     if (tabLoaded[tab]) return;
@@ -511,13 +594,21 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
         `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=40`,
         { headers: authHeaders }
       );
-      if (res.ok) setFollowers(await res.json() as Account[]);
+      if (res.ok) {
+        const data = await res.json() as Account[];
+        setFollowers(data);
+        setHasMoreFollowers(data.length >= 40);
+      }
     } else if (tab === "following") {
       const res = await fetch(
         `/api/v1/accounts/${encodeURIComponent(acctId)}/following?limit=40`,
         { headers: authHeaders }
       );
-      if (res.ok) setFollowing(await res.json() as Account[]);
+      if (res.ok) {
+        const data = await res.json() as Account[];
+        setFollowing(data);
+        setHasMoreFollowing(data.length >= 40);
+      }
     }
     setTabLoaded((p) => ({ ...p, [tab]: true }));
   }
@@ -865,7 +956,12 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   No posts yet
                 </div>
               ) : (
-                statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} />)
+                <>
+                  {statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} />)}
+                  <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    {loadingMorePosts ? "Cargando…" : ""}
+                  </div>
+                </>
               )
             )}
 
@@ -896,7 +992,12 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               ) : followers.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>No followers yet</div>
               ) : (
-                followers.map((f) => <AccountCard key={f.id} acct={f} />)
+                <>
+                  {followers.map((f) => <AccountCard key={f.id} acct={f} />)}
+                  <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    {loadingMoreFollowers ? "Cargando…" : ""}
+                  </div>
+                </>
               )
             )}
 
@@ -906,7 +1007,12 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               ) : following.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>Not following anyone yet</div>
               ) : (
-                following.map((f) => <AccountCard key={f.id} acct={f} />)
+                <>
+                  {following.map((f) => <AccountCard key={f.id} acct={f} />)}
+                  <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    {loadingMoreFollowing ? "Cargando…" : ""}
+                  </div>
+                </>
               )
             )}
           </>
