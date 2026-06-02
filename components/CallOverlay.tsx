@@ -41,6 +41,15 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  // "mini" = compact floating panel, "normal" = wider panel, "full" = covers viewport
+  const [callSize, setCallSize] = useState<"mini" | "normal" | "full">("mini");
+  const cycleSize = useCallback(() => {
+    setCallSize((s) => s === "mini" ? "normal" : s === "normal" ? "full" : "mini");
+  }, []);
+  // Reset size when call ends
+  useEffect(() => {
+    if (callState.phase === "idle" || callState.phase === "ended") setCallSize("mini");
+  }, [callState.phase]);
 
   // Wire up streaming events → call hook
   useTimelineStream("user", accessToken, handleStreamingEvent);
@@ -183,22 +192,44 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
     // Local PiP should only render when there's actually something to display
     const localVideoStream = isSharingScreen && screenStream ? screenStream : localStream;
     const showLocalPip = localVideoStream != null && (localVideoStream.getVideoTracks().length > 0);
+
+    // Sizing: mini = small floating, normal = wider panel, full = covers entire viewport
+    const isFullscreen = callSize === "full";
+    const outerClass = isFullscreen
+      ? "fixed inset-0 z-50 flex flex-col bg-black"
+      : "fixed bottom-4 right-4 z-50";
+    const panelClass = isFullscreen
+      ? "flex flex-col w-full h-full"
+      : callSize === "normal"
+      ? "bg-base-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+      : "bg-base-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col";
+    const panelStyle = isFullscreen
+      ? undefined
+      : { width: callSize === "normal" ? "min(480px, 90vw)" : "288px" };
+    const videoAreaClass = isFullscreen
+      ? "relative flex-1 bg-black overflow-hidden"
+      : "relative w-full aspect-video bg-black";
+
+    // Size button icon: show what the *next* action will do
+    const sizeIcon = callSize === "mini" ? "⬜" : callSize === "normal" ? "⛶" : "⊟";
+    const sizeTitle = callSize === "mini" ? "Ampliar" : callSize === "normal" ? "Pantalla completa" : "Restaurar";
+
     return (
-      <div className="fixed bottom-4 right-4 z-50">
-        <div className="bg-base-200 rounded-2xl shadow-2xl overflow-hidden w-72 flex flex-col">
+      <div className={outerClass}>
+        <div className={panelClass} style={panelStyle}>
           {/* Remote video / audio panel */}
           {hasVideoPanel ? (
-            <div className="relative w-full aspect-video bg-black">
+            <div className={videoAreaClass}>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
               {/* Local video (PiP) — only shown when local video is active */}
               {showLocalPip && (
-                <div className="absolute bottom-2 right-2 w-20 aspect-video bg-black rounded-lg overflow-hidden">
+                <div className={`absolute bottom-3 right-3 bg-black rounded-lg overflow-hidden ${isFullscreen ? "w-36 aspect-video" : "w-20 aspect-video"}`}>
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                   <video
                     ref={localVideoRef}
@@ -211,7 +242,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
               )}
             </div>
           ) : (
-            <div className="p-4 flex flex-col items-center gap-2">
+            <div className={`flex flex-col items-center justify-center gap-2 ${isFullscreen ? "flex-1" : "p-4"}`}>
               <span className="text-3xl">🎙️</span>
               <p className="text-sm font-medium">{callState.peerAcct}</p>
               {/* Hidden audio element for remote audio */}
@@ -221,20 +252,25 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
           )}
 
           {/* Controls */}
-          <div className="flex items-center justify-center gap-3 p-3 bg-base-300">
+          <div
+            className="flex items-center justify-center gap-3 p-3 shrink-0"
+            style={isFullscreen
+              ? { backgroundColor: "rgba(0,0,0,0.85)" }
+              : { backgroundColor: "var(--color-base-300, #313244)" }}
+          >
             <button
               onClick={() => void toggleMute()}
               className={`btn btn-circle btn-sm ${isMuted ? "btn-error" : "btn-ghost"}`}
               aria-label={isMuted ? "Unmute" : "Mute"}
-              title={isMuted ? "Enable microphone" : "Mute microphone"}
+              title={isMuted ? "Activar micrófono" : "Silenciar micrófono"}
             >
               {isMuted ? "🔇" : "🎙️"}
             </button>
             <button
               onClick={() => void toggleVideo()}
-              className={`btn btn-circle btn-sm ${isVideoOff ? "btn-ghost" : "btn-ghost"}`}
+              className="btn btn-circle btn-sm btn-ghost"
               aria-label={isVideoOff ? "Enable camera" : "Disable camera"}
-              title={isVideoOff ? "Enable camera" : "Disable camera"}
+              title={isVideoOff ? "Activar cámara" : "Desactivar cámara"}
             >
               {isVideoOff ? "📷" : "📹"}
             </button>
@@ -242,15 +278,24 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
               onClick={() => void toggleScreenShare()}
               className={`btn btn-circle btn-sm ${isSharingScreen ? "btn-warning" : "btn-ghost"}`}
               aria-label={isSharingScreen ? "Stop sharing screen" : "Share screen"}
-              title={isSharingScreen ? "Stop sharing screen" : "Share screen"}
+              title={isSharingScreen ? "Dejar de compartir pantalla" : "Compartir pantalla"}
             >
               🖥️
+            </button>
+            <button
+              onClick={cycleSize}
+              className="btn btn-circle btn-sm btn-ghost"
+              aria-label={sizeTitle}
+              title={sizeTitle}
+              style={{ fontSize: "0.85rem" }}
+            >
+              {sizeIcon}
             </button>
             <button
               onClick={endCall}
               className="btn btn-circle btn-sm btn-error"
               aria-label="End call"
-              title="End call"
+              title="Colgar"
             >
               📵
             </button>
