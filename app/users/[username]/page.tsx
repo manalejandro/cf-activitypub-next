@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
+import { useStartCallButton } from "@/components/CallOverlay";
 import { useLocale } from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -758,6 +759,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
   const { t } = useLocale();
+  const { startCall: initiateCall } = useStartCallButton(token);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
@@ -849,6 +851,30 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                       title={relationship?.blocking ? "Desbloquear" : "Bloquear"}
                     >
                       {blockBusy ? "…" : relationship?.blocking ? "🚫 Bloqueado" : "🚫"}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Voice call"
+                      onClick={() => void initiateCall(account.acct, "audio")}
+                    >
+                      📞
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Video call"
+                      onClick={() => void initiateCall(account.acct, "video")}
+                    >
+                      📹
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Share screen"
+                      onClick={() => void initiateCall(account.acct, "screen")}
+                    >
+                      🖥️
                     </button>
                   </>
                 ) : (

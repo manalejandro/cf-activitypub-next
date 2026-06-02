@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n";
+import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
 import "./globals.css";
 
 const inter = Inter({
@@ -63,7 +64,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full flex flex-col pb-14 md:pb-0">
-        <LocaleProvider>{children}</LocaleProvider>
+        <LocaleProvider>
+          {children}
+          <CallOverlayWrapper />
+        </LocaleProvider>
       </body>
     </html>
   );

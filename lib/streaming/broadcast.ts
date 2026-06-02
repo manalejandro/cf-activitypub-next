@@ -86,6 +86,18 @@ export async function broadcastNotificationEvent(
 }
 
 /**
+ * Broadcast a WebRTC call event to a specific user's home channel.
+ * The event type is "call" and the payload is the JSON-serialised CallEventPayload.
+ */
+export async function broadcastCallEvent(
+  ns: DONamespace,
+  targetUsername: string,
+  payload: unknown
+): Promise<void> {
+  await broadcastToChannel(ns, `home:${targetUsername}`, "call", JSON.stringify(payload));
+}
+
+/**
  * Broadcast a status deletion to all relevant channels.
  */
 export async function broadcastDelete(

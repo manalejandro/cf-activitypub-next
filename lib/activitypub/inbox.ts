@@ -33,7 +33,7 @@ import {
   extractUsername,
 } from "./utils";
 import { deliverToInbox, fetchRemoteObject } from "./federation";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent } from "@/lib/streaming/broadcast";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +83,18 @@ export async function processInboxActivity(
         break;
       case "update":
         await handleUpdate(activity, ctx);
+        break;
+      case "calloffer":
+        await handleCallOffer(activity, ctx);
+        break;
+      case "callanswer":
+        await handleCallAnswer(activity, ctx);
+        break;
+      case "callicecandidate":
+        await handleCallIceCandidate(activity, ctx);
+        break;
+      case "callhangup":
+        await handleCallHangup(activity, ctx);
         break;
       default:
         // Ignore unknown activity types
@@ -653,4 +665,112 @@ function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unli
   if (ccArr.some(isPublic)) return "unlisted";
   if (toArr.some((t) => t.includes("/followers"))) return "followers";
   return "direct";
+}
+
+// ─────────────────────────────────────────
+// WebRTC Call Handlers
+// ─────────────────────────────────────────
+
+async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise<void> {
+  if (!ctx.timelineStream || !ctx.recipient) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = activity.object as Record<string, any> | undefined;
+  if (!obj) return;
+
+  const callerIRI = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
+  const callee = ctx.recipient;
+
+  // Resolve display info for the caller
+  const callerActor = await getActorById(ctx.db, callerIRI);
+  const callerAcct = callerActor
+    ? (callerActor.domain === new URL(ctx.baseUrl).hostname
+        ? callerActor.username
+        : `${callerActor.username}@${callerActor.domain}`)
+    : callerIRI;
+
+  // Extract call ID from the object IRI (last path segment)
+  const callId = (obj.id as string ?? "").split("/").pop() ?? crypto.randomUUID();
+
+  await broadcastCallEvent(ctx.timelineStream, callee.username, {
+    type: "call.incoming",
+    callId,
+    callType: (obj.callType ?? "audio") as "audio" | "video",
+    callerAcct,
+    callerDisplayName: callerActor?.displayName ?? callerActor?.username ?? callerAcct,
+    callerAvatar: callerActor?.avatarUrl ?? null,
+    offerSdp: obj.sdp ?? "",
+  });
+}
+
+async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promise<void> {
+  if (!ctx.timelineStream || !ctx.recipient) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = activity.object as Record<string, any> | undefined;
+  if (!obj) return;
+
+  const callId = (obj.id as string ?? "").split("/").pop() ?? "";
+  const callerId = ctx.recipient.id;
+  const callerUsername = ctx.recipient.username;
+
+  await broadcastCallEvent(ctx.timelineStream, callerUsername, {
+    type: "call.answered",
+    callId,
+    answerSdp: obj.sdp ?? "",
+  });
+
+  // Also relay via the signaling DO for low-latency ICE exchange
+  if (callId && ctx.baseUrl) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ns = (ctx as any).callSignaling as typeof ctx.timelineStream | undefined;
+      if (ns) {
+        const doId = ns.idFromName(callId);
+        const stub = ns.get(doId);
+        await stub.fetch(`https://call-do/relay`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "answer", sdp: obj.sdp }),
+        });
+      }
+    } catch { /* best-effort */ }
+  }
+  void callerId; // used for context, suppress unused warning
+}
+
+async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): Promise<void> {
+  if (!ctx.recipient) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = activity.object as Record<string, any> | undefined;
+  if (!obj) return;
+
+  const callId = (obj.id as string ?? "").split("/").pop() ?? "";
+  if (!callId) return;
+
+  const candidate = obj.candidate
+    ? (typeof obj.candidate === "string" ? JSON.parse(obj.candidate) : obj.candidate)
+    : null;
+  if (!candidate) return;
+
+  // Relay via streaming for real-time delivery to the recipient
+  if (ctx.timelineStream) {
+    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+      type: "call.ice",
+      callId,
+      candidate,
+    });
+  }
+}
+
+async function handleCallHangup(activity: APActivity, ctx: InboxContext): Promise<void> {
+  if (!ctx.recipient) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = activity.object as Record<string, any> | undefined;
+  const callId = (obj?.id as string ?? "").split("/").pop() ?? "";
+
+  if (ctx.timelineStream) {
+    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+      type: "call.ended",
+      callId,
+    });
+  }
 }

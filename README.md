@@ -22,7 +22,9 @@
 | Cache / Sessions | Cloudflare KV |
 | Media storage | Cloudflare R2 |
 | Async delivery | Cloudflare Queues |
-| Realtime streaming | Cloudflare Durable Objects |
+| Realtime streaming | Cloudflare Durable Objects (TimelineStreamDO) |
+| WebRTC signaling | Cloudflare Durable Objects (CallSignalingDO) |
+| WebRTC ICE | Cloudflare STUN + optional Cloudflare Calls TURN |
 | Crypto | Web Crypto API (RSASSA-PKCS1-v1_5 + PBKDF2) |
 | Styling | Tailwind CSS v4 |
 
@@ -112,6 +114,22 @@ Runs the Cloudflare Workers runtime locally via `wrangler dev` (uses remote D1 b
 
 ### Realtime
 - Streaming timelines via Durable Objects
+
+### WebRTC Calling
+- Voice and video calls between users on the same instance or across federated instances
+- Per-call `CallSignalingDO` Durable Object relays SDP offer/answer and ICE candidates with low latency
+- Cross-instance signaling via ActivityPub (`CallOffer`, `CallAnswer`, `CallIceCandidate`, `CallHangup` activities)
+- Incoming call overlay with accept/decline, active call panel with mute/camera/hangup controls
+- ICE server configuration: Cloudflare STUN (`stun:stun.cloudflare.com:3478`) by default; optional TURN via Cloudflare Calls API
+
+#### Optional TURN (Cloudflare Calls)
+To enable TURN relay for users behind symmetric NAT, add the following to `wrangler.toml`:
+```toml
+[vars]
+CALLS_APP_ID = "your-cloudflare-calls-app-id"
+CALLS_APP_SECRET = "your-cloudflare-calls-app-secret"
+```
+Obtain credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime → Calls.
 
 ## License
 

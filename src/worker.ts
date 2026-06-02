@@ -13,6 +13,8 @@
 export { DOQueueHandler, DOShardedTagCache, BucketCachePurge } from "../.open-next/worker.js";
 // Export the timeline streaming Durable Object
 export { TimelineStreamDO } from "../lib/streaming/timeline-do";
+// Export the call signaling Durable Object
+export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
 // @ts-expect-error: generated at build time
 import openNextDefault from "../.open-next/worker.js";
 
@@ -27,6 +29,9 @@ interface Env {
   DELIVERY_QUEUE: Queue;
   ASSETS: Fetcher;
   TIMELINE_STREAM: DurableObjectNamespace;
+  CALL_SIGNALING: DurableObjectNamespace;
+  CALLS_APP_ID?: string;
+  CALLS_APP_SECRET?: string;
   NODE_ENV?: string;
   [key: string]: unknown;
 }
@@ -139,6 +144,20 @@ async function deliverOne(
   }
 }
 
+/**
+ * Route a WebSocket upgrade for call signaling to the per-call CallSignalingDO.
+ * The DO is keyed by the call UUID so each call gets its own isolated relay.
+ */
+async function handleCallSignalingUpgrade(
+  request: Request,
+  env: Env,
+  callId: string
+): Promise<Response> {
+  const doId = env.CALL_SIGNALING.idFromName(callId);
+  const stub = env.CALL_SIGNALING.get(doId);
+  return stub.fetch(new Request(`https://call-do/connect`, request));
+}
+
 export default {
   // Proxy all HTTP requests to the OpenNext Next.js handler,
   // but intercept WebSocket upgrades for the streaming endpoint first.
@@ -148,11 +167,15 @@ export default {
     ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
-    if (
-      request.headers.get("Upgrade")?.toLowerCase() === "websocket" &&
-      url.pathname === "/api/v1/streaming"
-    ) {
-      return handleStreamingUpgrade(request, env);
+    if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+      if (url.pathname === "/api/v1/streaming") {
+        return handleStreamingUpgrade(request, env);
+      }
+      // Call signaling: /api/v1/calls/{callId}/ws
+      const callMatch = url.pathname.match(/^\/api\/v1\/calls\/([0-9a-f-]{36})\/ws$/);
+      if (callMatch) {
+        return handleCallSignalingUpgrade(request, env, callMatch[1]);
+      }
     }
     return openNextDefault.fetch(request, env, ctx);
   },

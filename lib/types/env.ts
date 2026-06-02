@@ -5,10 +5,15 @@ export interface CloudflareEnv {
   DELIVERY_QUEUE: Queue;
   ASSETS: Fetcher;
   TIMELINE_STREAM: DurableObjectNamespace;
+  CALL_SIGNALING: DurableObjectNamespace;
   INSTANCE_TITLE: string;
   INSTANCE_DESCRIPTION: string;
   INSTANCE_VERSION: string;
   NODE_ENV: string;
+  /** Optional: Cloudflare Calls app ID for TURN credential generation */
+  CALLS_APP_ID?: string;
+  /** Optional: Cloudflare Calls app secret for TURN credential generation */
+  CALLS_APP_SECRET?: string;
 }
 
 declare global {
