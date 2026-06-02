@@ -272,6 +272,7 @@ export default function TimelinesPage() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [me, setMe] = useState<Account | null>(null);
   const { t } = useLocale();
 
@@ -303,6 +304,7 @@ export default function TimelinesPage() {
   async function fetchTimeline(v: TimelineView) {
     setLoading(true);
     setStatuses([]);
+    setHasMore(true);
     seenIdsRef.current = new Set();
     const local = v === "local";
     const res = await fetch(`/api/v1/timelines/public?limit=40${local ? "&local=true" : ""}`);
@@ -316,7 +318,7 @@ export default function TimelinesPage() {
   }
 
   async function loadMore() {
-    if (loadingMore || statuses.length === 0) return;
+    if (loadingMore || statuses.length === 0 || !hasMore) return;
     setLoadingMore(true);
     const lastId = statuses[statuses.length - 1].id;
     const local = view === "local";
@@ -325,7 +327,11 @@ export default function TimelinesPage() {
     );
     if (res.ok) {
       const more = await res.json() as Status[];
-      setStatuses((prev) => [...prev, ...more]);
+      if (more.length === 0) {
+        setHasMore(false);
+      } else {
+        setStatuses((prev) => [...prev, ...more]);
+      }
     }
     setLoadingMore(false);
   }
@@ -380,7 +386,7 @@ export default function TimelinesPage() {
 
   // Infinite scroll sentinel
   useEffect(() => {
-    if (!bottomRef.current) return;
+    if (!bottomRef.current || !hasMore) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) void loadMore();
@@ -390,7 +396,7 @@ export default function TimelinesPage() {
     observer.observe(bottomRef.current);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statuses, loadingMore]);
+  }, [statuses, loadingMore, hasMore]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
