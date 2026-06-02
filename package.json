@@ -2,15 +2,18 @@
   "name": "cf-activitypub",
   "version": "0.1.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manalejandro/cf-activitypub-next.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
     "lint": "eslint",
     "preview": "opennextjs-cloudflare build && wrangler dev",
     "deploy": "opennextjs-cloudflare build && wrangler deploy",
-    "db:migrate": "wrangler d1 execute cf-activitypub --local --file=lib/db/schema.sql",
-    "db:migrate:remote": "wrangler d1 execute cf-activitypub --file=lib/db/schema.sql"
+    "db:migrate": "wrangler d1 execute cf-activitypub --remote --file=lib/db/schema.sql",
+    "db:drop": "wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql"
   },
   "dependencies": {
     "next": "16.2.4",

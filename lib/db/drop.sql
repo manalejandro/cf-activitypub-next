@@ -1,7 +1,13 @@
 -- Drop all tables (reverse creation order to respect FK constraints)
+DROP TABLE IF EXISTS poll_votes;
+DROP TABLE IF EXISTS poll_options;
+DROP TABLE IF EXISTS polls;
 DROP TABLE IF EXISTS delivery_failures;
+DROP TABLE IF EXISTS object_cache;
+DROP TABLE IF EXISTS actor_fields;
 DROP TABLE IF EXISTS oauth_tokens;
 DROP TABLE IF EXISTS oauth_apps;
+DROP TABLE IF EXISTS domain_blocks;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS blocks;
 DROP TABLE IF EXISTS announces;

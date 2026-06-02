@@ -1,5 +1,6 @@
 -- CF ActivityPub D1 Database Schema
 -- Run with: wrangler d1 execute cf-activitypub --remote --file=lib/db/schema.sql
+-- Includes all migrations (v1 + v2)
 
 -- ─────────────────────────────────────────
 -- Actors (local + cached remote)
@@ -23,9 +24,10 @@ CREATE TABLE IF NOT EXISTS actors (
   statuses_count  INTEGER NOT NULL DEFAULT 0,
   email           TEXT UNIQUE,               -- only for local accounts
   password_hash   TEXT,                      -- only for local accounts
-  inbox           TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
-  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  inbox              TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
+  auto_delete_after  INTEGER,                   -- auto-delete posts after N seconds (null = disabled)
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (username, domain)
 );
 

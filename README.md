@@ -22,10 +22,11 @@
 | Cache / Sessions | Cloudflare KV |
 | Media storage | Cloudflare R2 |
 | Async delivery | Cloudflare Queues |
+| Realtime streaming | Cloudflare Durable Objects |
 | Crypto | Web Crypto API (RSASSA-PKCS1-v1_5 + PBKDF2) |
 | Styling | Tailwind CSS v4 |
 
-## Getting Started
+## Deploy
 
 ### Prerequisites
 
@@ -33,7 +34,7 @@
 - A [Cloudflare](https://dash.cloudflare.com) account
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
 
-### Install
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/manalejandro/cf-activitypub-next.git
@@ -41,7 +42,7 @@ cd cf-activitypub-next
 npm install
 ```
 
-### Create Cloudflare resources
+### 2. Create Cloudflare resources
 
 ```bash
 wrangler login
@@ -51,26 +52,44 @@ wrangler r2 bucket create cf-activitypub-media
 wrangler queues create cf-activitypub-delivery
 ```
 
-Copy the generated IDs into `wrangler.toml`.
+Copy the generated IDs into `wrangler.toml`:
+- `database_id` under `[[d1_databases]]`
+- `id` under `[[kv_namespaces]]`
 
-### Database migrations
+### 3. Configure your domain
+
+Edit `wrangler.toml` and set:
+- `INSTANCE_URL` — your public domain (e.g. `https://social.example.com`)
+- `pattern` under `[[routes]]` — your custom domain
+
+### 4. Run database migrations
 
 ```bash
-npm run db:migrate          # local
-npm run db:migrate:remote   # production
+npm run db:migrate
 ```
 
-### Run locally
+This runs `lib/db/schema.sql` against your remote D1 database (all tables + indexes included).
+
+To reset the database:
 
 ```bash
-npm run dev
+wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql
+npm run db:migrate
 ```
 
-### Deploy
+### 5. Deploy
 
 ```bash
 npm run deploy
 ```
+
+### Preview locally
+
+```bash
+npm run preview
+```
+
+Runs the Cloudflare Workers runtime locally via `wrangler dev` (uses remote D1 by default — see `wrangler.toml`).
 
 ## Features
 
@@ -85,9 +104,14 @@ npm run deploy
 ### Mastodon API
 - OAuth 2.0 (password + client_credentials)
 - Account registration, profile management, follow/unfollow
-- Status create/delete, favourite, reblog
-- Home and public timelines
+- Status create/delete, favourite, reblog, polls
+- Home and public timelines, hashtag timelines
 - Notifications (follow, mention, favourite, reblog)
+- Media uploads (R2-backed)
+- Blocks, domain blocks, follow requests
+
+### Realtime
+- Streaming timelines via Durable Objects
 
 ## License
 
