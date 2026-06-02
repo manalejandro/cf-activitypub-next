@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken } from "@/lib/auth";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 // POST /oauth/token
 export async function POST(request: NextRequest): Promise<Response> {
@@ -24,6 +25,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "username and password are required" }, 400);
     }
 
+    // If a Turnstile token is included (web form login), verify it.
+    const turnstileToken = body["cf-turnstile-response"];
+    if (turnstileToken) {
+      const remoteIp = request.headers.get("CF-Connecting-IP") ?? undefined;
+      const valid = await verifyTurnstileToken(turnstileToken, env.TURNSTILE_SECRET, remoteIp);
+      if (!valid) {
+        return json({ error: "invalid_grant", error_description: "Security check failed. Please try again." }, 401);
+      }
+    }
+
     const actor = await getActorByEmail(env.DB, username.toLowerCase());
     if (!actor || !actor.passwordHash) {
       return json({ error: "invalid_grant", error_description: "Invalid credentials" }, 401);
@@ -32,6 +43,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     const valid = await verifyPassword(password, actor.passwordHash);
     if (!valid) {
       return json({ error: "invalid_grant", error_description: "Invalid credentials" }, 401);
+    }
+
+    // Block login for accounts that registered via the web form but haven't verified their email.
+    if (!actor.emailVerified) {
+      return json({
+        error: "unverified_email",
+        error_description: "Please verify your email address before signing in.",
+      }, 403);
     }
 
     const app = client_id ? await getOAuthAppByClientId(env.DB, client_id) : null;

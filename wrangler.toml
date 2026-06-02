@@ -10,6 +10,11 @@ INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cl
 INSTANCE_VERSION = "0.1.0"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
+# Public Turnstile site key (replace with your actual key from dash.cloudflare.com/turnstile)
+TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
+# Sender address — must belong to a domain with Cloudflare Email Routing enabled
+FROM_EMAIL = "noreply@cf-ap.manalejandro.com"
+# Secrets: set with wrangler secret put TURNSTILE_SECRET
 
 [[routes]]
 pattern = "cf-ap.example.com"
@@ -27,6 +32,12 @@ id = ""
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "cf-activitypub-media"
+
+# Email Workers binding for sending verification/notification emails.
+# Requires Email Routing to be enabled on your Cloudflare zone.
+# Docs: https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/
+[[send_email]]
+name = "EMAIL"
 
 [[queues.producers]]
 binding = "DELIVERY_QUEUE"
