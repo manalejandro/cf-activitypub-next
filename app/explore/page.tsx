@@ -3,10 +3,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
-import { Lightbox } from "@/components/Lightbox";
 import { useLocale } from "@/lib/i18n";
+import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,123 +25,14 @@ interface Account {
   url?: string;
 }
 
-interface MediaAttachment {
-  id: string;
-  type: string;
-  url: string;
-  preview_url: string | null;
-  description: string | null;
-}
-
-interface PollOption { title: string; votes_count: number | null }
-interface Poll {
-  id: string;
-  expires_at: string | null;
-  expired: boolean;
-  multiple: boolean;
-  votes_count: number;
-  voters_count: number | null;
-  voted: boolean;
-  own_votes: number[];
-  options: PollOption[];
-}
-
-interface Status {
-  id: string;
-  content: string;
-  created_at: string;
-  account: Account;
-  favourites_count: number;
-  reblogs_count: number;
-  replies_count: number;
-  favourited: boolean;
-  reblogged: boolean;
-  media_attachments: MediaAttachment[];
-  sensitive: boolean;
-  spoiler_text: string;
-  poll: Poll | null;
-}
-
 interface Hashtag { name: string; url: string; history: unknown[]; }
 interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: Hashtag[]; }
 type Tab = "trending" | "accounts" | "hashtags" | "statuses";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60) return `${Math.floor(diff)}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return d.toLocaleDateString();
-}
-
-function AvatarBubble({ account, size = 42 }: { account: Account; size?: number }) {
-  const [err, setErr] = useState(false);
-  const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
-  if (!err && account.avatar && !account.avatar.endsWith("/default-avatar.png")) {
-    return (
-      <img src={account.avatar} alt={account.display_name} width={size} height={size}
-        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
-        onError={() => setErr(true)} />
-    );
-  }
-  return (
-    <div style={{
-      width: size, height: size, flexShrink: 0, borderRadius: "50%",
-      background: "var(--accent-bg)", display: "flex", alignItems: "center",
-      justifyContent: "center", fontSize: size * 0.45, fontWeight: 700, color: "var(--accent)",
-    }}>
-      {fallback}
-    </div>
-  );
-}
-
-function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
-  const [lbIdx, setLbIdx] = useState<number | null>(null);
-  if (!attachments.length) return null;
-  const cols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : 2;
-  return (
-    <>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "0.25rem", marginTop: "0.75rem", borderRadius: "var(--radius)", overflow: "hidden" }}>
-        {attachments.map((att, i) =>
-          att.type === "image" || att.type === "gifv" ? (
-            <button key={att.id} type="button" onClick={() => setLbIdx(i)}
-              title={att.description ?? undefined}
-              style={{ display: "block", aspectRatio: attachments.length === 1 ? "16/9" : "1/1", overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", background: "none" }}>
-              <img src={att.preview_url ?? att.url} alt={att.description ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-            </button>
-          ) : att.type === "video" ? (
-            <button key={att.id} type="button" onClick={() => setLbIdx(i)}
-              style={{ display: "block", aspectRatio: "16/9", overflow: "hidden", border: "none", padding: 0, cursor: "pointer", background: "var(--bg-elevated)", position: "relative" }}>
-              <video src={att.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem" }}>▶</div>
-            </button>
-          ) : att.type === "audio" ? (
-            <button key={att.id} type="button" onClick={() => setLbIdx(i)}
-              style={{ display: "block", aspectRatio: "3/1", overflow: "hidden", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 0, cursor: "pointer", background: "var(--bg-elevated)", position: "relative" }}>
-              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "2rem" }}>🎵</div>
-            </button>
-          ) : null
-        )}
-      </div>
-      {lbIdx !== null && (
-        <Lightbox
-          media={attachments.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
-          index={lbIdx}
-          onClose={() => setLbIdx(null)}
-          onNav={setLbIdx}
-        />
-      )}
-    </>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ExplorePage() {
-  const [me, setMe] = useState<Account | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [tab, setTab] = useState<Tab>("trending");
@@ -150,6 +42,7 @@ export default function ExplorePage() {
   const [trendingLoading, setTrendingLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const router = useRouter();
   const { t } = useLocale();
 
   async function fetchTrending() {
@@ -161,7 +54,7 @@ export default function ExplorePage() {
   async function fetchMe() {
     if (!token) return;
     const res = await fetch("/api/v1/accounts/verify_credentials", { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) setMe(await res.json() as Account);
+    if (res.ok) setMe(await res.json() as Me);
   }
 
   const runSearch = useCallback(async (q: string) => {
@@ -198,15 +91,16 @@ export default function ExplorePage() {
     void runSearch(debouncedQuery.trim());
   }, [debouncedQuery, runSearch]);
 
-  async function toggleFavourite(s: Status) {
-    if (!token) return;
-    const path = s.favourited ? "unfavourite" : "favourite";
-    const res = await fetch(`/api/v1/statuses/${s.id}/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) {
-      const update = (prev: Status[]) => prev.map((x) => x.id === s.id ? { ...x, favourited: !x.favourited, favourites_count: x.favourites_count + (x.favourited ? -1 : 1) } : x);
-      setTrending(update);
-      setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
-    }
+  function handleFav(toggled: Status) {
+    const update = (prev: Status[]) => prev.map(x => x.id === toggled.id ? { ...x, favourited: !toggled.favourited, favourites_count: toggled.favourites_count + (toggled.favourited ? -1 : 1) } : x);
+    setTrending(update);
+    setResults(prev => ({ ...prev, statuses: update(prev.statuses) }));
+  }
+
+  function handleReblog(toggled: Status) {
+    const update = (prev: Status[]) => prev.map(x => x.id === toggled.id ? { ...x, reblogged: !toggled.reblogged, reblogs_count: toggled.reblogs_count + (toggled.reblogged ? -1 : 1) } : x);
+    setTrending(update);
+    setResults(prev => ({ ...prev, statuses: update(prev.statuses) }));
   }
 
   const isSearching = debouncedQuery.trim().length > 0;
@@ -279,7 +173,7 @@ export default function ExplorePage() {
         {tab === "trending" && (
           trendingLoading ? <LoadingSkeletons /> :
           trending.length === 0 ? <EmptyState emoji="🌐" text={t.explore_nothing} /> :
-          <>{trending.map((s) => <StatusCard key={s.id} s={s} token={token} onToggleFav={() => void toggleFavourite(s)} />)}</>
+          <>{trending.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} />)}</>
         )}
 
         {/* Search result tabs */}
@@ -293,7 +187,7 @@ export default function ExplorePage() {
         )}
         {tab === "statuses" && isSearching && (
           results.statuses.length === 0 && !loading ? <EmptyState emoji="📝" text={t.explore_no_posts} /> :
-          <>{results.statuses.map((s) => <StatusCard key={s.id} s={s} token={token} onToggleFav={() => void toggleFavourite(s)} />)}</>
+          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} />)}</>
         )}
 
         {isSearching && !loading && !hasResults && (
@@ -453,95 +347,5 @@ function HashtagCard({ tag }: { tag: Hashtag }) {
       </div>
       <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: "1rem" }}>→</span>
     </Link>
-  );
-}
-
-function PollView({ poll: initialPoll, token }: { poll: Poll; token: string | null }) {
-  const [poll, setPoll] = useState<Poll>(initialPoll);
-  const [voting, setVoting] = useState(false);
-  const [selected, setSelected] = useState<number[]>([]);
-  const total = poll.votes_count > 0 ? poll.votes_count : 1;
-  const showResults = poll.voted || poll.expired;
-  const canVote = !poll.voted && !poll.expired && !!token;
-
-  async function vote() {
-    if (!token || voting || selected.length === 0) return;
-    setVoting(true);
-    try {
-      const res = await fetch(`/api/v1/polls/${poll.id}/votes`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ choices: selected }),
-      });
-      if (res.ok) setPoll((await res.json()) as Poll);
-    } finally { setVoting(false); }
-  }
-
-  return (
-    <div style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-      {poll.options.map((opt, i) => {
-        const pct = showResults && opt.votes_count != null ? Math.round((opt.votes_count / total) * 100) : 0;
-        const isOwn = poll.own_votes.includes(i) || selected.includes(i);
-        return (
-          <div key={i}>
-            {showResults ? (
-              <div style={{ position: "relative", borderRadius: "var(--radius-sm)", overflow: "hidden", background: "var(--bg-elevated)", padding: "0.35rem 0.75rem" }}>
-                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: isOwn ? "var(--accent-bg)" : "color-mix(in srgb, var(--accent-bg) 40%, transparent)", transition: "width 0.4s" }} />
-                <div style={{ position: "relative", display: "flex", justifyContent: "space-between", fontSize: "0.875rem" }}>
-                  <span style={{ fontWeight: isOwn ? 600 : 400 }}>{opt.title}{isOwn ? " ✓" : ""}</span>
-                  <span style={{ color: "var(--text-muted)" }}>{pct}%</span>
-                </div>
-              </div>
-            ) : (
-              <button type="button"
-                onClick={() => poll.multiple ? setSelected((p) => p.includes(i) ? p.filter((x) => x !== i) : [...p, i]) : setSelected([i])}
-                style={{ width: "100%", textAlign: "left", padding: "0.35rem 0.75rem", border: `1.5px solid ${selected.includes(i) ? "var(--accent)" : "var(--border)"}`, borderRadius: "var(--radius-sm)", background: selected.includes(i) ? "var(--accent-bg)" : "transparent", cursor: "pointer", fontSize: "0.875rem", color: "var(--text)" }}>
-                {opt.title}
-              </button>
-            )}
-          </div>
-        );
-      })}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
-        {canVote && (
-          <button type="button" className="btn btn-primary btn-sm" disabled={selected.length === 0 || voting} onClick={() => void vote()}>
-            {voting ? "…" : "Votar"}
-          </button>
-        )}
-        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-          {poll.votes_count} {poll.votes_count === 1 ? "voto" : "votos"}
-          {poll.expires_at && <> · {poll.expired ? "Cerrada" : `Cierra ${new Date(poll.expires_at).toLocaleDateString()}`}</>}
-          {poll.multiple && " · Opción múltiple"}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatusCard({ s, token, onToggleFav }: { s: Status; token: string | null; onToggleFav: () => void }) {
-  return (
-    <article style={{ display: "flex", gap: "0.875rem", padding: "1rem", borderBottom: "1px solid var(--border)" }}>
-      <AvatarBubble account={s.account} size={42} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.25rem" }}>
-          <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{s.account.display_name || s.account.username}</span>
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{s.account.acct}</span>
-          <Link href={`/statuses/${encodeURIComponent(s.id)}`} style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>{formatTime(s.created_at)}</Link>
-        </div>
-        {s.spoiler_text && <div style={{ padding: "0.35rem 0.6rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.5rem", color: "var(--text-secondary)" }}>⚠️ {s.spoiler_text}</div>}
-        <div style={{ fontSize: "0.95rem", lineHeight: 1.55, wordBreak: "break-word" }} dangerouslySetInnerHTML={{ __html: s.content }} />
-        {s.poll && <PollView poll={s.poll} token={token} />}
-        <MediaGrid attachments={s.media_attachments ?? []} />
-        <div style={{ display: "flex", gap: "1.25rem", marginTop: "0.625rem", color: "var(--text-muted)", fontSize: "0.82rem", alignItems: "center" }}>
-          <Link href={`/statuses/${encodeURIComponent(s.id)}`} style={{ color: "var(--text-muted)", textDecoration: "none" }}>
-            <button className="btn btn-ghost btn-sm" style={{ padding: "0.2rem 0.4rem" }}>💬 {s.replies_count}</button>
-          </Link>
-          <button className="btn btn-ghost btn-sm" style={{ padding: "0.2rem 0.4rem" }}>🔁 {s.reblogs_count}</button>
-          <button className="btn btn-ghost btn-sm" style={{ padding: "0.2rem 0.4rem", color: s.favourited ? "var(--danger)" : "var(--text-muted)" }} onClick={onToggleFav}>
-            {s.favourited ? "❤️" : "🤍"} {s.favourites_count}
-          </button>
-        </div>
-      </div>
-    </article>
   );
 }

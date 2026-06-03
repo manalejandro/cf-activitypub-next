@@ -948,8 +948,8 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
                 { key: "replies" as ActiveTab, label: "Replies" },
                 { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
-                { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
+                { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
               ]).map((tab) => (
                 <button
                   key={tab.key}

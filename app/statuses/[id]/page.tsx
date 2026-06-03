@@ -771,7 +771,20 @@ export default function ThreadPage() {
   const [descendants, setDescendants] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyTarget, setReplyTarget] = useState<Status | null>(null);
+  const [autoReply, setAutoReply] = useState(false);
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reply") === "1") setAutoReply(true);
+  }, []);
+
+  useEffect(() => {
+    if (autoReply && focal) {
+      setReplyTarget(focal);
+      setAutoReply(false);
+    }
+  }, [autoReply, focal]);
 
   useEffect(() => {
     if (!token) { router.push("/login"); return; }
