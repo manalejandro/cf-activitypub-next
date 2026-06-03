@@ -13,8 +13,10 @@ NODE_ENV = "production"
 # Public Turnstile site key (replace with your actual key from dash.cloudflare.com/turnstile)
 TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
 # Sender address — must belong to a domain with Cloudflare Email Routing enabled
-FROM_EMAIL = "noreply@cf-ap.manalejandro.com"
+FROM_EMAIL = "noreply@cf-ap.example.com"
 # Secrets: set with wrangler secret put TURNSTILE_SECRET
+# CALLS_APP_ID = ""
+# CALLS_APP_SECRET = ""
 
 [[routes]]
 pattern = "cf-ap.example.com"
@@ -53,9 +55,17 @@ max_retries = 3
 name = "TIMELINE_STREAM"
 class_name = "TimelineStreamDO"
 
+[[durable_objects.bindings]]
+name = "CALL_SIGNALING"
+class_name = "CallSignalingDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TimelineStreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CallSignalingDO"]
 
 [triggers]
 crons = ["0 * * * *"]
