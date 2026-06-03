@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
@@ -21,6 +21,7 @@ declare global {
         }
       ) => string;
       reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
     };
   }
 }
@@ -40,6 +41,21 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
 
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+
+  // If the script is already loaded (e.g. navigating back from register), init immediately.
+  // Also clean up the widget on unmount to avoid "Cannot find Widget" errors.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.turnstile) {
+      initTurnstile();
+    }
+    return () => {
+      if (window.turnstile && widgetIdRef.current) {
+        window.turnstile.remove(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Read query params for verification feedback
   const verified = searchParams.get("verified") === "true";
