@@ -51,6 +51,9 @@ max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 3
 
+[ai]
+binding = "AI"
+
 [[durable_objects.bindings]]
 name = "TIMELINE_STREAM"
 class_name = "TimelineStreamDO"

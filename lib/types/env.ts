@@ -6,6 +6,8 @@ export interface CloudflareEnv {
   ASSETS: Fetcher;
   TIMELINE_STREAM: DurableObjectNamespace;
   CALL_SIGNALING: DurableObjectNamespace;
+  /** Cloudflare Workers AI binding for image auto-description */
+  AI: Ai;
   /** Cloudflare Email Workers binding for sending emails. */
   EMAIL: SendEmail;
   INSTANCE_TITLE: string;

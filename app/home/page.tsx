@@ -43,7 +43,7 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
 
   // Real-time home feed streaming
   useTimelineStream("user", token, (event, payload) => {
@@ -147,6 +147,7 @@ export default function HomePage() {
       visibility,
       sensitive: showCw,
       spoiler_text: showCw ? cwText : "",
+      language: locale,
     };
     if (hasPoll) {
       body.poll = {
@@ -205,6 +206,7 @@ export default function HomePage() {
     for (const file of files) {
       const form = new FormData();
       form.append("file", file);
+      form.append("locale", locale);
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",

@@ -21,18 +21,20 @@ export function Sidebar({ me, currentPath }: SidebarProps) {
   const { t, locale, setLocale } = useLocale();
   const [unreadCount, setUnreadCount] = useState(0);
   const [token, setToken] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    const saved = localStorage.getItem("theme");
-    if (saved === "light" || saved === "dark") {
-      document.documentElement.setAttribute("data-theme", saved);
-      return saved;
-    }
-    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const nextTheme = systemDark ? "dark" : "light";
-    document.documentElement.setAttribute("data-theme", nextTheme);
-    return nextTheme;
-  });
+  // Start with "light" to match SSR; useEffect corrects from localStorage without hydration mismatch
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") as "light" | "dark" | null;
+    const resolved: "light" | "dark" =
+      saved === "light" || saved === "dark"
+        ? saved
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    setTheme(resolved);
+    document.documentElement.setAttribute("data-theme", resolved);
+  }, []);
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";

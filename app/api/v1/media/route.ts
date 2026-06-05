@@ -18,6 +18,8 @@ export async function POST(request: NextRequest): Promise<Response> {
   const form = await request.formData();
   const file = form.get("file") as File | null;
   const description = (form.get("description") as string | null) ?? null;
+  // UI locale sent by the client to determine auto-description prefix language
+  const locale = (form.get("locale") as string | null) ?? "en";
 
   if (!file || file.size === 0) {
     return json({ error: "file is required" }, 422);
@@ -42,6 +44,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const key = `media/${actor.username}/${id}.${ext}`;
 
   const buffer = await file.arrayBuffer();
+  // Capture bytes before R2.put in case the runtime detaches the underlying ArrayBuffer
+  const imageBytes = [...new Uint8Array(buffer)];
+
   await env.R2.put(key, buffer, {
     httpMetadata: { contentType: file.type },
     customMetadata: { actorId: actor.id, description: description ?? "" },
@@ -50,6 +55,31 @@ export async function POST(request: NextRequest): Promise<Response> {
   const baseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? `https://${new URL(request.url).hostname}`;
   const url = `${baseUrl}/api/media/${key}`;
 
+  // Auto-describe images with Cloudflare Workers AI when no description provided
+  let finalDescription = description;
+  if (!description && file.type.startsWith("image/") && env.AI) {
+    try {
+      type ImageToTextResult = { description: string };
+      const aiResult = await env.AI.run(
+        "@cf/llava-hf/llava-1.5-7b-hf" as Parameters<Ai["run"]>[0],
+        {
+          image: imageBytes,
+          prompt: locale === "es"
+            ? "Genera una descripción concisa de esta imagen en español."
+            : "Generate a concise caption describing this image.",
+          max_tokens: 512,
+        } as Parameters<Ai["run"]>[1],
+      ) as ImageToTextResult;
+      const aiText = (aiResult.description ?? "").trim();
+      if (aiText) {
+        const prefix = locale === "es" ? "Autodescripción: " : "Autodescribe: ";
+        finalDescription = prefix + aiText;
+      }
+    } catch {
+      // AI unavailable or model error — leave description as null
+    }
+  }
+
   // Persist attachment record (not linked to an object yet; object_id filled when status is posted)
   const att = {
     id,
@@ -57,7 +87,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     type: file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image",
     url,
     remoteUrl: null,
-    description,
+    description: finalDescription,
     blurhash: null,
     width: null,
     height: null,
@@ -75,7 +105,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     url,
     preview_url: url,
     remote_url: null,
-    description,
+    description: finalDescription,
     blurhash: null,
     meta: {},
   }, 200);
