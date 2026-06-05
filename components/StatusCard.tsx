@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Lightbox } from "./Lightbox";
 
@@ -316,6 +316,24 @@ export function StatusCard({
   onEdit?: (s: Status) => void;
 }) {
   const [cwExpanded, setCwExpanded] = useState(false);
+
+  // Optimistic local state – updated instantly on click, then synced from prop
+  const [favourited, setFavourited] = useState(status.favourited);
+  const [reblogged, setReblogged] = useState(status.reblogged);
+  const [favouritesCount, setFavouritesCount] = useState(status.favourites_count);
+  const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
+
+  // Sync when the parent replaces the status (different id or parent-driven toggle)
+  useEffect(() => {
+    setFavourited(status.favourited);
+    setFavouritesCount(status.favourites_count);
+  }, [status.id, status.favourited, status.favourites_count]);
+
+  useEffect(() => {
+    setReblogged(status.reblogged);
+    setReblogsCount(status.reblogs_count);
+  }, [status.id, status.reblogged, status.reblogs_count]);
+
   const isRemote = status.account.acct.includes("@");
   const profileHref = isRemote
     ? `/users/remote?url=${encodeURIComponent(status.account.id)}`
@@ -325,22 +343,48 @@ export function StatusCard({
 
   async function handleFav() {
     if (!token) return;
-    const path = status.favourited ? "unfavourite" : "favourite";
+    const wasFav = favourited;
+    // Optimistic update
+    setFavourited(!wasFav);
+    setFavouritesCount((c) => c + (wasFav ? -1 : 1));
+    const path = wasFav ? "unfavourite" : "favourite";
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) onFav(status);
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      setFavourited(updated.favourited);
+      setFavouritesCount(updated.favourites_count);
+      onFav(updated);
+    } else {
+      // Revert on error
+      setFavourited(wasFav);
+      setFavouritesCount((c) => c + (wasFav ? 1 : -1));
+    }
   }
 
   async function handleReblog() {
     if (!token) return;
-    const path = status.reblogged ? "unreblog" : "reblog";
+    const wasReblogged = reblogged;
+    // Optimistic update
+    setReblogged(!wasReblogged);
+    setReblogsCount((c) => c + (wasReblogged ? -1 : 1));
+    const path = wasReblogged ? "unreblog" : "reblog";
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) onReblog(status);
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      setReblogged(updated.reblogged);
+      setReblogsCount(updated.reblogs_count);
+      onReblog(updated);
+    } else {
+      // Revert on error
+      setReblogged(wasReblogged);
+      setReblogsCount((c) => c + (wasReblogged ? 1 : -1));
+    }
   }
 
   return (
@@ -422,28 +466,28 @@ export function StatusCard({
             style={{
               padding: "0.2rem 0.4rem",
               gap: "0.35rem",
-              color: status.reblogged ? "var(--accent)" : "var(--text-muted)",
-              background: status.reblogged ? "var(--accent-bg)" : undefined,
+              color: reblogged ? "var(--accent)" : "var(--text-muted)",
+              background: reblogged ? "var(--accent-bg)" : undefined,
               borderRadius: "var(--radius-sm)",
             }}
             onClick={() => void handleReblog()}
             disabled={!token}
           >
-            🔁 {status.reblogs_count}
+            🔁 {reblogsCount}
           </button>
           <button
             className="btn btn-ghost btn-sm"
             style={{
               padding: "0.2rem 0.4rem",
               gap: "0.35rem",
-              color: status.favourited ? "var(--danger)" : "var(--text-muted)",
-              background: status.favourited ? "color-mix(in srgb, var(--danger) 12%, transparent)" : undefined,
+              color: favourited ? "var(--danger)" : "var(--text-muted)",
+              background: favourited ? "color-mix(in srgb, var(--danger) 12%, transparent)" : undefined,
               borderRadius: "var(--radius-sm)",
             }}
             onClick={() => void handleFav()}
             disabled={!token}
           >
-            {status.favourited ? "❤️" : "🤍"} {status.favourites_count}
+            {favourited ? "❤️" : "🤍"} {favouritesCount}
           </button>
           {me && me.id === status.account.id && (
             <>

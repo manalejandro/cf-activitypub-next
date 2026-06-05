@@ -91,16 +91,16 @@ export default function ExplorePage() {
     void runSearch(debouncedQuery.trim());
   }, [debouncedQuery, runSearch]);
 
-  function handleFav(toggled: Status) {
-    const update = (prev: Status[]) => prev.map(x => x.id === toggled.id ? { ...x, favourited: !toggled.favourited, favourites_count: toggled.favourites_count + (toggled.favourited ? -1 : 1) } : x);
+  function handleFav(updated: Status) {
+    const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x);
     setTrending(update);
-    setResults(prev => ({ ...prev, statuses: update(prev.statuses) }));
+    setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
   }
 
-  function handleReblog(toggled: Status) {
-    const update = (prev: Status[]) => prev.map(x => x.id === toggled.id ? { ...x, reblogged: !toggled.reblogged, reblogs_count: toggled.reblogs_count + (toggled.reblogged ? -1 : 1) } : x);
+  function handleReblog(updated: Status) {
+    const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x);
     setTrending(update);
-    setResults(prev => ({ ...prev, statuses: update(prev.statuses) }));
+    setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
   }
 
   const isSearching = debouncedQuery.trim().length > 0;

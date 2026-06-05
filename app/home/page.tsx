@@ -232,24 +232,12 @@ export default function HomePage() {
     setter((prev) => prev.map((f) => f.id === id ? { ...f, description: description.trim() || null } : f));
   }
 
-  function handleFav(toggled: Status) {
-    setStatuses((prev) =>
-      prev.map((x) =>
-        x.id === toggled.id
-          ? { ...x, favourited: !toggled.favourited, favourites_count: toggled.favourites_count + (toggled.favourited ? -1 : 1) }
-          : x
-      )
-    );
+  function handleFav(updated: Status) {
+    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
   }
 
-  function handleReblog(toggled: Status) {
-    setStatuses((prev) =>
-      prev.map((x) =>
-        x.id === toggled.id
-          ? { ...x, reblogged: !toggled.reblogged, reblogs_count: toggled.reblogs_count + (toggled.reblogged ? -1 : 1) }
-          : x
-      )
-    );
+  function handleReblog(updated: Status) {
+    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
   }
 
   function openEdit(s: Status) {
