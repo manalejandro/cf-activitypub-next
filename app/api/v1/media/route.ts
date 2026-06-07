@@ -65,8 +65,8 @@ export async function POST(request: NextRequest): Promise<Response> {
         {
           image: imageBytes,
           prompt: locale === "es"
-            ? "Genera una descripción concisa de esta imagen en español."
-            : "Generate a concise caption describing this image.",
+            ? "Haz una descripción concisa de esta imagen teniendo en cuenta que la leerán personas con discapacidad visual que necesitan conocer los detalles y el texto escrito si lo tuviera, en español."
+            : "Make a concise description of this image taking into account that it will be read by people with visual disabilities who need to know the details and the written text if they have it.",
           max_tokens: 512,
         } as Parameters<Ai["run"]>[1],
       ) as ImageToTextResult;
