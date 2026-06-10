@@ -611,15 +611,25 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
   const obj = activity.object as APActor | APNote | undefined;
   if (!obj || typeof obj !== "object") return;
 
+  const actorId = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
+
   // Handle actor profile updates
   if (["Person", "Service", "Group", "Organization", "Application"].includes(obj.type)) {
     const actor = obj as APActor;
+
+    // Only allow an actor to update its own profile
+    if (actor.id !== actorId) {
+      console.warn(`[inbox] handleUpdate: actor ${actorId} attempted to update ${actor.id} — rejected`);
+      return;
+    }
+
+    // Never trust publicKey from the activity body — that field is only updated
+    // by upsertRemoteActor after a fresh signed fetch from the canonical URL.
     await updateActor(ctx.db, actor.id, {
       displayName: actor.name ?? null,
       summary: actor.summary ?? null,
       avatarUrl: actor.icon?.url ?? null,
       headerUrl: actor.image?.url ?? null,
-      publicKeyPem: actor.publicKey?.publicKeyPem ?? "",
       discoverable: actor.discoverable ?? true,
       manuallyApprovesFollowers: actor.manuallyApprovesFollowers ?? false,
     });

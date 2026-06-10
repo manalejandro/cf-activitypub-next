@@ -84,21 +84,24 @@ export async function POST(
     // ignore fetch errors, proceed with signature check
   }
 
-  if (remoteActor?.publicKey?.publicKeyPem) {
-    // Use the canonical inbox URL (before middleware rewrite) for signature verification.
-    // Middleware rewrites /users/:username/inbox → /api/users/:username/inbox, but the
-    // sender signed against the original path.
-    const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
-    const valid = await verifySignature(
-      "POST",
-      canonicalUrl,
-      headers,
-      remoteActor.publicKey.publicKeyPem
-    );
-    if (!valid && env.NODE_ENV !== "development") {
-      console.error("[inbox/user] Invalid signature from actor %s for %s inbox", actorId, username);
-      return json({ error: "Invalid signature" }, 401);
-    }
+  if (!remoteActor?.publicKey?.publicKeyPem) {
+    console.error("[inbox/user] Could not retrieve public key for signing actor %s — rejecting", signingActorId);
+    return json({ error: "Cannot verify signature: no public key" }, 401);
+  }
+
+  // Use the canonical inbox URL (before middleware rewrite) for signature verification.
+  // Middleware rewrites /users/:username/inbox → /api/users/:username/inbox, but the
+  // sender signed against the original path.
+  const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
+  const valid = await verifySignature(
+    "POST",
+    canonicalUrl,
+    headers,
+    remoteActor.publicKey.publicKeyPem
+  );
+  if (!valid && env.NODE_ENV !== "development") {
+    console.error("[inbox/user] Invalid signature from actor %s for %s inbox", actorId, username);
+    return json({ error: "Invalid signature" }, 401);
   }
 
   try {

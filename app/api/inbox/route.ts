@@ -95,19 +95,18 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   if (!senderActor?.publicKey?.publicKeyPem) {
-    console.warn(
-      `[inbox/shared] No public key found for signing actor ${signingActorId} (activity actor: ${actorId}, keyId: ${sigKeyId ?? "(none)"}) — skipping signature verification`
+    console.error(
+      `[inbox/shared] No public key found for signing actor ${signingActorId} (activity actor: ${actorId}, keyId: ${sigKeyId ?? "(none)"}) — rejecting`
     );
+    return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
-  if (senderActor?.publicKey?.publicKeyPem) {
-    const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem);
-    if (!valid) {
-      console.error(
-        `[inbox/shared] Invalid HTTP signature — activity actor: ${actorId} | signing actor: ${signingActorId} | keyId: ${sigKeyId ?? "(none)"} | signature header: ${headers["signature"] ?? headers["Signature"] ?? "(none)"}`
-      );
-      return json({ error: "Invalid HTTP signature" }, 401);
-    }
+  const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem);
+  if (!valid) {
+    console.error(
+      `[inbox/shared] Invalid HTTP signature — activity actor: ${actorId} | signing actor: ${signingActorId} | keyId: ${sigKeyId ?? "(none)"} | signature header: ${headers["signature"] ?? headers["Signature"] ?? "(none)"}`
+    );
+    return json({ error: "Invalid HTTP signature" }, 401);
   }
 
   try {
