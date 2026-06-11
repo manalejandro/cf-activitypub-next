@@ -195,7 +195,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     repliesCount: 0,
     reblogsCount: 0,
     favouritesCount: 0,
-    published: obj.published ?? new Date().toISOString(),
+    published: toUtcIso(obj.published),
     local: false,
     raw: JSON.stringify(obj),
   });
@@ -279,7 +279,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     const statusVisibility = resolveVisibility(obj.to, obj.cc);
     if (statusVisibility === "public" || statusVisibility === "unlisted") {
       const domain = new URL(ctx.baseUrl).hostname;
-      const published = obj.published ?? new Date().toISOString();
+      const published = toUtcIso(obj.published);
       const serializedStatus = serializeStatus(
         {
           id: obj.id, type: "Note", actorId, content: obj.content ?? null,
@@ -546,7 +546,7 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
           repliesCount: 0,
           reblogsCount: 0,
           favouritesCount: 0,
-          published: fetched.published ?? new Date().toISOString(),
+          published: toUtcIso(fetched.published),
           local: false,
           raw: JSON.stringify(fetched),
         });
@@ -657,6 +657,12 @@ async function ensureActorCached(db: import("@cloudflare/workers-types").D1Datab
     } catch { /* ignore network errors */ }
   }
   return actor;
+}
+
+/** Normalize any ISO8601 date string (including tz-offset variants) to UTC Z format. */
+function toUtcIso(dateStr: string | undefined | null): string {
+  if (!dateStr) return new Date().toISOString();
+  try { return new Date(dateStr).toISOString(); } catch { return new Date().toISOString(); }
 }
 
 function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unlisted" | "followers" | "direct" {
