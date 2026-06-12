@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 // ─── Translation dictionaries ─────────────────────────────────────────────────
 
@@ -274,12 +274,19 @@ const LocaleContext = createContext<{
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    if (typeof window === "undefined") return "en";
+  // Always initialize to "en" so server and client render identically (avoids
+  // hydration mismatch / React error #418). The correct locale is applied after
+  // hydration via useEffect.
+  const [locale, setLocaleState] = useState<Locale>("en");
+
+  useEffect(() => {
     const saved = localStorage.getItem("locale") as Locale | null;
-    if (saved === "en" || saved === "es") return saved;
-    return navigator.language.slice(0, 2) === "es" ? "es" : "en";
-  });
+    if (saved === "en" || saved === "es") {
+      setLocaleState(saved);
+    } else if (navigator.language.slice(0, 2) === "es") {
+      setLocaleState("es");
+    }
+  }, []);
 
   function setLocale(l: Locale) {
     setLocaleState(l);
