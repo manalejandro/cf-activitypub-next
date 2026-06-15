@@ -775,6 +775,11 @@ export default function ThreadPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   useEffect(() => {
+    // Signal to timeline pages that we came from them, so scroll can be restored on back navigation
+    sessionStorage.setItem("scroll-restore-pending", "1");
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("reply") === "1") setAutoReply(true);
   }, []);
