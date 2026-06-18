@@ -54,6 +54,34 @@ export function middleware(request: NextRequest) {
     return rewriteResponse;
   }
 
+  // Rewrite /@username (Mastodon profile URL convention) → /users/username
+  // Next.js App Router reserves @ for parallel routes so we can't create app/@[username].
+  const atMatch = pathname.match(/^\/@([^/]+)(\/.*)?$/);
+  if (atMatch && method === "GET") {
+    const username = atMatch[1];
+    const rest = atMatch[2] ?? "";
+    const url = request.nextUrl.clone();
+
+    // AP clients requesting /@username → serve actor JSON
+    if (isAPRequest(request)) {
+      url.pathname = `/api/users/${username}`;
+      const rewriteResponse = NextResponse.rewrite(url);
+      Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+      return rewriteResponse;
+    }
+
+    // /@username/statusId → /statuses/statusId (status permalink)
+    const statusId = rest.slice(1); // strip leading /
+    if (rest && !["with_replies", "media", "followers", "following"].some((p) => statusId.startsWith(p)) &&
+        statusId.length > 0) {
+      url.pathname = `/statuses/${statusId}`;
+    } else {
+      url.pathname = `/users/${username}`;
+      if (rest) url.searchParams.set("tab", rest.slice(1));
+    }
+    return NextResponse.rewrite(url);
+  }
+
   // Add CORS headers to all API responses
   if (pathname.startsWith("/api/")) {
     const response = NextResponse.next();
@@ -65,5 +93,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/users/:path*", "/api/:path*"],
+  matcher: ["/users/:path*", "/api/:path*", "/@:path*"],
 };

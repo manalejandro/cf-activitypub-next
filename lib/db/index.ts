@@ -207,6 +207,10 @@ export async function getActorByEmail(db: D1Database, email: string): Promise<Lo
 }
 
 export async function createActor(db: D1Database, actor: Omit<LocalActor, "createdAt" | "updatedAt">): Promise<void> {
+  // Derive inbox URL for local actors: https://<domain>/users/<username>/inbox
+  const inbox = actor.inbox ?? (actor.isLocal
+    ? `https://${actor.domain.toLowerCase()}/users/${actor.username.toLowerCase()}/inbox`
+    : null);
   await db
     .prepare(
       `INSERT INTO actors (
@@ -214,8 +218,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
         public_key_pem, private_key_pem, is_local, is_bot,
         manually_approves_followers, discoverable,
         followers_count, following_count, statuses_count,
-        email, password_hash, email_verified
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        email, password_hash, email_verified, inbox
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       actor.id,
@@ -236,7 +240,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
       actor.statusesCount,
       actor.email ?? null,
       actor.passwordHash ?? null,
-      actor.emailVerified ? 1 : 0
+      actor.emailVerified ? 1 : 0,
+      inbox
     )
     .run();
 }

@@ -363,7 +363,9 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
 
     // Deliver Accept to requester
     // The actor is already cached from ensureActorCached above — just read inbox.
-    const requesterInbox = followerActor.inbox ?? null;
+    // Fall back to <actorId>/inbox if the DB column is somehow null.
+    const requesterInbox = followerActor.inbox ??
+      (followerActor.id ? `${followerActor.id.replace(/\/$/, "")}/inbox` : null);
     if (requesterInbox) {
       await deliverToInbox(
         requesterInbox,
