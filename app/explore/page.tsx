@@ -41,47 +41,9 @@ export default function ExplorePage() {
   const [loading, setLoading] = useState(false);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollRestoredRef = useRef(false);
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const router = useRouter();
   const { t } = useLocale();
-
-  // Save scroll position as the user scrolls; disable browser's own restoration
-  useEffect(() => {
-    history.scrollRestoration = "manual";
-    function onScroll() { if (window.scrollY > 0) sessionStorage.setItem("scroll-explore", String(window.scrollY)); }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // Restore scroll once after trending data finishes loading, but only when coming back from a status detail
-  useEffect(() => {
-    if (trendingLoading || scrollRestoredRef.current) return;
-    const shouldRestore = sessionStorage.getItem("scroll-restore-pending");
-    if (!shouldRestore) return;
-    scrollRestoredRef.current = true;
-    sessionStorage.removeItem("scroll-restore-pending");
-    const saved = sessionStorage.getItem("scroll-explore");
-    if (!saved) return;
-    const y = parseInt(saved, 10);
-    if (y <= 0) return;
-    let cancelled = false;
-    let retries = 0;
-    const tryScroll = () => {
-      if (cancelled || retries++ > 90) return;
-      if (document.documentElement.scrollHeight >= y + window.innerHeight) {
-        window.scrollTo({ top: y, behavior: "instant" });
-      } else {
-        if (retries % 20 === 0) {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          if (maxScroll > 0) window.scrollTo({ top: maxScroll, behavior: "instant" });
-        }
-        requestAnimationFrame(tryScroll);
-      }
-    };
-    requestAnimationFrame(tryScroll);
-    return () => { cancelled = true; };
-  }, [trendingLoading]);
 
   async function fetchTrending() {
     const res = await fetch("/api/v1/timelines/public?limit=40");

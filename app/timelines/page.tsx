@@ -13,7 +13,6 @@ type TimelineView = "local" | "federated";
 
 export default function TimelinesPage() {
   const [view, setView] = useState<TimelineView>("local");
-  const [viewReady, setViewReady] = useState(false);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -26,51 +25,6 @@ export default function TimelinesPage() {
   const viewRef = useRef<TimelineView>("local");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const scrollRestoredRef = useRef<TimelineView | null>(null);
-  // Persist active view — only after view is initialized from sessionStorage
-  useEffect(() => {
-    if (!viewReady) return;
-    sessionStorage.setItem("timelines-view", view);
-  }, [view, viewReady]);
-
-  // Save scroll position as the user scrolls (keyed by view); disable browser's own restoration
-  useEffect(() => {
-    history.scrollRestoration = "manual";
-    const key = `scroll-timelines-${view}`;
-    function onScroll() { if (window.scrollY > 0) sessionStorage.setItem(key, String(window.scrollY)); }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [view]);
-
-  // Restore scroll once after each view's data finishes loading, only when coming back from a status detail
-  useEffect(() => {
-    if (loading || scrollRestoredRef.current === view) return;
-    const shouldRestore = sessionStorage.getItem("scroll-restore-pending");
-    if (!shouldRestore) return;
-    scrollRestoredRef.current = view;
-    sessionStorage.removeItem("scroll-restore-pending");
-    const key = `scroll-timelines-${view}`;
-    const saved = sessionStorage.getItem(key);
-    if (!saved) return;
-    const y = parseInt(saved, 10);
-    if (y <= 0) return;
-    let cancelled = false;
-    let retries = 0;
-    const tryScroll = () => {
-      if (cancelled || retries++ > 90) return;
-      if (document.documentElement.scrollHeight >= y + window.innerHeight) {
-        window.scrollTo({ top: y, behavior: "instant" });
-      } else {
-        if (retries % 20 === 0) {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          if (maxScroll > 0) window.scrollTo({ top: maxScroll, behavior: "instant" });
-        }
-        requestAnimationFrame(tryScroll);
-      }
-    };
-    requestAnimationFrame(tryScroll);
-    return () => { cancelled = true; };
-  }, [loading, view]);
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
@@ -135,21 +89,19 @@ export default function TimelinesPage() {
     setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
   }
 
-  // On mount: read saved view preference (avoids SSR/client hydration mismatch)
+  // Mount: initial load
   useEffect(() => {
-    const saved = sessionStorage.getItem("timelines-view");
-    if (saved === "federated") setView("federated");
-    setViewReady(true);
+    void fetchTimeline("local");
     void fetchMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch timeline once view is initialized, or when view changes
+  // View change: reload timeline
   useEffect(() => {
-    if (!viewReady) return;
+    viewRef.current = view;
     void fetchTimeline(view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewReady, view]);
+  }, [view]);
 
   // Infinite scroll sentinel
   useEffect(() => {

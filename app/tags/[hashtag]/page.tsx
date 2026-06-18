@@ -22,45 +22,6 @@ export default function HashtagPage() {
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const scrollRestoredRef = useRef(false);
-
-  // Save scroll position as the user scrolls (keyed by hashtag); disable browser's own restoration
-  useEffect(() => {
-    history.scrollRestoration = "manual";
-    const key = `scroll-tag-${hashtag}`;
-    function onScroll() { if (window.scrollY > 0) sessionStorage.setItem(key, String(window.scrollY)); }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [hashtag]);
-
-  // Restore scroll once after data finishes loading (per hashtag), only when coming back from a status detail
-  useEffect(() => {
-    if (loading || scrollRestoredRef.current) return;
-    const shouldRestore = sessionStorage.getItem("scroll-restore-pending");
-    if (!shouldRestore) return;
-    scrollRestoredRef.current = true;
-    sessionStorage.removeItem("scroll-restore-pending");
-    const saved = sessionStorage.getItem(`scroll-tag-${hashtag}`);
-    if (!saved) return;
-    const y = parseInt(saved, 10);
-    if (y <= 0) return;
-    let cancelled = false;
-    let retries = 0;
-    const tryScroll = () => {
-      if (cancelled || retries++ > 90) return;
-      if (document.documentElement.scrollHeight >= y + window.innerHeight) {
-        window.scrollTo({ top: y, behavior: "instant" });
-      } else {
-        if (retries % 20 === 0) {
-          const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-          if (maxScroll > 0) window.scrollTo({ top: maxScroll, behavior: "instant" });
-        }
-        requestAnimationFrame(tryScroll);
-      }
-    };
-    requestAnimationFrame(tryScroll);
-    return () => { cancelled = true; };
-  }, [loading, hashtag]);
 
   // Real-time hashtag streaming
   useTimelineStream("hashtag", null, (event, payload) => {
