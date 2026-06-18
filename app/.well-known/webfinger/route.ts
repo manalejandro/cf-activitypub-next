@@ -37,7 +37,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   return new Response(
     JSON.stringify({
       subject: `acct:${actor.username}@${domain}`,
-      aliases: [`${baseUrl}/users/${actor.username}`],
+      aliases: [
+        `${baseUrl}/@${actor.username}`,
+        `${baseUrl}/users/${actor.username}`,
+      ],
       links: [
         {
           rel: "http://webfinger.net/rel/profile-page",

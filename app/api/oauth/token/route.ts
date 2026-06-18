@@ -117,5 +117,70 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
   }
 
+  if (grantType === "authorization_code") {
+    const { code, redirect_uri } = body;
+    if (!code) return json({ error: "invalid_request", error_description: "code is required" }, 400);
+
+    // Retrieve and consume the auth code from KV
+    const raw = await env.KV.get(`oauth_code:${code}`);
+    if (!raw) return json({ error: "invalid_grant", error_description: "Invalid or expired authorization code" }, 400);
+
+    await env.KV.delete(`oauth_code:${code}`);
+
+    let payload: {
+      actorId: string;
+      appId: string;
+      scope: string;
+      redirectUri: string;
+      codeChallenge: string | null;
+      codeChallengeMethod: string | null;
+    };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return json({ error: "invalid_grant" }, 400);
+    }
+
+    // Validate redirect_uri if provided
+    if (redirect_uri && redirect_uri !== payload.redirectUri) {
+      return json({ error: "invalid_grant", error_description: "redirect_uri mismatch" }, 400);
+    }
+
+    // PKCE verification (S256)
+    if (payload.codeChallenge && payload.codeChallengeMethod === "S256") {
+      const verifier = body.code_verifier;
+      if (!verifier) return json({ error: "invalid_grant", error_description: "code_verifier required" }, 400);
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const computed = btoa(String.fromCharCode(...new Uint8Array(hash)))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      if (computed !== payload.codeChallenge) {
+        return json({ error: "invalid_grant", error_description: "PKCE verification failed" }, 400);
+      }
+    }
+
+    const accessToken = generateSecureToken();
+    const refreshToken = generateSecureToken();
+    const now = Math.floor(Date.now() / 1000);
+    const expiresIn = 3600 * 24 * 30;
+
+    await createOAuthToken(env.DB, {
+      id: accessToken,
+      appId: payload.appId,
+      actorId: payload.actorId,
+      accessToken,
+      refreshToken,
+      scope: payload.scope,
+      expiresAt: new Date((now + expiresIn) * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    return json({
+      access_token: accessToken,
+      token_type: "Bearer",
+      scope: payload.scope,
+      created_at: now,
+    });
+  }
+
   return json({ error: "unsupported_grant_type" }, 400);
 }

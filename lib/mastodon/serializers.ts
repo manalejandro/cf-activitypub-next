@@ -12,6 +12,7 @@ import type {
   LocalPollOption,
   MastodonAccount,
   MastodonAttachment,
+  MastodonAttachmentMeta,
   MastodonPoll,
   MastodonStatus,
   MastodonNotification,
@@ -43,7 +44,10 @@ export function serializeAccount(
     display_name: actor.displayName ?? actor.username,
     locked: actor.manuallyApprovesFollowers,
     bot: actor.isBot,
+    group: false,
     discoverable: actor.discoverable,
+    indexable: actor.discoverable,
+    noindex: !actor.discoverable,
     created_at: actor.createdAt ?? new Date().toISOString(),
     note: actor.summary ?? "",
     url: isLocal ? `https://${localDomain}/users/${actor.username}` : actor.id,
@@ -56,7 +60,9 @@ export function serializeAccount(
     following_count: actor.followingCount,
     statuses_count: actor.statusesCount,
     last_status_at: null,
+    hide_collections: null,
     emojis: [],
+    roles: [],
     fields: (opts.fields ?? []).map((f) => ({
       name: f.name,
       value: f.value,
@@ -131,6 +137,9 @@ export function serializeStatus(
     emojis: [],
     card: null,
     poll: opts.poll ?? null,
+    filtered: [],
+    quotes_count: 0,
+    quote: null,
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
     muted: false,
@@ -253,17 +262,24 @@ function serializeAttachment(att: LocalAttachment): MastodonAttachment {
     if (mime.startsWith("audio/")) return "audio";
     return "unknown";
   };
+  const meta: MastodonAttachmentMeta | undefined =
+    att.width && att.height
+      ? {
+          original: { width: att.width, height: att.height, aspect: att.width / att.height },
+          small: { width: att.width, height: att.height, aspect: att.width / att.height },
+        }
+      : undefined;
+
   return {
     id: att.id,
     type: mimeToType(att.mimeType),
     url: att.url,
     preview_url: att.url,
     remote_url: att.remoteUrl ?? null,
+    text_url: null,
     description: att.description ?? null,
     blurhash: att.blurhash ?? null,
-    meta: att.width && att.height
-      ? { original: { width: att.width, height: att.height } }
-      : undefined,
+    meta,
   };
 }
 

@@ -275,7 +275,10 @@ export interface MastodonAccount {
   display_name: string;
   locked: boolean;
   bot: boolean;
+  group: boolean;
   discoverable: boolean;
+  indexable: boolean;
+  noindex: boolean;
   created_at: string;
   note: string;
   url: string;
@@ -288,8 +291,14 @@ export interface MastodonAccount {
   following_count: number;
   statuses_count: number;
   last_status_at: string | null;
+  hide_collections: boolean | null;
   emojis: MastodonEmoji[];
   fields: MastodonField[];
+  roles: MastodonRole[];
+  moved?: MastodonAccount | null;
+  suspended?: boolean;
+  limited?: boolean;
+  memorial?: boolean;
   source?: MastodonSource;
 }
 
@@ -316,8 +325,11 @@ export interface MastodonStatus {
   mentions: MastodonMention[];
   tags: MastodonTag[];
   emojis: MastodonEmoji[];
-  card: null;
+  card: MastodonPreviewCard | null;
   poll: MastodonPoll | null;
+  filtered: MastodonFilterResult[];
+  quotes_count: number;
+  quote: MastodonQuote | null;
   favourited: boolean;
   reblogged: boolean;
   muted: boolean;
@@ -344,9 +356,76 @@ export interface MastodonAttachment {
   url: string;
   preview_url: string | null;
   remote_url: string | null;
+  text_url: string | null;
   description: string | null;
   blurhash: string | null;
-  meta?: Record<string, unknown>;
+  meta?: MastodonAttachmentMeta;
+}
+
+export interface MastodonAttachmentMeta {
+  original?: {
+    width?: number;
+    height?: number;
+    size?: string;
+    aspect?: number;
+    duration?: number;
+    bitrate?: number;
+    frame_rate?: string;
+  };
+  small?: {
+    width?: number;
+    height?: number;
+    size?: string;
+    aspect?: number;
+  };
+  focus?: { x: number; y: number };
+  colors?: { accent?: string; background?: string; foreground?: string };
+}
+
+export interface MastodonPreviewCard {
+  url: string;
+  title: string;
+  description: string;
+  type: "link" | "photo" | "video" | "rich";
+  author_name: string;
+  author_url: string;
+  provider_name: string;
+  provider_url: string;
+  html: string;
+  width: number;
+  height: number;
+  image: string | null;
+  image_description: string;
+  embed_url: string;
+  blurhash: string | null;
+  language: string | null;
+  published_at: string | null;
+  authors: { name: string; url: string; account: MastodonAccount | null }[];
+}
+
+export interface MastodonRole {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface MastodonFilter {
+  id: string;
+  title: string;
+  context: string[];
+  expires_at: string | null;
+  filter_action: "warn" | "hide";
+}
+
+export interface MastodonFilterResult {
+  filter: MastodonFilter;
+  keyword_matches: string[] | null;
+  status_matches: string[] | null;
+}
+
+export interface MastodonQuote {
+  quoted_status_id: string | null;
+  state: string;
 }
 
 export interface MastodonMention {
