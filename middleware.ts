@@ -93,5 +93,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/users/:path*", "/api/:path*", "/@:path*"],
+  // "/@:path*" compiles to a regex that requires a slash between @ and the username,
+  // so it never matches /@ale. Use separate patterns for exact and sub-path cases.
+  matcher: ["/users/:path*", "/api/:path*", "/@:username", "/@:username/:path*"],
 };

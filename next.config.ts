@@ -37,6 +37,15 @@ const nextConfig: NextConfig = {
       allowedOrigins: ["*"],
     },
   },
+  // Rewrite /@username → /users/username (Mastodon profile URL convention).
+  // Next.js App Router reserves @ for parallel routes so there is no app/@[username].
+  // This runs after middleware; it acts as a reliable fallback for browsers.
+  async rewrites() {
+    return [
+      { source: "/@:username", destination: "/users/:username" },
+      { source: "/@:username/:path*", destination: "/users/:username" },
+    ];
+  },
   async headers() {
     return [
       {
