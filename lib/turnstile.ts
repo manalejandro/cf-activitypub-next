@@ -12,13 +12,13 @@ export async function verifyTurnstileToken(
 ): Promise<boolean> {
   if (!token) return false;
 
-  const body: Record<string, string> = { secret, response: token };
-  if (remoteIp) body.remoteip = remoteIp;
+  const params = new URLSearchParams({ secret, response: token });
+  if (remoteIp) params.set("remoteip", remoteIp);
 
   const res = await fetch(SITEVERIFY_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
   });
 
   if (!res.ok) return false;
