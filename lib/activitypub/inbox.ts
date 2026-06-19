@@ -294,7 +294,9 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         domain,
         { attachments: storedAttachments }
       );
-      void broadcastPublicStatus(ctx.timelineStream, serializedStatus, false).catch(() => {});
+      const broadcastTasks: Promise<void>[] = [
+        broadcastPublicStatus(ctx.timelineStream, serializedStatus, false),
+      ];
 
       // Broadcast to home feeds of local followers
       try {
@@ -303,11 +305,13 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           .bind(actorId)
           .all<{ id: string }>();
         for (const row of localFollowers.results) {
-          void broadcastHomeStatus(ctx.timelineStream, row.id, serializedStatus).catch(() => {});
+          broadcastTasks.push(broadcastHomeStatus(ctx.timelineStream, row.id, serializedStatus));
         }
       } catch (e) {
-        console.error("[inbox] handleCreate: broadcastHomeStatus failed:", e);
+        console.error("[inbox] handleCreate: failed to load local followers for broadcast:", e);
       }
+
+      await Promise.allSettled(broadcastTasks);
     }
   }
 }

@@ -3,9 +3,7 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { verifySignature, extractSigningKeyId } from "@/lib/activitypub/security";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
-import { getActorById, upsertRemoteActor, getObjectById, getAttachmentsByObjectIds, getPollsByObjectIds } from "@/lib/db";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
-import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
+import { getActorById, upsertRemoteActor } from "@/lib/db";
 import type { APActor } from "@/lib/types";
 
 // POST /inbox — Shared inbox for federation delivery
@@ -119,49 +117,6 @@ export async function POST(request: NextRequest): Promise<Response> {
   } catch (err) {
     console.error(`[inbox/shared] processInboxActivity threw for activity ${(body as { id?: string }).id}: ${err}\nraw body: ${rawBody}`);
     // Still return 202 so the remote server does not keep retrying.
-  }
-
-  // Broadcast newly created public statuses to streaming clients (best-effort)
-  const actType = (typeof body.type === "string" ? body.type : "").toLowerCase();
-  if (actType === "create") {
-    void (async () => {
-      try {
-        const obj = body.object as { id?: string; visibility?: string } | undefined;
-        const objId = typeof obj?.id === "string" ? obj.id : undefined;
-        if (!objId) return;
-
-        const stored = await getObjectById(env.DB, objId);
-        if (!stored || (stored.visibility !== "public" && stored.visibility !== "unlisted")) return;
-
-        const author = await getActorById(env.DB, stored.actorId);
-        if (!author) return;
-
-        const [attachmentMap, pollMap] = await Promise.all([
-          getAttachmentsByObjectIds(env.DB, [stored.id]),
-          getPollsByObjectIds(env.DB, [stored.id]),
-        ]);
-        const pollEntry = pollMap.get(stored.id);
-        const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
-        const serialized = serializeStatus(stored, author, domain, {
-          attachments: attachmentMap.get(stored.id) ?? [],
-          poll,
-        });
-
-        // Broadcast to public timelines
-        await broadcastPublicStatus(env.TIMELINE_STREAM, serialized, stored.local);
-
-        // Broadcast to home feeds of local followers of this actor
-        const rows = await env.DB
-          .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-          .bind(stored.actorId)
-          .all<{ id: string }>();
-        for (const row of rows.results) {
-          void broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serialized);
-        }
-      } catch (err) {
-        console.error("[inbox/shared] streaming broadcast failed:", err);
-      }
-    })();
   }
 
   return json({ status: "accepted" }, 202);

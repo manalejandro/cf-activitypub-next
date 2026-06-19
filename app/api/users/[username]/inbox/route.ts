@@ -1,11 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorById, upsertRemoteActor, getObjectById, getAttachmentsByObjectIds, getPollsByObjectIds } from "@/lib/db";
+import { getActorByUsername, getActorById, upsertRemoteActor } from "@/lib/db";
 import { verifySignature, extractSigningKeyId } from "@/lib/activitypub/security";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
-import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
 
 // POST /users/:username/inbox
@@ -121,45 +119,6 @@ export async function POST(
     });
   } catch (err) {
     console.error("[inbox/user] processInboxActivity threw for %s inbox, activity %s: %s", username, (activity as { id?: string }).id, err);
-  }
-
-  // Broadcast newly created public statuses to streaming clients (best-effort)
-  const actType = (typeof activity.type === "string" ? activity.type : "").toLowerCase();
-  if (actType === "create") {
-    void (async () => {
-      try {
-        const obj = activity.object as { id?: string } | undefined;
-        const objId = typeof obj?.id === "string" ? obj.id : undefined;
-        if (!objId) return;
-
-        const stored = await getObjectById(env.DB, objId);
-        if (!stored) return;
-
-        const author = await getActorById(env.DB, stored.actorId);
-        if (!author) return;
-
-        const [attachmentMap, pollMap] = await Promise.all([
-          getAttachmentsByObjectIds(env.DB, [stored.id]),
-          getPollsByObjectIds(env.DB, [stored.id]),
-        ]);
-        const pollEntry = pollMap.get(stored.id);
-        const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
-        const serialized = serializeStatus(stored, author, domain, {
-          attachments: attachmentMap.get(stored.id) ?? [],
-          poll,
-        });
-
-        // Public timelines
-        if (stored.visibility === "public" || stored.visibility === "unlisted") {
-          await broadcastPublicStatus(env.TIMELINE_STREAM, serialized, stored.local);
-        }
-
-        // Recipient's home feed (this inbox belongs to the recipient)
-        await broadcastHomeStatus(env.TIMELINE_STREAM, recipient.id, serialized);
-      } catch (err) {
-        console.error("[inbox/user] streaming broadcast failed:", err);
-      }
-    })();
   }
 
   return json({}, 202);

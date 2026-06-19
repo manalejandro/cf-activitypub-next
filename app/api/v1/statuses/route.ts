@@ -250,20 +250,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     { attachments: linkedAttachments, poll: serializedPoll }
   );
 
-  // Broadcast to streaming clients (fire-and-forget)
+  // Broadcast to streaming clients — collect tasks and await all together
+  const broadcastTasks: Promise<void>[] = [];
   if (visibility === "public" || visibility === "unlisted") {
-    void broadcastPublicStatus(env.TIMELINE_STREAM, serializedStatus, /* isLocal */ true);
+    broadcastTasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serializedStatus, /* isLocal */ true));
   }
-  // Always broadcast to the author's home feed
-  void broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serializedStatus);
-  // Broadcast to local followers' home feeds
+  broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serializedStatus));
   const localFollowerRows = await env.DB
     .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
     .bind(actor.id)
     .all<{ id: string }>();
   for (const row of localFollowerRows.results) {
-    void broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serializedStatus);
+    broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serializedStatus));
   }
+  await Promise.allSettled(broadcastTasks);
 
   return json(serializedStatus, 200);
 }
