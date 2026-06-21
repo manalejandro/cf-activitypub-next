@@ -59,9 +59,11 @@ export interface UseCallReturn {
 
 const API_BASE = "/api/v1/calls";
 
-async function getIceServers(): Promise<RTCIceServerConfig[]> {
+async function getIceServers(accessToken?: string | null): Promise<RTCIceServerConfig[]> {
   try {
-    const res = await fetch(`${API_BASE}/ice-servers`);
+    const res = await fetch(`${API_BASE}/ice-servers`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
     if (res.ok) {
       const data = await res.json() as { iceServers: RTCIceServerConfig[] };
       return data.iceServers ?? [];
@@ -277,7 +279,7 @@ export function useCall(accessToken?: string | null): UseCallReturn {
   // Media is NOT acquired here. Transceivers establish the offer/answer
   // capability; actual tracks are added via acquireAndAttachInitialMedia.
   const createPeerConnection = useCallback(async (callType: "audio" | "video" | "screen"): Promise<RTCPeerConnection> => {
-    const iceServers = await getIceServers();
+    const iceServers = await getIceServers(accessToken);
     const pc = new RTCPeerConnection({ iceServers });
     pcRef.current = pc;
 

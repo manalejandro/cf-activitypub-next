@@ -4,6 +4,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import type { APActivity, APNote, APActor, APAttachment, LocalAttachment } from "@/lib/types";
+import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
   getFollow,
@@ -38,10 +39,13 @@ import { serializeStatus } from "@/lib/mastodon/serializers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DONamespace = { idFromName(name: string): any; get(id: any): { fetch(input: string | URL, init?: RequestInit): Promise<Response> } };
+type KVNamespace = { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
 
 interface InboxContext {
   db: D1Database;
   baseUrl: string;
+  /** KV namespace — used to persist call sessions for cross-instance WebRTC signaling. */
+  kv?: KVNamespace | null;
   recipient?: { id: string; username: string; privateKeyPem: string } | null;
   /** A local actor key to use when making signed HTTP GET requests to remote servers. */
   signingKey?: { id: string; privateKeyPem: string } | null;
@@ -712,15 +716,36 @@ async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise
 
   // Extract call ID from the object IRI (last path segment)
   const callId = (obj.id as string ?? "").split("/").pop() ?? crypto.randomUUID();
+  const callType = (obj.callType ?? "audio") as "audio" | "video" | "screen";
+  const offerSdp = (obj.sdp ?? "") as string;
+
+  // Persist a local call session so the callee can POST the answer/ICE to our
+  // own /api/v1/calls/{id} endpoint (the session only exists on the caller's
+  // instance otherwise, causing 404s).
+  if (ctx.kv) {
+    const session: CallSession = {
+      id: callId,
+      callerId: callerIRI,
+      calleeId: callee.id,
+      callerAcct,
+      calleeAcct: callee.username,
+      callType,
+      offerSdp,
+      answerSdp: null,
+      state: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    await ctx.kv.put(`call:${callId}`, JSON.stringify(session), { expirationTtl: 600 });
+  }
 
   await broadcastCallEvent(ctx.timelineStream, callee.username, {
     type: "call.incoming",
     callId,
-    callType: (obj.callType ?? "audio") as "audio" | "video",
+    callType,
     callerAcct,
     callerDisplayName: callerActor?.displayName ?? callerActor?.username ?? callerAcct,
     callerAvatar: callerActor?.avatarUrl ?? null,
-    offerSdp: obj.sdp ?? "",
+    offerSdp,
   });
 }
 

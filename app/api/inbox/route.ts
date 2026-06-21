@@ -110,6 +110,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   try {
     await processInboxActivity(body as never, {
       db: env.DB,
+      kv: env.KV,
       baseUrl,
       signingKey,
       timelineStream: env.TIMELINE_STREAM,

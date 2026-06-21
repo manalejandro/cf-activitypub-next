@@ -105,6 +105,7 @@ export async function POST(
   try {
     await processInboxActivity(activity as never, {
       db: env.DB,
+      kv: env.KV,
       baseUrl,
       recipient: {
         id: recipient.id,
