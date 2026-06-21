@@ -17,7 +17,7 @@ import {
   notFound,
 } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorByUsername } from "@/lib/db";
+import { getActorById } from "@/lib/db";
 import { broadcastCallEvent } from "@/lib/streaming/broadcast";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { CallSession, CallEventPayload } from "@/lib/types/call";
@@ -142,21 +142,19 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
       return badRequest("Unknown signal type");
   }
 
-  // Send CallAnswer/CallIce AP activity for cross-instance federation
-  if (body.type === "answer" || body.type === "ice") {
-    const peerActorId = isCaller ? session.calleeId : session.callerId;
-    const isPeerRemote = !peerActorId.startsWith(baseUrl);
-    if (isPeerRemote && actor.privateKeyPem) {
-      const peerActor = await getActorByUsername(env.DB, peerActorId.split("/").pop() ?? "", "");
-      if (peerActor?.inbox) {
-        const apActivity = buildSignalActivity(baseUrl, actor.id, peerActorId, id, body);
-        await enqueueDeliveries(
-          env.DELIVERY_QUEUE,
-          [peerActor.inbox],
-          JSON.stringify(apActivity),
-          actor.id
-        ).catch(() => {});
-      }
+  // Send signal AP activity for cross-instance federation (answer, ice, hangup, reject)
+  const peerActorId = isCaller ? session.calleeId : session.callerId;
+  const isPeerRemote = !peerActorId.startsWith(baseUrl);
+  if (isPeerRemote) {
+    const peerActor = await getActorById(env.DB, peerActorId);
+    if (peerActor?.inbox) {
+      const apActivity = buildSignalActivity(baseUrl, actor.id, peerActorId, id, body);
+      await enqueueDeliveries(
+        env.DELIVERY_QUEUE,
+        [peerActor.inbox],
+        JSON.stringify(apActivity),
+        actor.id
+      ).catch(() => {});
     }
   }
 
@@ -180,9 +178,25 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
   session.state = "ended";
   await saveCallSession(env.KV, session);
 
+  const baseUrl = getBaseUrl(env);
   const localDomain = getDomain(env);
   const peerActorId = session.callerId === actor.id ? session.calleeId : session.callerId;
   await notifyPeer(env, session, peerActorId, localDomain, { type: "call.ended", callId: id });
+
+  // Cross-instance federation for hangup via DELETE
+  const isPeerRemote = !peerActorId.startsWith(baseUrl);
+  if (isPeerRemote) {
+    const peerActor = await getActorById(env.DB, peerActorId);
+    if (peerActor?.inbox) {
+      const apActivity = buildSignalActivity(baseUrl, actor.id, peerActorId, id, { type: "hangup" });
+      await enqueueDeliveries(
+        env.DELIVERY_QUEUE,
+        [peerActor.inbox],
+        JSON.stringify(apActivity),
+        actor.id
+      ).catch(() => {});
+    }
+  }
 
   try {
     const doId = env.CALL_SIGNALING.idFromName(id);

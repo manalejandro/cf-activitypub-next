@@ -199,9 +199,83 @@ export function useCall(accessToken?: string | null): UseCallReturn {
     ws.onerror = (e) => console.error("[call] signaling WebSocket error:", e);
   }, [accessToken, cleanup]);
 
+  // ── Acquire and attach initial media (called from startCall / acceptCall) ─
+  // Tries to get the appropriate media based on call type and adds the tracks
+  // to the peer connection. Runs in the user-gesture context (button click),
+  // so getUserMedia / getDisplayMedia are allowed.
+  // When `calleeMode` is true (callee accepting a screen call) only audio is
+  // acquired, since the callee receives the caller's screen — not their own.
+  const acquireAndAttachInitialMedia = useCallback(async (
+    pc: RTCPeerConnection,
+    callType: "audio" | "video" | "screen",
+    calleeMode: boolean = false,
+  ): Promise<void> => {
+    try {
+      if (callType === "screen" && !calleeMode) {
+        // Caller-side screen share
+        const displayStream = await (navigator.mediaDevices as MediaDevices & {
+          getDisplayMedia(c?: MediaStreamConstraints): Promise<MediaStream>;
+        }).getDisplayMedia({ video: true, audio: false });
+        screenStreamRef.current = displayStream;
+        const videoTrack = displayStream.getVideoTracks()[0];
+        pc.addTrack(videoTrack, displayStream);
+        videoTrack.onended = () => {
+          setIsSharingScreen(false);
+          setScreenStream(null);
+          screenStreamRef.current = null;
+        };
+        setScreenStream(displayStream);
+        setIsSharingScreen(true);
+        setIsVideoOff(false);
+        // Also grab mic for audio in the call
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStreamRef.current = micStream;
+          const audioTrack = micStream.getAudioTracks()[0];
+          pc.addTrack(audioTrack, micStream);
+          const micTrack = micStream.getAudioTracks()[0];
+          setLocalStream(new MediaStream([videoTrack, ...(micTrack ? [micTrack] : [])]));
+          setIsMuted(false);
+        } catch {
+          setLocalStream(new MediaStream([videoTrack]));
+        }
+      } else if (callType === "video") {
+        // Camera + mic
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        const [audioTrack] = stream.getAudioTracks();
+        const [videoTrack] = stream.getVideoTracks();
+        if (audioTrack) {
+          micStreamRef.current = new MediaStream([audioTrack]);
+          pc.addTrack(audioTrack, stream);
+          setIsMuted(false);
+        }
+        if (videoTrack) {
+          camStreamRef.current = new MediaStream([videoTrack]);
+          pc.addTrack(videoTrack, stream);
+          setIsVideoOff(false);
+        }
+        setLocalStream(stream);
+      } else {
+        // Audio call (or callee side of a screen share call — just mic)
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStreamRef.current = stream;
+        const [audioTrack] = stream.getAudioTracks();
+        pc.addTrack(audioTrack, stream);
+        setLocalStream(stream);
+        setIsMuted(false);
+      }
+    } catch (err) {
+      console.warn("[call] acquireInitialMedia failed (continuing without local media):", err);
+      // Non-fatal: call proceeds with recvonly; remote can still send media
+    }
+  }, []);
+
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
   // Media is NOT acquired here. Transceivers establish the offer/answer
-  // capability; actual tracks are added on demand via toggleMute/toggleVideo.
+  // capability; actual tracks are added via acquireAndAttachInitialMedia.
   const createPeerConnection = useCallback(async (callType: "audio" | "video" | "screen"): Promise<RTCPeerConnection> => {
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
@@ -270,7 +344,7 @@ export function useCall(accessToken?: string | null): UseCallReturn {
   }, [accessToken, cleanup]);
 
   // ── Start a call (caller side) ────────────────────────────────────────────
-  // Media is NOT acquired here; the user enables mic/camera on demand once connected.
+  // Media is acquired immediately (user gesture context from the call button).
   const startCall = useCallback(async (
     targetAcct: string,
     callType: "audio" | "video" | "screen"
@@ -278,6 +352,10 @@ export function useCall(accessToken?: string | null): UseCallReturn {
     if (callState.phase !== "idle") return null;
     try {
       const pc = await createPeerConnection(callType);
+
+      // Acquire initial media before creating the offer so the SDP already
+      // reflects the tracks we intend to send (sendrecv vs recvonly).
+      await acquireAndAttachInitialMedia(pc, callType, false);
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -320,7 +398,7 @@ export function useCall(accessToken?: string | null): UseCallReturn {
       cleanup();
       return null;
     }
-  }, [callState.phase, createPeerConnection, accessToken, connectSignalingWs, cleanup]);
+  }, [callState.phase, createPeerConnection, acquireAndAttachInitialMedia, accessToken, connectSignalingWs, cleanup]);
 
   // ── Accept incoming call (callee side) ───────────────────────────────────
   const acceptCall = useCallback(async (): Promise<void> => {
@@ -337,6 +415,11 @@ export function useCall(accessToken?: string | null): UseCallReturn {
         pc.addIceCandidate(c).catch(() => {});
       }
       pendingCandidatesRef.current = [];
+
+      // Acquire media after setRemoteDescription so tracks are associated with
+      // the offer's transceivers. For screen-share calls the callee only gets
+      // mic (they receive the caller's screen, not share their own).
+      await acquireAndAttachInitialMedia(pc, event.callType, /* calleeMode */ true);
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -362,7 +445,7 @@ export function useCall(accessToken?: string | null): UseCallReturn {
       cleanup();
       setCallState({ phase: "idle" });
     }
-  }, [callState, createPeerConnection, accessToken, connectSignalingWs, cleanup]);
+  }, [callState, createPeerConnection, acquireAndAttachInitialMedia, accessToken, connectSignalingWs, cleanup]);
 
   // ── End / decline call ───────────────────────────────────────────────────
   const endCall = useCallback(async (): Promise<void> => {

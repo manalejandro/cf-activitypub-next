@@ -6,6 +6,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
+import { useStartCallButton } from "@/components/CallOverlay";
 import { useLocale } from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -280,6 +281,7 @@ function RemoteProfileInner() {
   const [me, setMe] = useState<Account | null>(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const { startCall: initiateCall } = useStartCallButton(token);
 
   async function load(url: string) {
     setLoading(true);
@@ -500,6 +502,30 @@ function RemoteProfileInner() {
                     title={relationship?.blocking ? "Desbloquear" : "Bloquear"}
                   >
                     {blockBusy ? "…" : relationship?.blocking ? "🚫 Bloqueado" : "🚫"}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: "1px solid var(--border)" }}
+                    title="Llamada de voz"
+                    onClick={() => void initiateCall(account.acct, "audio")}
+                  >
+                    📞
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: "1px solid var(--border)" }}
+                    title="Videollamada"
+                    onClick={() => void initiateCall(account.acct, "video")}
+                  >
+                    📹
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: "1px solid var(--border)" }}
+                    title="Compartir pantalla"
+                    onClick={() => void initiateCall(account.acct, "screen")}
+                  >
+                    🖥️
                   </button>
                 </>
               )}
