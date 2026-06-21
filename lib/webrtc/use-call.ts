@@ -94,8 +94,14 @@ export function useCall(accessToken?: string | null): UseCallReturn {
   const callIdRef = useRef<string | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const remoteDescSetRef = useRef(false);
+  /** Timer that fires when the peer connection has been "disconnected" too long. */
+  const disconnectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
+    if (disconnectedTimerRef.current) {
+      clearTimeout(disconnectedTimerRef.current);
+      disconnectedTimerRef.current = null;
+    }
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
@@ -294,8 +300,10 @@ export function useCall(accessToken?: string | null): UseCallReturn {
     setRemoteStream(remoteMs);
 
     pc.ontrack = (ev) => {
-      for (const track of ev.streams[0]?.getTracks() ?? []) {
-        remoteMs.addTrack(track);
+      // Use ev.track directly — ev.streams may be empty when the sender
+      // associates each track with a separate stream (e.g. screen + mic).
+      if (!remoteMs.getTracks().find((t) => t.id === ev.track.id)) {
+        remoteMs.addTrack(ev.track);
       }
       setRemoteStream(new MediaStream(remoteMs.getTracks()));
     };
@@ -318,10 +326,32 @@ export function useCall(accessToken?: string | null): UseCallReturn {
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      const state = pc.connectionState;
+      if (state === "failed" || state === "closed") {
+        // Clear any pending disconnection timer
+        if (disconnectedTimerRef.current) {
+          clearTimeout(disconnectedTimerRef.current);
+          disconnectedTimerRef.current = null;
+        }
         setCallState({ phase: "ended", reason: "connection_failed" });
         cleanup();
         setTimeout(() => setCallState({ phase: "idle" }), 3000);
+      } else if (state === "disconnected") {
+        // Peer may have closed without sending hangup (e.g. browser crash).
+        // Give 12 s for ICE to recover before treating it as a lost call.
+        disconnectedTimerRef.current = setTimeout(() => {
+          if (pcRef.current?.connectionState === "disconnected") {
+            setCallState({ phase: "ended", reason: "connection_lost" });
+            cleanup();
+            setTimeout(() => setCallState({ phase: "idle" }), 3000);
+          }
+        }, 12_000);
+      } else if (state === "connected") {
+        // Reconnected — cancel any pending disconnection timer.
+        if (disconnectedTimerRef.current) {
+          clearTimeout(disconnectedTimerRef.current);
+          disconnectedTimerRef.current = null;
+        }
       }
     };
 

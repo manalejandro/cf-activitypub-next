@@ -71,13 +71,18 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
       const src = isSharingScreen && screenStream ? screenStream : localStream;
       localVideoRef.current.srcObject = src ?? null;
     }
-  }, [localStream, screenStream, isSharingScreen]);
+  // callState.phase is a dependency so the effect re-runs when the video
+  // element is first mounted (transition to "active" phase).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStream, screenStream, isSharingScreen, callState.phase]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream]);
+  // callState.phase ensures this re-runs when the element mounts in "active" phase.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteStream, callState.phase]);
 
   if (callState.phase === "idle") return null;
 
