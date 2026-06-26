@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, createLike, deleteLike, getLike, createAnnounce, deleteAnnounce, getAnnounce, getAttachmentsByObjectId, getPollByObjectId, getPollOptions } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, createLike, deleteLike, getLike, getLikedObjectIds, createAnnounce, deleteAnnounce, getAnnounce, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -43,13 +43,22 @@ export async function GET(
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound("Author not found");
 
-  const [attachments, pollDb] = await Promise.all([
+  const authActor = await getAuthenticatedActor(request, env.DB);
+
+  const [attachments, pollDb, likedIds, announcedIds] = await Promise.all([
     getAttachmentsByObjectId(env.DB, obj.id),
     getPollByObjectId(env.DB, obj.id),
+    authActor ? getLikedObjectIds(env.DB, authActor.id, [obj.id]) : Promise.resolve(new Set<string>()),
+    authActor ? getAnnouncedObjectIds(env.DB, authActor.id, [obj.id]) : Promise.resolve(new Set<string>()),
   ]);
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
-  return json(serializeStatus(obj, author, domain, { attachments, poll }));
+  return json(serializeStatus(obj, author, domain, {
+    attachments,
+    poll,
+    favourited: likedIds.has(obj.id),
+    reblogged: announcedIds.has(obj.id),
+  }));
 }
 
 // PUT /api/v1/statuses/:id — Edit an existing status

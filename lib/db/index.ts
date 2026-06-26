@@ -691,14 +691,31 @@ export async function createLike(db: D1Database, like: LocalLike): Promise<void>
 }
 
 export async function deleteLike(db: D1Database, actorId: string, objectId: string): Promise<void> {
-  await db
+  const result = await db
     .prepare("DELETE FROM likes WHERE actor_id = ? AND object_id = ?")
     .bind(actorId, objectId)
     .run();
-  await db
-    .prepare("UPDATE objects SET favourites_count = MAX(0, favourites_count - 1) WHERE id = ?")
-    .bind(objectId)
-    .run();
+  if (result.meta.changes > 0) {
+    await db
+      .prepare("UPDATE objects SET favourites_count = MAX(0, favourites_count - 1) WHERE id = ?")
+      .bind(objectId)
+      .run();
+  }
+}
+
+/** Returns a Set of objectIds (from the provided list) that the given actor has liked. */
+export async function getLikedObjectIds(
+  db: D1Database,
+  actorId: string,
+  objectIds: string[]
+): Promise<Set<string>> {
+  if (objectIds.length === 0) return new Set();
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT object_id FROM likes WHERE actor_id = ? AND object_id IN (${placeholders})`)
+    .bind(actorId, ...objectIds)
+    .all<{ object_id: string }>();
+  return new Set(rows.results.map((r) => r.object_id));
 }
 
 // ─────────────────────────────────────────
@@ -729,14 +746,31 @@ export async function createAnnounce(db: D1Database, announce: LocalAnnounce): P
 }
 
 export async function deleteAnnounce(db: D1Database, actorId: string, objectId: string): Promise<void> {
-  await db
+  const result = await db
     .prepare("DELETE FROM announces WHERE actor_id = ? AND object_id = ?")
     .bind(actorId, objectId)
     .run();
-  await db
-    .prepare("UPDATE objects SET reblogs_count = MAX(0, reblogs_count - 1) WHERE id = ?")
-    .bind(objectId)
-    .run();
+  if (result.meta.changes > 0) {
+    await db
+      .prepare("UPDATE objects SET reblogs_count = MAX(0, reblogs_count - 1) WHERE id = ?")
+      .bind(objectId)
+      .run();
+  }
+}
+
+/** Returns a Set of objectIds (from the provided list) that the given actor has boosted. */
+export async function getAnnouncedObjectIds(
+  db: D1Database,
+  actorId: string,
+  objectIds: string[]
+): Promise<Set<string>> {
+  if (objectIds.length === 0) return new Set();
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT object_id FROM announces WHERE actor_id = ? AND object_id IN (${placeholders})`)
+    .bind(actorId, ...objectIds)
+    .all<{ object_id: string }>();
+  return new Set(rows.results.map((r) => r.object_id));
 }
 
 // ─────────────────────────────────────────

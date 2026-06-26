@@ -479,6 +479,55 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
   const likerActor = await ensureActorCached(ctx.db, actorId);
   if (!likerActor) return;
 
+  // Ensure the liked object exists in our DB (FK on likes.object_id).
+  // If it's a remote post not yet cached, try to fetch and store it.
+  let likedObject = await getObjectById(ctx.db, objectId);
+  if (!likedObject && objectId.startsWith("https://")) {
+    try {
+      const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
+      const fetched = await fetchRemoteObject(
+        objectId,
+        signingKey ? `${signingKey.id}#main-key` : undefined,
+        signingKey?.privateKeyPem
+      ) as APNote | null;
+      if (fetched?.id) {
+        const NOTE_LIKE_TYPES = ["Note", "Article", "Page", "Video", "Audio", "Image", "Question"];
+        if (NOTE_LIKE_TYPES.includes((fetched.type ?? "Note") as string)) {
+          const noteActorId = typeof fetched.attributedTo === "string"
+            ? fetched.attributedTo
+            : (fetched.attributedTo as APActor | undefined)?.id;
+          if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+          await createObject(ctx.db, {
+            id: fetched.id,
+            type: (fetched.type ?? "Note") as string,
+            actorId: noteActorId ?? actorId,
+            content: fetched.content ?? null,
+            contentWarning: fetched.sensitive ? (fetched.summary ?? null) : null,
+            sensitive: fetched.sensitive ?? false,
+            visibility: resolveVisibility(fetched.to, fetched.cc),
+            inReplyToId: fetched.inReplyTo ?? null,
+            language: fetched.contentMap ? Object.keys(fetched.contentMap)[0] : null,
+            url: fetched.url ?? fetched.id,
+            repliesCount: 0,
+            reblogsCount: 0,
+            favouritesCount: 0,
+            published: toUtcIso(fetched.published),
+            local: false,
+            raw: JSON.stringify(fetched),
+          });
+          likedObject = await getObjectById(ctx.db, objectId);
+        }
+      }
+    } catch (e) {
+      console.warn(`[inbox] handleLike: could not fetch liked object ${objectId}: ${e}`);
+    }
+  }
+
+  if (!likedObject) {
+    console.warn(`[inbox] handleLike: dropping like — object ${objectId} not found in DB`);
+    return;
+  }
+
   const existing = await ctx.db
     .prepare("SELECT id FROM likes WHERE actor_id = ? AND object_id = ?")
     .bind(actorId, objectId)
@@ -493,21 +542,18 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
       createdAt: new Date().toISOString(),
     });
 
-    const obj = await getObjectById(ctx.db, objectId);
-    if (obj) {
-      const owner = await getActorById(ctx.db, obj.actorId);
-      if (owner?.isLocal) {
-        await createNotification(ctx.db, {
-          id: generateId(),
-          type: "favourite",
-          accountId: actorId,
-          targetAccountId: obj.actorId,
-          objectId,
-          read: false,
-          createdAt: new Date().toISOString(),
-        });
-        if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, obj.actorId).catch(() => {});
-      }
+    const owner = await getActorById(ctx.db, likedObject.actorId);
+    if (owner?.isLocal) {
+      await createNotification(ctx.db, {
+        id: generateId(),
+        type: "favourite",
+        accountId: actorId,
+        targetAccountId: likedObject.actorId,
+        objectId,
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+      if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, likedObject.actorId).catch(() => {});
     }
   }
 }
