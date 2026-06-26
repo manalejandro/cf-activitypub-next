@@ -29,13 +29,23 @@ export default function TimelinesPage() {
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
   useTimelineStream(streamName, null, (event, payload) => {
-    if (event !== "update") return;
-    try {
-      const status = JSON.parse(payload) as Status;
-      if (seenIdsRef.current.has(status.id)) return;
-      seenIdsRef.current.add(status.id);
-      setStatuses((prev) => [status, ...prev]);
-    } catch { /* ignore malformed payload */ }
+    if (event === "update") {
+      try {
+        const status = JSON.parse(payload) as Status;
+        if (seenIdsRef.current.has(status.id)) return;
+        seenIdsRef.current.add(status.id);
+        setStatuses((prev) => [status, ...prev]);
+      } catch { /* ignore malformed payload */ }
+    } else if (event === "delete") {
+      const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
+      seenIdsRef.current.delete(deletedId);
+      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
+    } else if (event === "status.update") {
+      try {
+        const updated = JSON.parse(payload) as Status;
+        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
+      } catch { /* ignore */ }
+    }
   });
 
   async function fetchMe() {

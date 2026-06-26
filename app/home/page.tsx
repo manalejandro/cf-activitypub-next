@@ -47,13 +47,23 @@ export default function HomePage() {
 
   // Real-time home feed streaming
   useTimelineStream("user", token, (event, payload) => {
-    if (event !== "update") return;
-    try {
-      const status = JSON.parse(payload) as Status;
-      if (seenIdsRef.current.has(status.id)) return;
-      seenIdsRef.current.add(status.id);
-      setStatuses((prev) => [status, ...prev]);
-    } catch { /* ignore */ }
+    if (event === "update") {
+      try {
+        const status = JSON.parse(payload) as Status;
+        if (seenIdsRef.current.has(status.id)) return;
+        seenIdsRef.current.add(status.id);
+        setStatuses((prev) => [status, ...prev]);
+      } catch { /* ignore */ }
+    } else if (event === "delete") {
+      const deletedId = payload.replace(/^"|"$/g, "");
+      seenIdsRef.current.delete(deletedId);
+      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
+    } else if (event === "status.update") {
+      try {
+        const updated = JSON.parse(payload) as Status;
+        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
+      } catch { /* ignore */ }
+    }
   }, { enabled: !!token });
 
   // CW compose state

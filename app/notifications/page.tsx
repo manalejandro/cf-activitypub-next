@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 
 interface Account {
   id: string;
@@ -136,6 +137,25 @@ export default function NotificationsPage() {
     void markAllRead();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Real-time: prepend new notifications as they arrive via streaming.
+  // Payload is currently "{}" so we refetch the latest notification instead.
+  useTimelineStream("user:notification", token, (event) => {
+    if (event !== "notification") return;
+    // Fetch just the latest notification and prepend it if not already seen
+    if (!token) return;
+    fetch("/api/v1/notifications?limit=1", { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json() as Notification[];
+        if (data.length === 0) return;
+        setNotifications((prev) => {
+          if (prev.some((n) => n.id === data[0].id)) return prev;
+          return [data[0], ...prev];
+        });
+      })
+      .catch(() => {});
+  }, { enabled: !!token });
 
   // Infinite scroll
   useEffect(() => {
