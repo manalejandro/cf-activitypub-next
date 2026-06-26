@@ -3,11 +3,12 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, createLike, deleteLike, getLike, getLikedObjectIds, createAnnounce, deleteAnnounce, getAnnounce, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
-import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { buildDelete, buildUpdate, buildNote, buildLike, buildAnnounce, buildUndo, generateId, followersIRI } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
+import { broadcastDelete, broadcastHomeDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, LocalAttachment } from "@/lib/types";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
@@ -142,7 +143,25 @@ export async function PUT(
   }
 
   const updatedObj = await getObjectById(env.DB, obj.id);
-  return json(serializeStatus(updatedObj ?? obj, actor, domain));
+  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain);
+
+  // Broadcast status.update event to streaming clients
+  if (env.TIMELINE_STREAM) {
+    const broadcastTasks: Promise<void>[] = [
+      broadcastStatusUpdate(env.TIMELINE_STREAM, serializedUpdated, /* isLocal */ true),
+      broadcastHomeStatusUpdate(env.TIMELINE_STREAM, actor.id, serializedUpdated),
+    ];
+    const localFollowerRows = await env.DB
+      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+      .bind(actor.id)
+      .all<{ id: string }>();
+    for (const row of localFollowerRows.results) {
+      broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, row.id, serializedUpdated));
+    }
+    await Promise.allSettled(broadcastTasks);
+  }
+
+  return json(serializedUpdated);
 }
 
 // DELETE /api/v1/statuses/:id
@@ -163,13 +182,14 @@ export async function DELETE(
   if (obj.actorId !== actor.id) return json({ error: "Forbidden" }, 403);
 
   const author = await getActorById(env.DB, obj.actorId);
+  // Capture the encoded status ID before deletion (needed for streaming delete event)
+  const encodedStatusId = encodeStatusId(obj.id, obj.local);
   await deleteObject(env.DB, obj.id);
   await updateActor(env.DB, actor.id, { statusesCount: Math.max(0, actor.statusesCount - 1) });
 
-  // Deliver Delete activity
+  // Deliver Delete activity to remote followers
   if (actor.privateKeyPem) {
     const deleteActivity = buildDelete(baseUrl, actor.id, obj.id, generateId());
-    // Get IDs of actors who follow the current user (actor_id = follower, target_id = followed)
     const followers = await env.DB
       .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
       .bind(actor.id)
@@ -184,6 +204,23 @@ export async function DELETE(
     if (inboxes.length > 0) {
       await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), actor.id);
     }
+  }
+
+  // Broadcast streaming delete event
+  if (env.TIMELINE_STREAM) {
+    const isPublic = obj.visibility === "public";
+    const broadcastTasks: Promise<void>[] = [
+      broadcastDelete(env.TIMELINE_STREAM, encodedStatusId, isPublic, /* isLocal */ true),
+      broadcastHomeDelete(env.TIMELINE_STREAM, actor.id, encodedStatusId),
+    ];
+    const localFollowerRows = await env.DB
+      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+      .bind(actor.id)
+      .all<{ id: string }>();
+    for (const row of localFollowerRows.results) {
+      broadcastTasks.push(broadcastHomeDelete(env.TIMELINE_STREAM, row.id, encodedStatusId));
+    }
+    await Promise.allSettled(broadcastTasks);
   }
 
   return json(serializeStatus(obj, author ?? actor, domain));

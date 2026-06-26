@@ -115,3 +115,45 @@ export async function broadcastDelete(
   }
   await Promise.allSettled(tasks);
 }
+
+/**
+ * Broadcast a delete event to a specific actor's home channel.
+ */
+export async function broadcastHomeDelete(
+  ns: DONamespace,
+  actorId: string,
+  statusId: string
+): Promise<void> {
+  await broadcastToChannel(ns, `home:${actorUsername(actorId)}`, "delete", statusId);
+}
+
+/**
+ * Broadcast a status.update event (status was edited) to public channels.
+ */
+export async function broadcastStatusUpdate(
+  ns: DONamespace,
+  status: unknown,
+  isLocal: boolean
+): Promise<void> {
+  const payload = JSON.stringify(status);
+  const visibility = (status as { visibility?: string }).visibility;
+  const tasks: Promise<void>[] = [];
+  if (visibility === "public" || visibility === "unlisted") {
+    tasks.push(broadcastToChannel(ns, "public", "status.update", payload));
+    if (isLocal) {
+      tasks.push(broadcastToChannel(ns, "public:local", "status.update", payload));
+    }
+  }
+  await Promise.allSettled(tasks);
+}
+
+/**
+ * Broadcast a status.update event to a specific actor's home channel.
+ */
+export async function broadcastHomeStatusUpdate(
+  ns: DONamespace,
+  actorId: string,
+  status: unknown
+): Promise<void> {
+  await broadcastToChannel(ns, `home:${actorUsername(actorId)}`, "status.update", JSON.stringify(status));
+}

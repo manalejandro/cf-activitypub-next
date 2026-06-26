@@ -9,11 +9,29 @@
  * Channels:
  *   "public"          — all public statuses (federated / global timeline)
  *   "public:local"    — public statuses from local actors only
- *   "home:{actorId}"  — home feed for a specific authenticated actor
+ *   "home:{username}" — home feed for a specific authenticated actor
  *   "hashtag:{tag}"   — public statuses tagged with a given hashtag
+ *
+ * WebSocket clients may send JSON messages to subscribe/unsubscribe from
+ * additional channels after the initial connection:
+ *   { "type": "subscribe",   "stream": "public" }
+ *   { "type": "unsubscribe", "stream": "hashtag", "tag": "cats" }
  */
 
 import { DurableObject as CFDurableObject } from "cloudflare:workers";
+
+/** Map a Mastodon stream name + optional tag to an internal channel name. */
+function resolveStreamToChannel(stream: string, tag?: string | null): string | null {
+  switch (stream) {
+    case "public":        return "public";
+    case "public:local":  return "public:local";
+    case "hashtag":       return tag ? `hashtag:${tag.toLowerCase()}` : null;
+    case "hashtag:local": return tag ? `hashtag:local:${tag.toLowerCase()}` : null;
+    default:              return null;
+  }
+}
+
+type SocketAttachment = { channels?: string[] };
 
 export class TimelineStreamDO extends CFDurableObject {
   readonly state: DurableObjectState;
@@ -50,8 +68,10 @@ export class TimelineStreamDO extends CFDurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
-    // Tag the hibernated socket with the channel name so we can fan-out by tag
+    // Tag the hibernated socket with the channel name so we can fan-out by tag.
+    // Also store the initial channel in the attachment for dynamic subscription tracking.
     this.state.acceptWebSocket(server, [channel]);
+    server.serializeAttachment({ channels: [] } satisfies SocketAttachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -74,12 +94,19 @@ export class TimelineStreamDO extends CFDurableObject {
     // Mastodon streaming wire format
     const message = JSON.stringify({ stream: [channel], event, payload });
 
-    const sockets = this.state.getWebSockets(channel);
-    for (const ws of sockets) {
-      try {
-        ws.send(message);
-      } catch {
-        // Socket disconnected; hibernation handles cleanup automatically
+    // 1. Send to sockets whose initial channel tag matches
+    const taggedSockets = new Set(this.state.getWebSockets(channel));
+    for (const ws of taggedSockets) {
+      try { ws.send(message); } catch { /* disconnected — hibernation handles cleanup */ }
+    }
+
+    // 2. Also send to sockets that subscribed to this channel dynamically
+    //    via a subscribe message after the initial connection.
+    for (const ws of this.state.getWebSockets()) {
+      if (taggedSockets.has(ws)) continue; // already sent above
+      const attachment = (ws.deserializeAttachment() ?? {}) as SocketAttachment;
+      if (attachment.channels?.includes(channel)) {
+        try { ws.send(message); } catch { /* disconnected */ }
       }
     }
 
@@ -89,9 +116,35 @@ export class TimelineStreamDO extends CFDurableObject {
   // ─── WebSocket Hibernation callbacks ──────────────────────────────────────
 
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
-    // Clients may send "ping" to keep proxies from timing out the connection
-    if (typeof message === "string" && message.trim() === "ping") {
+    if (typeof message !== "string") return;
+    const text = message.trim();
+
+    // Keep-alive ping
+    if (text === "ping") {
       ws.send("pong");
+      return;
+    }
+
+    // Mastodon subscribe / unsubscribe messages
+    try {
+      const msg = JSON.parse(text) as { type?: string; stream?: string; tag?: string };
+      if (!msg.type || !msg.stream) return;
+
+      const channel = resolveStreamToChannel(msg.stream, msg.tag);
+      if (!channel) return;
+
+      const attachment = ((ws.deserializeAttachment() ?? {}) as SocketAttachment);
+      const channels = new Set(attachment.channels ?? []);
+
+      if (msg.type === "subscribe") {
+        channels.add(channel);
+        ws.serializeAttachment({ channels: Array.from(channels) } satisfies SocketAttachment);
+      } else if (msg.type === "unsubscribe") {
+        channels.delete(channel);
+        ws.serializeAttachment({ channels: Array.from(channels) } satisfies SocketAttachment);
+      }
+    } catch {
+      // Not valid JSON — ignore silently
     }
   }
 
