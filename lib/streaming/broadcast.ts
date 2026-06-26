@@ -52,6 +52,9 @@ export async function broadcastPublicStatus(
   ];
   if (isLocal) {
     tasks.push(broadcastToChannel(ns, "public:local", "update", payload));
+  } else {
+    // Remote statuses go to the "public:remote" channel in addition to "public"
+    tasks.push(broadcastToChannel(ns, "public:remote", "update", payload));
   }
   await Promise.allSettled(tasks);
 }
@@ -75,14 +78,24 @@ export async function broadcastHomeStatus(
 
 /**
  * Notify a local actor that they have a new notification.
- * Broadcasts to the "home:{actorId}" channel with event type "notification".
- * The payload is intentionally minimal — clients only need the event type.
+ * Broadcasts to both:
+ *  - "home:{username}"         → `user` stream subscribers (home + notifications)
+ *  - "notification:{username}" → `user:notification` stream subscribers (notifications only)
+ *
+ * Pass the serialized MastodonNotification as `payload` when available so that
+ * clients that support rich notification payloads can display them immediately.
+ * Falls back to "{}" when not provided (clients will fetch via REST).
  */
 export async function broadcastNotificationEvent(
   ns: DONamespace,
   targetActorId: string,
+  payload = "{}"
 ): Promise<void> {
-  await broadcastToChannel(ns, `home:${actorUsername(targetActorId)}`, "notification", "{}");
+  const username = actorUsername(targetActorId);
+  await Promise.allSettled([
+    broadcastToChannel(ns, `home:${username}`, "notification", payload),
+    broadcastToChannel(ns, `notification:${username}`, "notification", payload),
+  ]);
 }
 
 /**

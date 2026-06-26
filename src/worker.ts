@@ -40,54 +40,145 @@ interface Env {
 
 /**
  * Mastodon streaming stream names → internal DO channel names.
- * Clients connect to /api/v1/streaming?stream=<name>[&tag=<hashtag>].
+ * Clients connect to /api/v1/streaming?stream=<name>[&tag=<hashtag>][&list=<id>].
+ *
+ * `user` and `user:notification` are resolved AFTER authentication.
+ * Streams that map to the same underlying channel (e.g. media variants) reuse
+ * the parent channel — the DO just fans out everything and clients filter locally.
  */
-function resolveChannel(stream: string, tag?: string | null): string | null {
+function resolveChannel(
+  stream: string,
+  tag?: string | null,
+  listId?: string | null
+): string | null {
   switch (stream) {
-    case "public":            return "public";
-    case "public:local":      return "public:local";
-    case "user":              return null; // resolved after auth
-    case "hashtag":           return tag ? `hashtag:${tag.toLowerCase()}` : null;
-    case "hashtag:local":     return tag ? `hashtag:local:${tag.toLowerCase()}` : null;
-    default:                  return null;
+    case "public":
+    case "public:media":
+      return "public";
+    case "public:local":
+    case "public:local:media":
+      return "public:local";
+    case "public:remote":
+    case "public:remote:media":
+      return "public:remote";
+    case "user":
+    case "user:notification":
+      return null; // resolved after auth
+    case "hashtag":
+      return tag ? `hashtag:${tag.toLowerCase()}` : null;
+    case "hashtag:local":
+      return tag ? `hashtag:local:${tag.toLowerCase()}` : null;
+    case "list":
+      return listId ? `list:${listId}` : null;
+    case "direct":
+      return null; // resolved after auth
+    default:
+      return null;
   }
+}
+
+/**
+ * Extract a Bearer token from the request, supporting three styles:
+ *  1. `Authorization: Bearer <token>` header (preferred)
+ *  2. `?access_token=<token>` query param (legacy)
+ *  3. `Sec-WebSocket-Protocol: <token>` header (used by Tusky / some mobile apps)
+ */
+function extractToken(request: Request, url: URL): string | null {
+  const authHeader = request.headers.get("Authorization") ?? "";
+  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7).trim();
+  const qp = url.searchParams.get("access_token");
+  if (qp) return qp;
+  // Sec-WebSocket-Protocol: <token> (non-standard but widely used)
+  const proto = request.headers.get("Sec-WebSocket-Protocol") ?? "";
+  if (proto && !proto.includes(",")) return proto.trim();
+  return null;
+}
+
+/** Resolve a token to a DB row, returning null for expired/missing tokens. */
+async function resolveToken(
+  db: D1Database,
+  token: string
+): Promise<{ actor_id: string; username: string } | null> {
+  return db
+    .prepare(
+      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))"
+    )
+    .bind(token)
+    .first<{ actor_id: string; username: string }>();
 }
 
 /**
  * Handle a WebSocket upgrade request for the Mastodon streaming API.
  * Routes the connection to the TimelineStreamDO after authenticating if needed.
+ *
+ * Supports:
+ *  - All Mastodon stream types including user, user:notification, direct, list, hashtag variants
+ *  - Multiplex connections (no ?stream= param): client subscribes via JSON after connecting
+ *  - Three token auth styles: Authorization header, access_token query param, Sec-WebSocket-Protocol
  */
 async function handleStreamingUpgrade(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const stream = url.searchParams.get("stream") ?? "public";
-  const tag    = url.searchParams.get("tag");
+  const streamParam = url.searchParams.get("stream");
+  const tag         = url.searchParams.get("tag");
+  const listId      = url.searchParams.get("list");
 
-  let channel = resolveChannel(stream, tag);
-
-  // Authenticated home stream
-  if (stream === "user") {
-    const token =
-      url.searchParams.get("access_token") ??
-      (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-    if (!token) return new Response("Unauthorized", { status: 401 });
-
-    const row = await env.DB
-      .prepare(
-        "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))"
-      )
-      .bind(token)
-      .first<{ actor_id: string; username: string }>();
-    if (!row?.actor_id) return new Response("Unauthorized", { status: 401 });
-
-    channel = `home:${row.username}`;
+  // ── Multiplex connection (no stream param) ────────────────────────────────
+  // Client will subscribe to streams via JSON messages after connecting.
+  // We need auth to determine the home channel; fall back to "public" only.
+  if (!streamParam) {
+    const token = extractToken(request, url);
+    let channel = "public";
+    if (token) {
+      const row = await resolveToken(env.DB, token);
+      if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      channel = `home:${row.username}`;
+    }
+    return forwardToTimelineDO(env, request, channel);
   }
 
-  if (!channel) return new Response("Unknown stream", { status: 400 });
+  // ── Authenticated streams ──────────────────────────────────────────────────
+  if (streamParam === "user" || streamParam === "user:notification" || streamParam === "direct") {
+    const token = extractToken(request, url);
+    if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    const row = await resolveToken(env.DB, token);
+    if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
 
+    let channel: string;
+    if (streamParam === "user:notification") {
+      channel = `notification:${row.username}`;
+    } else if (streamParam === "direct") {
+      channel = `direct:${row.username}`;
+    } else {
+      // "user" → full home stream (updates + notifications)
+      channel = `home:${row.username}`;
+    }
+    return forwardToTimelineDO(env, request, channel);
+  }
+
+  // ── List stream (requires auth) ────────────────────────────────────────────
+  if (streamParam === "list") {
+    if (!listId) return new Response(JSON.stringify({ error: "Missing list parameter" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    const token = extractToken(request, url);
+    if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    const row = await resolveToken(env.DB, token);
+    if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    return forwardToTimelineDO(env, request, `list:${listId}`);
+  }
+
+  // ── Public / hashtag streams ───────────────────────────────────────────────
+  const channel = resolveChannel(streamParam, tag, listId);
+  if (!channel) {
+    return new Response(JSON.stringify({ error: "Unknown channel requested" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return forwardToTimelineDO(env, request, channel);
+}
+
+function forwardToTimelineDO(env: Env, request: Request, channel: string): Promise<Response> | Response {
   const doId = env.TIMELINE_STREAM.idFromName("timeline");
   const stub = env.TIMELINE_STREAM.get(doId);
-
-  // Forward the original request to the DO with the resolved channel
   const doUrl = `https://timeline-do/connect?channel=${encodeURIComponent(channel)}`;
   return stub.fetch(new Request(doUrl, request));
 }
@@ -160,13 +251,15 @@ async function handleCallSignalingUpgrade(
 
 export default {
   // Proxy all HTTP requests to the OpenNext Next.js handler,
-  // but intercept WebSocket upgrades for the streaming endpoint first.
+  // but intercept streaming and WebSocket endpoints first.
   async fetch(
     request: Request,
     env: Env,
     ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
+
+    // ── WebSocket upgrades ────────────────────────────────────────────────────
     if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
       if (url.pathname === "/api/v1/streaming") {
         return handleStreamingUpgrade(request, env);

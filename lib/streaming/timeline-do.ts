@@ -20,14 +20,33 @@
 
 import { DurableObject as CFDurableObject } from "cloudflare:workers";
 
-/** Map a Mastodon stream name + optional tag to an internal channel name. */
-function resolveStreamToChannel(stream: string, tag?: string | null): string | null {
+/** Map a Mastodon stream name + optional tag/list to an internal channel name. */
+function resolveStreamToChannel(stream: string, tag?: string | null, listId?: string | null): string | null {
   switch (stream) {
-    case "public":        return "public";
-    case "public:local":  return "public:local";
-    case "hashtag":       return tag ? `hashtag:${tag.toLowerCase()}` : null;
-    case "hashtag:local": return tag ? `hashtag:local:${tag.toLowerCase()}` : null;
-    default:              return null;
+    case "public":
+    case "public:media":
+      return "public";
+    case "public:local":
+    case "public:local:media":
+      return "public:local";
+    case "public:remote":
+    case "public:remote:media":
+      return "public:remote";
+    case "hashtag":
+      return tag ? `hashtag:${tag.toLowerCase()}` : null;
+    case "hashtag:local":
+      return tag ? `hashtag:local:${tag.toLowerCase()}` : null;
+    case "list":
+      return listId ? `list:${listId}` : null;
+    // user, user:notification, direct are server-resolved before connecting;
+    // clients may also subscribe to them dynamically via subscribe message.
+    // We accept them but can only serve if the initial connection was already authenticated.
+    case "user":
+    case "user:notification":
+    case "direct":
+      return null; // can't resolve without user context here
+    default:
+      return null;
   }
 }
 
@@ -127,11 +146,15 @@ export class TimelineStreamDO extends CFDurableObject {
 
     // Mastodon subscribe / unsubscribe messages
     try {
-      const msg = JSON.parse(text) as { type?: string; stream?: string; tag?: string };
+      const msg = JSON.parse(text) as { type?: string; stream?: string; tag?: string; list?: string };
       if (!msg.type || !msg.stream) return;
 
-      const channel = resolveStreamToChannel(msg.stream, msg.tag);
-      if (!channel) return;
+      const channel = resolveStreamToChannel(msg.stream, msg.tag, msg.list);
+      if (!channel) {
+        // Per Mastodon spec: send error JSON over the socket for unknown streams
+        ws.send(JSON.stringify({ error: "Unknown stream type", status: 400 }));
+        return;
+      }
 
       const attachment = ((ws.deserializeAttachment() ?? {}) as SocketAttachment);
       const channels = new Set(attachment.channels ?? []);
