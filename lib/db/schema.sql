@@ -308,3 +308,16 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 
 CREATE INDEX IF NOT EXISTS idx_email_verif_token ON email_verifications(token);
 CREATE INDEX IF NOT EXISTS idx_email_verif_actor ON email_verifications(actor_id);
+
+-- ─────────────────────────────────────────
+-- Followed hashtags (per user)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS followed_tags (
+  id         TEXT PRIMARY KEY,
+  actor_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  tag_name   TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, tag_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_followed_tags_actor ON followed_tags(actor_id);

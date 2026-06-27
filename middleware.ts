@@ -24,8 +24,8 @@ export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const method = request.method;
 
-  // Handle CORS preflight for API routes
-  if (method === "OPTIONS" && pathname.startsWith("/api/")) {
+  // Handle CORS preflight for API and nodeinfo routes
+  if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
     return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
   }
 
@@ -82,8 +82,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // Add CORS headers to all API responses
-  if (pathname.startsWith("/api/")) {
+  // Add CORS headers to all API and nodeinfo responses
+  if (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/")) {
     const response = NextResponse.next();
     Object.entries(CORS_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
     return response;
@@ -95,5 +95,5 @@ export function middleware(request: NextRequest) {
 export const config = {
   // "/@:path*" compiles to a regex that requires a slash between @ and the username,
   // so it never matches /@ale. Use separate patterns for exact and sub-path cases.
-  matcher: ["/users/:path*", "/api/:path*", "/@:username", "/@:username/:path*"],
+  matcher: ["/users/:path*", "/api/:path*", "/nodeinfo/:path*", "/@:username", "/@:username/:path*"],
 };
