@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// CORS headers for all API routes (ActivityPub federation + Mastodon API)
-const CORS_HEADERS: Record<string, string> = {
+// CORS headers — only used for OPTIONS preflight responses.
+// Regular response CORS headers are added via next.config.ts headers() config,
+// which does NOT interfere with response bodies (unlike NextResponse.next() modifications).
+const CORS_PREFLIGHT_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
@@ -20,13 +22,18 @@ function isAPRequest(request: NextRequest): boolean {
   return AP_TYPES.some((t) => accept.includes(t));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const method = request.method;
 
-  // Handle CORS preflight for API and nodeinfo routes
-  if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+  // Handle CORS preflight for API, nodeinfo and well-known routes.
+  if (
+    method === "OPTIONS" &&
+    (pathname.startsWith("/api/") ||
+      pathname.startsWith("/nodeinfo/") ||
+      pathname.startsWith("/.well-known/"))
+  ) {
+    return new NextResponse(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
   }
 
   // /inbox and /users/:username/inbox are handled by direct Next.js route files
@@ -47,11 +54,8 @@ export function middleware(request: NextRequest) {
   if (actorMatch && method === "GET" && isAPRequest(request)) {
     const url = request.nextUrl.clone();
     url.pathname = `/api/users/${actorMatch[1]}`;
-    // preserve any query params
     searchParams.forEach((v, k) => url.searchParams.set(k, v));
-    const rewriteResponse = NextResponse.rewrite(url);
-    Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
-    return rewriteResponse;
+    return NextResponse.rewrite(url);
   }
 
   // Rewrite /@username (Mastodon profile URL convention) → /users/username
@@ -65,15 +69,18 @@ export function middleware(request: NextRequest) {
     // AP clients requesting /@username → serve actor JSON
     if (isAPRequest(request)) {
       url.pathname = `/api/users/${username}`;
-      const rewriteResponse = NextResponse.rewrite(url);
-      Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
-      return rewriteResponse;
+      return NextResponse.rewrite(url);
     }
 
     // /@username/statusId → /statuses/statusId (status permalink)
     const statusId = rest.slice(1); // strip leading /
-    if (rest && !["with_replies", "media", "followers", "following"].some((p) => statusId.startsWith(p)) &&
-        statusId.length > 0) {
+    if (
+      rest &&
+      !["with_replies", "media", "followers", "following"].some((p) =>
+        statusId.startsWith(p)
+      ) &&
+      statusId.length > 0
+    ) {
       url.pathname = `/statuses/${statusId}`;
     } else {
       url.pathname = `/users/${username}`;
@@ -82,18 +89,16 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // Add CORS headers to all API and nodeinfo responses
-  if (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/")) {
-    const response = NextResponse.next();
-    Object.entries(CORS_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
-    return response;
-  }
-
   return NextResponse.next();
 }
 
 export const config = {
-  // "/@:path*" compiles to a regex that requires a slash between @ and the username,
-  // so it never matches /@ale. Use separate patterns for exact and sub-path cases.
-  matcher: ["/users/:path*", "/api/:path*", "/nodeinfo/:path*", "/@:username", "/@:username/:path*"],
+  matcher: [
+    "/users/:path*",
+    "/api/:path*",
+    "/nodeinfo/:path*",
+    "/.well-known/:path*",
+    "/@:username",
+    "/@:username/:path*",
+  ],
 };
