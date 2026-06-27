@@ -8,7 +8,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   return json({
     issuer: origin,
     authorization_endpoint: `${origin}/oauth/authorize`,
-    token_endpoint: `${origin}/api/oauth/token`,
+    token_endpoint: `${origin}/oauth/token`,
     revocation_endpoint: `${origin}/oauth/revoke`,
     scopes_supported: ["read", "write", "follow", "push", "admin:read", "admin:write"],
     response_types_supported: ["code"],
