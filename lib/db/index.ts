@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 import type {
   LocalActor,
   ActorField,
@@ -253,6 +254,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
 export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise<void> {
   const domain = new URL(actor.id).hostname;
   const username = (actor.preferredUsername ?? "").toLowerCase();
+  const displayName = sanitizeFediversePlain(actor.name ?? null);
+  const summary = sanitizeRemoteActorSummary(actor.summary ?? null);
   try {
     await db
       .prepare(
@@ -278,8 +281,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
         actor.id,
         username,
         domain,
-        actor.name ?? null,
-        actor.summary ?? null,
+        displayName,
+        summary,
         actor.icon?.url ?? null,
         actor.image?.url ?? null,
         actor.publicKey.publicKeyPem,
@@ -303,8 +306,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
         )
         .bind(
           actor.id,
-          actor.name ?? null,
-          actor.summary ?? null,
+          displayName,
+          summary,
           actor.icon?.url ?? null,
           actor.image?.url ?? null,
           actor.publicKey.publicKeyPem,

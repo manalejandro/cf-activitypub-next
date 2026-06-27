@@ -19,6 +19,7 @@ import type {
   MastodonInstance,
 } from "@/lib/types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
+import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
 
 // ─────────────────────────────────────────
 // Account serializer
@@ -49,7 +50,7 @@ export function serializeAccount(
     indexable: actor.discoverable,
     noindex: !actor.discoverable,
     created_at: actor.createdAt ?? new Date().toISOString(),
-    note: actor.summary ?? "",
+    note: sanitizeFediverseHtml(actor.summary ?? "") ?? "",
     url: isLocal ? `https://${localDomain}/users/${actor.username}` : actor.id,
     uri: actor.id,
     avatar: actor.avatarUrl ?? DEFAULT_AVATAR,
@@ -64,8 +65,8 @@ export function serializeAccount(
     emojis: [],
     roles: [],
     fields: (opts.fields ?? []).map((f) => ({
-      name: f.name,
-      value: f.value,
+      name: sanitizeFediversePlain(f.name) ?? f.name,
+      value: sanitizeFediverseHtml(f.value) ?? f.value,
       verified_at: null,
     })),
   };
@@ -118,7 +119,7 @@ export function serializeStatus(
       : null,
     in_reply_to_account_id: null,
     sensitive: obj.sensitive,
-    spoiler_text: obj.contentWarning ?? "",
+    spoiler_text: sanitizeFediversePlain(obj.contentWarning ?? "") ?? "",
     visibility: visibilityMap[obj.visibility] ?? "public",
     language: obj.language ?? null,
     uri: obj.id,
@@ -127,7 +128,7 @@ export function serializeStatus(
     reblogs_count: obj.reblogsCount,
     favourites_count: obj.favouritesCount,
     edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? obj.updatedAt : null,
-    content: obj.content ?? "",
+    content: sanitizeFediverseHtml(obj.content ?? "") ?? "",
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain),

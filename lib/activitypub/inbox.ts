@@ -36,6 +36,7 @@ import {
 import { deliverToInbox, fetchRemoteObject } from "./federation";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent } from "@/lib/streaming/broadcast";
 import { serializeStatus } from "@/lib/mastodon/serializers";
+import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DONamespace = { idFromName(name: string): any; get(id: any): { fetch(input: string | URL, init?: RequestInit): Promise<Response> } };
@@ -185,12 +186,18 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   const existing = await getObjectById(ctx.db, obj.id);
   if (existing) return; // Already stored
 
+  const { content, contentWarning } = sanitizeRemoteNoteContent(
+    obj.content,
+    obj.summary,
+    obj.sensitive ?? false
+  );
+
   await createObject(ctx.db, {
     id: obj.id,
     type: "Note",
     actorId,
-    content: obj.content ?? null,
-    contentWarning: obj.sensitive ? (obj.summary ?? null) : null,
+    content,
+    contentWarning,
     sensitive: obj.sensitive ?? false,
     visibility: resolveVisibility(obj.to, obj.cc),
     inReplyToId: obj.inReplyTo ?? null,
@@ -286,9 +293,8 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       const published = toUtcIso(obj.published);
       const serializedStatus = serializeStatus(
         {
-          id: obj.id, type: "Note", actorId, content: obj.content ?? null,
-          contentWarning: obj.sensitive ? (obj.summary ?? null) : null,
-          sensitive: obj.sensitive ?? false, visibility: statusVisibility,
+          id: obj.id, type: "Note", actorId, content,
+          contentWarning, sensitive: obj.sensitive ?? false, visibility: statusVisibility,
           inReplyToId: obj.inReplyTo ?? null,
           language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
           url: obj.url ?? obj.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0,
@@ -497,12 +503,17 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
             ? fetched.attributedTo
             : (fetched.attributedTo as APActor | undefined)?.id;
           if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+          const { content, contentWarning } = sanitizeRemoteNoteContent(
+            fetched.content,
+            fetched.summary,
+            fetched.sensitive ?? false
+          );
           await createObject(ctx.db, {
             id: fetched.id,
             type: (fetched.type ?? "Note") as string,
             actorId: noteActorId ?? actorId,
-            content: fetched.content ?? null,
-            contentWarning: fetched.sensitive ? (fetched.summary ?? null) : null,
+            content,
+            contentWarning,
             sensitive: fetched.sensitive ?? false,
             visibility: resolveVisibility(fetched.to, fetched.cc),
             inReplyToId: fetched.inReplyTo ?? null,
@@ -588,12 +599,17 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
           ? fetched.attributedTo
           : (fetched.attributedTo as APActor | undefined)?.id;
         if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+        const { content, contentWarning } = sanitizeRemoteNoteContent(
+          fetched.content,
+          fetched.summary,
+          fetched.sensitive ?? false
+        );
         await createObject(ctx.db, {
           id: fetched.id,
           type: (fetched as APNote).type ?? "Note",
           actorId: noteActorId ?? actorId,
-          content: fetched.content ?? null,
-          contentWarning: fetched.sensitive ? (fetched.summary ?? null) : null,
+          content,
+          contentWarning,
           sensitive: fetched.sensitive ?? false,
           visibility: resolveVisibility(fetched.to, fetched.cc),
           inReplyToId: fetched.inReplyTo ?? null,
@@ -682,8 +698,8 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     // Never trust publicKey from the activity body — that field is only updated
     // by upsertRemoteActor after a fresh signed fetch from the canonical URL.
     await updateActor(ctx.db, actor.id, {
-      displayName: actor.name ?? null,
-      summary: actor.summary ?? null,
+      displayName: sanitizeFediversePlain(actor.name ?? null),
+      summary: sanitizeRemoteActorSummary(actor.summary ?? null),
       avatarUrl: actor.icon?.url ?? null,
       headerUrl: actor.image?.url ?? null,
       discoverable: actor.discoverable ?? true,

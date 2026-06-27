@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 
 export interface RemoteActorResult {
   id: string;
@@ -64,6 +65,9 @@ export async function fetchAndCacheRemoteActor(
       resolveCollectionCount(p.outbox),
     ]);
 
+    const displayName = sanitizeFediversePlain((p.name as string) ?? username);
+    const summary = sanitizeRemoteActorSummary((p.summary as string) ?? null);
+
     // Upsert — update if already exists (in case profile changed).
     // Falls back to UPDATE by username+domain when the actor migrated to a new URL.
     try {
@@ -91,8 +95,8 @@ export async function fetchAndCacheRemoteActor(
         )
         .bind(
           id, usernameNorm, domain,
-          (p.name as string) ?? username,
-          (p.summary as string) ?? null,
+          displayName,
+          summary,
           (p.icon as Record<string, string>)?.url ?? null,
           (p.image as Record<string, string>)?.url ?? null,
           pubKey,
@@ -121,8 +125,8 @@ export async function fetchAndCacheRemoteActor(
           )
           .bind(
             id,
-            (p.name as string) ?? username,
-            (p.summary as string) ?? null,
+            displayName,
+            summary,
             (p.icon as Record<string, string>)?.url ?? null,
             (p.image as Record<string, string>)?.url ?? null,
             pubKey,
