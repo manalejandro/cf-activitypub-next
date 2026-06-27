@@ -10,8 +10,8 @@ const cspHeader = [
   // Allow images from any HTTPS source (federated content may come from remote servers)
   "img-src 'self' data: blob: https:",
   "font-src 'self'",
-  // Allow connections to our own origin Google Analytics
-  "connect-src 'self' https://region1.google-analytics.com https://www.google-analytics.com https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
+  // Allow connections to our own origin, the visit tracker, and Google Analytics
+  "connect-src 'self' https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
   "frame-src https://challenges.cloudflare.com",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
@@ -47,18 +47,7 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    const CORS = [
-      { key: "Access-Control-Allow-Origin", value: "*" },
-      { key: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, OPTIONS" },
-      { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, Accept" },
-    ];
     return [
-      // CORS for all API, nodeinfo and well-known routes.
-      // Using headers() instead of proxy NextResponse.next() avoids POST body loss.
-      { source: "/api/:path*", headers: CORS },
-      { source: "/nodeinfo/:path*", headers: CORS },
-      { source: "/.well-known/:path*", headers: CORS },
-      { source: "/oauth/:path*", headers: CORS },
       {
         source: "/:path*",
         headers: [
