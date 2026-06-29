@@ -4,7 +4,7 @@
  * Returns ICE server configuration (STUN + TURN) for WebRTC.
  *
  * Primary: fetches TURN+STUN credentials from the Cloudflare Calls API
- * using CALLS_APP_ID / CALLS_APP_SECRET secrets.
+ * using CALLS_TURN_KEY_ID / CALLS_API_TOKEN secrets.
  *
  * Fallback: if the API is unavailable or credentials are missing, returns
  * public STUN-only servers so peer-to-peer connections (no TURN relay)
@@ -14,8 +14,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-
-const CLOUDFLARE_CALLS_API = "https://rtc.live.cloudflare.com/v1";
 
 const FALLBACK_STUN: RTCIceServer[] = [
   { urls: "stun:stun.cloudflare.com:3478" },
@@ -29,14 +27,14 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  if (env.CALLS_APP_ID && env.CALLS_APP_SECRET) {
+  if (env.CALLS_TURN_KEY_ID && env.CALLS_API_TOKEN) {
     try {
       const res = await fetch(
-        `${CLOUDFLARE_CALLS_API}/apps/${env.CALLS_APP_ID}/turn-credentials`,
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${env.CALLS_TURN_KEY_ID}/credentials/generate-ice-servers`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${env.CALLS_APP_SECRET}`,
+            Authorization: `Bearer ${env.CALLS_API_TOKEN}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ ttl: 86400 }),
@@ -44,19 +42,18 @@ export async function GET(request: NextRequest): Promise<Response> {
       );
 
       if (res.ok) {
-        const data = await res.json() as {
-          iceServers?: RTCIceServer[];
-          result?: { iceServers: RTCIceServer[] };
-        };
-
-        const iceServers: RTCIceServer[] = data.iceServers ?? data.result?.iceServers ?? [];
+        const data = await res.json() as Record<string, unknown>;
+        const iceServers: RTCIceServer[] = (data.iceServers as RTCIceServer[] | undefined) ?? [];
 
         if (iceServers.length > 0) {
           return json({ iceServers });
         }
+      } else {
+        const body = await res.text().catch(() => "(no body)");
+        console.error(`Cloudflare Calls API error: ${res.status} ${res.statusText} — ${body}`);
       }
-    } catch {
-      // Fall through to STUN-only fallback
+    } catch (err) {
+      console.error("Cloudflare Calls API fetch failed:", err);
     }
   }
 

@@ -15,10 +15,10 @@ export interface CloudflareEnv {
   INSTANCE_VERSION: string;
   INSTANCE_URL: string;
   NODE_ENV: string;
-  /** Optional: Cloudflare Calls app ID for TURN credential generation */
-  CALLS_APP_ID?: string;
-  /** Optional: Cloudflare Calls app secret for TURN credential generation */
-  CALLS_APP_SECRET?: string;
+/** Optional: Cloudflare Calls Turn Key ID for TURN credential generation */
+CALLS_TURN_KEY_ID?: string;
+/** Optional: Cloudflare API token with calls:turn permission for TURN credential generation */
+CALLS_API_TOKEN?: string;
   /** Cloudflare Turnstile secret key — set via: wrangler secret put TURNSTILE_SECRET */
   TURNSTILE_SECRET: string;
   /** Cloudflare Turnstile public site key */
