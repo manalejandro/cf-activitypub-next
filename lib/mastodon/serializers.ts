@@ -45,7 +45,7 @@ function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; 
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[] } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -84,6 +84,8 @@ export function serializeAccount(
       verified_at: null,
     })),
   };
+
+  account.supports_calls = opts.supportsCalls ?? isLocal;
 
   if (opts.isCurrentUser) {
     account.source = {
@@ -258,6 +260,7 @@ export function serializeInstanceV2(
         min_expiration: 300,
         max_expiration: 2_629_746,
       },
+      calls: { enabled: true },
     },
     registrations: { enabled: true, approval_required: false, message: null },
     contact: { email: `admin@${domain}`, account: contactAccount },

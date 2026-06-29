@@ -1,9 +1,11 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
+import { getDomainCallsSupport, setDomainCallsSupport, setActorFields } from "@/lib/db";
 
 export interface RemoteActorResult {
   id: string;
   inbox: string;
+  domain: string;
 }
 
 /**
@@ -32,6 +34,37 @@ async function resolveCollectionCount(field: unknown): Promise<number> {
     } catch { /* ignore */ }
   }
   return 0;
+}
+
+/**
+ * Probe a remote domain for call support by checking the Mastodon-compatible
+ * /api/v2/instance (or /api/v1/instance) endpoint for a `calls` configuration.
+ * Results are cached in the domain_capabilities table.
+ */
+async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<boolean> {
+  if (await getDomainCallsSupport(db, domain)) return true;
+
+  const tryFetch = async (url: string): Promise<boolean> => {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return false;
+      const data = await res.json() as Record<string, unknown>;
+      const config = data.configuration as Record<string, unknown> | undefined;
+      return config?.calls !== undefined;
+    } catch {
+      return false;
+    }
+  };
+
+  const supported =
+    (await tryFetch(`https://${domain}/api/v2/instance`)) ||
+    (await tryFetch(`https://${domain}/api/v1/instance`));
+
+  await setDomainCallsSupport(db, domain, supported);
+  return supported;
 }
 
 /** Fetch a remote ActivityPub actor profile and cache it in D1. */
@@ -146,7 +179,25 @@ export async function fetchAndCacheRemoteActor(
       } catch { /* ignore */ }
     }
 
-    return { id, inbox };
+    // Save profile fields (PropertyValue attachments)
+    try {
+      const attachment = p.attachment;
+      const fields: { name: string; value: string }[] = [];
+      if (Array.isArray(attachment)) {
+        for (const entry of attachment) {
+          const e = entry as Record<string, unknown>;
+          if (e.type === "PropertyValue" && typeof e.name === "string" && typeof e.value === "string") {
+            fields.push({ name: e.name, value: e.value });
+          }
+        }
+      }
+      await setActorFields(db, id, fields);
+    } catch { /* ignore field errors */ }
+
+    // Probe domain call support (fire-and-forget to avoid blocking the response)
+    void probeDomainCallsSupport(db, domain);
+
+    return { id, inbox, domain };
   } catch {
     return null;
   }

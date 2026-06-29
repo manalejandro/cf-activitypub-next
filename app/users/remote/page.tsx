@@ -33,6 +33,7 @@ interface Account {
   url: string;
   created_at: string;
   fields?: MastodonField[];
+  supports_calls?: boolean;
 }
 
 interface PollOption { title: string; votes_count: number | null }
@@ -506,30 +507,32 @@ function RemoteProfileInner() {
                   >
                     {blockBusy ? "…" : relationship?.blocking ? "🚫 Bloqueado" : "🚫"}
                   </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ border: "1px solid var(--border)" }}
-                    title="Llamada de voz"
-                    onClick={() => void initiateCall(account.acct, "audio")}
-                  >
-                    📞
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ border: "1px solid var(--border)" }}
-                    title="Videollamada"
-                    onClick={() => void initiateCall(account.acct, "video")}
-                  >
-                    📹
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ border: "1px solid var(--border)" }}
-                    title="Compartir pantalla"
-                    onClick={() => void initiateCall(account.acct, "screen")}
-                  >
-                    🖥️
-                  </button>
+                  {account.supports_calls && (<>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Llamada de voz"
+                      onClick={() => void initiateCall(account.acct, "audio")}
+                    >
+                      📞
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Videollamada"
+                      onClick={() => void initiateCall(account.acct, "video")}
+                    >
+                      📹
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      title="Compartir pantalla"
+                      onClick={() => void initiateCall(account.acct, "screen")}
+                    >
+                      🖥️
+                    </button>
+                  </>)}
                 </>
               )}
             </div>

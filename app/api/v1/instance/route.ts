@@ -53,6 +53,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         min_expiration: 300,
         max_expiration: 2_629_746,
       },
+      calls: { enabled: true },
     },
   });
 }

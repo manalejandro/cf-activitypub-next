@@ -31,6 +31,7 @@ interface Account {
   url: string;
   created_at: string;
   fields: MastodonField[];
+  supports_calls?: boolean;
   source?: {
     note: string;
     fields: MastodonField[];
@@ -852,30 +853,32 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                     >
                       {blockBusy ? "…" : relationship?.blocking ? "🚫 Bloqueado" : "🚫"}
                     </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ border: "1px solid var(--border)" }}
-                      title="Voice call"
-                      onClick={() => void initiateCall(account.acct, "audio")}
-                    >
-                      📞
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ border: "1px solid var(--border)" }}
-                      title="Video call"
-                      onClick={() => void initiateCall(account.acct, "video")}
-                    >
-                      📹
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ border: "1px solid var(--border)" }}
-                      title="Share screen"
-                      onClick={() => void initiateCall(account.acct, "screen")}
-                    >
-                      🖥️
-                    </button>
+                    {account.supports_calls && (<>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ border: "1px solid var(--border)" }}
+                        title="Voice call"
+                        onClick={() => void initiateCall(account.acct, "audio")}
+                      >
+                        📞
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ border: "1px solid var(--border)" }}
+                        title="Video call"
+                        onClick={() => void initiateCall(account.acct, "video")}
+                      >
+                        📹
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ border: "1px solid var(--border)" }}
+                        title="Share screen"
+                        onClick={() => void initiateCall(account.acct, "screen")}
+                      >
+                        🖥️
+                      </button>
+                    </>)}
                   </>
                 ) : (
                   <Link href="/login" className="btn btn-primary btn-sm">{t.account_follow}</Link>

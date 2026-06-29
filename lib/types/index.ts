@@ -314,6 +314,7 @@ export interface MastodonAccount {
   limited?: boolean;
   memorial?: boolean;
   source?: MastodonSource;
+  supports_calls?: boolean;
 }
 
 export interface MastodonStatus {
@@ -511,6 +512,7 @@ export interface MastodonInstance {
       video_matrix_limit: number;
     };
     polls: { max_options: number; max_characters_per_option: number; min_expiration: number; max_expiration: number };
+    calls?: { enabled: boolean };
   };
   registrations: { enabled: boolean; approval_required: boolean; message: null };
   contact: { email: string; account: MastodonAccount | null };

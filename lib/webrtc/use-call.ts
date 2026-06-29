@@ -69,7 +69,7 @@ async function getIceServers(accessToken?: string | null): Promise<RTCIceServerC
       return data.iceServers ?? [];
     }
   } catch { /* ignore */ }
-  return [{ urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:stun.l.google.com:19302" }];
+  return [];
 }
 
 export function useCall(accessToken?: string | null): UseCallReturn {

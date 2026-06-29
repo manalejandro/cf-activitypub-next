@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getFollow, getActorFields } from "@/lib/db";
+import { getActorById, getActorStatuses, getFollow, getActorFields, getDomainCallsSupport } from "@/lib/db";
 import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
@@ -14,6 +14,7 @@ export async function GET(
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const rawId = decodeURIComponent(id);
+  let supportsCalls: boolean | undefined;
 
   let actor = await getActorById(env.DB, rawId);
 
@@ -23,11 +24,14 @@ export async function GET(
     const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId);
     if (refreshed) {
       actor = await getActorById(env.DB, refreshed.id) ?? actor;
+      if (refreshed.domain !== domain) {
+        supportsCalls = await getDomainCallsSupport(env.DB, refreshed.domain);
+      }
     }
   }
 
   if (!actor) return notFound("Account not found");
 
   const fields = await getActorFields(env.DB, actor.id);
-  return json(serializeAccount(actor, domain, { fields }));
+  return json(serializeAccount(actor, domain, { fields, supportsCalls }));
 }

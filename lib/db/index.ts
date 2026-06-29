@@ -1346,3 +1346,26 @@ export async function getCustomEmojisByDomain(
   return rows.results.map(rowToCustomEmoji);
 }
 
+// ─────────────────────────────────────────
+// Domain capabilities
+// ─────────────────────────────────────────
+
+export async function getDomainCallsSupport(db: D1Database, domain: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT supports_calls FROM domain_capabilities WHERE domain = ?")
+    .bind(domain)
+    .first<{ supports_calls: number }>();
+  return row !== null && row.supports_calls === 1;
+}
+
+export async function setDomainCallsSupport(db: D1Database, domain: string, supportsCalls: boolean): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO domain_capabilities (domain, supports_calls, checked_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(domain) DO UPDATE SET supports_calls = excluded.supports_calls, checked_at = datetime('now')`
+    )
+    .bind(domain, supportsCalls ? 1 : 0)
+    .run();
+}
+

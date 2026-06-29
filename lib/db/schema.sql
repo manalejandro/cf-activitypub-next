@@ -342,3 +342,12 @@ CREATE TABLE IF NOT EXISTS followed_tags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_followed_tags_actor ON followed_tags(actor_id);
+
+-- ─────────────────────────────────────────
+-- Domain capabilities (call support, etc.)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS domain_capabilities (
+  domain          TEXT PRIMARY KEY,
+  supports_calls  INTEGER NOT NULL DEFAULT 0,
+  checked_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
