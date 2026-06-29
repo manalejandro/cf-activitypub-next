@@ -229,6 +229,20 @@ export interface LocalNotification {
   createdAt: string;
 }
 
+export interface LocalCustomEmoji {
+  id: string;
+  shortcode: string;
+  url: string;
+  staticUrl: string;
+  category: string | null;
+  visibleInPicker: boolean;
+  domain: string | null;
+  actorId: string | null;
+  disabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LocalAttachment {
   id: string;
   objectId: string;
@@ -347,7 +361,7 @@ export interface MastodonPoll {
   voted: boolean;
   own_votes: number[];
   options: { title: string; votes_count: number | null }[];
-  emojis: [];
+  emojis: MastodonEmoji[];
 }
 
 export interface MastodonAttachment {

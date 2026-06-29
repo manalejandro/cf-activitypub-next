@@ -12,6 +12,7 @@ import {
   createPoll,
   getPollByObjectId,
   getPollOptions,
+  getAllCustomEmojis,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -79,8 +80,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
 
-  // Process content: linkify mentions, hashtags, URLs → HTML
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
+  // Process content: linkify mentions, hashtags, URLs, custom emoji → HTML
+  const localEmojis = await getAllCustomEmojis(env.DB);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis);
 
   const id = generateId();
   const published = new Date().toISOString();

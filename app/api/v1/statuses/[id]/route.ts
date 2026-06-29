@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, createLike, deleteLike, getLike, getLikedObjectIds, createAnnounce, deleteAnnounce, getAnnounce, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, createLike, deleteLike, getLike, getLikedObjectIds, createAnnounce, deleteAnnounce, getAnnounce, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
@@ -46,11 +46,12 @@ export async function GET(
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  const [attachments, pollDb, likedIds, announcedIds] = await Promise.all([
+  const [attachments, pollDb, likedIds, announcedIds, allEmojis] = await Promise.all([
     getAttachmentsByObjectId(env.DB, obj.id),
     getPollByObjectId(env.DB, obj.id),
     authActor ? getLikedObjectIds(env.DB, authActor.id, [obj.id]) : Promise.resolve(new Set<string>()),
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, [obj.id]) : Promise.resolve(new Set<string>()),
+    getAllCustomEmojis(env.DB),
   ]);
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
@@ -59,6 +60,7 @@ export async function GET(
     poll,
     favourited: likedIds.has(obj.id),
     reblogged: announcedIds.has(obj.id),
+    emojis: allEmojis,
   }));
 }
 
@@ -143,7 +145,8 @@ export async function PUT(
   }
 
   const updatedObj = await getObjectById(env.DB, obj.id);
-  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain);
+  const allEmojis = await getAllCustomEmojis(env.DB);
+  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain, { emojis: allEmojis });
 
   // Broadcast status.update event to streaming clients
   if (env.TIMELINE_STREAM) {
@@ -223,5 +226,6 @@ export async function DELETE(
     await Promise.allSettled(broadcastTasks);
   }
 
-  return json(serializeStatus(obj, author ?? actor, domain));
+  const allEmojis = await getAllCustomEmojis(env.DB);
+  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis }));
 }

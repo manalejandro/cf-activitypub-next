@@ -310,6 +310,27 @@ CREATE INDEX IF NOT EXISTS idx_email_verif_token ON email_verifications(token);
 CREATE INDEX IF NOT EXISTS idx_email_verif_actor ON email_verifications(actor_id);
 
 -- ─────────────────────────────────────────
+-- Custom emojis (local + federated)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS custom_emojis (
+  id              TEXT PRIMARY KEY,
+  shortcode       TEXT NOT NULL,
+  url             TEXT NOT NULL,
+  static_url      TEXT NOT NULL,
+  category        TEXT,
+  visible_in_picker INTEGER NOT NULL DEFAULT 1,
+  domain          TEXT,                       -- source instance domain (null = local)
+  actor_id        TEXT REFERENCES actors(id) ON DELETE SET NULL,
+  disabled        INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (shortcode, domain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_emojis_shortcode ON custom_emojis(shortcode);
+CREATE INDEX IF NOT EXISTS idx_custom_emojis_domain    ON custom_emojis(domain);
+
+-- ─────────────────────────────────────────
 -- Followed hashtags (per user)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS followed_tags (

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getPollsByObjectIds } from "@/lib/db";
+import { getObjectById, getActorById, getPollsByObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalObject, LocalActor } from "@/lib/types";
@@ -66,7 +66,10 @@ export async function GET(
   }
 
   const serializeAll = async (objs: LocalObject[]) => {
-    const pollMap = await getPollsByObjectIds(env.DB, objs.map((o) => o.id));
+    const [pollMap, allEmojis] = await Promise.all([
+      getPollsByObjectIds(env.DB, objs.map((o) => o.id)),
+      getAllCustomEmojis(env.DB),
+    ]);
     return (
       await Promise.all(
         objs.map(async (obj) => {
@@ -74,7 +77,7 @@ export async function GET(
           if (!author) return null;
           const pollEntry = pollMap.get(obj.id);
           const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
-          return serializeStatus(obj, author, domain, { poll });
+          return serializeStatus(obj, author, domain, { poll, emojis: allEmojis });
         })
       )
     ).filter(Boolean);

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds } from "@/lib/db";
+import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -20,11 +20,12 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     getLikedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getAnnouncedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
+    getAllCustomEmojis(env.DB),
   ]);
 
   const statuses = await Promise.all(
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         poll,
         favourited: likedIds.has(obj.id),
         reblogged: announcedIds.has(obj.id),
+        emojis: allEmojis,
       });
     })
   );

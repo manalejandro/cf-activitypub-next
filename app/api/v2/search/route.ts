@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds } from "@/lib/db";
+import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 
@@ -97,9 +97,10 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     // Group by objectId to batch-load attachments
     const objectIds = rows.results.map((r) => r.id as string);
-    const attachmentMap = objectIds.length > 0
-      ? await getAttachmentsByObjectIds(env.DB, objectIds)
-      : new Map();
+    const [attachmentMap, allEmojis] = await Promise.all([
+      objectIds.length > 0 ? getAttachmentsByObjectIds(env.DB, objectIds) : Promise.resolve(new Map()),
+      getAllCustomEmojis(env.DB),
+    ]);
 
     for (const row of rows.results) {
       const actor = await getActorById(env.DB, row.actor_id as string);
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           attachments: attachmentMap.get(obj.id) ?? [],
           favourited: false,
           reblogged: false,
+          emojis: allEmojis,
         })
       );
     }

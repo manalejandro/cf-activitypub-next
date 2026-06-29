@@ -1,7 +1,17 @@
 import { type NextRequest } from "next/server";
-import { json } from "@/lib/cf";
+import { getCloudflareContext, json } from "@/lib/cf";
+import { getAllCustomEmojis } from "@/lib/db";
 
-// GET /api/v1/custom_emojis — Return an empty list (custom emoji not yet implemented)
 export async function GET(_request: NextRequest): Promise<Response> {
-  return json([]);
+  const { env } = getCloudflareContext();
+  const emojis = await getAllCustomEmojis(env.DB);
+  return json(
+    emojis.map((emoji) => ({
+      shortcode: emoji.shortcode,
+      url: emoji.url,
+      static_url: emoji.staticUrl,
+      visible_in_picker: emoji.visibleInPicker,
+      ...(emoji.category ? { category: emoji.category } : {}),
+    }))
+  );
 }

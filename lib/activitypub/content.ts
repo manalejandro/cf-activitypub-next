@@ -1,9 +1,10 @@
 /**
  * Content processing: converts plain-text status content to HTML,
- * linkifying @mentions and #hashtags.
+ * linkifying @mentions, #hashtags, and :shortcode: custom emoji.
  */
 
 import type { APTag } from "@/lib/types";
+import type { LocalCustomEmoji } from "@/lib/types";
 
 function escapeHtml(text: string): string {
   return text
@@ -21,11 +22,16 @@ interface Replacement {
 }
 
 /**
- * Processes plain-text status content into HTML with linked mentions/hashtags.
- * Returns the HTML string and an array of AP tags (Mention / Hashtag) for use
- * in the ActivityPub Note `tag` field.
+ * Processes plain-text status content into HTML with linked mentions/hashtags
+ * and custom emoji shortcodes.
+ * Returns the HTML string and an array of AP tags (Mention / Hashtag / Emoji)
+ * for use in the ActivityPub Note `tag` field.
  */
-export function processStatusContent(text: string, baseUrl?: string): { html: string; tags: APTag[] } {
+export function processStatusContent(
+  text: string,
+  baseUrl?: string,
+  customEmojis?: LocalCustomEmoji[]
+): { html: string; tags: APTag[] } {
   const replacements: Replacement[] = [];
   const usedRanges: [number, number][] = [];
 
@@ -42,6 +48,24 @@ export function processStatusContent(text: string, baseUrl?: string): { html: st
       replacements.push({ start, end, html, tag });
     }
   };
+
+  // 0. Custom emoji shortcodes: :shortcode:
+  if (customEmojis && customEmojis.length > 0) {
+    const emojiMap = new Map(customEmojis.map((e) => [e.shortcode, e]));
+    const emojiPattern = /:([a-zA-Z0-9_]+):/g;
+    for (const m of text.matchAll(emojiPattern)) {
+      const [full, code] = m;
+      const emoji = emojiMap.get(code);
+      if (emoji) {
+        add(
+          m.index!,
+          m.index! + full.length,
+          `<img src="${emoji.url}" alt=":${code}:" class="emojione" title=":${code}:" width="16" height="16" />`,
+          { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emoji.url, url: emoji.url, mediaType: "image/png" } }
+        );
+      }
+    }
+  }
 
   // 1. Remote mentions: @user@domain
   const remotePattern = /@([a-zA-Z0-9_.-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Lightbox } from "./Lightbox";
+import { renderEmojiInHtml } from "@/lib/emoji";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,12 @@ export interface Poll {
   options: PollOption[];
 }
 
+export interface EmojiData {
+  shortcode: string;
+  url: string;
+  static_url: string;
+}
+
 export interface Status {
   id: string;
   content: string;
@@ -54,6 +61,7 @@ export interface Status {
   language?: string | null;
   visibility?: string;
   poll: Poll | null;
+  emojis?: EmojiData[];
 }
 
 export interface Me {
@@ -316,6 +324,10 @@ export function StatusCard({
   onEdit?: (s: Status) => void;
 }) {
   const [cwExpanded, setCwExpanded] = useState(false);
+  const renderedContent = useMemo(
+    () => renderEmojiInHtml(status.content, status.emojis ?? []),
+    [status.content, status.emojis]
+  );
 
   // Optimistic local state – updated instantly on click, then synced from prop
   const [favourited, setFavourited] = useState(status.favourited);
@@ -439,7 +451,7 @@ export function StatusCard({
         {showContent && (
           <div
             style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6, overflowWrap: "break-word", wordBreak: "break-word" }}
-            dangerouslySetInnerHTML={{ __html: status.content }}
+            dangerouslySetInnerHTML={{ __html: renderedContent }}
           />
         )}
         {isFocal && (

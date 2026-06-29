@@ -6,6 +6,7 @@
 const ALLOWED_TAGS = new Set([
   "p", "br", "span", "a", "del", "s", "pre", "blockquote", "code",
   "b", "strong", "u", "i", "em", "ul", "ol", "li", "ruby", "rt", "rp",
+  "img",
 ]);
 
 const VOID_TAGS = new Set(["br"]);
@@ -23,6 +24,7 @@ const TAG_ATTRS: Record<string, Set<string>> = {
   p: new Set(["class"]),
   ol: new Set(["start", "reversed"]),
   li: new Set(["value"]),
+  img: new Set(["src", "alt", "class", "title", "width", "height"]),
 };
 
 const GLOBAL_ATTRS = new Set(["lang"]);
@@ -31,7 +33,7 @@ const LINK_PROTOCOLS = new Set([
   "http", "https", "dat", "dweb", "ipfs", "ipns", "ssb", "gopher", "xmpp", "magnet", "gemini",
 ]);
 
-const SEMANTIC_CLASSES = new Set(["mention", "hashtag", "ellipsis", "invisible", "tag", "quote-inline"]);
+const SEMANTIC_CLASSES = new Set(["mention", "hashtag", "ellipsis", "invisible", "tag", "quote-inline", "emojione"]);
 
 const TAG_RE = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
 

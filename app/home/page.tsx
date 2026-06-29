@@ -7,17 +7,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard } from "@/components/StatusCard";
+import { EmojiPicker } from "@/components/EmojiPicker";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
-
-// ─── Emoji categories (inline, no library) ─────────────────────────────────
-const EMOJI_CATEGORIES = [
-  { name: "Caritas", emojis: ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🥸","😏","😒","😞","😔","😟","😕","🙁","😣","😖","😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱","😨","😰","😥","😓","🤗","🫡","🤔","🤭","🤫","🤥","😶","😐","😑","😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵","🤑","🤒","🤕","🤢","🤮","🤧","🥴","😵‍💫","🤠","🥳","🥸","🤡","👹","👺","💀","👻","👽","🤖","💩"] },
-  { name: "Gestos", emojis: ["👋","🤚","🖐","✋","🖖","👌","🤌","✌️","🤞","🤟","🤘","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","🤲","🤝","🙏","💪","🦾","🖕","✍️","💅","🫶","❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☯️","🔥","💯","✨","⭐","🌟","💫","💥","💢","💬","💭","💤"] },
-  { name: "Naturaleza", emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🦆","🦅","🦉","🦇","🐝","🌸","🌺","🌻","🌹","🍀","🌿","🍃","🌲","🌴","🌵","🌾","🍁","🍂","🌍","🌎","🌏","🌙","🌞","⭐","☁️","⛅","🌈","⛄","🌊","🔥"] },
-  { name: "Comida", emojis: ["🍕","🍔","🌮","🌯","🥗","🍜","🍣","🍱","🍛","🍲","🥘","🍝","🥞","🧇","🥓","🌭","🍟","🍿","🧆","🥚","🍳","🥐","🥨","🥖","🧀","🥗","🍎","🍊","🍋","🍇","🍓","🍑","🍒","🥭","🍍","🥝","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","☕","🍵","🧃","🥤","🍺","🍻","🥂","🍷"] },
-  { name: "Actividades", emojis: ["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🎱","🏓","🏸","🥊","🎯","🎮","🎲","🎨","🖼️","🎭","🎬","🎤","🎧","🎸","🎹","🥁","🎷","🎺","🎻","🎙️","🎚️","📸","📷","🎥","📹","🎞️","📺","📻","🎁","🎀","🎊","🎉","🎈","🏆","🥇","🎖️","🏅","🚴","🧗","🏊","🤸","⛷️","🏄"] },
-  { name: "Objetos", emojis: ["📱","💻","🖥️","⌨️","🖱️","📷","📚","📖","📝","✏️","🖊️","🖋️","📌","📍","✂️","🗂️","📁","📂","🗑️","🔑","🔒","🔓","🔔","🔕","🔊","🔇","🔈","📢","💡","🔦","🕯️","🧲","🔧","🔩","⚙️","🔬","🔭","💊","💉","🩺","🩹","🚑","🚒","🚓","🚗","✈️","🚀","⛵","🏠","🏢","🗺️","🌐"] },
-];
 
 export default function HomePage() {
   const router = useRouter();
@@ -88,17 +79,7 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loadingMore, statuses]);
 
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    if (!emojiOpen) return;
-    function handleOutside(e: MouseEvent) {
-      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) {
-        setEmojiOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [emojiOpen]);
+  const closeEmoji = useCallback(() => setEmojiOpen(false), []);
 
   useEffect(() => {
     if (!token) { window.location.href = "/login"; return; }
@@ -412,42 +393,12 @@ export default function HomePage() {
                   >
                     😊
                   </button>
-                  {emojiOpen && (
-                    <div
-                      style={{
-                        position: "absolute", top: "calc(100% + 6px)", left: 0,
-                        background: "var(--bg-elevated)", border: "1px solid var(--border)",
-                        borderRadius: "var(--radius-lg)", padding: "0.75rem",
-                        zIndex: 50, width: 320, maxHeight: 260, overflowY: "auto",
-                        boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
-                      }}
-                    >
-                      {EMOJI_CATEGORIES.map((cat) => (
-                        <div key={cat.name}>
-                          <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginTop: "0.5rem", marginBottom: "0.25rem" }}>
-                            {cat.name}
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.1rem" }}>
-                            {cat.emojis.map((emoji) => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                onClick={() => insertEmoji(emoji)}
-                                style={{
-                                  background: "none", border: "none", cursor: "pointer",
-                                  fontSize: "1.25rem", lineHeight: 1, padding: "0.2rem 0.25rem",
-                                  borderRadius: "var(--radius-sm)",
-                                }}
-                                title={emoji}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <EmojiPicker
+                    onInsert={insertEmoji}
+                    open={emojiOpen}
+                    onClose={closeEmoji}
+                    anchorRef={emojiRef}
+                  />
                 </div>
                 <button
                   type="button"

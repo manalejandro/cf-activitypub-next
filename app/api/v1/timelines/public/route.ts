@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds } from "@/lib/db";
+import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -21,11 +21,12 @@ export async function GET(request: NextRequest): Promise<Response> {
   const authActor = await getAuthenticatedActor(request, env.DB);
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
+    getAllCustomEmojis(env.DB),
   ]);
 
   const statuses = await Promise.all(
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         poll,
         favourited: likedIds.has(obj.id),
         reblogged: announcedIds.has(obj.id),
+        emojis: allEmojis,
       });
     })
   );

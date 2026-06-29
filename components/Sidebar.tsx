@@ -85,6 +85,7 @@ export function Sidebar({ me, currentPath }: SidebarProps) {
     { label: t.nav_notifications, icon: "🔔", href: "/notifications", badge: unreadCount, onClick: () => setUnreadCount(0) },
     { label: t.nav_profile, icon: "👤", href: me ? `/users/${me.username}` : "/login", badge: 0 },
     { label: "Bloqueos", icon: "🚫", href: "/blocks", badge: 0 },
+    { label: "Emojis", icon: "😊", href: "/emojis", badge: 0 },
   ];
 
   return (

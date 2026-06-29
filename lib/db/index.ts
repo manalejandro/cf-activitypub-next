@@ -11,6 +11,7 @@ import type {
   LocalAttachment,
   LocalPoll,
   LocalPollOption,
+  LocalCustomEmoji,
   OAuthApp,
   OAuthToken,
   APActor,
@@ -1232,5 +1233,116 @@ export async function markEmailVerified(db: D1Database, actorId: string): Promis
     .prepare("UPDATE actors SET email_verified = 1, updated_at = datetime('now') WHERE id = ?")
     .bind(actorId)
     .run();
+}
+
+// ─────────────────────────────────────────
+// Custom Emojis
+// ─────────────────────────────────────────
+
+function rowToCustomEmoji(r: Row): LocalCustomEmoji {
+  return {
+    id: r.id,
+    shortcode: r.shortcode,
+    url: r.url,
+    staticUrl: r.static_url,
+    category: r.category ?? null,
+    visibleInPicker: Boolean(r.visible_in_picker),
+    domain: r.domain ?? null,
+    actorId: r.actor_id ?? null,
+    disabled: Boolean(r.disabled),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function getAllCustomEmojis(
+  db: D1Database,
+  includeDisabled = false
+): Promise<LocalCustomEmoji[]> {
+  const query = includeDisabled
+    ? "SELECT * FROM custom_emojis ORDER BY category, shortcode ASC"
+    : "SELECT * FROM custom_emojis WHERE disabled = 0 ORDER BY category, shortcode ASC";
+  const rows = await db.prepare(query).all<Row>();
+  return rows.results.map(rowToCustomEmoji);
+}
+
+export async function getCustomEmojiByShortcode(
+  db: D1Database,
+  shortcode: string,
+  domain?: string
+): Promise<LocalCustomEmoji | null> {
+  if (domain) {
+    const row = await db
+      .prepare("SELECT * FROM custom_emojis WHERE shortcode = ? AND domain = ? AND disabled = 0")
+      .bind(shortcode, domain)
+      .first<Row>();
+    return row ? rowToCustomEmoji(row) : null;
+  }
+  // Prefer local emoji, then any domain
+  const row = await db
+    .prepare("SELECT * FROM custom_emojis WHERE shortcode = ? AND disabled = 0 ORDER BY domain IS NULL DESC LIMIT 1")
+    .bind(shortcode)
+    .first<Row>();
+  return row ? rowToCustomEmoji(row) : null;
+}
+
+export async function upsertCustomEmoji(
+  db: D1Database,
+  emoji: {
+    id: string;
+    shortcode: string;
+    url: string;
+    staticUrl: string;
+    category?: string | null;
+    visibleInPicker?: boolean;
+    domain?: string | null;
+    actorId?: string | null;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_emojis (id, shortcode, url, static_url, category, visible_in_picker, domain, actor_id)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(shortcode, domain) DO UPDATE SET
+         url = excluded.url,
+         static_url = excluded.static_url,
+         category = excluded.category,
+         visible_in_picker = excluded.visible_in_picker,
+         disabled = 0,
+         updated_at = datetime('now')`
+    )
+    .bind(
+      emoji.id,
+      emoji.shortcode,
+      emoji.url,
+      emoji.staticUrl,
+      emoji.category ?? null,
+      emoji.visibleInPicker !== false ? 1 : 0,
+      emoji.domain ?? null,
+      emoji.actorId ?? null
+    )
+    .run();
+}
+
+export async function deleteCustomEmoji(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM custom_emojis WHERE id = ?").bind(id).run();
+}
+
+export async function disableCustomEmoji(db: D1Database, id: string): Promise<void> {
+  await db
+    .prepare("UPDATE custom_emojis SET disabled = 1, updated_at = datetime('now') WHERE id = ?")
+    .bind(id)
+    .run();
+}
+
+export async function getCustomEmojisByDomain(
+  db: D1Database,
+  domain: string
+): Promise<LocalCustomEmoji[]> {
+  const rows = await db
+    .prepare("SELECT * FROM custom_emojis WHERE domain = ? AND disabled = 0 ORDER BY shortcode ASC")
+    .bind(domain)
+    .all<Row>();
+  return rows.results.map(rowToCustomEmoji);
 }
 

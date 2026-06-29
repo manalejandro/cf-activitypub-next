@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -28,11 +28,12 @@ export async function GET(
   const objects = onlyReplies
     ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId)
     : await getActorStatuses(env.DB, actor.id, limit, maxId);
-  const [attachmentMap, pollMap, likedIds, announcedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     me ? getAnnouncedObjectIds(env.DB, me.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
+    getAllCustomEmojis(env.DB),
   ]);
 
   const statuses = objects.map((obj) => {
@@ -43,6 +44,7 @@ export async function GET(
       poll,
       favourited: likedIds.has(obj.id),
       reblogged: announcedIds.has(obj.id),
+      emojis: allEmojis,
     });
   });
 

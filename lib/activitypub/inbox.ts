@@ -27,6 +27,7 @@ import {
   getPollOptions,
   getPollVotesByActor,
   createPollVotes,
+  getAllCustomEmojis,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -34,6 +35,7 @@ import {
   activityIRI,
   extractUsername,
 } from "./utils";
+import { upsertCustomEmoji } from "@/lib/db";
 import { deliverToInbox, fetchRemoteObject } from "./federation";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent } from "@/lib/streaming/broadcast";
 import { serializeStatus } from "@/lib/mastodon/serializers";
@@ -239,7 +241,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     }
   }
 
-  // Notify mentioned users via the tag array (direct mentions like @user@domain)
+  // Process tags: mentions (notify) + emoji (cache federated emoji)
   const mentionedLocalIds = new Set<string>();
   if (Array.isArray(obj.tag)) {
     for (const tag of obj.tag as import("@/lib/types").APTag[]) {
@@ -259,6 +261,26 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
               createdAt: new Date().toISOString(),
             });
             if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, mentionedActor.id).catch(() => {});
+          }
+        }
+      }
+      // Cache federated custom emoji
+      if (tag.type === "Emoji" && tag.name && tag.icon?.url) {
+        const shortcode = tag.name.replace(/^:|:$/g, "");
+        if (shortcode) {
+          try {
+            const domain = new URL(ctx.baseUrl).hostname;
+            const tagWithId = tag as import("@/lib/types").APTag & { id?: string };
+            await upsertCustomEmoji(ctx.db, {
+              id: tagWithId.id ?? generateId(),
+              shortcode,
+              url: tag.icon.url,
+              staticUrl: tag.icon.url,
+              domain,
+              visibleInPicker: false, // federated emoji hidden from local picker
+            });
+          } catch {
+            // Ignore duplicate or invalid emoji
           }
         }
       }
@@ -301,6 +323,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     if (statusVisibility === "public" || statusVisibility === "unlisted") {
       const domain = new URL(ctx.baseUrl).hostname;
       const published = toUtcIso(obj.published);
+      const allEmojis = await getAllCustomEmojis(ctx.db);
       const serializedStatus = serializeStatus(
         {
           id: obj.id, type: "Note", actorId, content,
@@ -312,7 +335,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         },
         author,
         domain,
-        { attachments: storedAttachments }
+        { attachments: storedAttachments, emojis: allEmojis }
       );
       const broadcastTasks: Promise<void>[] = [
         broadcastPublicStatus(ctx.timelineStream, serializedStatus, false),

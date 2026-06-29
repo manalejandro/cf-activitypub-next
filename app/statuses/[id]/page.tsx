@@ -1,20 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
-
-// ─── Emoji categories ─────────────────────────────────────────────────────────
-const EMOJI_CATEGORIES = [
-  { name: "Caritas", emojis: ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🥸","😏","😒","😞","😔","😟","😕","🙁","😣","😖","😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱","😨","😰","😥","😓","🤗","🫡","🤔","🤭","🤫","🤥","😶","😐","😑","😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵","🤑","🤒","🤕","🤢","🤮","🤧","🥴","🤠","🥳","🤡","👹","👺","💀","👻","👽","🤖","💩"] },
-  { name: "Gestos", emojis: ["👋","🤚","🖐","✋","🖖","👌","🤌","✌️","🤞","🤟","🤘","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","🤲","🤝","🙏","💪","🦾","🖕","✍️","💅","🫶","❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☯️","🔥","💯","✨","⭐","🌟","💫","💥","💢","💬","💭","💤"] },
-  { name: "Naturaleza", emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🦆","🦅","🦉","🦇","🐝","🌸","🌺","🌻","🌹","🍀","🌿","🍃","🌲","🌴","🌵","🌾","🍁","🍂","🌍","🌎","🌏","🌙","🌞","⭐","☁️","⛅","🌈","⛄","🌊","🔥"] },
-  { name: "Comida", emojis: ["🍕","🍔","🌮","🌯","🥗","🍜","🍣","🍱","🍛","🍲","🥘","🍝","🥞","🧇","🥓","🌭","🍟","🍿","🧆","🥚","🍳","🥐","🥨","🥖","🧀","🥗","🍎","🍊","🍋","🍇","🍓","🍑","🍒","🥭","🍍","🥝","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","☕","🍵","🧃","🥤","🍺","🍻","🥂","🍷"] },
-  { name: "Actividades", emojis: ["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🎱","🏓","🏸","🥊","🎯","🎮","🎲","🎨","🖼️","🎭","🎬","🎤","🎧","🎸","🎹","🥁","🎷","🎺","🎻","🎁","🎀","🎊","🎉","🎈","🏆","🥇","🎖️","🏅","🚴","🧗","🏊","🤸","⛷️","🏄"] },
-  { name: "Objetos", emojis: ["📱","💻","🖥️","⌨️","🖱️","📷","📚","📖","📝","✏️","🖊️","🖋️","📌","📍","✂️","🗂️","📁","📂","🗑️","🔑","🔒","🔓","🔔","🔕","🔊","🔇","🔈","📢","💡","🔦","🕯️","🧲","🔧","🔩","⚙️","🔬","🔭","💊","💉","🩺","🩹","🚑","🚒","🚓","🚗","✈️","🚀","⛵","🏠","🏢","🗺️","🌐"] },
-];
+import { EmojiPicker } from "@/components/EmojiPicker";
+import { renderEmojiInHtml } from "@/lib/emoji";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -27,7 +19,7 @@ interface Poll {
   voted: boolean;
   own_votes: number[];
   options: PollOption[];
-  emojis: unknown[];
+  emojis: EmojiData[];
 }
 
 interface Account {
@@ -47,6 +39,12 @@ interface MediaAttachment {
   blurhash: string | null;
 }
 
+interface EmojiData {
+  shortcode: string;
+  url: string;
+  static_url: string;
+}
+
 interface Status {
   id: string;
   content: string;
@@ -63,6 +61,7 @@ interface Status {
   media_attachments: MediaAttachment[];
   visibility: string;
   poll: Poll | null;
+  emojis?: EmojiData[];
 }
 
 interface Me {
@@ -338,6 +337,10 @@ function StatusCard({
   me?: Me | null;
   onDelete?: (s: Status) => void;
 }) {
+  const renderedContent = useMemo(
+    () => renderEmojiInHtml(status.content, status.emojis ?? []),
+    [status.content, status.emojis]
+  );
   const isRemote = status.account.acct.includes("@");
   const profileHref = isRemote
     ? `/users/remote?url=${encodeURIComponent(status.account.id)}`
@@ -411,7 +414,7 @@ function StatusCard({
         )}
         <div
           style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6 }}
-          dangerouslySetInnerHTML={{ __html: status.content }}
+          dangerouslySetInnerHTML={{ __html: renderedContent }}
         />
         {status.poll && <PollView poll={status.poll} token={token} />}
         {isFocal && (
@@ -497,16 +500,7 @@ function ReplyBox({
   const emojiRef = useRef<HTMLDivElement>(null);
   const descRefs = useRef<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!emojiOpen) return;
-    function handleOutside(e: MouseEvent) {
-      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) {
-        setEmojiOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [emojiOpen]);
+  const closeEmoji = useCallback(() => setEmojiOpen(false), []);
 
   const insertEmoji = useCallback((emoji: string) => {
     const ta = textareaRef.current;
@@ -712,20 +706,13 @@ function ReplyBox({
             <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
               <div ref={emojiRef} style={{ position: "relative" }}>
                 <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: emojiOpen ? "var(--accent-bg)" : undefined }} onClick={() => setEmojiOpen((o) => !o)} title="Emoji">😊</button>
-                {emojiOpen && (
-                  <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "0.75rem", zIndex: 200, width: 300, maxHeight: 240, overflowY: "auto", boxShadow: "0 4px 24px rgba(0,0,0,0.22)" }}>
-                    {EMOJI_CATEGORIES.map((cat) => (
-                      <div key={cat.name}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginTop: "0.5rem", marginBottom: "0.25rem" }}>{cat.name}</div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.1rem" }}>
-                          {cat.emojis.map((emoji) => (
-                            <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", lineHeight: 1, padding: "0.2rem", borderRadius: "var(--radius-sm)" }} title={emoji}>{emoji}</button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <EmojiPicker
+                  onInsert={insertEmoji}
+                  open={emojiOpen}
+                  onClose={closeEmoji}
+                  anchorRef={emojiRef}
+                  direction="up"
+                />
               </div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= 4 || uploadingMedia || pollMode} title="Adjuntar">{uploadingMedia ? "⏳" : "📎"}</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />

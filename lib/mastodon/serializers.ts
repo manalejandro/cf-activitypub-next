@@ -2,6 +2,7 @@
  * Mastodon API — serializers: convert local DB models to Mastodon API response shapes.
  */
 
+import type { D1Database } from "@cloudflare/workers-types";
 import type {
   LocalActor,
   ActorField,
@@ -10,6 +11,7 @@ import type {
   LocalAttachment,
   LocalPoll,
   LocalPollOption,
+  LocalCustomEmoji,
   MastodonAccount,
   MastodonAttachment,
   MastodonAttachmentMeta,
@@ -30,10 +32,20 @@ import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub
 const DEFAULT_AVATAR = "/default-avatar.png";
 const DEFAULT_HEADER = "/default-header.png";
 
+function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; static_url: string; visible_in_picker: boolean; category?: string } {
+  return {
+    shortcode: e.shortcode,
+    url: e.url,
+    static_url: e.staticUrl,
+    visible_in_picker: e.visibleInPicker,
+    ...(e.category ? { category: e.category } : {}),
+  };
+}
+
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[] } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[] } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -64,7 +76,7 @@ export function serializeAccount(
     statuses_count: actor.statusesCount,
     last_status_at: null,
     hide_collections: null,
-    emojis: [],
+    emojis: (opts.emojis ?? []).map(serializeEmoji),
     roles: [],
     fields: (opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
@@ -101,7 +113,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[] } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -137,7 +149,7 @@ export function serializeStatus(
     media_attachments: (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? ""),
-    emojis: [],
+    emojis: (opts.emojis ?? []).map(serializeEmoji),
     card: null,
     poll: opts.poll ?? null,
     filtered: [],
@@ -158,7 +170,8 @@ export function serializePoll(
   poll: LocalPoll,
   options: LocalPollOption[],
   voted: boolean,
-  ownVotes: number[]
+  ownVotes: number[],
+  emojis: LocalCustomEmoji[] = []
 ): MastodonPoll {
   const now = new Date();
   const expired = now > new Date(poll.expiresAt);
@@ -175,7 +188,7 @@ export function serializePoll(
       title: opt.title,
       votes_count: voted || expired ? opt.votesCount : null,
     })),
-    emojis: [],
+    emojis: emojis.map(serializeEmoji),
   };
 }
 
@@ -309,5 +322,28 @@ function extractHashtags(content: string): { name: string; url: string }[] {
   return matches.map((tag) => ({
     name: tag.slice(1).toLowerCase(),
     url: "",
+  }));
+}
+
+/**
+ * Load all active custom emoji from the database.
+ * Convenience helper for route handlers.
+ */
+export async function loadEmojis(db: D1Database): Promise<LocalCustomEmoji[]> {
+  const rows = await db
+    .prepare("SELECT * FROM custom_emojis WHERE disabled = 0 ORDER BY category, shortcode ASC")
+    .all<Record<string, unknown>>();
+  return rows.results.map((r) => ({
+    id: r.id as string,
+    shortcode: r.shortcode as string,
+    url: r.url as string,
+    staticUrl: r.static_url as string,
+    category: (r.category as string | null) ?? null,
+    visibleInPicker: Boolean(r.visible_in_picker),
+    domain: (r.domain as string | null) ?? null,
+    actorId: (r.actor_id as string | null) ?? null,
+    disabled: Boolean(r.disabled),
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
   }));
 }
