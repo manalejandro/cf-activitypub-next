@@ -21,8 +21,11 @@ export function renderEmojiInHtml(
     emojiMap.set(e.shortcode, e);
   }
 
-  // Match :shortcode: patterns and replace with <img> tags
-  return html.replace(/:([a-zA-Z0-9_]+):/g, (match, shortcode) => {
+  // Match :shortcode: patterns only in text nodes (not inside HTML tags).
+  // The first alternative captures full HTML tags (including their attributes),
+  // so :shortcode: patterns inside attribute values are left untouched.
+  return html.replace(/(<[^>]*>)|:([a-zA-Z0-9_]+):/g, (match, tag, shortcode) => {
+    if (tag) return tag;
     const emoji = emojiMap.get(shortcode);
     if (!emoji) return match;
     return `<img src="${emoji.url}" alt=":${shortcode}:" class="emojione" title=":${shortcode}:" width="16" height="16" />`;
