@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds } from "@/lib/db";
 import { buildActor, buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, objectIRI, actorIRI } from "@/lib/activitypub/utils";
-import type { APAttachment, LocalAttachment } from "@/lib/types";
+import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -50,6 +50,11 @@ export async function GET(
     .filter((s) => s.visibility === "public")
     .map((s) => {
       const attachments = (attachmentMap.get(s.id) ?? []).map(toAPAttachment);
+      let tags: APTag[] | undefined;
+      try {
+        const raw = JSON.parse(s.raw);
+        if (Array.isArray(raw.tag)) tags = raw.tag as APTag[];
+      } catch { /* ignore parse errors */ }
       const note = buildNote(baseUrl, s.id, {
         actorUsername: username,
         content: s.content ?? "",
@@ -59,6 +64,7 @@ export async function GET(
         sensitive: s.sensitive,
         summary: s.contentWarning ?? undefined,
         language: s.language ?? undefined,
+        tags,
       });
       if (attachments.length > 0) {
         note.attachment = attachments;

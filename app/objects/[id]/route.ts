@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
 import { buildNote } from "@/lib/activitypub/utils";
-import type { APAttachment, LocalAttachment } from "@/lib/types";
+import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -49,6 +49,12 @@ export async function GET(
   const rawAttachments = await getAttachmentsByObjectId(env.DB, objectId);
   const apAttachments = rawAttachments.map(toAPAttachment);
 
+  let tags: APTag[] | undefined;
+  try {
+    const raw = JSON.parse(obj.raw);
+    if (Array.isArray(raw.tag)) tags = raw.tag as APTag[];
+  } catch { /* ignore parse errors */ }
+
   const note = buildNote(baseUrl, id, {
     actorUsername: author.username,
     content: obj.content ?? "",
@@ -59,6 +65,7 @@ export async function GET(
     summary: obj.contentWarning ?? undefined,
     language: obj.language ?? undefined,
     attachments: apAttachments.length > 0 ? apAttachments : undefined,
+    tags,
   });
 
   return activityJson(note);

@@ -80,7 +80,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const language = body.language as string | undefined;
 
   // Process content: linkify mentions, hashtags, URLs → HTML
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "");
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
 
   const id = generateId();
   const published = new Date().toISOString();
@@ -208,12 +208,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   // Create notifications for mentioned local users
-  const localMentionPattern = /^\/(?:users\/)?([a-zA-Z0-9_]+)$/;
   for (const tag of contentTags) {
-    if (tag.type === "Mention" && tag.href && tag.href !== actor.id) {
-      const localMatch = tag.href.match(localMentionPattern) ?? tag.href.match(/https:\/\/[^/]+\/users\/([a-zA-Z0-9_]+)$/);
-      if (localMatch) {
-        const mentioned = await getActorByUsername(env.DB, localMatch[1], domain);
+    if (tag.type === "Mention" && tag.href && tag.href !== actor.id && tag.href.startsWith(baseUrl)) {
+      const usernameMatch = tag.href.match(/\/users\/([a-zA-Z0-9_]+)$/);
+      if (usernameMatch) {
+        const mentioned = await getActorByUsername(env.DB, usernameMatch[1], domain);
         if (mentioned && mentioned.id !== actor.id) {
           await createNotification(env.DB, {
             id: generateId(),

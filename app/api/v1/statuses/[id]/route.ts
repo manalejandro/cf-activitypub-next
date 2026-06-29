@@ -97,7 +97,7 @@ export async function PUT(
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl);
   const updatedAt = new Date().toISOString();
 
   // Rebuild the Note with the same ID and original published date but new content

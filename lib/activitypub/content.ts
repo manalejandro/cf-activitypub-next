@@ -25,7 +25,7 @@ interface Replacement {
  * Returns the HTML string and an array of AP tags (Mention / Hashtag) for use
  * in the ActivityPub Note `tag` field.
  */
-export function processStatusContent(text: string): { html: string; tags: APTag[] } {
+export function processStatusContent(text: string, baseUrl?: string): { html: string; tags: APTag[] } {
   const replacements: Replacement[] = [];
   const usedRanges: [number, number][] = [];
 
@@ -57,15 +57,17 @@ export function processStatusContent(text: string): { html: string; tags: APTag[
   }
 
   // 2. Local mentions: @user (not followed by @domain)
+  const localDomain = baseUrl ? new URL(baseUrl).hostname : undefined;
   const localPattern = /(?<![a-zA-Z0-9_.-])@([a-zA-Z0-9_]+)(?![@a-zA-Z0-9_.-])/g;
   for (const m of text.matchAll(localPattern)) {
     const [full, user] = m;
-    const href = `/users/${user}`;
+    const href = baseUrl ? `${baseUrl}/users/${user}` : `/users/${user}`;
+    const name = localDomain ? `@${user}@${localDomain}` : `@${user}`;
     add(
       m.index!,
       m.index! + full.length,
       `<a href="${href}" class="u-url mention">@<span>${escapeHtml(user)}</span></a>`,
-      { type: "Mention", href, name: `@${user}` }
+      { type: "Mention", href, name }
     );
   }
 
