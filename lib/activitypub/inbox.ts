@@ -21,6 +21,7 @@ import {
   deleteAnnounce,
   createNotification,
   updateActor,
+  updateObject,
   upsertRemoteActor,
   getPollByObjectId,
   getPollOptions,
@@ -711,6 +712,59 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
   if (!obj || typeof obj !== "object") return;
 
   const actorId = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
+
+  // Handle note/status edits (Mastodon 3.5.0+)
+  if (obj.type === "Note") {
+    const note = obj as APNote;
+    const existing = await getObjectById(ctx.db, note.id);
+    if (!existing) {
+      // If we don't have the note yet, try to store it as a new remote object
+      if (note.attributedTo && note.content) {
+        const noteActorId = typeof note.attributedTo === "string"
+          ? note.attributedTo
+          : (note.attributedTo as APActor | undefined)?.id;
+        if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+        const { content, contentWarning } = sanitizeRemoteNoteContent(
+          note.content, note.summary, note.sensitive ?? false
+        );
+        await createObject(ctx.db, {
+          id: note.id,
+          type: "Note",
+          actorId: noteActorId ?? actorId,
+          content,
+          contentWarning,
+          sensitive: note.sensitive ?? false,
+          visibility: resolveVisibility(note.to, note.cc),
+          inReplyToId: note.inReplyTo ?? null,
+          language: note.contentMap ? Object.keys(note.contentMap)[0] : null,
+          url: note.url ?? note.id,
+          repliesCount: 0,
+          reblogsCount: 0,
+          favouritesCount: 0,
+          published: toUtcIso(note.published),
+          local: false,
+          raw: JSON.stringify(note),
+        });
+      }
+      return;
+    }
+    // Only update remote notes, never overwrite local content
+    if (existing.actorId !== actorId) return;
+    if (existing.local) return;
+    // Only apply update when the note has a newer `updated` timestamp
+    if (note.updated && existing.updatedAt && new Date(note.updated) <= new Date(existing.updatedAt)) return;
+    const { content, contentWarning } = sanitizeRemoteNoteContent(
+      note.content, note.summary, note.sensitive ?? false
+    );
+    await updateObject(ctx.db, note.id, {
+      content: content ?? undefined,
+      contentWarning,
+      sensitive: note.sensitive ?? false,
+      language: note.contentMap ? Object.keys(note.contentMap)[0] : undefined,
+      raw: JSON.stringify(note),
+    });
+    return;
+  }
 
   // Handle actor profile updates
   if (["Person", "Service", "Group", "Organization", "Application"].includes(obj.type)) {
