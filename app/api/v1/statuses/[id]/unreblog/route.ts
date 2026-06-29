@@ -4,6 +4,10 @@ import { getObjectById, getActorById, deleteAnnounce, getAnnounce } from "@/lib/
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { buildAnnounce, buildUndo, generateId } from "@/lib/activitypub/utils";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import type { APActor } from "@/lib/types";
 
 // POST /api/v1/statuses/:id/unreblog
 export async function POST(
@@ -13,6 +17,7 @@ export async function POST(
   const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
+  const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -24,6 +29,17 @@ export async function POST(
   if (!author) return notFound("Author not found");
 
   await deleteAnnounce(env.DB, actor.id, obj.id);
+
+  // Deliver Undo/Announce to remote actor via queue
+  if (!author.isLocal && actor.privateKeyPem) {
+    const authorActor = await fetchRemoteObject(author.id) as APActor | null;
+    const inbox = authorActor?.endpoints?.sharedInbox ?? authorActor?.inbox;
+    if (inbox) {
+      const announce = buildAnnounce(baseUrl, actor.id, obj.id, generateId(), `${baseUrl}/users/${actor.username}/followers`);
+      const undo = buildUndo(baseUrl, actor.id, announce, generateId());
+      await enqueueDeliveries(env.DELIVERY_QUEUE, [inbox], JSON.stringify(undo), actor.id);
+    }
+  }
 
   const refreshed = await getObjectById(env.DB, obj.id);
   return json(serializeStatus(refreshed ?? obj, author, domain, { reblogged: false }));

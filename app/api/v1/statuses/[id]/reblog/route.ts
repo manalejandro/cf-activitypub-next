@@ -8,7 +8,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildAnnounce, generateId, followersIRI } from "@/lib/activitypub/utils";
-import { collectFollowerInboxes } from "@/lib/activitypub/federation";
+import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 
@@ -57,7 +57,9 @@ export async function POST(
     }
 
     if (actor.privateKeyPem) {
-      // actor_id = follower, target_id = followed — deliver to our followers
+      const inboxes: string[] = [];
+
+      // 1. Deliver to our followers
       const followers = await env.DB
         .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
         .bind(actor.id)
@@ -67,7 +69,15 @@ export async function POST(
         const cached = await getActorById(env.DB, id);
         return cached as unknown as APActor | null;
       };
-      const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
+      inboxes.push(...await collectFollowerInboxes(followerIds, fetchActor));
+
+      // 2. Deliver to the remote post author (so they can increment reblog count)
+      if (!author.isLocal) {
+        const authorActor = await fetchRemoteObject(author.id) as APActor | null;
+        const authorInbox = authorActor?.endpoints?.sharedInbox ?? authorActor?.inbox;
+        if (authorInbox) inboxes.push(authorInbox);
+      }
+
       if (inboxes.length > 0) {
         await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(announceActivity), actor.id);
       }

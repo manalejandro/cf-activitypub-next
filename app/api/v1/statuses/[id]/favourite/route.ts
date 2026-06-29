@@ -4,8 +4,9 @@ import { getObjectById, getActorById, createLike, getLike, createNotification } 
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { buildLike, generateId } from "@/lib/activitypub/utils";
-import { deliverToInbox, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { buildLike, generateId, followersIRI } from "@/lib/activitypub/utils";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 
 // POST /api/v1/statuses/:id/favourite
@@ -30,7 +31,7 @@ export async function POST(
   const existing = await getLike(env.DB, actor.id, obj.id);
   if (!existing) {
     const likeId = generateId();
-    const likeActivity = buildLike(baseUrl, actor.id, obj.id, likeId);
+    const likeActivity = buildLike(baseUrl, actor.id, obj.id, likeId, followersIRI(baseUrl, actor.username));
 
     await createLike(env.DB, {
       id: likeId,
@@ -52,11 +53,13 @@ export async function POST(
       });
     }
 
-    // Deliver Like to remote actor
+    // Deliver Like to remote actor via queue
     if (!author.isLocal && actor.privateKeyPem) {
       const authorActor = await fetchRemoteObject(author.id) as APActor | null;
-      const inbox = authorActor?.inbox ?? `${author.id}/inbox`;
-      await deliverToInbox(inbox, likeActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+      const inbox = authorActor?.endpoints?.sharedInbox ?? authorActor?.inbox;
+      if (inbox) {
+        await enqueueDeliveries(env.DELIVERY_QUEUE, [inbox], JSON.stringify(likeActivity), actor.id);
+      }
     }
   }
 

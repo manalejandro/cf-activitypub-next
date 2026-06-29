@@ -256,8 +256,14 @@ export function buildUndo(baseUrl: string, actorId: string, activity: APActivity
   };
 }
 
-export function buildLike(baseUrl: string, actorId: string, objectId: string, id: string): APActivity {
-  return {
+export function buildLike(
+  baseUrl: string,
+  actorId: string,
+  objectId: string,
+  id: string,
+  followers?: string
+): APActivity {
+  const activity: APActivity = {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Like",
@@ -265,6 +271,8 @@ export function buildLike(baseUrl: string, actorId: string, objectId: string, id
     object: objectId,
     to: [PUBLIC_ADDRESS],
   };
+  if (followers) activity.cc = [followers];
+  return activity;
 }
 
 export function buildAnnounce(
