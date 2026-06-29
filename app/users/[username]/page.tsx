@@ -117,7 +117,7 @@ function Avatar({ account, size = 42 }: { account: { display_name: string; usern
   const [imgError, setImgError] = useState(false);
   const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
 
-  if (!imgError && account.avatar && !account.avatar.endsWith("/default-avatar.png")) {
+  if (!imgError && account.avatar) {
     return (
       <img
         src={account.avatar}
@@ -781,7 +781,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
             <div
               style={{
                 height: 160, position: "relative",
-                background: account.header && !account.header.endsWith("/default-header.png")
+                background: account.header
                   ? `url(${account.header}) center/cover no-repeat`
                   : "linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-elevated) 100%)",
               }}
@@ -808,7 +808,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   fontSize: "2.5rem", fontWeight: 700, color: "var(--accent)",
                 }}
               >
-                {account.avatar && !account.avatar.endsWith("/default-avatar.png") ? (
+                {account.avatar ? (
                   <img
                     src={account.avatar}
                     alt={account.display_name}
@@ -946,7 +946,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
             <div className="flex" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
               {([
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
-                { key: "replies" as ActiveTab, label: "Replies" },
+                { key: "replies" as ActiveTab, label: t.profile_replies },
                 { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
                 { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
@@ -979,7 +979,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               statuses.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}>📝</span>
-                  No posts yet
+                  {t.profile_no_posts}
                 </div>
               ) : (
                 <>
@@ -997,7 +997,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               ) : replies.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}>💬</span>
-                  No replies yet
+                  {t.profile_no_replies}
                 </div>
               ) : (
                 replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} />)
@@ -1006,7 +1006,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
 
             {activeTab === "media" && (
               allAttachments.length === 0 ? (
-                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>No media posts yet</div>
+                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_media}</div>
               ) : (
                 <ProfileMediaGrid attachments={allAttachments} />
               )
@@ -1016,7 +1016,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               !tabLoaded.followers ? (
                 <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
               ) : followers.length === 0 ? (
-                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>No followers yet</div>
+                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_followers}</div>
               ) : (
                 <>
                   {followers.map((f) => <AccountCard key={f.id} acct={f} />)}
@@ -1031,7 +1031,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               !tabLoaded.following ? (
                 <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
               ) : following.length === 0 ? (
-                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>Not following anyone yet</div>
+                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_following}</div>
               ) : (
                 <>
                   {following.map((f) => <AccountCard key={f.id} acct={f} />)}
@@ -1088,7 +1088,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   height: 100, borderRadius: "var(--radius)",
                   background: headerPreview
                     ? `url(${headerPreview}) center/cover no-repeat`
-                    : account.header && !account.header.endsWith("/default-header.png")
+                    : account.header
                     ? `url(${account.header}) center/cover no-repeat`
                     : "linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-elevated) 100%)",
                   display: "flex", alignItems: "center", justifyContent: "center",
@@ -1104,7 +1104,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                     padding: "0.25rem 0.625rem", fontSize: "0.8rem", color: "#fff",
                   }}
                 >
-                  📷 Change header
+                  📷 {t.profile_edit_header}
                 </div>
                 <input
                   ref={headerInputRef}
@@ -1128,7 +1128,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                     position: "relative",
                   }}
                 >
-                  {avatarPreview || (account.avatar && !account.avatar.endsWith("/default-avatar.png")) ? (
+                  {avatarPreview || account.avatar ? (
                     <img
                       src={avatarPreview ?? account.avatar}
                       alt="avatar"
@@ -1148,7 +1148,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   />
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  Click to change avatar<br />
+                  {t.profile_edit_avatar}<br />
                   <span style={{ fontSize: "0.75rem" }}>JPEG, PNG, GIF, WebP · max 2 MB</span>
                 </div>
               </div>
@@ -1164,7 +1164,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   maxLength={30}
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
-                  placeholder="Your name"
+                  placeholder={t.profile_edit_placeholder_name}
                 />
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
                   {editDisplayName.length}/30
@@ -1182,7 +1182,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   maxLength={500}
                   value={editNote}
                   onChange={(e) => setEditNote(e.target.value)}
-                  placeholder="Tell the world a bit about yourself…"
+                  placeholder={t.profile_edit_placeholder_bio}
                 />
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
                   {editNote.length}/500
@@ -1212,17 +1212,17 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               <div style={{ marginBottom: "1.25rem" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
                   <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
-                    Profile fields
+                    {t.profile_edit_fields}
                   </label>
                   {editFields.length < 4 && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={addField} style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem" }}>
-                      + Add field
+                      {t.profile_edit_add_field}
                     </button>
                   )}
                 </div>
                 {editFields.length === 0 && (
                   <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: 0 }}>
-                    Add up to 4 key/value fields (e.g. Website, Location)
+                    {t.profile_edit_fields_hint}
                   </p>
                 )}
                 {editFields.map((f, i) => (
@@ -1231,7 +1231,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                       type="text"
                       className="input"
                       style={{ flex: "0 0 35%", fontSize: "0.85rem" }}
-                      placeholder="Label"
+                      placeholder={t.profile_edit_fields_label}
                       maxLength={255}
                       value={f.name}
                       onChange={(e) => updateField(i, "name", e.target.value)}
@@ -1240,7 +1240,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                       type="text"
                       className="input"
                       style={{ flex: 1, fontSize: "0.85rem" }}
-                      placeholder="Content"
+                      placeholder={t.profile_edit_fields_content}
                       maxLength={255}
                       value={f.value}
                       onChange={(e) => updateField(i, "value", e.target.value)}
@@ -1260,7 +1260,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               {/* Auto-delete setting */}
               <div style={{ marginBottom: "1.25rem" }}>
                 <label style={{ display: "block", fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500, marginBottom: "0.375rem" }}>
-                  Auto-eliminar publicaciones
+                  {t.profile_edit_auto_delete}
                 </label>
                 <select
                   value={editAutoDelete}
@@ -1268,16 +1268,16 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   className="input"
                   style={{ width: "100%", fontSize: "0.875rem" }}
                 >
-                  <option value={0}>Desactivado</option>
-                  <option value={3600}>Después de 1 hora</option>
-                  <option value={21600}>Después de 6 horas</option>
-                  <option value={86400}>Después de 1 día</option>
-                  <option value={259200}>Después de 3 días</option>
-                  <option value={604800}>Después de 1 semana</option>
-                  <option value={2592000}>Después de 30 días</option>
+                  <option value={0}>{t.profile_edit_auto_delete_off}</option>
+                  <option value={3600}>{t.profile_edit_auto_delete_1h}</option>
+                  <option value={21600}>{t.profile_edit_auto_delete_6h}</option>
+                  <option value={86400}>{t.profile_edit_auto_delete_1d}</option>
+                  <option value={259200}>{t.profile_edit_auto_delete_3d}</option>
+                  <option value={604800}>{t.profile_edit_auto_delete_1w}</option>
+                  <option value={2592000}>{t.profile_edit_auto_delete_30d}</option>
                 </select>
                 <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                  Las publicaciones más antiguas se eliminarán automáticamente cada hora.
+                  {t.profile_edit_auto_delete_hint}
                 </p>
               </div>
 

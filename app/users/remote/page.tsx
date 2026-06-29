@@ -93,7 +93,7 @@ function formatTime(iso: string) {
 function AvatarImg({ account, size = 42 }: { account: Account; size?: number }) {
   const [err, setErr] = useState(false);
   const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
-  if (!err && account.avatar && !account.avatar.endsWith("/default-avatar.png")) {
+  if (!err && account.avatar) {
     return (
       <img src={account.avatar} alt={account.display_name} width={size} height={size}
         style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
@@ -456,7 +456,10 @@ function RemoteProfileInner() {
       <main style={{ flex: 1, maxWidth: 600, borderRight: "1px solid var(--border)", overflowY: "auto" }}>
         {/* Header banner */}
         <div style={{
-          height: 180, background: account.header ? `url(${account.header}) center/cover no-repeat` : "var(--accent-bg)",
+          height: 180,
+          background: account.header && !account.header.endsWith("/default-header.png")
+            ? `url(${account.header}) center/cover no-repeat`
+            : "linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-elevated) 100%)",
           position: "relative",
         }}>
           {/* Remote badge */}
@@ -466,7 +469,7 @@ function RemoteProfileInner() {
             padding: "0.25rem 0.6rem", borderRadius: "var(--radius)",
             fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem",
           }}>
-            🌐 Cuenta remota
+            🌐 {t.profile_remote_badge}
           </div>
         </div>
 
@@ -481,8 +484,8 @@ function RemoteProfileInner() {
               <a href={account.url} target="_blank" rel="noopener noreferrer"
                 className="btn btn-ghost btn-sm"
                 style={{ display: "flex", alignItems: "center", gap: "0.3rem", textDecoration: "none" }}
-                title="Ver en el servidor original">
-                🌐 Ver original
+                title={t.profile_remote_view}>
+                🌐 {t.profile_remote_view}
               </a>
               {/* Follow / Unfollow / Block */}
               {token && !isOwnAccount && (
@@ -556,9 +559,9 @@ function RemoteProfileInner() {
             </div>
           )}
           <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "posts" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("posts")}><strong style={{ color: "var(--text)" }}>{account.statuses_count}</strong> posts</button>
-            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "following" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("following")}><strong style={{ color: "var(--text)" }}>{account.following_count}</strong> siguiendo</button>
-            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "followers" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("followers")}><strong style={{ color: "var(--text)" }}>{account.followers_count}</strong> seguidores</button>
+            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "posts" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("posts")}><strong style={{ color: "var(--text)" }}>{account.statuses_count}</strong> {t.profile_posts_label}</button>
+            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "following" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("following")}><strong style={{ color: "var(--text)" }}>{account.following_count}</strong> {t.profile_following_label}</button>
+            <button className="btn btn-ghost btn-sm" style={{ padding: 0, color: activeTab === "followers" ? "var(--accent)" : "inherit" }} onClick={() => setActiveTab("followers")}><strong style={{ color: "var(--text)" }}>{account.followers_count}</strong> {t.profile_followers_label}</button>
           </div>
         </div>
 
@@ -566,7 +569,7 @@ function RemoteProfileInner() {
         <div style={{ display: "flex", borderBottom: "2px solid var(--border)" }}>
           {(["posts", "following", "followers"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className="btn btn-ghost btn-sm" style={{ flex: 1, borderRadius: 0, borderBottom: activeTab === tab ? "2px solid var(--accent)" : "none", marginBottom: "-2px", fontWeight: activeTab === tab ? 700 : 400, color: activeTab === tab ? "var(--accent)" : "var(--text-muted)" }}>
-              {tab === "posts" ? "Posts" : tab === "following" ? "Siguiendo" : "Seguidores"}
+              {tab === "posts" ? t.profile_posts_label : tab === "following" ? t.profile_following_label : t.profile_followers_label}
             </button>
           ))}
         </div>
@@ -574,10 +577,10 @@ function RemoteProfileInner() {
         {/* Posts tab */}
         {activeTab === "posts" && (statuses.length === 0 ? (
           <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
-            <p>No hay posts cacheados de esta cuenta.</p>
+            <p>{t.profile_remote_no_posts}</p>
             <p style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
               <a href={account.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
-                Ver perfil completo en el servidor original →
+                {t.profile_remote_view_full}
               </a>
             </p>
           </div>
@@ -598,7 +601,7 @@ function RemoteProfileInner() {
         {/* Followers tab */}
         {activeTab === "followers" && (
           followers.length === 0 ? (
-            <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>Sin seguidores cacheados.</div>
+            <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_remote_no_followers}</div>
           ) : (
             <div>
               {followers.map((f) => (
@@ -611,7 +614,7 @@ function RemoteProfileInner() {
         {/* Following tab */}
         {activeTab === "following" && (
           following.length === 0 ? (
-            <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>Sin seguidos cacheados.</div>
+            <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_remote_no_following}</div>
           ) : (
             <div>
               {following.map((f) => (

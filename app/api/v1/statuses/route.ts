@@ -207,6 +207,28 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
+  // Create notifications for mentioned local users
+  const localMentionPattern = /^\/(?:users\/)?([a-zA-Z0-9_]+)$/;
+  for (const tag of contentTags) {
+    if (tag.type === "Mention" && tag.href && tag.href !== actor.id) {
+      const localMatch = tag.href.match(localMentionPattern) ?? tag.href.match(/https:\/\/[^/]+\/users\/([a-zA-Z0-9_]+)$/);
+      if (localMatch) {
+        const mentioned = await getActorByUsername(env.DB, localMatch[1], domain);
+        if (mentioned && mentioned.id !== actor.id) {
+          await createNotification(env.DB, {
+            id: generateId(),
+            type: "mention",
+            accountId: actor.id,
+            targetAccountId: mentioned.id,
+            objectId: note.id,
+            read: false,
+            createdAt: published,
+          });
+        }
+      }
+    }
+  }
+
   // Attach media to AP Note now that linkedAttachments is populated
   if (linkedAttachments.length > 0) note.attachment = linkedAttachments.map(toAPAttachment);
 

@@ -80,7 +80,7 @@ export function formatTime(iso: string) {
 export function AvatarBubble({ account, size = 42 }: { account: Account; size?: number }) {
   const [err, setErr] = useState(false);
   const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
-  if (!err && account.avatar && !account.avatar.endsWith("/default-avatar.png")) {
+  if (!err && account.avatar) {
     return (
       <img
         src={account.avatar}

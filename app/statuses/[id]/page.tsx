@@ -93,7 +93,7 @@ function Avatar({
 }) {
   const [err, setErr] = useState(false);
   const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
-  if (!err && account.avatar && !account.avatar.endsWith("/default-avatar.png")) {
+  if (!err && account.avatar) {
     return (
       <img
         src={account.avatar}
@@ -612,7 +612,7 @@ function ReplyBox({
       <div style={{ display: "flex", gap: "0.75rem" }}>
         {me && (
           <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: "50%", overflow: "hidden", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
-            {me.avatar && !me.avatar.endsWith("/default-avatar.png")
+            {me.avatar
               ? <img src={me.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               : (me.display_name?.[0] ?? me.username?.[0] ?? "?").toUpperCase()}
           </div>

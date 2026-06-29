@@ -207,7 +207,7 @@ export default function BlocksPage() {
                   >
                     {/* Avatar */}
                     <Link href={profileHref} style={{ flexShrink: 0 }}>
-                      {account.avatar && !account.avatar.endsWith("/default-avatar.png") ? (
+                      {account.avatar ? (
                         <img
                           src={account.avatar}
                           alt=""

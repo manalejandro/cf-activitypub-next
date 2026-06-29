@@ -17,6 +17,8 @@ import type {
   MastodonStatus,
   MastodonNotification,
   MastodonInstance,
+  MastodonMention,
+  APTag,
 } from "@/lib/types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
@@ -133,7 +135,7 @@ export function serializeStatus(
     application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain),
     media_attachments: (opts.attachments ?? []).map(serializeAttachment),
-    mentions: [],
+    mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? ""),
     emojis: [],
     card: null,
@@ -282,6 +284,24 @@ function serializeAttachment(att: LocalAttachment): MastodonAttachment {
     blurhash: att.blurhash ?? null,
     meta,
   };
+}
+
+function extractMentionsFromRaw(raw: string, localDomain: string): MastodonMention[] {
+  try {
+    const parsed = JSON.parse(raw);
+    const tags = parsed.tag as APTag[] | undefined;
+    if (!Array.isArray(tags)) return [];
+    return tags
+      .filter((t: APTag) => t.type === "Mention" && t.href && t.name)
+      .map((t: APTag) => {
+        const href = t.href!.startsWith("/") ? `https://${localDomain}${t.href}` : t.href!;
+        const name = t.name!.startsWith("@") ? t.name!.slice(1) : t.name!;
+        const username = name.includes("@") ? name.split("@")[0] : name;
+        return { id: href, username, url: href, acct: name };
+      });
+  } catch {
+    return [];
+  }
 }
 
 function extractHashtags(content: string): { name: string; url: string }[] {

@@ -25,9 +25,9 @@ interface Account {
   url?: string;
 }
 
-interface Hashtag { name: string; url: string; history: unknown[]; }
-interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: Hashtag[]; }
-type Tab = "trending" | "accounts" | "hashtags" | "statuses";
+interface TrendingTag { name: string; url: string; history: { day: string; uses: string; accounts: string }[]; }
+interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: TrendingTag[]; }
+type Tab = "trending" | "trending_tags" | "accounts" | "hashtags" | "statuses";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -36,7 +36,8 @@ export default function ExplorePage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [tab, setTab] = useState<Tab>("trending");
-  const [trending, setTrending] = useState<Status[]>([]);
+  const [trendingStatuses, setTrendingStatuses] = useState<Status[]>([]);
+  const [trendingTags, setTrendingTags] = useState<TrendingTag[]>([]);
   const [results, setResults] = useState<SearchResults>({ accounts: [], statuses: [], hashtags: [] });
   const [loading, setLoading] = useState(false);
   const [trendingLoading, setTrendingLoading] = useState(true);
@@ -46,8 +47,12 @@ export default function ExplorePage() {
   const { t } = useLocale();
 
   async function fetchTrending() {
-    const res = await fetch("/api/v1/timelines/public?limit=40");
-    if (res.ok) setTrending(await res.json() as Status[]);
+    const [statusesRes, tagsRes] = await Promise.all([
+      fetch("/api/v1/trends/statuses?limit=20"),
+      fetch("/api/v1/trends/tags?limit=10"),
+    ]);
+    if (statusesRes.ok) setTrendingStatuses(await statusesRes.json() as Status[]);
+    if (tagsRes.ok) setTrendingTags(await tagsRes.json() as TrendingTag[]);
     setTrendingLoading(false);
   }
 
@@ -93,13 +98,13 @@ export default function ExplorePage() {
 
   function handleFav(updated: Status) {
     const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x);
-    setTrending(update);
+    setTrendingStatuses(update);
     setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
   }
 
   function handleReblog(updated: Status) {
     const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x);
-    setTrending(update);
+    setTrendingStatuses(update);
     setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
   }
 
@@ -112,7 +117,10 @@ export default function ExplorePage() {
         { id: "hashtags", label: t.explore_tab_hashtags, count: results.hashtags.length },
         { id: "statuses", label: t.explore_tab_posts, count: results.statuses.length },
       ]
-    : [{ id: "trending", label: t.explore_tab_trending }];
+    : [
+        { id: "trending", label: t.explore_tab_trending_all },
+        { id: "trending_tags", label: t.explore_tab_trending_tags, count: trendingTags.length },
+      ];
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
@@ -172,8 +180,28 @@ export default function ExplorePage() {
         {/* Trending tab */}
         {tab === "trending" && (
           trendingLoading ? <LoadingSkeletons /> :
-          trending.length === 0 ? <EmptyState emoji="🌐" text={t.explore_nothing} /> :
-          <>{trending.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} />)}</>
+          trendingStatuses.length === 0 && trendingTags.length === 0 ? <EmptyState emoji="🌐" text={t.explore_trending_empty} /> :
+          <>
+            {trendingTags.length > 0 && (
+              <div style={{ padding: "0.75rem 1rem 0.25rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {t.explore_trending_tags}
+              </div>
+            )}
+            {trendingTags.slice(0, 5).map((tag) => <HashtagCard key={tag.name} tag={tag} />)}
+            {trendingStatuses.length > 0 && (
+              <div style={{ padding: "0.75rem 1rem 0.25rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderTop: trendingTags.length > 0 ? "1px solid var(--border)" : undefined }}>
+                {t.explore_trending_statuses}
+              </div>
+            )}
+            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} />)}
+          </>
+        )}
+
+        {/* Trending tags tab */}
+        {tab === "trending_tags" && (
+          trendingLoading ? <LoadingSkeletons /> :
+          trendingTags.length === 0 ? <EmptyState emoji="#️⃣" text={t.explore_trending_empty} /> :
+          <>{trendingTags.map((tag) => <HashtagCard key={tag.name} tag={tag} />)}</>
         )}
 
         {/* Search result tabs */}
@@ -311,8 +339,8 @@ function AccountCard({ account, token }: { account: Account; token: string | nul
             dangerouslySetInnerHTML={{ __html: account.note }} />
         )}
         <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-          <span><strong style={{ color: "var(--text)" }}>{account.followers_count}</strong> seguidores</span>
-          <span><strong style={{ color: "var(--text)" }}>{account.statuses_count}</strong> posts</span>
+          <span><strong style={{ color: "var(--text)" }}>{account.followers_count}</strong> {t.profile_followers_label}</span>
+          <span><strong style={{ color: "var(--text)" }}>{account.statuses_count}</strong> {t.profile_posts_label}</span>
         </div>
       </div>
       {token && (
@@ -334,7 +362,9 @@ function AccountCard({ account, token }: { account: Account; token: string | nul
   );
 }
 
-function HashtagCard({ tag }: { tag: Hashtag }) {
+function HashtagCard({ tag }: { tag: TrendingTag }) {
+  const { t } = useLocale();
+  const uses = tag.history?.[0]?.uses ? parseInt(tag.history[0].uses) : 0;
   return (
     <Link href={`/tags/${encodeURIComponent(tag.name)}`}
       style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}>
@@ -343,7 +373,7 @@ function HashtagCard({ tag }: { tag: Hashtag }) {
       </div>
       <div>
         <div style={{ fontWeight: 600 }}>#{tag.name}</div>
-        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>Ver posts con este tag</div>
+        {uses > 0 && <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>{uses} {t.explore_trending_uses}</div>}
       </div>
       <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: "1rem" }}>→</span>
     </Link>

@@ -268,19 +268,28 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   // (in case the reply author forgot to include the @mention tag)
   if (obj.inReplyTo) {
     const replyTarget = await getObjectById(ctx.db, obj.inReplyTo);
-    if (replyTarget?.actorId && !mentionedLocalIds.has(replyTarget.actorId)) {
-      const targetActor = await getActorById(ctx.db, replyTarget.actorId);
-      if (targetActor?.isLocal) {
-        await createNotification(ctx.db, {
-          id: generateId(),
-          type: "mention",
-          accountId: actorId,
-          targetAccountId: replyTarget.actorId,
-          objectId: obj.id,
-          read: false,
-          createdAt: new Date().toISOString(),
-        });
-        if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, replyTarget.actorId).catch(() => {});
+    if (replyTarget) {
+      // Increment replies_count on parent (remote reply to a local post)
+      if (replyTarget.actorId.startsWith(ctx.baseUrl + "/")) {
+        await ctx.db
+          .prepare("UPDATE objects SET replies_count = replies_count + 1 WHERE id = ?")
+          .bind(obj.inReplyTo)
+          .run();
+      }
+      if (replyTarget.actorId && !mentionedLocalIds.has(replyTarget.actorId)) {
+        const targetActor = await getActorById(ctx.db, replyTarget.actorId);
+        if (targetActor?.isLocal) {
+          await createNotification(ctx.db, {
+            id: generateId(),
+            type: "mention",
+            accountId: actorId,
+            targetAccountId: replyTarget.actorId,
+            objectId: obj.id,
+            read: false,
+            createdAt: new Date().toISOString(),
+          });
+          if (ctx.timelineStream) void broadcastNotificationEvent(ctx.timelineStream, replyTarget.actorId).catch(() => {});
+        }
       }
     }
   }
