@@ -487,24 +487,42 @@ async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void
 
 async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void> {
   const actorId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
-  const objectId = typeof activity.object === "string" ? activity.object : (activity.object as APNote)?.id;
+  let objectId = typeof activity.object === "string" ? activity.object : (activity.object as APNote)?.id;
   if (!objectId) return;
 
   // Ensure actor is in DB (FK on likes.actor_id)
   const likerActor = await ensureActorCached(ctx.db, actorId);
   if (!likerActor) return;
 
-  // Ensure the liked object exists in our DB (FK on likes.object_id).
-  // If it's a remote post not yet cached, try to fetch and store it.
+  // Resolve the liked object:
+  //   1. Look up by ActivityPub id
+  //   2. If not found, fall back to objects.url (some servers send the url
+  //      instead of the AP id in the Like object field)
+  //   3. If still not found and it's a remote object, try to fetch and store it
   let likedObject = await getObjectById(ctx.db, objectId);
+  if (!likedObject) {
+    const urlRow = await ctx.db
+      .prepare("SELECT id FROM objects WHERE url = ?")
+      .bind(objectId)
+      .first<{ id: string }>();
+    if (urlRow) {
+      console.warn(`[inbox] handleLike: resolved object ${objectId} via objects.url → ${urlRow.id}`);
+      objectId = urlRow.id;
+      likedObject = await getObjectById(ctx.db, objectId);
+    }
+  }
   if (!likedObject && objectId.startsWith("https://")) {
     try {
       const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
-      const fetched = await fetchRemoteObject(
+      let fetched = await fetchRemoteObject(
         objectId,
         signingKey ? `${signingKey.id}#main-key` : undefined,
         signingKey?.privateKeyPem
       ) as APNote | null;
+      // Retry without auth if signed fetch failed (some servers don't require it)
+      if (!fetched) {
+        fetched = await fetchRemoteObject(objectId) as APNote | null;
+      }
       if (fetched?.id) {
         const NOTE_LIKE_TYPES = ["Note", "Article", "Page", "Video", "Audio", "Image", "Question"];
         if (NOTE_LIKE_TYPES.includes((fetched.type ?? "Note") as string)) {
