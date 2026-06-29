@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
+import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId, createEmailVerification } from "@/lib/db";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { actorIRI } from "@/lib/activitypub/utils";
@@ -25,6 +25,13 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { username, email, password } = body;
   const turnstileToken = body["cf-turnstile-response"];
+
+  // Rate limit: 5 registration attempts per IP per 60s window
+  const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `register:${remoteIp}`, 5, 60);
+  if (!allowed) {
+    return json({ error: "Too many registration attempts. Please try again later." }, 429);
+  }
 
   if (!username || !email || !password) {
     return json({ error: "username, email and password are required" }, 422);

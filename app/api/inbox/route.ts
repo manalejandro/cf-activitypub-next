@@ -99,7 +99,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
-  const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem);
+  const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem, rawBody);
   if (!valid) {
     console.error(
       `[inbox/shared] Invalid HTTP signature — activity actor: ${actorId} | signing actor: ${signingActorId} | keyId: ${sigKeyId ?? "(none)"} | signature header: ${headers["signature"] ?? headers["Signature"] ?? "(none)"}`

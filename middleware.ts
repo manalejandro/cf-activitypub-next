@@ -9,6 +9,15 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+// Security headers applied to all responses
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
 // AP content types that indicate a federation client
 const AP_TYPES = [
   "application/activity+json",
@@ -26,7 +35,7 @@ export function middleware(request: NextRequest) {
 
   // Handle CORS preflight for API and nodeinfo routes
   if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+    return new NextResponse(null, { status: 204, headers: { ...CORS_HEADERS, ...SECURITY_HEADERS } });
   }
 
   // /inbox and /users/:username/inbox are handled by direct Next.js route files
@@ -39,7 +48,9 @@ export function middleware(request: NextRequest) {
   if (subMatch) {
     const url = request.nextUrl.clone();
     url.pathname = `/api/users/${subMatch[1]}/${subMatch[2]}`;
-    return NextResponse.rewrite(url);
+    const rewriteResponse = NextResponse.rewrite(url);
+    Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+    return rewriteResponse;
   }
 
   // Rewrite /users/:username → /api/users/:username for AP clients (GET only)
@@ -51,6 +62,7 @@ export function middleware(request: NextRequest) {
     searchParams.forEach((v, k) => url.searchParams.set(k, v));
     const rewriteResponse = NextResponse.rewrite(url);
     Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+    Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
     return rewriteResponse;
   }
 
@@ -67,6 +79,7 @@ export function middleware(request: NextRequest) {
       url.pathname = `/api/users/${username}`;
       const rewriteResponse = NextResponse.rewrite(url);
       Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+      Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
       return rewriteResponse;
     }
 
@@ -79,17 +92,23 @@ export function middleware(request: NextRequest) {
       url.pathname = `/users/${username}`;
       if (rest) url.searchParams.set("tab", rest.slice(1));
     }
-    return NextResponse.rewrite(url);
+    const rewriteResponse = NextResponse.rewrite(url);
+    Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+    return rewriteResponse;
   }
 
-  // Add CORS headers to all API and nodeinfo responses
+  // Add security and CORS headers to all API and nodeinfo responses
   if (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/")) {
     const response = NextResponse.next();
     Object.entries(CORS_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
+    Object.entries(SECURITY_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
     return response;
   }
 
-  return NextResponse.next();
+  // Add security headers to remaining responses
+  const response = NextResponse.next();
+  Object.entries(SECURITY_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
+  return response;
 }
 
 export const config = {

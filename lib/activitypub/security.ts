@@ -88,7 +88,8 @@ export async function verifySignature(
   method: string,
   url: string,
   headers: Record<string, string>,
-  publicKeyPem: string
+  publicKeyPem: string,
+  body?: string | null
 ): Promise<boolean> {
   const sigHeader = headers["signature"] || headers["Signature"];
   if (!sigHeader) return false;
@@ -105,6 +106,14 @@ export async function verifySignature(
       Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
     ),
   };
+
+  // Verify Digest header if body was provided and digest is in the signed headers
+  if (body != null && headerList.includes("digest")) {
+    const digestHeader = headerMap["digest"];
+    if (!digestHeader) return false;
+    const expectedDigest = `SHA-256=${await sha256Base64(body)}`;
+    if (digestHeader !== expectedDigest) return false;
+  }
 
   const signingString = headerList
     .map((h) => `${h}: ${headerMap[h] ?? ""}`)

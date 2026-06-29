@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
@@ -18,6 +18,13 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { env } = getCloudflareContext();
   const grantType = body.grant_type;
+
+  // Rate limit: 10 attempts per IP per 60s window
+  const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `token:${remoteIp}`, 10, 60);
+  if (!allowed) {
+    return json({ error: "invalid_grant", error_description: "Too many requests. Please try again later." }, 429);
+  }
 
   if (grantType === "password") {
     const { username, password, client_id, client_secret } = body;

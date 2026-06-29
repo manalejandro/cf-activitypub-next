@@ -18,16 +18,21 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { env } = getCloudflareContext();
 
-  // Handle deny
-  if (action === "deny") {
-    const dest = buildRedirect(redirect_uri, null, "access_denied", state);
-    return Response.redirect(dest, 302);
-  }
-
   // Validate app
   const app = await getOAuthAppByClientId(env.DB, client_id);
   if (!app) {
-    const dest = buildRedirect(redirect_uri, null, "invalid_client", state);
+    return redirectToAuthorize(client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid client");
+  }
+
+  // Validate redirect_uri against registered URIs (prevents open redirect)
+  const registeredUris = app.redirectUri.split(/[\n,]/).map((u) => u.trim());
+  if (!registeredUris.includes(redirect_uri)) {
+    return redirectToAuthorize(client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid redirect URI");
+  }
+
+  // Handle deny (after validation so redirect_uri is safe)
+  if (action === "deny") {
+    const dest = buildRedirect(redirect_uri, null, "access_denied", state);
     return Response.redirect(dest, 302);
   }
 

@@ -46,3 +46,25 @@ export function badRequest(message = "Bad request"): Response {
 export function unauthorized(): Response {
   return json({ error: "The access token is invalid" }, 401);
 }
+
+// ─────────────────────────────────────────
+// Rate limiting helper (KV-backed)
+// ─────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function checkRateLimit(
+  kv: any,
+  key: string,
+  maxAttempts: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; remaining: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const windowKey = `ratelimit:${key}:${Math.floor(now / windowSeconds)}`;
+  const count = await kv.get(windowKey);
+  const current = count ? parseInt(count, 10) : 0;
+  if (current >= maxAttempts) {
+    return { allowed: false, remaining: 0 };
+  }
+  await kv.put(windowKey, String(current + 1), { expirationTtl: windowSeconds });
+  return { allowed: true, remaining: maxAttempts - current - 1 };
+}

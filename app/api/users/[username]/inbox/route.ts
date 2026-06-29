@@ -95,7 +95,8 @@ export async function POST(
     "POST",
     canonicalUrl,
     headers,
-    remoteActor.publicKey.publicKeyPem
+    remoteActor.publicKey.publicKeyPem,
+    body
   );
   if (!valid && env.NODE_ENV !== "development") {
     console.error("[inbox/user] Invalid signature from actor %s for %s inbox", actorId, username);
