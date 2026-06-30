@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -24,10 +24,11 @@ export async function GET(
   if (!actor) return notFound("Account not found");
 
   const me = await getAuthenticatedActor(request, env.DB);
+  const isFollowing = me ? !!(await getFollow(env.DB, me.id, actor.id)) : false;
 
   const objects = onlyReplies
-    ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId)
-    : await getActorStatuses(env.DB, actor.id, limit, maxId);
+    ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
+    : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing);
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),

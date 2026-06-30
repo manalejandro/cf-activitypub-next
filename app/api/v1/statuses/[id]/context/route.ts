@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getPollsByObjectIds, getAllCustomEmojis } from "@/lib/db";
+import { getObjectById, getActorById, getPollsByObjectIds, getAllCustomEmojis, getFollow, canViewStatus } from "@/lib/db";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
 
 // GET /api/v1/statuses/:id/context
@@ -19,6 +20,12 @@ export async function GET(
 
   const focal = await getObjectById(env.DB, statusId);
   if (!focal) return notFound("Status not found");
+
+  const authActor = await getAuthenticatedActor(request, env.DB);
+  const isFollowingFocal = authActor ? !!(await getFollow(env.DB, authActor.id, focal.actorId)) : false;
+  if (!canViewStatus(focal, authActor?.id ?? null, isFollowingFocal)) {
+    return notFound("Record not found");
+  }
 
   // ── Ancestors: walk up inReplyToId chain ──────────────────────────────────
   const ancestorObjs: LocalObject[] = [];
@@ -65,6 +72,14 @@ export async function GET(
     return actor;
   }
 
+  async function canView(obj: LocalObject): Promise<boolean> {
+    const viewerId = authActor?.id ?? null;
+    if (viewerId === null) return obj.visibility === "public" || obj.visibility === "unlisted";
+    if (viewerId === obj.actorId) return true;
+    const isFollower = !!(await getFollow(env.DB, viewerId, obj.actorId));
+    return canViewStatus(obj, viewerId, isFollower);
+  }
+
   const serializeAll = async (objs: LocalObject[]) => {
     const [pollMap, allEmojis] = await Promise.all([
       getPollsByObjectIds(env.DB, objs.map((o) => o.id)),
@@ -73,6 +88,7 @@ export async function GET(
     return (
       await Promise.all(
         objs.map(async (obj) => {
+          if (!(await canView(obj))) return null;
           const author = await getAuthor(obj.actorId);
           if (!author) return null;
           const pollEntry = pollMap.get(obj.id);

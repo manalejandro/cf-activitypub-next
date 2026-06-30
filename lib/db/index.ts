@@ -93,6 +93,43 @@ function rowToObject(r: Row): LocalObject {
   };
 }
 
+/** Check if a viewer is mentioned in a status (parses the raw AP JSON for Mention tags). */
+function isMentioned(obj: Pick<LocalObject, "raw">, viewerId: string): boolean {
+  try {
+    const raw = JSON.parse(obj.raw);
+    const tags: { type?: string; href?: string }[] = raw.tag ?? [];
+    return tags.some((t) => t.type === "Mention" && t.href === viewerId);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check whether a viewer is allowed to see a status based on visibility rules.
+ * Matches Mastodon behaviour:
+ * - public / unlisted → always visible
+ * - followers (private) → visible to author or followers
+ * - direct → visible to author or mentioned users
+ */
+export function canViewStatus(
+  obj: Pick<LocalObject, "visibility" | "actorId" | "raw">,
+  viewerId: string | null,
+  isFollowing: boolean
+): boolean {
+  if (viewerId === obj.actorId) return true;
+  switch (obj.visibility) {
+    case "public":
+    case "unlisted":
+      return true;
+    case "followers":
+      return isFollowing;
+    case "direct":
+      return viewerId !== null && isMentioned(obj, viewerId);
+    default:
+      return true;
+  }
+}
+
 function rowToApp(r: Row): OAuthApp {
   return {
     id: r.id,
@@ -540,21 +577,37 @@ export async function getActorStatuses(
   db: D1Database,
   actorId: string,
   limit = 20,
-  maxId?: string
+  maxId?: string,
+  viewerId?: string,
+  isFollowing = false
 ): Promise<LocalObject[]> {
+  const isAuthor = viewerId === actorId;
+  const visibilities = isAuthor
+    ? "'public', 'unlisted', 'followers'"
+    : isFollowing
+      ? "'public', 'unlisted', 'followers'"
+      : "'public', 'unlisted'";
+
+  const query = (withPublished: boolean) => {
+    const where = `WHERE actor_id = ? AND visibility IN (${visibilities})`;
+    if (withPublished) {
+      return `SELECT * FROM objects ${where}
+              AND published < (SELECT published FROM objects WHERE id = ?)
+              ORDER BY published DESC LIMIT ?`;
+    }
+    return `SELECT * FROM objects ${where}
+            ORDER BY published DESC LIMIT ?`;
+  };
+
   if (maxId) {
     const rows = await db
-      .prepare(
-        `SELECT * FROM objects WHERE actor_id = ?
-         AND published < (SELECT published FROM objects WHERE id = ?)
-         ORDER BY published DESC LIMIT ?`
-      )
+      .prepare(query(true))
       .bind(actorId, maxId, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
-    .prepare("SELECT * FROM objects WHERE actor_id = ? ORDER BY published DESC LIMIT ?")
+    .prepare(query(false))
     .bind(actorId, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
@@ -968,23 +1021,37 @@ export async function getActorStatuses_withReplies(
   db: D1Database,
   actorId: string,
   limit = 20,
-  maxId?: string
+  maxId?: string,
+  viewerId?: string,
+  isFollowing = false
 ): Promise<LocalObject[]> {
+  const isAuthor = viewerId === actorId;
+  const visibilities = isAuthor
+    ? "'public', 'unlisted', 'followers'"
+    : isFollowing
+      ? "'public', 'unlisted', 'followers'"
+      : "'public', 'unlisted'";
+
+  const query = (withPublished: boolean) => {
+    const where = `WHERE actor_id = ? AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
+    if (withPublished) {
+      return `SELECT * FROM objects ${where}
+              AND published < (SELECT published FROM objects WHERE id = ?)
+              ORDER BY published DESC LIMIT ?`;
+    }
+    return `SELECT * FROM objects ${where}
+            ORDER BY published DESC LIMIT ?`;
+  };
+
   if (maxId) {
     const rows = await db
-      .prepare(
-        `SELECT * FROM objects WHERE actor_id = ? AND in_reply_to_id IS NOT NULL
-         AND published < (SELECT published FROM objects WHERE id = ?)
-         ORDER BY published DESC LIMIT ?`
-      )
+      .prepare(query(true))
       .bind(actorId, maxId, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
-    .prepare(
-      "SELECT * FROM objects WHERE actor_id = ? AND in_reply_to_id IS NOT NULL ORDER BY published DESC LIMIT ?"
-    )
+    .prepare(query(false))
     .bind(actorId, limit)
     .all<Row>();
   return rows.results.map(rowToObject);

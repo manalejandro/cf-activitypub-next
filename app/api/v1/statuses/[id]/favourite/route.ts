@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, createLike, getLike, createNotification } from "@/lib/db";
+import { getObjectById, getActorById, createLike, getLike, createNotification, getFollow, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -27,6 +27,11 @@ export async function POST(
 
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound("Author not found");
+
+  const isFollowing = !!(await getFollow(env.DB, actor.id, obj.actorId));
+  if (!canViewStatus(obj, actor.id, isFollowing)) {
+    return notFound("Record not found");
+  }
 
   const existing = await getLike(env.DB, actor.id, obj.id);
   if (!existing) {
