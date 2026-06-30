@@ -767,7 +767,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
       <Sidebar me={me} currentPath={`/users/${username}`} />
 
       {/* Main */}
-      <main style={{ flex: 1, maxWidth: 600, borderRight: "1px solid var(--border)" }}>
+      <main style={{ flex: 1, maxWidth: 600, minWidth: 0, width: "100%", borderRight: "1px solid var(--border)" }}>
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
         ) : notFound || !account ? (

@@ -380,8 +380,8 @@ export default function HomePage() {
             )}
 
             {/* Toolbar + counter + submit */}
-            <div className="flex items-center justify-between">
-              <div style={{ display: "flex", gap: "0.25rem", alignItems: "center", position: "relative" }}>
+            <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.25rem", alignItems: "center", position: "relative", flexWrap: "wrap" }}>
                 {/* Emoji button + picker */}
                 <div ref={emojiRef} style={{ position: "relative" }}>
                   <button
@@ -444,7 +444,7 @@ export default function HomePage() {
                   value={visibility}
                   onChange={(e) => setVisibility(e.target.value as typeof visibility)}
                   className="btn btn-ghost btn-sm"
-                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)" }}
+                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)", maxWidth: "7rem" }}
                   title={t.compose_visibility}
                 >
                   <option value="public">🌍 {t.vis_public}</option>
