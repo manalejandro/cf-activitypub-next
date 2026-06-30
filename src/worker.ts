@@ -295,14 +295,11 @@ export default {
           env
         );
         if (ok || permanent) {
-          console.log(`[queue] delivery ${ok?"ok":"permanent_fail"} ${inboxUrl.substring(0,60)}… actor=${actorId.substring(0,40)}…`);
           message.ack();
         } else {
-          console.warn(`[queue] transient_fail ${inboxUrl.substring(0,60)}… actor=${actorId.substring(0,40)}…`);
           message.retry();
         }
-      } catch (err) {
-        console.warn(`[queue] exception ${inboxUrl.substring(0,60)}… err=${err}`);
+      } catch {
         message.retry();
       }
     }

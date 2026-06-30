@@ -132,7 +132,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       [inboxUrl],
       JSON.stringify(callOffer),
       caller.id
-    ).catch((err) => console.error("[calls] federation delivery error:", err));
+    ).catch(() => {});
   }
 
   return json({ id: callId, state: "pending" }, 201);

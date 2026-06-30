@@ -14,9 +14,10 @@ NODE_ENV = "production"
 TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
 # Sender address — must belong to a domain with Cloudflare Email Routing enabled
 FROM_EMAIL = "noreply@cf-ap.example.com"
-# Secrets: set with wrangler secret put TURNSTILE_SECRET
-# CALLS_APP_ID = ""
-# CALLS_APP_SECRET = ""
+# Secrets: set with wrangler secret put
+#   wrangler secret put TURNSTILE_SECRET
+#   wrangler secret put CALLS_TURN_KEY_ID
+#   wrangler secret put CALLS_API_TOKEN
 
 [[routes]]
 pattern = "cf-ap.example.com"
@@ -47,7 +48,7 @@ queue = "cf-activitypub-delivery"
 
 [[queues.consumers]]
 queue = "cf-activitypub-delivery"
-max_batch_size = 10
+max_batch_size = 20
 max_batch_timeout = 5
 max_retries = 3
 
@@ -70,11 +71,19 @@ new_sqlite_classes = ["TimelineStreamDO"]
 tag = "v2"
 new_sqlite_classes = ["CallSignalingDO"]
 
+[[migrations]]
+tag = "v3"
+deleted_classes = ["TimelineStreamDO", "CallSignalingDO"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO"]
+
 [triggers]
 crons = ["0 * * * *"]
 
 [observability]
-enabled = true
+enabled = false
 
 [dev]
 port = 3000

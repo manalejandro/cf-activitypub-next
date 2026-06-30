@@ -936,16 +936,13 @@ async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise
 async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promise<void> {
   ctx = await resolveCtxRecipient(activity, ctx);
   if (!ctx.timelineStream || !ctx.recipient) return;
-  console.log(`[inbox] handleCallAnswer: recipient=${ctx.recipient.username} timelineStream=${!!ctx.timelineStream}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
-  if (!obj) { console.log("[inbox] handleCallAnswer: no object"); return; }
+  if (!obj) return;
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   const callerId = ctx.recipient.id;
   const callerUsername = ctx.recipient.username;
-
-  console.log(`[inbox] handleCallAnswer: broadcasting call.answered callId=${callId} to user=${callerUsername} sdpLength=${(obj.sdp ?? "").length}`);
 
   await broadcastCallEvent(ctx.timelineStream, callerUsername, {
     type: "call.answered",
@@ -975,20 +972,17 @@ async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promis
 async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): Promise<void> {
   ctx = await resolveCtxRecipient(activity, ctx);
   if (!ctx.recipient) return;
-  console.log(`[inbox] handleCallIceCandidate: recipient=${ctx.recipient.username}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
-  if (!obj) { console.log("[inbox] handleCallIceCandidate: no object"); return; }
+  if (!obj) return;
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
-  if (!callId) { console.log("[inbox] handleCallIceCandidate: no callId"); return; }
+  if (!callId) return;
 
   const candidate = obj.candidate
     ? (typeof obj.candidate === "string" ? JSON.parse(obj.candidate) : obj.candidate)
     : null;
-  if (!candidate) { console.log("[inbox] handleCallIceCandidate: no candidate"); return; }
-
-  console.log(`[inbox] handleCallIceCandidate: broadcasting call.ice callId=${callId} to user=${ctx.recipient.username}`);
+  if (!candidate) return;
 
   // Relay via streaming for real-time delivery to the recipient
   if (ctx.timelineStream) {
