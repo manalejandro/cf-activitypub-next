@@ -21,6 +21,13 @@ import openNextDefault from "../.open-next/worker.js";
 import type { MessageBatch, ScheduledEvent, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { signRequest } from "../lib/activitypub/security";
+import { buildDelete, generateId } from "../lib/activitypub/utils";
+import { collectFollowerInboxes } from "../lib/activitypub/federation";
+import { enqueueDeliveries } from "../lib/activitypub/queue";
+import { broadcastDelete, broadcastHomeDelete } from "../lib/streaming/broadcast";
+import { encodeStatusId } from "../lib/mastodon/statusId";
+import { getActorById } from "../lib/db";
+import type { APActor } from "../lib/types";
 
 interface Env {
   DB: D1Database;
@@ -307,19 +314,89 @@ export default {
 
   // Scheduled handler: auto-delete old statuses for users who have enabled it
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const rows = await env.DB
+    const actors = await env.DB
       .prepare(
         "SELECT id, auto_delete_after FROM actors WHERE is_local = 1 AND auto_delete_after IS NOT NULL AND auto_delete_after > 0"
       )
       .all<{ id: string; auto_delete_after: number }>();
 
-    for (const row of rows.results) {
-      const cutoff = new Date(Date.now() - row.auto_delete_after * 1000).toISOString();
+    for (const actor of actors.results) {
+      const cutoff = new Date(Date.now() - actor.auto_delete_after * 1000).toISOString();
+
+      // First, SELECT the objects that will be deleted so we can federate the deletions
+      const objects = await env.DB
+        .prepare(
+          "SELECT id, visibility FROM objects WHERE actor_id = ? AND published < ? AND is_local = 1 AND type = 'Note'"
+        )
+        .bind(actor.id, cutoff)
+        .all<{ id: string; visibility: string }>();
+
+      if (objects.results.length === 0) continue;
+
+      const localActor = await getActorById(env.DB, actor.id);
+      if (!localActor) continue;
+
+      // Federate Delete activities to remote followers
+      if (localActor.privateKeyPem) {
+        const baseUrl = `https://${localActor.domain}`;
+
+        const followers = await env.DB
+          .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
+          .bind(actor.id)
+          .all<{ actor_id: string }>();
+
+        const followerIds = followers.results.map((r) => r.actor_id);
+
+        if (followerIds.length > 0) {
+          const fetchActor = async (id: string): Promise<APActor | null> => {
+            const cached = await getActorById(env.DB, id);
+            return cached as unknown as APActor | null;
+          };
+          const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
+
+          if (inboxes.length > 0) {
+            for (const obj of objects.results) {
+              const deleteActivity = buildDelete(baseUrl, localActor.id, obj.id, generateId());
+              await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), localActor.id);
+            }
+          }
+        }
+      }
+
+      // Broadcast streaming delete events to local clients
+      if (env.TIMELINE_STREAM) {
+        const broadcastTasks: Promise<void>[] = [];
+
+        for (const obj of objects.results) {
+          const encodedStatusId = encodeStatusId(obj.id, true);
+          const isPublic = obj.visibility === "public";
+          broadcastTasks.push(
+            broadcastDelete(env.TIMELINE_STREAM, encodedStatusId, isPublic, true),
+            broadcastHomeDelete(env.TIMELINE_STREAM, localActor.id, encodedStatusId),
+          );
+        }
+
+        const localFollowerRows = await env.DB
+          .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+          .bind(actor.id)
+          .all<{ id: string }>();
+
+        for (const obj of objects.results) {
+          const encodedStatusId = encodeStatusId(obj.id, true);
+          for (const follower of localFollowerRows.results) {
+            broadcastTasks.push(broadcastHomeDelete(env.TIMELINE_STREAM, follower.id, encodedStatusId));
+          }
+        }
+
+        await Promise.allSettled(broadcastTasks);
+      }
+
+      // Finally, delete the objects from DB
       await env.DB
         .prepare(
           "DELETE FROM objects WHERE actor_id = ? AND published < ? AND is_local = 1 AND type = 'Note'"
         )
-        .bind(row.id, cutoff)
+        .bind(actor.id, cutoff)
         .run();
     }
   },
