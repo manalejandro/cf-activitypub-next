@@ -43,7 +43,27 @@ export async function GET(request: NextRequest): Promise<Response> {
 
       if (res.ok) {
         const data = await res.json() as Record<string, unknown>;
-        const iceServers: RTCIceServer[] = (data.iceServers as RTCIceServer[] | undefined) ?? [];
+        const raw: RTCIceServer[] = (data.iceServers as RTCIceServer[] | undefined) ?? [];
+        console.log(`[ice-servers] raw Cloudflare response: ${JSON.stringify(data).substring(0, 500)}`);
+
+        // Normalize: ensure each URL is a separate entry for maximum browser
+        // compatibility (some WebRTC stacks reject arrays with mixed STUN/TURN).
+        const iceServers: RTCIceServer[] = [];
+        for (const server of raw) {
+          const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+          for (const url of urls) {
+            const entry: RTCIceServer = { urls: url };
+            if (server.username) entry.username = server.username;
+            if (server.credential) entry.credential = server.credential;
+            // preserve credentialType if present (Cloudflare uses "password")
+            if ((server as Record<string, unknown>).credentialType) {
+              (entry as Record<string, unknown>).credentialType = (server as Record<string, unknown>).credentialType;
+            }
+            iceServers.push(entry);
+          }
+        }
+
+        console.log(`[ice-servers] normalized: ${JSON.stringify(iceServers).substring(0, 500)}`);
 
         if (iceServers.length > 0) {
           return json({ iceServers });

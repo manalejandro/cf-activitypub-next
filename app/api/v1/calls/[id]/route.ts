@@ -147,6 +147,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   const isPeerRemote = !peerActorId.startsWith(baseUrl);
   if (isPeerRemote) {
     const peerActor = await getActorById(env.DB, peerActorId);
+    console.log(`[calls] federation: type=${body.type} peerActor=${peerActorId} found=${!!peerActor} inbox=${peerActor?.inbox ?? "null"}`);
     if (peerActor?.inbox) {
       const apActivity = buildSignalActivity(baseUrl, actor.id, peerActorId, id, body);
       await enqueueDeliveries(

@@ -30,8 +30,8 @@ interface Env {
   ASSETS: Fetcher;
   TIMELINE_STREAM: DurableObjectNamespace;
   CALL_SIGNALING: DurableObjectNamespace;
-  CALLS_APP_ID?: string;
-  CALLS_APP_SECRET?: string;
+  CALLS_TURN_KEY_ID?: string;
+  CALLS_API_TOKEN?: string;
   NODE_ENV?: string;
   [key: string]: unknown;
 }
@@ -295,12 +295,14 @@ export default {
           env
         );
         if (ok || permanent) {
+          console.log(`[queue] delivery ${ok?"ok":"permanent_fail"} ${inboxUrl.substring(0,60)}… actor=${actorId.substring(0,40)}…`);
           message.ack();
         } else {
-          // Transient failure (5xx, network) — let Cloudflare retry
+          console.warn(`[queue] transient_fail ${inboxUrl.substring(0,60)}… actor=${actorId.substring(0,40)}…`);
           message.retry();
         }
-      } catch {
+      } catch (err) {
+        console.warn(`[queue] exception ${inboxUrl.substring(0,60)}… err=${err}`);
         message.retry();
       }
     }

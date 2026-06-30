@@ -7,6 +7,7 @@ import type { APActivity, APNote, APActor, APAttachment, LocalAttachment } from 
 import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
+  getActorByUsername,
   getFollow,
   createFollow,
   updateFollowState,
@@ -863,6 +864,23 @@ function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unli
 // WebRTC Call Handlers
 // ─────────────────────────────────────────
 
+/**
+ * Resolve the local recipient from activity.to when the activity arrives via
+ * the shared inbox (ctx.recipient is null).  Returns a shallow copy of ctx
+ * with recipient populated, or the original ctx if resolution fails.
+ */
+async function resolveCtxRecipient(activity: APActivity, ctx: InboxContext): Promise<InboxContext> {
+  if (ctx.recipient) return ctx;
+  const to = Array.isArray(activity.to) ? activity.to[0] : (typeof activity.to === "string" ? activity.to : null);
+  if (!to || typeof to !== "string" || !to.startsWith(ctx.baseUrl + "/")) return ctx;
+  const username = to.split("/").pop();
+  if (!username) return ctx;
+  const domain = new URL(ctx.baseUrl).hostname;
+  const actor = await getActorByUsername(ctx.db, username, domain);
+  if (!actor?.privateKeyPem) return ctx;
+  return { ...ctx, recipient: { id: actor.id, username: actor.username, privateKeyPem: actor.privateKeyPem } };
+}
+
 async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise<void> {
   if (!ctx.timelineStream || !ctx.recipient) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -916,14 +934,18 @@ async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise
 }
 
 async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promise<void> {
+  ctx = await resolveCtxRecipient(activity, ctx);
   if (!ctx.timelineStream || !ctx.recipient) return;
+  console.log(`[inbox] handleCallAnswer: recipient=${ctx.recipient.username} timelineStream=${!!ctx.timelineStream}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
-  if (!obj) return;
+  if (!obj) { console.log("[inbox] handleCallAnswer: no object"); return; }
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   const callerId = ctx.recipient.id;
   const callerUsername = ctx.recipient.username;
+
+  console.log(`[inbox] handleCallAnswer: broadcasting call.answered callId=${callId} to user=${callerUsername} sdpLength=${(obj.sdp ?? "").length}`);
 
   await broadcastCallEvent(ctx.timelineStream, callerUsername, {
     type: "call.answered",
@@ -951,18 +973,22 @@ async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promis
 }
 
 async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): Promise<void> {
+  ctx = await resolveCtxRecipient(activity, ctx);
   if (!ctx.recipient) return;
+  console.log(`[inbox] handleCallIceCandidate: recipient=${ctx.recipient.username}`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
-  if (!obj) return;
+  if (!obj) { console.log("[inbox] handleCallIceCandidate: no object"); return; }
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
-  if (!callId) return;
+  if (!callId) { console.log("[inbox] handleCallIceCandidate: no callId"); return; }
 
   const candidate = obj.candidate
     ? (typeof obj.candidate === "string" ? JSON.parse(obj.candidate) : obj.candidate)
     : null;
-  if (!candidate) return;
+  if (!candidate) { console.log("[inbox] handleCallIceCandidate: no candidate"); return; }
+
+  console.log(`[inbox] handleCallIceCandidate: broadcasting call.ice callId=${callId} to user=${ctx.recipient.username}`);
 
   // Relay via streaming for real-time delivery to the recipient
   if (ctx.timelineStream) {
@@ -975,6 +1001,7 @@ async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): 
 }
 
 async function handleCallHangup(activity: APActivity, ctx: InboxContext): Promise<void> {
+  ctx = await resolveCtxRecipient(activity, ctx);
   if (!ctx.recipient) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
