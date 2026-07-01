@@ -79,12 +79,14 @@ export async function POST(request: NextRequest): Promise<Response> {
       // with authorized fetch / secure mode enabled).
       const fetched = await fetchRemoteObject(
         signingActorId,
-        signingKey?.id,
+        signingKey ? `${signingKey.id}#main-key` : undefined,
         signingKey?.privateKeyPem,
       ) as APActor | null;
-      if (fetched && fetched.publicKey?.publicKeyPem) {
+      if (fetched?.publicKey?.publicKeyPem) {
+        // Mastodon resolves keyId by looking for a publicKey whose `id`
+        // matches the keyId from the Signature header. Use that specific key.
+        // See: https://docs.joinmastodon.org/spec/security/#http-verify
         senderActor = fetched;
-        // Cache actor so subsequent requests don't need a network round-trip.
         try { await upsertRemoteActor(env.DB, senderActor); } catch { /* ignore */ }
       }
     }
@@ -97,6 +99,15 @@ export async function POST(request: NextRequest): Promise<Response> {
       `[inbox/shared] No public key found for signing actor ${signingActorId} (activity actor: ${actorId}, keyId: ${sigKeyId ?? "(none)"}) — rejecting`
     );
     return json({ error: "Cannot verify signature: no public key" }, 401);
+  }
+
+  // Mastodon spec step 5: verify the Date header is within 12 hours.
+  const dateHeader = headers["date"];
+  if (dateHeader) {
+    const requestDate = new Date(dateHeader);
+    if (isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
+      return json({ error: "Request date too old or invalid" }, 401);
+    }
   }
 
   const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem, rawBody);

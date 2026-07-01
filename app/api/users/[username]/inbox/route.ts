@@ -63,7 +63,7 @@ export async function POST(
       .bind(signingActorId)
       .first<{ public_key_pem: string; inbox: string }>();
 
-    if (cached) {
+    if (cached?.public_key_pem) {
       remoteActor = { id: signingActorId, publicKey: { id: sigKeyId ?? `${signingActorId}#main-key`, owner: signingActorId, publicKeyPem: cached.public_key_pem }, type: "Person", preferredUsername: "", inbox: cached.inbox, outbox: "", followers: "", following: "" };
     } else {
       const fetched = await fetchRemoteObject(
@@ -72,10 +72,13 @@ export async function POST(
         recipient.privateKeyPem
       );
       if (fetched && "publicKey" in fetched) {
-        remoteActor = fetched as APActor;
-        // Cache the remote actor so subsequent activities don't require a
-        // network round-trip and so handleCreate can find the author.
-        try { await upsertRemoteActor(env.DB, remoteActor); } catch { /* ignore */ }
+        const actor = fetched as APActor;
+        if (actor.publicKey?.publicKeyPem) {
+          remoteActor = actor;
+          // Cache the remote actor so subsequent activities don't require a
+          // network round-trip and so handleCreate can find the author.
+          try { await upsertRemoteActor(env.DB, remoteActor); } catch { /* ignore */ }
+        }
       }
     }
   } catch {
@@ -85,6 +88,15 @@ export async function POST(
   if (!remoteActor?.publicKey?.publicKeyPem) {
     console.error("[inbox/user] Could not retrieve public key for signing actor %s — rejecting", signingActorId);
     return json({ error: "Cannot verify signature: no public key" }, 401);
+  }
+
+  // Mastodon spec step 5: verify the Date header is within 12 hours.
+  const dateHeader = headers["date"];
+  if (dateHeader) {
+    const requestDate = new Date(dateHeader);
+    if (isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
+      return json({ error: "Request date too old or invalid" }, 401);
+    }
   }
 
   // Use the canonical inbox URL (before middleware rewrite) for signature verification.
