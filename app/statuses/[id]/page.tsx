@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { EmojiPicker } from "@/components/EmojiPicker";
@@ -760,11 +760,15 @@ export default function ThreadPage() {
   const [loading, setLoading] = useState(true);
   const [replyTarget, setReplyTarget] = useState<Status | null>(null);
   const [autoReply, setAutoReply] = useState(false);
+  const searchParams = useSearchParams();
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("reply") === "1") setAutoReply(true);
+    if (searchParams.get("reply") === "1") {
+      setAutoReply(true);
+      router.replace(`/statuses/${encodeURIComponent(statusId)}`, { scroll: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -783,20 +787,24 @@ export default function ThreadPage() {
 
   async function load() {
     setLoading(true);
-    const [statusRes, contextRes] = await Promise.all([
-      fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }),
-      fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}/context`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }),
-    ]);
+    try {
+      const [statusRes, contextRes] = await Promise.all([
+        fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }),
+        fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}/context`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }),
+      ]);
 
-    if (statusRes.ok) setFocal(await statusRes.json() as Status);
-    if (contextRes.ok) {
-      const ctx = await contextRes.json() as { ancestors: Status[]; descendants: Status[] };
-      setAncestors(ctx.ancestors ?? []);
-      setDescendants(ctx.descendants ?? []);
+      if (statusRes.ok) setFocal(await statusRes.json() as Status);
+      if (contextRes.ok) {
+        const ctx = await contextRes.json() as { ancestors: Status[]; descendants: Status[] };
+        setAncestors(ctx.ancestors ?? []);
+        setDescendants(ctx.descendants ?? []);
+      }
+    } catch (e) {
+      console.error("Failed to load thread", e);
     }
     setLoading(false);
   }
@@ -828,6 +836,16 @@ export default function ThreadPage() {
     setAncestors((prev) => prev.map(update));
     setDescendants((prev) => prev.map(update));
   }
+
+  const replyRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (replyTarget) {
+      setTimeout(() => {
+        replyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [replyTarget]);
 
   function handleReply(s: Status) {
     setReplyTarget((prev) => (prev?.id === s.id ? null : s));
@@ -914,7 +932,9 @@ export default function ThreadPage() {
             {/* Focal status (highlighted) */}
             <StatusCard status={focal} isFocal token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} />
             {replyTarget?.id === focal.id && (
-              <ReplyBox replyTo={focal} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+              <div ref={replyRef}>
+                <ReplyBox replyTo={focal} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+              </div>
             )}
 
             {/* Descendants */}
