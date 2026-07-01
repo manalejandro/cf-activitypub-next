@@ -7,9 +7,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
+import { getCachedTimeline, setCachedTimeline } from "@/lib/timeline-cache";
 
 type TimelineView = "local" | "federated";
 
+function cacheKey(view: TimelineView): string {
+  return `timeline:${view}`;
+}
 
 export default function TimelinesPage() {
   const [view, setView] = useState<TimelineView>("local");
@@ -25,6 +29,19 @@ export default function TimelinesPage() {
   const viewRef = useRef<TimelineView>("local");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const statusesRef = useRef(statuses);
+  statusesRef.current = statuses;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const meRef = useRef(me);
+  meRef.current = me;
+
+  // Cache current timeline state on unmount
+  useEffect(() => {
+    return () => {
+      setCachedTimeline(cacheKey(viewRef.current), statusesRef.current, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+    };
+  }, []);
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
@@ -34,16 +51,28 @@ export default function TimelinesPage() {
         const status = JSON.parse(payload) as Status;
         if (seenIdsRef.current.has(status.id)) return;
         seenIdsRef.current.add(status.id);
-        setStatuses((prev) => [status, ...prev]);
+        setStatuses((prev) => {
+          const next = [status, ...prev];
+          setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+          return next;
+        });
       } catch { /* ignore malformed payload */ }
     } else if (event === "delete") {
       const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
       seenIdsRef.current.delete(deletedId);
-      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
+      setStatuses((prev) => {
+        const next = prev.filter((s) => s.id !== deletedId);
+        setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+        return next;
+      });
     } else if (event === "status.update") {
       try {
         const updated = JSON.parse(payload) as Status;
-        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
+        setStatuses((prev) => {
+          const next = prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s);
+          setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+          return next;
+        });
       } catch { /* ignore */ }
     }
   });
@@ -68,6 +97,7 @@ export default function TimelinesPage() {
       setStatuses(data);
       // Pre-fill the seen set so streaming duplicates are filtered out
       for (const s of data) seenIdsRef.current.add(s.id);
+      setCachedTimeline(cacheKey(v), data, data.length > 0, meRef.current, [...seenIdsRef.current]);
     }
     setLoading(false);
   }
@@ -85,23 +115,50 @@ export default function TimelinesPage() {
       if (more.length === 0) {
         setHasMore(false);
       } else {
-        setStatuses((prev) => [...prev, ...more]);
+        setStatuses((prev) => {
+          const next = [...prev, ...more];
+          setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+          return next;
+        });
       }
     }
     setLoadingMore(false);
   }
 
+  function switchView(v: TimelineView) {
+    // Save current view's cache before switching
+    setCachedTimeline(cacheKey(view), statuses, hasMore, me, [...seenIdsRef.current]);
+    setView(v);
+  }
+
   function handleFav(updated: Status) {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
+    setStatuses((prev) => {
+      const next = prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x);
+      setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+      return next;
+    });
   }
 
   function handleReblog(updated: Status) {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
+    setStatuses((prev) => {
+      const next = prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x);
+      setCachedTimeline(cacheKey(viewRef.current), next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+      return next;
+    });
   }
 
   // Mount: initial load
   useEffect(() => {
-    void fetchTimeline("local");
+    const cached = getCachedTimeline(cacheKey("local"));
+    if (cached) {
+      setStatuses(cached.statuses);
+      setHasMore(cached.hasMore);
+      setMe(cached.me);
+      seenIdsRef.current = new Set(cached.seenIds);
+      setLoading(false);
+    } else {
+      void fetchTimeline("local");
+    }
     void fetchMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -109,7 +166,16 @@ export default function TimelinesPage() {
   // View change: reload timeline
   useEffect(() => {
     viewRef.current = view;
-    void fetchTimeline(view);
+    const cached = getCachedTimeline(cacheKey(view));
+    if (cached) {
+      setStatuses(cached.statuses);
+      setHasMore(cached.hasMore);
+      setMe(cached.me);
+      seenIdsRef.current = new Set(cached.seenIds);
+      setLoading(false);
+    } else {
+      void fetchTimeline(view);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -151,7 +217,7 @@ export default function TimelinesPage() {
               <button
                 key={v}
                 type="button"
-                onClick={() => setView(v)}
+                onClick={() => switchView(v)}
                 className="btn btn-ghost"
                 style={{
                   flex: 1,

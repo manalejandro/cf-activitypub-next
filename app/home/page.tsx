@@ -8,7 +8,10 @@ import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
+import { getCachedTimeline, setCachedTimeline } from "@/lib/timeline-cache";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
+
+const CACHE_KEY = "home";
 
 export default function HomePage() {
   const router = useRouter();
@@ -34,7 +37,20 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const statusesRef = useRef(statuses);
+  statusesRef.current = statuses;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+  const meRef = useRef(me);
+  meRef.current = me;
   const { t, locale } = useLocale();
+
+  // Cache current timeline state on unmount so back-navigation restores it
+  useEffect(() => {
+    return () => {
+      setCachedTimeline(CACHE_KEY, statusesRef.current, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+    };
+  }, []);
 
   // Real-time home feed streaming
   useTimelineStream("user", token, (event, payload) => {
@@ -43,16 +59,28 @@ export default function HomePage() {
         const status = JSON.parse(payload) as Status;
         if (seenIdsRef.current.has(status.id)) return;
         seenIdsRef.current.add(status.id);
-        setStatuses((prev) => [status, ...prev]);
+        setStatuses((prev) => {
+          const next = [status, ...prev];
+          setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+          return next;
+        });
       } catch { /* ignore */ }
     } else if (event === "delete") {
       const deletedId = payload.replace(/^"|"$/g, "");
       seenIdsRef.current.delete(deletedId);
-      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
+      setStatuses((prev) => {
+        const next = prev.filter((s) => s.id !== deletedId);
+        setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+        return next;
+      });
     } else if (event === "status.update") {
       try {
         const updated = JSON.parse(payload) as Status;
-        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
+        setStatuses((prev) => {
+          const next = prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s);
+          setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+          return next;
+        });
       } catch { /* ignore */ }
     }
   }, { enabled: !!token });
@@ -83,7 +111,16 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!token) { window.location.href = "/login"; return; }
-    void fetchTimeline();
+    const cached = getCachedTimeline(CACHE_KEY);
+    if (cached) {
+      setStatuses(cached.statuses);
+      setHasMore(cached.hasMore);
+      setMe(cached.me);
+      seenIdsRef.current = new Set(cached.seenIds);
+      setLoading(false);
+    } else {
+      void fetchTimeline();
+    }
     void fetchMe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -98,6 +135,7 @@ export default function HomePage() {
       setStatuses(data);
       setHasMore(data.length >= 20);
       seenIdsRef.current = new Set(data.map((s) => s.id));
+      setCachedTimeline(CACHE_KEY, data, data.length >= 20, meRef.current, [...seenIdsRef.current]);
     }
     setLoading(false);
   }
@@ -112,7 +150,11 @@ export default function HomePage() {
     });
     if (res.ok) {
       const data = await res.json() as Status[];
-      setStatuses((prev) => [...prev, ...data]);
+      setStatuses((prev) => {
+        const next = [...prev, ...data];
+        setCachedTimeline(CACHE_KEY, next, data.length >= 20, meRef.current, [...seenIdsRef.current]);
+        return next;
+      });
       setHasMore(data.length >= 20);
     }
     setLoadingMore(false);
@@ -226,11 +268,19 @@ export default function HomePage() {
   }
 
   function handleFav(updated: Status) {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
+    setStatuses((prev) => {
+      const next = prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x);
+      setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+      return next;
+    });
   }
 
   function handleReblog(updated: Status) {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
+    setStatuses((prev) => {
+      const next = prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x);
+      setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+      return next;
+    });
   }
 
   function openEdit(s: Status) {
@@ -256,7 +306,11 @@ export default function HomePage() {
     });
     if (res.ok) {
       const updated = await res.json() as Status;
-      setStatuses((prev) => prev.map((x) => (x.id === editingStatus.id ? updated : x)));
+      setStatuses((prev) => {
+        const next = prev.map((x) => (x.id === editingStatus.id ? updated : x));
+        setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+        return next;
+      });
       setEditingStatus(null);
     }
     setEditBusy(false);
@@ -270,7 +324,11 @@ export default function HomePage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
-      setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      setStatuses((prev) => {
+        const next = prev.filter((x) => x.id !== s.id);
+        setCachedTimeline(CACHE_KEY, next, hasMoreRef.current, meRef.current, [...seenIdsRef.current]);
+        return next;
+      });
     }
   }
 
