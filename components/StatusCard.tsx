@@ -450,6 +450,7 @@ export function StatusCard({
         )}
         {showContent && (
           <div
+            className="status-content"
             style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6, overflowWrap: "break-word", wordBreak: "break-word" }}
             dangerouslySetInnerHTML={{ __html: renderedContent }}
           />

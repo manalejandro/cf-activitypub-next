@@ -413,6 +413,7 @@ function StatusCard({
           </div>
         )}
         <div
+          className="status-content"
           style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6 }}
           dangerouslySetInnerHTML={{ __html: renderedContent }}
         />

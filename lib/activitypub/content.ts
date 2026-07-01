@@ -132,7 +132,9 @@ export function processStatusContent(
   result += escapeHtml(text.slice(cursor));
 
   // Wrap in <p> tags (double newline = new paragraph, single newline = <br />)
-  const paragraphs = result.split(/\n\n+/);
+  // Using split(/\n\n/) instead of /\n\n+/ so extra blank lines become <br />
+  // inside the following paragraph, preserving intentional spacing.
+  const paragraphs = result.split(/\n\n/).filter(Boolean);
   const finalHtml = paragraphs
     .map((p) => `<p>${p.replace(/\n/g, "<br />")}</p>`)
     .join("");

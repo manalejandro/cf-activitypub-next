@@ -132,6 +132,11 @@ a:hover { color: var(--accent); }
 .status-card { padding: 1rem; border-bottom: 1px solid var(--border); transition: background 0.12s; }
 .status-card:hover { background: var(--accent-bg); }
 
+/* Status content — paragraphs for blank-line spacing, emoji alignment */
+.status-content p { margin-bottom: 0.75em; }
+.status-content p:last-child { margin-bottom: 0; }
+img.emojione { vertical-align: middle; }
+
 .avatar { border-radius: 50%; object-fit: cover; background: var(--bg-overlay); flex-shrink: 0; }
 
 .badge { display: inline-flex; align-items: center; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; }
