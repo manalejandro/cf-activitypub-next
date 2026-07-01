@@ -13,17 +13,25 @@ export async function GET(
     return notFound("Only NodeInfo 2.x is supported");
   }
 
-  // Count local users
-  const userCount = await env.DB
-    .prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1")
-    .first<{ count: number }>();
-  const postCount = await env.DB
-    .prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1")
-    .first<{ count: number }>();
+  const db = env.DB;
+
+  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
+    db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-30 days')"
+    ).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-180 days')"
+    ).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
+    ).first<{ count: number }>(),
+  ]);
 
   const domain = new URL(request.url).hostname;
 
-  return json({
+  const payload: Record<string, unknown> = {
     version,
     software: {
       name: "cf-activitypub",
@@ -32,18 +40,28 @@ export async function GET(
       homepage: `https://${domain}`,
     },
     protocols: ["activitypub"],
+    services: {
+      inbound: [],
+      outbound: [],
+    },
     usage: {
       users: {
-        total: userCount?.count ?? 0,
-        activeMonth: userCount?.count ?? 0,
-        activeHalfyear: userCount?.count ?? 0,
+        total: userRow?.count ?? 0,
+        activeMonth: activeMonthRow?.count ?? 0,
+        activeHalfyear: activeHalfyearRow?.count ?? 0,
       },
-      localPosts: postCount?.count ?? 0,
+      localPosts: postRow?.count ?? 0,
+      localComments: commentRow?.count ?? 0,
     },
     openRegistrations: true,
-    metadata: {
+  };
+
+  if (version === "2.1") {
+    payload.metadata = {
       nodeName: env.INSTANCE_TITLE ?? "CF ActivityPub",
       nodeDescription: env.INSTANCE_DESCRIPTION ?? "",
-    },
-  });
+    };
+  }
+
+  return json(payload);
 }
