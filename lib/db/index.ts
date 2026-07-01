@@ -583,7 +583,7 @@ export async function getActorStatuses(
 ): Promise<LocalObject[]> {
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
-    ? "'public', 'unlisted', 'followers'"
+    ? "'public', 'unlisted', 'followers', 'direct'"
     : isFollowing
       ? "'public', 'unlisted', 'followers'"
       : "'public', 'unlisted'";
@@ -1027,7 +1027,7 @@ export async function getActorStatuses_withReplies(
 ): Promise<LocalObject[]> {
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
-    ? "'public', 'unlisted', 'followers'"
+    ? "'public', 'unlisted', 'followers', 'direct'"
     : isFollowing
       ? "'public', 'unlisted', 'followers'"
       : "'public', 'unlisted'";
