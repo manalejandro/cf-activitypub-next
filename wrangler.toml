@@ -71,14 +71,6 @@ new_sqlite_classes = ["TimelineStreamDO"]
 tag = "v2"
 new_sqlite_classes = ["CallSignalingDO"]
 
-[[migrations]]
-tag = "v3"
-deleted_classes = ["TimelineStreamDO", "CallSignalingDO"]
-
-[[migrations]]
-tag = "v4"
-new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO"]
-
 [triggers]
 crons = ["0 * * * *"]
 
