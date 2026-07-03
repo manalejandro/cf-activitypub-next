@@ -128,6 +128,7 @@ function Avatar({
 
 function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  const closeLb = useCallback(() => setLbIdx(null), []);
   if (!attachments.length) return null;
   const gridCols =
     attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
@@ -229,7 +230,7 @@ function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
             type: a.type,
           }))}
           index={lbIdx}
-          onClose={() => setLbIdx(null)}
+          onClose={closeLb}
           onNav={setLbIdx}
         />
       )}

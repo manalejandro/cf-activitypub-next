@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Lightbox } from "./Lightbox";
 import { renderEmojiInHtml } from "@/lib/emoji";
@@ -125,6 +125,7 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 
 export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  const closeLb = useCallback(() => setLbIdx(null), []);
   if (!attachments.length) return null;
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
   return (
@@ -223,7 +224,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
         <Lightbox
           media={attachments.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
           index={lbIdx}
-          onClose={() => setLbIdx(null)}
+          onClose={closeLb}
           onNav={setLbIdx}
         />
       )}

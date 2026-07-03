@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface LightboxItem {
   url: string;
@@ -19,25 +19,30 @@ interface LightboxProps {
 export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
   const item = media[index];
   const [imgLoaded, setImgLoaded] = useState(false);
+  const onCloseRef = useRef(onClose);
+  const onNavRef = useRef(onNav);
+  const indexRef = useRef(index);
 
-  const handleKey = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft" && index > 0) onNav(index - 1);
-      if (e.key === "ArrowRight" && index < media.length - 1) onNav(index + 1);
-    },
-    [onClose, onNav, index, media.length]
-  );
+  onCloseRef.current = onClose;
+  onNavRef.current = onNav;
+  indexRef.current = index;
 
   useEffect(() => {
     setImgLoaded(false);
-    document.addEventListener("keydown", handleKey);
     document.body.style.overflow = "hidden";
+
+    const handleKey = (e: KeyboardEvent) => {
+      const i = indexRef.current;
+      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "ArrowLeft" && i > 0) onNavRef.current(i - 1);
+      if (e.key === "ArrowRight" && i < media.length - 1) onNavRef.current(i + 1);
+    };
+    document.addEventListener("keydown", handleKey);
     return () => {
       document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = "";
     };
-  }, [handleKey, index]);
+  }, [index, media.length]);
 
   if (!item) return null;
 
