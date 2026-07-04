@@ -419,7 +419,7 @@ export function StatusCard({
             {status.account.display_name || status.account.username}
           </Link>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{status.account.acct}</span>
-          <Link href={threadHref} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
+          <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
             {formatTime(status.created_at)}
           </Link>
         </div>

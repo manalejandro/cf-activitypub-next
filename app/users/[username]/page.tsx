@@ -225,7 +225,7 @@ function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
 }
 
 // Reusable status article card
-function StatusCard({ s, onFav, token }: { s: Status; onFav: () => void; token: string | null }) {
+function StatusCard({ s, onFav, token, me: meProp, onEdit, onDelete }: { s: Status; onFav: () => void; token: string | null; me?: Me | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
   const [expandedCw, setExpandedCw] = useState(false);
   const [pollState, setPollState] = useState<Poll | null>(s.poll ?? null);
   const [voting, setVoting] = useState(false);
@@ -266,7 +266,7 @@ function StatusCard({ s, onFav, token }: { s: Status; onFav: () => void; token: 
             {s.account.display_name || s.account.username}
           </Link>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{s.account.acct}</span>
-          <Link href={threadHref} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
+          <Link href={threadHref} title={new Date(s.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
             {formatTime(s.created_at)}
           </Link>
         </div>
@@ -344,6 +344,30 @@ function StatusCard({ s, onFav, token }: { s: Status; onFav: () => void; token: 
           >
             {s.favourited ? "❤️" : "🤍"} {s.favourites_count}
           </button>
+          {meProp && meProp.id === s.account.id && (
+            <>
+              {onEdit && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: "0.2rem 0.4rem", marginLeft: "auto" }}
+                  onClick={() => onEdit(s)}
+                  title="Editar"
+                >
+                  ✏️
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: "0.2rem 0.4rem", color: "var(--danger)" }}
+                  onClick={() => onDelete(s)}
+                  title="Eliminar"
+                >
+                  🗑️
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </article>
@@ -443,6 +467,12 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const [hasMoreFollowing, setHasMoreFollowing] = useState(true);
   const [loadingMoreFollowing, setLoadingMoreFollowing] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Status edit state
+  const [editingStatus, setEditingStatus] = useState<Status | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSpoiler, setEditSpoiler] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   // Edit form state
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -716,6 +746,49 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
     }
   }
 
+  function openStatusEdit(s: Status) {
+    const div = typeof document !== "undefined" ? document.createElement("div") : null;
+    if (div) {
+      div.innerHTML = s.content.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
+      setEditText((div.textContent ?? div.innerText ?? "").trim());
+    } else {
+      setEditText(s.content.replace(/<[^>]*>/g, "").trim());
+    }
+    setEditSpoiler(s.spoiler_text ?? "");
+    setEditingStatus(s);
+  }
+
+  async function handleStatusEditSave() {
+    if (!editText.trim() || !editingStatus || !token) return;
+    setEditBusy(true);
+    const res = await fetch(`/api/v1/statuses/${editingStatus.id}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: editText, spoiler_text: editSpoiler, sensitive: !!editSpoiler }),
+    });
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      const updateFn = (prev: Status[]) => prev.map((x) => (x.id === editingStatus.id ? updated : x));
+      setStatuses(updateFn);
+      setReplies(updateFn);
+      setEditingStatus(null);
+    }
+    setEditBusy(false);
+  }
+
+  async function handleDelete(s: Status) {
+    if (!token) return;
+    if (!confirm("¿Eliminar este estado?")) return;
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      setReplies((prev) => prev.filter((x) => x.id !== s.id));
+    }
+  }
+
   async function toggleFollow() {
     if (!token || !account || followBusy) return;
     setFollowBusy(true);
@@ -986,7 +1059,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 </div>
               ) : (
                 <>
-                  {statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} />)}
+                  {statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                     {loadingMorePosts ? "Cargando…" : ""}
                   </div>
@@ -1003,7 +1076,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   {t.profile_no_replies}
                 </div>
               ) : (
-                replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} />)
+                replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)
               )
             )}
 
@@ -1314,6 +1387,51 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit status modal */}
+      {editingStatus && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
+        >
+          <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 700, fontSize: "1rem" }}>Editar estado</span>
+              <button type="button" onClick={() => setEditingStatus(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}>✕</button>
+            </div>
+            {editSpoiler !== "" || editingStatus.spoiler_text ? (
+              <input
+                type="text"
+                value={editSpoiler}
+                onChange={(e) => setEditSpoiler(e.target.value)}
+                placeholder="Advertencia de contenido"
+                className="input"
+                style={{ width: "100%" }}
+              />
+            ) : null}
+            <textarea
+              autoFocus
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder="Edita tu estado…"
+              maxLength={500}
+              className="input"
+              style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/500</span>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>Cancelar</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleStatusEditSave()}>
+                  {editBusy ? "…" : "Guardar"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

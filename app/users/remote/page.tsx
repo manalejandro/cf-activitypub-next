@@ -167,7 +167,7 @@ function AccountRow({ account }: { account: Account }) {
   );
 }
 
-function StatusCard({ s, token, onFav, onReblog }: { s: Status; token: string | null; onFav: () => void; onReblog: () => void }) {
+function StatusCard({ s, token, onFav, onReblog, me: meProp, onEdit, onDelete }: { s: Status; token: string | null; onFav: () => void; onReblog: () => void; me?: { id: string } | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
   const [expandedCw, setExpandedCw] = useState(false);
   const [pollState, setPollState] = useState<Poll | null>(s.poll ?? null);
   const [voting, setVoting] = useState(false);
@@ -202,7 +202,7 @@ function StatusCard({ s, token, onFav, onReblog }: { s: Status; token: string | 
         <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem", marginBottom: "0.25rem", flexWrap: "wrap" }}>
           <a href={profileHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>{s.account.display_name || s.account.username}</a>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{s.account.acct}</span>
-          <a href={threadHref} style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>{formatTime(s.created_at)}</a>
+          <a href={threadHref} title={new Date(s.created_at).toLocaleString()} style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>{formatTime(s.created_at)}</a>
         </div>
         {s.spoiler_text && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.375rem 0.625rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.4rem", color: "var(--text-secondary)", gap: "0.5rem" }}>
@@ -257,6 +257,16 @@ function StatusCard({ s, token, onFav, onReblog }: { s: Status; token: string | 
           <a href={threadHref} className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", textDecoration: "none", color: "var(--text-muted)" }}>💬 {s.replies_count}</a>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.reblogged ? "var(--accent)" : "var(--text-muted)" }} onClick={onReblog}>🔁 {s.reblogs_count}</button>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.favourited ? "var(--danger)" : "var(--text-muted)" }} onClick={onFav}>{s.favourited ? "❤️" : "🤍"} {s.favourites_count}</button>
+          {meProp && meProp.id === s.account.id && (
+            <>
+              {onEdit && (
+                <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", marginLeft: "auto" }} onClick={() => onEdit(s)} title="Editar">✏️</button>
+              )}
+              {onDelete && (
+                <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", color: "var(--danger)" }} onClick={() => onDelete(s)} title="Eliminar">🗑️</button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </article>
@@ -280,6 +290,10 @@ function RemoteProfileInner() {
   const [followBusy, setFollowBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [me, setMe] = useState<Account | null>(null);
+  const [editingStatus, setEditingStatus] = useState<Status | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSpoiler, setEditSpoiler] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const { startCall: initiateCall } = useStartCallButton(token);
@@ -415,6 +429,46 @@ function RemoteProfileInner() {
             }
           : s
       ));
+    }
+  }
+
+  function openEdit(s: Status) {
+    const div = typeof document !== "undefined" ? document.createElement("div") : null;
+    if (div) {
+      div.innerHTML = s.content.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
+      setEditText((div.textContent ?? div.innerText ?? "").trim());
+    } else {
+      setEditText(s.content.replace(/<[^>]*>/g, "").trim());
+    }
+    setEditSpoiler(s.spoiler_text ?? "");
+    setEditingStatus(s);
+  }
+
+  async function handleEditSave() {
+    if (!editText.trim() || !editingStatus || !token) return;
+    setEditBusy(true);
+    const res = await fetch(`/api/v1/statuses/${editingStatus.id}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: editText, spoiler_text: editSpoiler, sensitive: !!editSpoiler }),
+    });
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      setStatuses((prev) => prev.map((x) => (x.id === editingStatus.id ? updated : x)));
+      setEditingStatus(null);
+    }
+    setEditBusy(false);
+  }
+
+  async function handleDelete(s: Status) {
+    if (!token) return;
+    if (!confirm("¿Eliminar este estado?")) return;
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      setStatuses((prev) => prev.filter((x) => x.id !== s.id));
     }
   }
 
@@ -596,6 +650,9 @@ function RemoteProfileInner() {
                 token={token}
                 onFav={() => void toggleFavourite(s)}
                 onReblog={() => void toggleReblog(s)}
+                me={me}
+                onEdit={openEdit}
+                onDelete={handleDelete}
               />
             ))}
           </div>
@@ -627,6 +684,51 @@ function RemoteProfileInner() {
           )
         )}
       </main>
+
+      {/* Edit status modal */}
+      {editingStatus && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
+        >
+          <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 700, fontSize: "1rem" }}>Editar estado</span>
+              <button type="button" onClick={() => setEditingStatus(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}>✕</button>
+            </div>
+            {editSpoiler !== "" || editingStatus.spoiler_text ? (
+              <input
+                type="text"
+                value={editSpoiler}
+                onChange={(e) => setEditSpoiler(e.target.value)}
+                placeholder="Advertencia de contenido"
+                className="input"
+                style={{ width: "100%" }}
+              />
+            ) : null}
+            <textarea
+              autoFocus
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder="Edita tu estado…"
+              maxLength={500}
+              className="input"
+              style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/500</span>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>Cancelar</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditSave()}>
+                  {editBusy ? "…" : "Guardar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

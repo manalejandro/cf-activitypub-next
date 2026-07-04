@@ -328,6 +328,7 @@ function StatusCard({
   onReply,
   me: meProp,
   onDelete,
+  onEdit,
 }: {
   status: Status;
   isFocal?: boolean;
@@ -337,6 +338,7 @@ function StatusCard({
   onReply?: (s: Status) => void;
   me?: Me | null;
   onDelete?: (s: Status) => void;
+  onEdit?: (s: Status) => void;
 }) {
   const renderedContent = useMemo(
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
@@ -394,6 +396,7 @@ function StatusCard({
           </span>
           <Link
             href={threadHref}
+            title={new Date(status.created_at).toLocaleString()}
             style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}
           >
             {formatTime(status.created_at)}
@@ -452,14 +455,26 @@ function StatusCard({
             {status.favourited ? "❤️" : "🤍"} {status.favourites_count}
           </button>
           {meProp && meProp.id === status.account.id && (
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ padding: "0.2rem 0.4rem", color: "var(--danger)", marginLeft: "auto" }}
-              onClick={() => onDelete?.(status)}
-              title="Eliminar"
-            >
-              🗑️
-            </button>
+            <>
+              {onEdit && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: "0.2rem 0.4rem", marginLeft: "auto" }}
+                  onClick={() => onEdit(status)}
+                  title="Editar"
+                >
+                  ✏️
+                </button>
+              )}
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", color: "var(--danger)", marginLeft: onEdit ? undefined : "auto" }}
+                onClick={() => onDelete?.(status)}
+                title="Eliminar"
+              >
+                🗑️
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -761,6 +776,10 @@ export default function ThreadPage() {
   const [loading, setLoading] = useState(true);
   const [replyTarget, setReplyTarget] = useState<Status | null>(null);
   const [autoReply, setAutoReply] = useState(false);
+  const [editingStatus, setEditingStatus] = useState<Status | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSpoiler, setEditSpoiler] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
   const searchParams = useSearchParams();
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -880,6 +899,37 @@ export default function ThreadPage() {
     }
   }
 
+  function openEdit(s: Status) {
+    const div = typeof document !== "undefined" ? document.createElement("div") : null;
+    if (div) {
+      div.innerHTML = s.content.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
+      setEditText((div.textContent ?? div.innerText ?? "").trim());
+    } else {
+      setEditText(s.content.replace(/<[^>]*>/g, "").trim());
+    }
+    setEditSpoiler(s.spoiler_text ?? "");
+    setEditingStatus(s);
+  }
+
+  async function handleEditSave() {
+    if (!editText.trim() || !editingStatus || !token) return;
+    setEditBusy(true);
+    const res = await fetch(`/api/v1/statuses/${editingStatus.id}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: editText, spoiler_text: editSpoiler, sensitive: !!editSpoiler }),
+    });
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      const updateList = (prev: Status[]) => prev.map((x) => (x.id === editingStatus.id ? updated : x));
+      setFocal((f) => (f?.id === editingStatus.id ? updated : f));
+      setAncestors(updateList);
+      setDescendants(updateList);
+      setEditingStatus(null);
+    }
+    setEditBusy(false);
+  }
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
       <Sidebar me={me} currentPath="" />
@@ -923,7 +973,7 @@ export default function ThreadPage() {
             {/* Ancestors */}
             {ancestors.map((s) => (
               <>
-                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} />
+                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
                 {replyTarget?.id === s.id && (
                   <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
                 )}
@@ -931,7 +981,7 @@ export default function ThreadPage() {
             ))}
 
             {/* Focal status (highlighted) */}
-            <StatusCard status={focal} isFocal token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} />
+            <StatusCard status={focal} isFocal token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
                 <ReplyBox replyTo={focal} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
@@ -956,13 +1006,58 @@ export default function ThreadPage() {
             )}
             {descendants.map((s) => (
               <>
-                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} />
+                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
                 {replyTarget?.id === s.id && (
                   <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
                 )}
               </>
             ))}
           </>
+        )}
+
+        {/* Edit status modal */}
+        {editingStatus && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
+            onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
+          >
+            <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 700, fontSize: "1rem" }}>Editar estado</span>
+                <button type="button" onClick={() => setEditingStatus(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}>✕</button>
+              </div>
+              {editSpoiler !== "" || editingStatus.spoiler_text ? (
+                <input
+                  type="text"
+                  value={editSpoiler}
+                  onChange={(e) => setEditSpoiler(e.target.value)}
+                  placeholder="Advertencia de contenido"
+                  className="input"
+                  style={{ width: "100%" }}
+                />
+              ) : null}
+              <textarea
+                autoFocus
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder="Edita tu estado…"
+                maxLength={500}
+                className="input"
+                style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/500</span>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>Cancelar</button>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditSave()}>
+                    {editBusy ? "…" : "Guardar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>
