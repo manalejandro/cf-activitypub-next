@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notif_target   ON notifications(target_account_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_created  ON notifications(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup ON notifications(type, account_id, target_account_id, object_id);
 
 -- ─────────────────────────────────────────
 -- OAuth Apps

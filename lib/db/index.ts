@@ -837,7 +837,7 @@ export async function getAnnouncedObjectIds(
 export async function createNotification(db: D1Database, notif: LocalNotification): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO notifications (id, type, account_id, target_account_id, object_id, is_read)
+      `INSERT OR IGNORE INTO notifications (id, type, account_id, target_account_id, object_id, is_read)
        VALUES (?,?,?,?,?,?)`
     )
     .bind(notif.id, notif.type, notif.accountId, notif.targetAccountId, notif.objectId ?? null, 0)
