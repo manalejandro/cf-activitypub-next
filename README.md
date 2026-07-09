@@ -123,13 +123,17 @@ Runs the Cloudflare Workers runtime locally via `wrangler dev` (uses remote D1 b
 - ICE server configuration: Cloudflare STUN (`stun:stun.cloudflare.com:3478`) by default; optional TURN via Cloudflare Calls API
 
 #### Optional TURN (Cloudflare Calls)
-To enable TURN relay for users behind symmetric NAT, add the following to `wrangler.toml`:
-```toml
-[vars]
-CALLS_APP_ID = "your-cloudflare-calls-app-id"
-CALLS_APP_SECRET = "your-cloudflare-calls-app-secret"
+To enable TURN relay for users behind symmetric NAT, set these secrets (not `[vars]` — they contain sensitive credentials):
+
+```bash
+wrangler secret put CALLS_TURN_KEY_ID
+wrangler secret put CALLS_API_TOKEN
 ```
-Obtain credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime → Calls.
+
+- `CALLS_TURN_KEY_ID` — your Cloudflare Calls TURN key ID
+- `CALLS_API_TOKEN` — a Cloudflare API token with `calls:turn` permission
+
+Obtain credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime → Calls → TURN.
 
 ## License
 
