@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, getActorById, getAttachmentsByObjectId, getLike, getAnnounce, getBookmark, createBookmark } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { generateId } from "@/lib/activitypub/utils";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -13,7 +14,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const obj = await getObjectById(env.DB, id);
+  const objectId = decodeStatusId(id, domain);
+  const obj = await getObjectById(env.DB, objectId);
   if (!obj) return notFound();
 
   const existing = await getBookmark(env.DB, actor.id, obj.id);
