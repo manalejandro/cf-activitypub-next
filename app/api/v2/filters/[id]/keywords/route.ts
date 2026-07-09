@@ -4,31 +4,32 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterById, getFilterKeywords, createFilterKeyword } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ filter_id: string }> }): Promise<Response> {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const { filter_id } = await params;
-  const filter = await getFilterById(env.DB, filter_id);
+  const { id } = await params;
+  const filter = await getFilterById(env.DB, id);
   if (!filter) return notFound();
   if (filter.actor_id !== actor.id) return notFound();
 
-  const keywords = await getFilterKeywords(env.DB, filter_id);
+  const keywords = await getFilterKeywords(env.DB, id);
   return json(keywords);
 }
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ filter_id: string }> }): Promise<Response> {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const { filter_id } = await params;
-  const filter = await getFilterById(env.DB, filter_id);
+  const { id } = await params;
+  const filter = await getFilterById(env.DB, id);
   if (!filter) return notFound();
   if (filter.actor_id !== actor.id) return notFound();
+  const filterId = id;
 
   const contentType = request.headers.get("Content-Type") ?? "";
   let keyword = "";
@@ -46,8 +47,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (!keyword) return json({ error: "keyword is required" }, 422);
 
-  const id = generateId();
-  await createFilterKeyword(env.DB, id, filter_id, keyword, wholeWord);
+  const keywordId = generateId();
+  await createFilterKeyword(env.DB, keywordId, filterId, keyword, wholeWord);
 
-  return json({ id, keyword, whole_word: wholeWord });
+  return json({ id: keywordId, keyword, whole_word: wholeWord });
 }
