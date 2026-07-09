@@ -352,3 +352,226 @@ CREATE TABLE IF NOT EXISTS domain_capabilities (
   supports_calls  INTEGER NOT NULL DEFAULT 0,
   checked_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ─────────────────────────────────────────
+-- Markers (timeline read positions)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS markers (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  timeline      TEXT NOT NULL,               -- 'home' | 'notifications'
+  last_read_id  TEXT NOT NULL,
+  version       INTEGER NOT NULL DEFAULT 0,
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, timeline)
+);
+
+CREATE INDEX IF NOT EXISTS idx_markers_actor ON markers(actor_id);
+
+-- ─────────────────────────────────────────
+-- Web Push subscriptions
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  endpoint      TEXT NOT NULL,
+  p256dh_key    TEXT NOT NULL,
+  auth_key      TEXT NOT NULL,
+  standard      INTEGER NOT NULL DEFAULT 0,
+  policy        TEXT NOT NULL DEFAULT 'all',
+  alerts        TEXT NOT NULL DEFAULT '{}',
+  server_key    TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_actor ON push_subscriptions(actor_id);
+
+-- ─────────────────────────────────────────
+-- Bookmarks
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bookmarks (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  object_id     TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, object_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bookmarks_actor ON bookmarks(actor_id);
+CREATE INDEX IF NOT EXISTS idx_bookmarks_object ON bookmarks(object_id);
+
+-- ─────────────────────────────────────────
+-- Mutes
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS mutes (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id     TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  notifications INTEGER NOT NULL DEFAULT 1,
+  duration      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mutes_actor ON mutes(actor_id);
+
+-- ─────────────────────────────────────────
+-- Lists
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS lists (
+  id              TEXT PRIMARY KEY,
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  replies_policy  TEXT NOT NULL DEFAULT 'list',
+  exclusive       INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lists_actor ON lists(actor_id);
+
+CREATE TABLE IF NOT EXISTS list_accounts (
+  id          TEXT PRIMARY KEY,
+  list_id     TEXT NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (list_id, actor_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_accounts_list ON list_accounts(list_id);
+CREATE INDEX IF NOT EXISTS idx_list_accounts_actor ON list_accounts(actor_id);
+
+-- ─────────────────────────────────────────
+-- Conversations
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS conversations (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  last_status_id TEXT,
+  unread        INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_actor ON conversations(actor_id);
+
+-- ─────────────────────────────────────────
+-- Filters (v2)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS filters (
+  id              TEXT PRIMARY KEY,
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  context         TEXT NOT NULL DEFAULT '[]',
+  filter_action   TEXT NOT NULL DEFAULT 'warn',
+  expires_at      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_filters_actor ON filters(actor_id);
+
+CREATE TABLE IF NOT EXISTS filter_keywords (
+  id          TEXT PRIMARY KEY,
+  filter_id   TEXT NOT NULL REFERENCES filters(id) ON DELETE CASCADE,
+  keyword     TEXT NOT NULL,
+  whole_word  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_filter_keywords_filter ON filter_keywords(filter_id);
+
+CREATE TABLE IF NOT EXISTS filter_statuses (
+  id          TEXT PRIMARY KEY,
+  filter_id   TEXT NOT NULL REFERENCES filters(id) ON DELETE CASCADE,
+  status_id   TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_filter_statuses_filter ON filter_statuses(filter_id);
+
+-- ─────────────────────────────────────────
+-- Scheduled statuses
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS scheduled_statuses (
+  id            TEXT PRIMARY KEY,
+  actor_id      TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  scheduled_at  TEXT NOT NULL,
+  params        TEXT NOT NULL DEFAULT '{}',
+  media_ids     TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_statuses_actor ON scheduled_statuses(actor_id);
+
+-- ─────────────────────────────────────────
+-- Reports
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS reports (
+  id              TEXT PRIMARY KEY,
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id       TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  status_ids      TEXT,
+  comment         TEXT NOT NULL DEFAULT '',
+  category        TEXT NOT NULL DEFAULT 'other',
+  rule_ids        TEXT,
+  forwarded       INTEGER NOT NULL DEFAULT 0,
+  action_taken    INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_actor ON reports(actor_id);
+CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_id);
+
+-- ─────────────────────────────────────────
+-- Featured tags
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS featured_tags (
+  id              TEXT PRIMARY KEY,
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  tag_name        TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, tag_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_featured_tags_actor ON featured_tags(actor_id);
+
+-- ─────────────────────────────────────────
+-- Announcements
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS announcements (
+  id            TEXT PRIMARY KEY,
+  content       TEXT NOT NULL,
+  starts_at     TEXT,
+  ends_at       TEXT,
+  all_day       INTEGER NOT NULL DEFAULT 0,
+  published_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS announcement_reactions (
+  id              TEXT PRIMARY KEY,
+  announcement_id TEXT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (announcement_id, actor_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ann_reactions_ann ON announcement_reactions(announcement_id);
+
+-- ─────────────────────────────────────────
+-- Follow suggestions (dismissed)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS dismissed_suggestions (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dismissed_suggestions_actor ON dismissed_suggestions(actor_id);

@@ -468,6 +468,52 @@ export interface MastodonField {
   verified_at: string | null;
 }
 
+export interface MastodonPreferences {
+  "posting:default:visibility": string;
+  "posting:default:sensitive": boolean;
+  "posting:default:language": string | null;
+  "posting:default:quote_policy": string;
+  "reading:expand:media": string;
+  "reading:expand:spoilers": boolean;
+}
+
+export interface MastodonMarker {
+  last_read_id: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface MastodonWebPushSubscription {
+  id: string;
+  endpoint: string;
+  standard: boolean;
+  alerts: Record<string, boolean>;
+  server_key: string;
+}
+
+export interface LocalMarker {
+  id: string;
+  actorId: string;
+  timeline: string;
+  lastReadId: string;
+  version: number;
+  updatedAt: string;
+}
+
+export interface LocalPushSubscription {
+  id: string;
+  actorId: string;
+  endpoint: string;
+  p256dhKey: string;
+  authKey: string;
+  standard: boolean;
+  policy: string;
+  alerts: string;
+  serverKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MastodonSource {
   note: string;
   fields: MastodonField[];
@@ -517,4 +563,128 @@ export interface MastodonInstance {
   registrations: { enabled: boolean; approval_required: boolean; message: null };
   contact: { email: string; account: MastodonAccount | null };
   rules: { id: string; text: string; hint: string }[];
+}
+
+// ─────────────────────────────────────────
+// Additional Mastodon API types
+// ─────────────────────────────────────────
+
+export interface MastodonConversation {
+  id: string;
+  unread: boolean;
+  accounts: MastodonAccount[];
+  last_status: MastodonStatus | null;
+}
+
+export interface MastodonList {
+  id: string;
+  title: string;
+  replies_policy: string;
+  exclusive: boolean;
+}
+
+export interface MastodonFilterV2 {
+  id: string;
+  title: string;
+  context: string[];
+  expires_at: string | null;
+  filter_action: string;
+  keywords: { id: string; keyword: string; whole_word: boolean }[];
+  statuses: { id: string; status_id: string }[];
+}
+
+export interface MastodonFilterKeyword {
+  id: string;
+  keyword: string;
+  whole_word: boolean;
+}
+
+export interface MastodonFilterStatus {
+  id: string;
+  status_id: string;
+}
+
+export interface MastodonScheduledStatus {
+  id: string;
+  scheduled_at: string;
+  params: {
+    text: string | null;
+    poll: Record<string, unknown> | null;
+    media_ids: string[] | null;
+    sensitive: boolean | null;
+    spoiler_text: string | null;
+    visibility: string | null;
+    in_reply_to_id: string | null;
+    language: string | null;
+    application_id: number | null;
+    scheduled_at: null;
+    idempotency: string | null;
+    with_rate_limit: boolean;
+  };
+  media_attachments: MastodonAttachment[];
+}
+
+export interface MastodonReport {
+  id: string;
+  action_taken: boolean;
+  action_taken_at: string | null;
+  category: string;
+  comment: string;
+  forwarded: boolean;
+  created_at: string;
+  status_ids: string[] | null;
+  rule_ids: string[] | null;
+  target_account: MastodonAccount;
+}
+
+export interface MastodonFeaturedTag {
+  id: string;
+  name: string;
+  url: string;
+  statuses_count: number;
+  last_status_at: string | null;
+}
+
+export interface MastodonSuggestion {
+  source: string;
+  account: MastodonAccount;
+}
+
+export interface MastodonAnnouncement {
+  id: string;
+  content: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  all_day: boolean;
+  published_at: string;
+  updated_at: string;
+  read: boolean;
+  mentions: { id: string; username: string; url: string; acct: string }[];
+  statuses: { id: string; url: string }[];
+  tags: { name: string; url: string }[];
+  emojis: MastodonEmoji[];
+  reactions: { name: string; count: number; me: boolean; url: string; static_url: string }[];
+}
+
+export interface MastodonProfile {
+  id: string;
+  display_name: string;
+  note: string;
+  fields: MastodonField[];
+  avatar: string;
+  avatar_static: string;
+  avatar_description: string;
+  header: string;
+  header_static: string;
+  header_description: string;
+  locked: boolean;
+  bot: boolean;
+  hide_collections: boolean;
+  discoverable: boolean;
+  indexable: boolean;
+  show_media: boolean;
+  show_media_replies: boolean;
+  show_featured: boolean;
+  attribution_domains: string[];
+  featured_tags: MastodonFeaturedTag[];
 }
