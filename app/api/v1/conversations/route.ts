@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversations } from "@/lib/db";
+import { getConversations, getObjectById, getActorById } from "@/lib/db";
+import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -13,9 +14,6 @@ export async function GET(request: NextRequest): Promise<Response> {
   const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "20"), 40);
 
   const conversations = await getConversations(env.DB, actor.id, limit);
-
-  const { getObjectById, getActorById } = await import("@/lib/db");
-  const { serializeStatus, serializeAccount } = await import("@/lib/mastodon/serializers");
 
   const result = await Promise.all(
     conversations.map(async (c) => {

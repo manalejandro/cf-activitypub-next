@@ -99,13 +99,14 @@ export async function POST(request: NextRequest): Promise<Response> {
   });
 
   const sub = await getPushSubscription(env.DB, actor.id);
+  if (!sub) return json({ error: "Failed to create push subscription" }, 500);
 
   return json({
-    id: sub!.id,
-    endpoint: sub!.endpoint,
-    standard: sub!.standard,
+    id: sub.id,
+    endpoint: sub.endpoint,
+    standard: sub.standard,
     alerts: alerts,
-    server_key: sub!.serverKey,
+    server_key: sub.serverKey,
   });
 }
 
@@ -149,15 +150,16 @@ export async function PUT(request: NextRequest): Promise<Response> {
   await updatePushSubscriptionAlerts(env.DB, actor.id, JSON.stringify(mergedAlerts), policy);
 
   const updated = await getPushSubscription(env.DB, actor.id);
+  if (!updated) return json({ error: "Push subscription not found after update" }, 500);
   let updatedAlerts: Record<string, boolean> = {};
-  try { updatedAlerts = JSON.parse(updated!.alerts); } catch { /* empty */ }
+  try { updatedAlerts = JSON.parse(updated.alerts); } catch { /* empty */ }
 
   return json({
-    id: updated!.id,
-    endpoint: updated!.endpoint,
-    standard: updated!.standard,
+    id: updated.id,
+    endpoint: updated.endpoint,
+    standard: updated.standard,
     alerts: updatedAlerts,
-    server_key: updated!.serverKey,
+    server_key: updated.serverKey,
   });
 }
 
