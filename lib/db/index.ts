@@ -1351,6 +1351,29 @@ export async function markNotificationsRead(db: D1Database, actorId: string): Pr
     .run();
 }
 
+export async function getNotificationById(
+  db: D1Database,
+  id: string
+): Promise<LocalNotification | null> {
+  const row = await db
+    .prepare("SELECT * FROM notifications WHERE id = ?")
+    .bind(id)
+    .first<Row>();
+  return row ? rowToNotification(row) : null;
+}
+
+export async function dismissNotification(
+  db: D1Database,
+  id: string,
+  targetActorId: string
+): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND target_account_id = ?")
+    .bind(id, targetActorId)
+    .run();
+  return result.meta.changes > 0;
+}
+
 // ─────────────────────────────────────────
 // OAuth
 // ─────────────────────────────────────────

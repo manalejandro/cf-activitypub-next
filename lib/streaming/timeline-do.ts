@@ -50,7 +50,7 @@ function resolveStreamToChannel(stream: string, tag?: string | null, listId?: st
   }
 }
 
-type SocketAttachment = { channels?: string[] };
+type SocketAttachment = { channels?: string[]; initialChannel?: string };
 
 export class TimelineStreamDO extends CFDurableObject {
   readonly state: DurableObjectState;
@@ -90,7 +90,7 @@ export class TimelineStreamDO extends CFDurableObject {
     // Tag the hibernated socket with the channel name so we can fan-out by tag.
     // Also store the initial channel in the attachment for dynamic subscription tracking.
     this.state.acceptWebSocket(server, [channel]);
-    server.serializeAttachment({ channels: [] } satisfies SocketAttachment);
+    server.serializeAttachment({ channels: [], initialChannel: channel } satisfies SocketAttachment);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -149,7 +149,17 @@ export class TimelineStreamDO extends CFDurableObject {
       const msg = JSON.parse(text) as { type?: string; stream?: string; tag?: string; list?: string };
       if (!msg.type || !msg.stream) return;
 
-      const channel = resolveStreamToChannel(msg.stream, msg.tag, msg.list);
+      let channel = resolveStreamToChannel(msg.stream, msg.tag, msg.list);
+      if (!channel) {
+        // Authenticated streams (user, user:notification, direct) are resolved by
+        // the worker before connecting. If the client subscribes to one dynamically,
+        // fall back to the initial channel the socket was tagged with.
+        const authStreams = ["user", "user:notification", "direct"];
+        if (authStreams.includes(msg.stream)) {
+          const attachment = (ws.deserializeAttachment() ?? {}) as SocketAttachment;
+          channel = attachment.initialChannel ?? null;
+        }
+      }
       if (!channel) {
         // Per Mastodon spec: send error JSON over the socket for unknown streams
         ws.send(JSON.stringify({ error: "Unknown stream type", status: 400 }));
