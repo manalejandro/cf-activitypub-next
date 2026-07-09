@@ -65,6 +65,9 @@ export default function HomePage() {
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [pollExpiry, setPollExpiry] = useState(86400);
   const [pollMultiple, setPollMultiple] = useState(false);
+  // Scheduling state
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -140,6 +143,9 @@ export default function HomePage() {
       spoiler_text: showCw ? cwText : "",
       language: locale,
     };
+    if (scheduling && scheduledAt) {
+      body.scheduled_at = new Date(scheduledAt).toISOString();
+    }
     if (hasPoll) {
       body.poll = {
         options: pollOptions.filter((o) => o.trim()),
@@ -166,6 +172,11 @@ export default function HomePage() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
+      const data = await res.json() as Record<string, unknown>;
+      if (data && data.scheduled_at) {
+        router.push("/scheduled");
+        return;
+      }
       setComposing("");
       setMediaFiles([]);
       mediaDescRefs.current = {};
@@ -348,6 +359,18 @@ export default function HomePage() {
               </div>
             )}
 
+            {/* Schedule picker */}
+            {scheduling && (
+              <input
+                type="datetime-local"
+                className="input"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                style={{ fontSize: "0.85rem", width: "100%" }}
+              />
+            )}
+
             {/* Media previews */}
             {mediaFiles.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -438,6 +461,16 @@ export default function HomePage() {
                   title="Encuesta"
                 >
                   📊
+                </button>
+                {/* Schedule button */}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: scheduling ? "var(--accent-bg)" : undefined }}
+                  onClick={() => setScheduling((v) => !v)}
+                  title="Programar"
+                >
+                  🕐
                 </button>
                 {/* Visibility selector */}
                 <select

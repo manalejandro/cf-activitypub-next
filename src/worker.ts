@@ -21,7 +21,7 @@ import openNextDefault from "../.open-next/worker.js";
 import type { MessageBatch, ScheduledEvent, DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { signRequest } from "../lib/activitypub/security";
-import { buildDelete, generateId } from "../lib/activitypub/utils";
+import { buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete } from "../lib/streaming/broadcast";
@@ -314,6 +314,58 @@ export default {
 
   // Scheduled handler: auto-delete old statuses for users who have enabled it
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // Publish scheduled statuses whose time has come
+    const dueScheduled = await env.DB
+      .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now')")
+      .all<{ id: string; actor_id: string; scheduled_at: string; params: string; media_ids: string | null }>();
+
+    for (const s of dueScheduled.results) {
+      try {
+        const body = JSON.parse(s.params) as Record<string, unknown>;
+        body.scheduled_at = undefined;
+        const actor = await getActorById(env.DB, s.actor_id);
+        if (!actor || !actor.privateKeyPem) continue;
+
+        const baseUrl = `https://${actor.domain}`;
+        const content = (body.status as string | undefined)?.trim() ?? "";
+        const visibility = (body.visibility as string) ?? "public";
+        const sensitive = body.sensitive === true || body.sensitive === "true";
+        const spoilerText = (body.spoiler_text as string | undefined) ?? "";
+        const language = body.language as string | undefined;
+        const published = new Date().toISOString();
+        const noteId = generateId();
+
+        const note = buildNote(baseUrl, noteId, {
+          actorUsername: actor.username,
+          content,
+          published,
+          visibility: visibility as "public" | "unlisted" | "followers" | "direct",
+          inReplyTo: undefined,
+          sensitive,
+          summary: sensitive ? spoilerText : undefined,
+          language,
+          tags: [],
+        });
+
+        await env.DB
+          .prepare("INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id, language, url, replies_count, reblogs_count, favourites_count, published, local, raw) VALUES (?, 'Note', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 1, ?)")
+          .bind(note.id, s.actor_id, content, sensitive ? spoilerText : null, sensitive ? 1 : 0, visibility, null, language ?? null, note.url ?? note.id, published, JSON.stringify(note))
+          .run();
+
+        await env.DB
+          .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
+          .bind(s.actor_id)
+          .run();
+
+        await env.DB
+          .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
+          .bind(s.id)
+          .run();
+      } catch {
+        // Skip malformed scheduled statuses
+      }
+    }
+
     const actors = await env.DB
       .prepare(
         "SELECT id, auto_delete_after FROM actors WHERE is_local = 1 AND auto_delete_after IS NOT NULL AND auto_delete_after > 0"

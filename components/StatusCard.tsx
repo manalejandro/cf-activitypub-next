@@ -55,6 +55,7 @@ export interface Status {
   replies_count: number;
   favourited: boolean;
   reblogged: boolean;
+  bookmarked?: boolean;
   media_attachments: MediaAttachment[];
   sensitive: boolean;
   spoiler_text: string;
@@ -333,6 +334,7 @@ export function StatusCard({
   // Optimistic local state – updated instantly on click, then synced from prop
   const [favourited, setFavourited] = useState(status.favourited);
   const [reblogged, setReblogged] = useState(status.reblogged);
+  const [bookmarked, setBookmarked] = useState(status.bookmarked ?? false);
   const [favouritesCount, setFavouritesCount] = useState(status.favourites_count);
   const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
 
@@ -346,6 +348,10 @@ export function StatusCard({
     setReblogged(status.reblogged);
     setReblogsCount(status.reblogs_count);
   }, [status.id, status.reblogged, status.reblogs_count]);
+
+  useEffect(() => {
+    setBookmarked(status.bookmarked ?? false);
+  }, [status.id, status.bookmarked]);
 
   const isRemote = status.account.acct.includes("@");
   const profileHref = isRemote
@@ -398,6 +404,18 @@ export function StatusCard({
       setReblogged(wasReblogged);
       setReblogsCount((c) => c + (wasReblogged ? 1 : -1));
     }
+  }
+
+  async function handleBookmark() {
+    if (!token) return;
+    const wasBookmarked = bookmarked;
+    setBookmarked(!wasBookmarked);
+    const path = wasBookmarked ? "unbookmark" : "bookmark";
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) setBookmarked(wasBookmarked);
   }
 
   return (
@@ -502,6 +520,21 @@ export function StatusCard({
             disabled={!token}
           >
             {favourited ? "❤️" : "🤍"} {favouritesCount}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{
+              padding: "0.2rem 0.4rem",
+              gap: "0.35rem",
+              color: bookmarked ? "var(--accent)" : "var(--text-muted)",
+              background: bookmarked ? "var(--accent-bg)" : undefined,
+              borderRadius: "var(--radius-sm)",
+            }}
+            onClick={() => void handleBookmark()}
+            disabled={!token}
+            title={bookmarked ? "Quitar marcador" : "Añadir marcador"}
+          >
+            {bookmarked ? "🔖" : "🏷️"}
           </button>
           {me && me.id === status.account.id && (
             <>

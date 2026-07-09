@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { useStartCallButton } from "@/components/CallOverlay";
@@ -101,6 +102,7 @@ interface Relationship {
   following: boolean;
   requested: boolean;
   blocking: boolean;
+  muting?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -443,6 +445,7 @@ function AccountCard({ acct }: { acct: Account }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
+  const router = useRouter();
   const [username, setUsername] = useState<string>("");
   const [account, setAccount] = useState<Account | null>(null);
   const [me, setMe] = useState<Me | null>(null);
@@ -460,6 +463,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const [relationship, setRelationship] = useState<Relationship | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [muteBusy, setMuteBusy] = useState(false);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [hasMoreFollowers, setHasMoreFollowers] = useState(true);
@@ -830,6 +834,19 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
     setBlockBusy(false);
   }
 
+  async function toggleMute() {
+    if (!token || !account || muteBusy) return;
+    setMuteBusy(true);
+    const muting = relationship?.muting === true;
+    const path = muting ? "unmute" : "mute";
+    await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setRelationship((prev) => prev ? { ...prev, muting: !muting } : prev);
+    setMuteBusy(false);
+  }
+
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
   const { t } = useLocale();
@@ -926,6 +943,25 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                     >
                       {blockBusy ? "…" : relationship?.blocking ? "🚫 Bloqueado" : "🚫"}
                     </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)", color: relationship?.muting ? "var(--danger)" : "var(--text-muted)" }}
+                      onClick={() => void toggleMute()}
+                      disabled={muteBusy}
+                      title={relationship?.muting ? "Dejar de silenciar" : "Silenciar"}
+                    >
+                      {muteBusy ? "…" : relationship?.muting ? "🤫 Silenciado" : "🤫"}
+                    </button>
+                    {!relationship?.blocking && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ border: "1px solid var(--border)" }}
+                        onClick={() => router.push("/messages")}
+                        title="Mensaje directo"
+                      >
+                        💬
+                      </button>
+                    )}
                     {account.supports_calls && (<>
                       <button
                         className="btn btn-ghost btn-sm"

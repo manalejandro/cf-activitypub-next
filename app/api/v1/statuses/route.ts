@@ -13,6 +13,7 @@ import {
   getPollByObjectId,
   getPollOptions,
   getAllCustomEmojis,
+  createScheduledStatus,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -83,6 +84,22 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Process content: linkify mentions, hashtags, URLs, custom emoji → HTML
   const localEmojis = await getAllCustomEmojis(env.DB);
   const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis);
+
+  const scheduledAt = body.scheduled_at as string | undefined;
+  if (scheduledAt) {
+    const schedDate = new Date(scheduledAt);
+    if (schedDate > new Date()) {
+      const schedId = generateId();
+      const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+      await createScheduledStatus(env.DB, schedId, actor.id, scheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
+      return json({
+        id: schedId,
+        scheduled_at: scheduledAt,
+        params: body,
+        media_attachments: [],
+      }, 200);
+    }
+  }
 
   const id = generateId();
   const published = new Date().toISOString();
