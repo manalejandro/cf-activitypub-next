@@ -239,6 +239,16 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
                 <div ref={turnstileRef} style={{ minHeight: "65px" }} />
               )}
 
+              {/* Forgot password link */}
+              <div style={{ textAlign: "right", marginTop: "-0.75rem" }}>
+                <Link
+                  href="/forgot-password"
+                  style={{ fontSize: "0.8rem", color: "var(--accent)" }}
+                >
+                  {t.forgot_password}
+                </Link>
+              </div>
+
               {/* Resend verification link */}
               {error === t.login_unverified && (
                 <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", margin: 0 }}>

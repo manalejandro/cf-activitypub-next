@@ -311,6 +311,21 @@ CREATE INDEX IF NOT EXISTS idx_email_verif_token ON email_verifications(token);
 CREATE INDEX IF NOT EXISTS idx_email_verif_actor ON email_verifications(actor_id);
 
 -- ─────────────────────────────────────────
+-- Password reset tokens
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS password_resets (
+  id         TEXT PRIMARY KEY,
+  actor_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  token      TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
+CREATE INDEX IF NOT EXISTS idx_password_resets_actor ON password_resets(actor_id);
+
+-- ─────────────────────────────────────────
 -- Custom emojis (local + federated)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS custom_emojis (

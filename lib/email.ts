@@ -38,6 +38,35 @@ export async function sendVerificationEmail(
   });
 }
 
+export async function sendPasswordResetEmail(
+  emailBinding: SendEmail,
+  opts: {
+    to: string;
+    from: string;
+    resetUrl: string;
+    instanceTitle: string;
+  }
+): Promise<void> {
+  const { to, from, resetUrl, instanceTitle } = opts;
+
+  await emailBinding.send({
+    from,
+    to,
+    subject: `Reset your ${instanceTitle} password`,
+    text: [
+      `We received a request to reset your ${instanceTitle} password.`,
+      ``,
+      `Click the link below to set a new password:`,
+      ``,
+      resetUrl,
+      ``,
+      `This link expires in 1 hour.`,
+      ``,
+      `If you did not request this, you can safely ignore this email.`,
+    ].join("\n"),
+  });
+}
+
 export async function sendWelcomeEmail(
   emailBinding: SendEmail,
   opts: {

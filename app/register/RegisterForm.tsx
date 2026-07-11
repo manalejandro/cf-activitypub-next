@@ -34,6 +34,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -94,6 +95,12 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       setError(t.turnstile_error);
       return;
     }
+    if (password !== confirmPassword) {
+      setError(t.register_password_mismatch);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -333,6 +340,22 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                  {t.register_confirm_password}
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   autoComplete="new-password"
                   minLength={8}

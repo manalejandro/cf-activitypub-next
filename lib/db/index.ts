@@ -34,6 +34,15 @@ export interface EmailVerification {
   createdAt: string;
 }
 
+export interface PasswordReset {
+  id: string;
+  actorId: string;
+  token: string;
+  expiresAt: string;
+  used: boolean;
+  createdAt: string;
+}
+
 function rowToActor(r: Row): LocalActor {
   return {
     id: r.id,
@@ -1787,6 +1796,59 @@ export async function markEmailVerified(db: D1Database, actorId: string): Promis
   await db
     .prepare("UPDATE actors SET email_verified = 1, updated_at = datetime('now') WHERE id = ?")
     .bind(actorId)
+    .run();
+}
+
+// ─────────────────────────────────────────
+// Password reset tokens
+// ─────────────────────────────────────────
+
+export async function createPasswordReset(
+  db: D1Database,
+  actorId: string,
+  token: string,
+  expiresAt: string
+): Promise<void> {
+  await db
+    .prepare("INSERT INTO password_resets (id, actor_id, token, expires_at) VALUES (?,?,?,?)")
+    .bind(crypto.randomUUID(), actorId, token, expiresAt)
+    .run();
+}
+
+export async function getPasswordResetByToken(
+  db: D1Database,
+  token: string
+): Promise<PasswordReset | null> {
+  const row = await db
+    .prepare("SELECT * FROM password_resets WHERE token = ? AND used = 0")
+    .bind(token)
+    .first<Row>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    token: row.token,
+    expiresAt: row.expires_at,
+    used: Boolean(row.used),
+    createdAt: row.created_at,
+  };
+}
+
+export async function markPasswordResetUsed(db: D1Database, token: string): Promise<void> {
+  await db
+    .prepare("UPDATE password_resets SET used = 1 WHERE token = ?")
+    .bind(token)
+    .run();
+}
+
+export async function updatePassword(
+  db: D1Database,
+  actorId: string,
+  passwordHash: string
+): Promise<void> {
+  await db
+    .prepare("UPDATE actors SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(passwordHash, actorId)
     .run();
 }
 
