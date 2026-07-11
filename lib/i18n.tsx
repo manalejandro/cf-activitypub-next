@@ -249,6 +249,10 @@ const EN = {
   nav_followed_tags: "Hashtags",
   nav_scheduled: "Scheduled",
   nav_favourites: "Favourites",
+  // Translate
+  translate: "Translate",
+  translating: "Translating…",
+  show_original: "Show original",
   // Common
   loading: "Loading…",
   network_error: "Network error. Please try again.",
@@ -499,6 +503,10 @@ const ES: typeof EN = {
   nav_followed_tags: "Etiquetas",
   nav_scheduled: "Programados",
   nav_favourites: "Favoritos",
+  // Traducir
+  translate: "Traducir",
+  translating: "Traduciendo…",
+  show_original: "Mostrar original",
   // Común
   loading: "Cargando…",
   network_error: "Error de red. Por favor, inténtalo de nuevo.",

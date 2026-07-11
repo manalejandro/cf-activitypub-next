@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { renderEmojiInHtml } from "@/lib/emoji";
+import { useLocale } from "@/lib/i18n";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -60,6 +61,7 @@ interface Status {
   spoiler_text: string;
   media_attachments: MediaAttachment[];
   visibility: string;
+  language?: string | null;
   poll: Poll | null;
   emojis?: EmojiData[];
 }
@@ -344,6 +346,43 @@ function StatusCard({
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
     [status.content, status.emojis]
   );
+  const [translating, setTranslating] = useState(false);
+  const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const { t: i18n } = useLocale();
+
+  async function handleTranslate() {
+    if (translatedContent) {
+      setShowTranslation((v) => !v);
+      return;
+    }
+    if (!status.language) return;
+    setTranslating(true);
+    try {
+      const targetLang = navigator.language.slice(0, 2) || "en";
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: status.content,
+          source_lang: status.language,
+          target_lang: targetLang,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { translatedText?: string };
+        if (data.translatedText) {
+          setTranslatedContent(data.translatedText);
+          setShowTranslation(true);
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   const isRemote = status.account.acct.includes("@");
   const profileHref = isRemote
     ? `/users/remote?url=${encodeURIComponent(status.account.id)}`
@@ -419,7 +458,7 @@ function StatusCard({
         <div
           className="status-content"
           style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6 }}
-          dangerouslySetInnerHTML={{ __html: renderedContent }}
+          dangerouslySetInnerHTML={{ __html: showTranslation && translatedContent ? translatedContent : renderedContent }}
         />
         {status.poll && <PollView poll={status.poll} token={token} />}
         {isFocal && (
@@ -454,6 +493,17 @@ function StatusCard({
           >
             {status.favourited ? "❤️" : "🤍"} {status.favourites_count}
           </button>
+          {status.language && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem", marginLeft: "auto" }}
+              onClick={() => void handleTranslate()}
+              disabled={translating}
+              title={status.language}
+            >
+              {translating ? "…" : showTranslation ? i18n.show_original : i18n.translate}
+            </button>
+          )}
           {meProp && meProp.id === status.account.id && (
             <>
               {onEdit && (

@@ -70,6 +70,7 @@ interface Status {
   sensitive: boolean;
   spoiler_text: string;
   media_attachments: MediaAttachment[];
+  language?: string | null;
   poll: Poll | null;
 }
 
@@ -173,6 +174,43 @@ function StatusCard({ s, token, onFav, onReblog, me: meProp, onEdit, onDelete }:
   const [pollState, setPollState] = useState<Poll | null>(s.poll ?? null);
   const [voting, setVoting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  const [translating, setTranslating] = useState(false);
+  const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const { t: i18n } = useLocale();
+
+  async function handleTranslate() {
+    if (translatedContent) {
+      setShowTranslation((v) => !v);
+      return;
+    }
+    if (!s.language) return;
+    setTranslating(true);
+    try {
+      const targetLang = navigator.language.slice(0, 2) || "en";
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: s.content,
+          source_lang: s.language,
+          target_lang: targetLang,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { translatedText?: string };
+        if (data.translatedText) {
+          setTranslatedContent(data.translatedText);
+          setShowTranslation(true);
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   const isRemote = s.account.acct.includes("@");
   const profileHref = isRemote ? `/users/remote?url=${encodeURIComponent(s.account.id)}` : `/users/${s.account.username}`;
   const threadHref = `/statuses/${encodeURIComponent(s.id)}`;
@@ -214,7 +252,7 @@ function StatusCard({ s, token, onFav, onReblog, me: meProp, onEdit, onDelete }:
           </div>
         )}
         {(!s.spoiler_text || expandedCw) && (
-          <div style={{ fontSize: "0.95rem", lineHeight: 1.55, overflowWrap: "break-word", wordBreak: "break-word", minWidth: 0 }} dangerouslySetInnerHTML={{ __html: s.content }} />
+          <div style={{ fontSize: "0.95rem", lineHeight: 1.55, overflowWrap: "break-word", wordBreak: "break-word", minWidth: 0 }} dangerouslySetInnerHTML={{ __html: showTranslation && translatedContent ? translatedContent : s.content }} />
         )}
         {(!s.spoiler_text || expandedCw) && <MediaGrid attachments={s.media_attachments ?? []} />}
         {(!s.spoiler_text || expandedCw) && poll && (
@@ -258,6 +296,17 @@ function StatusCard({ s, token, onFav, onReblog, me: meProp, onEdit, onDelete }:
           <a href={threadHref} className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", textDecoration: "none", color: "var(--text-muted)" }}>💬 {s.replies_count}</a>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.reblogged ? "var(--accent)" : "var(--text-muted)" }} onClick={onReblog}>🔁 {s.reblogs_count}</button>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.favourited ? "var(--danger)" : "var(--text-muted)" }} onClick={onFav}>{s.favourited ? "❤️" : "🤍"} {s.favourites_count}</button>
+          {s.language && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", fontSize: "0.7rem", marginLeft: "auto" }}
+              onClick={() => void handleTranslate()}
+              disabled={translating}
+              title={s.language}
+            >
+              {translating ? "…" : showTranslation ? i18n.show_original : i18n.translate}
+            </button>
+          )}
           {meProp && meProp.id === s.account.id && (
             <>
               {onEdit && (

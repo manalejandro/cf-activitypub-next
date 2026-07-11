@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Lightbox } from "./Lightbox";
 import { renderEmojiInHtml } from "@/lib/emoji";
+import { useLocale } from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,43 @@ export function StatusCard({
   const [favouritesCount, setFavouritesCount] = useState(status.favourites_count);
   const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
 
+  const [translating, setTranslating] = useState(false);
+  const [translatedContent, setTranslatedContent] = useState<string | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const { t: i18n } = useLocale();
+
+  async function handleTranslate() {
+    if (translatedContent) {
+      setShowTranslation((v) => !v);
+      return;
+    }
+    if (!status.language) return;
+    setTranslating(true);
+    try {
+      const targetLang = navigator.language.slice(0, 2) || "en";
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: status.content,
+          source_lang: status.language,
+          target_lang: targetLang,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { translatedText?: string };
+        if (data.translatedText) {
+          setTranslatedContent(data.translatedText);
+          setShowTranslation(true);
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   // Sync when the parent replaces the status (different id or parent-driven toggle)
   useEffect(() => {
     setFavourited(status.favourited);
@@ -471,7 +509,7 @@ export function StatusCard({
           <div
             className="status-content"
             style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6, overflowWrap: "break-word", wordBreak: "break-word" }}
-            dangerouslySetInnerHTML={{ __html: renderedContent }}
+            dangerouslySetInnerHTML={{ __html: showTranslation && translatedContent ? translatedContent : renderedContent }}
           />
         )}
         {isFocal && (
@@ -536,6 +574,17 @@ export function StatusCard({
           >
             {bookmarked ? "🔖" : "🏷️"}
           </button>
+          {status.language && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem", marginLeft: "auto" }}
+              onClick={() => void handleTranslate()}
+              disabled={translating}
+              title={status.language}
+            >
+              {translating ? "…" : showTranslation ? i18n.show_original : i18n.translate}
+            </button>
+          )}
           {me && me.id === status.account.id && (
             <>
               {onEdit && (

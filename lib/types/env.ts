@@ -25,6 +25,8 @@ CALLS_API_TOKEN?: string;
   TURNSTILE_SITE_KEY: string;
   /** Sender email address — must be on a domain with Email Routing enabled */
   FROM_EMAIL: string;
+  /** LibreTranslate instance URL (e.g. https://translate.manalejandro.com/translate) */
+  LIBRETRANSLATE_URL: string;
 }
 
 declare global {
