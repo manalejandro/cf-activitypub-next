@@ -46,7 +46,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   if (!scheduledAt) return json({ error: "scheduled_at is required" }, 422);
 
-  await updateScheduledStatus(env.DB, id, scheduledAt);
+  const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
+  await updateScheduledStatus(env.DB, id, normalizedScheduledAt);
 
   const updated = await getScheduledStatusById(env.DB, id);
   return json({

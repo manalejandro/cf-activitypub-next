@@ -91,7 +91,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (schedDate > new Date()) {
       const schedId = generateId();
       const mediaIds = (body.media_ids as string[] | undefined) ?? [];
-      await createScheduledStatus(env.DB, schedId, actor.id, scheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
+      const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
+      await createScheduledStatus(env.DB, schedId, actor.id, normalizedScheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
       return json({
         id: schedId,
         scheduled_at: scheduledAt,

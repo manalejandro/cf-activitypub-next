@@ -20,6 +20,8 @@ export default function HashtagPage() {
   const [editText, setEditText] = useState("");
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   const { t } = useLocale();
 
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -58,6 +60,34 @@ export default function HashtagPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) setMe(await res.json() as Me);
+  }
+
+  async function fetchTagInfo() {
+    if (!token) return;
+    const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json() as { following?: boolean };
+      setFollowing(data.following ?? false);
+    }
+  }
+
+  async function handleToggleFollow() {
+    if (!token || followBusy) return;
+    setFollowBusy(true);
+    try {
+      const path = following ? "unfollow" : "follow";
+      const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}/${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setFollowing(!following);
+    } catch {
+      // silently fail
+    } finally {
+      setFollowBusy(false);
+    }
   }
 
   async function loadMore() {
@@ -127,6 +157,7 @@ export default function HashtagPage() {
     if (!hashtag) return;
     void fetchTimeline();
     void fetchMe();
+    void fetchTagInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hashtag]);
 
@@ -169,7 +200,7 @@ export default function HashtagPage() {
             >
               ←
             </button>
-            <div>
+            <div style={{ flex: 1 }}>
               <h1 style={{ fontWeight: 700, fontSize: "1.15rem", margin: 0 }}>
                 #{hashtag}
               </h1>
@@ -177,6 +208,17 @@ export default function HashtagPage() {
                 {t.hashtag_timeline} #{hashtag}
               </p>
             </div>
+            {token && (
+              <button
+                type="button"
+                className={`btn btn-sm ${following ? "btn-ghost" : "btn-primary"}`}
+                style={{ flexShrink: 0, fontSize: "0.8rem" }}
+                onClick={() => void handleToggleFollow()}
+                disabled={followBusy}
+              >
+                {followBusy ? "…" : following ? t.followed_tags_unfollow : t.account_follow}
+              </button>
+            )}
           </div>
         </div>
 

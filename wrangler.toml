@@ -14,6 +14,8 @@ NODE_ENV = "production"
 TURNSTILE_SITE_KEY = "1x00000000000000000000AA"
 # Sender address — must belong to a domain with Cloudflare Email Routing enabled
 FROM_EMAIL = "noreply@cf-ap.example.com"
+# LibreTranslate instance URL (set to empty to disable translation)
+LIBRETRANSLATE_URL = ""
 # Secrets: set with wrangler secret put
 #   wrangler secret put TURNSTILE_SECRET
 #   wrangler secret put CALLS_TURN_KEY_ID
