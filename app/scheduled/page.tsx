@@ -9,6 +9,7 @@ interface ScheduledStatus {
   id: string;
   scheduled_at: string;
   params: {
+    status?: string;
     text?: string;
     visibility?: string;
     sensitive?: boolean;
@@ -93,7 +94,7 @@ export default function ScheduledPage() {
                     📅 {new Date(s.scheduled_at).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.params.text || "(sin contenido)"}
+                    {s.params.status || s.params.text || "(sin contenido)"}
                   </div>
                   {s.params.spoiler_text && (
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
