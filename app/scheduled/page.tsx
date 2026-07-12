@@ -91,7 +91,7 @@ export default function ScheduledPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
-                    📅 {new Date(s.scheduled_at).toLocaleString()}
+                    📅 {new Date(s.scheduled_at + (s.scheduled_at.includes("T") || s.scheduled_at.includes("Z") ? "" : "Z")).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.params.status || s.params.text || "(sin contenido)"}

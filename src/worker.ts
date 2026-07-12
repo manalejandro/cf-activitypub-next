@@ -256,6 +256,67 @@ async function handleCallSignalingUpgrade(
   return stub.fetch(new Request(`https://call-do/connect`, request));
 }
 
+async function publishDueScheduled(env: Env): Promise<{ published: number; failed: number }> {
+  const dueScheduled = await env.DB
+    .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now') OR replace(scheduled_at, 'T', ' ') <= datetime('now')")
+    .all<{ id: string; actor_id: string; scheduled_at: string; params: string; media_ids: string | null }>();
+
+  let publishedCount = 0;
+  let failedCount = 0;
+
+  for (const s of dueScheduled.results) {
+    try {
+      const body = JSON.parse(s.params) as Record<string, unknown>;
+      body.scheduled_at = undefined;
+      const actor = await getActorById(env.DB, s.actor_id);
+      if (!actor || !actor.privateKeyPem) continue;
+
+      const baseUrl = `https://${actor.domain}`;
+      const content = (body.status as string | undefined)?.trim() ?? "";
+      const visibility = (body.visibility as string) ?? "public";
+      const sensitive = body.sensitive === true || body.sensitive === "true";
+      const spoilerText = (body.spoiler_text as string | undefined) ?? "";
+      const language = body.language as string | undefined;
+      const published = new Date().toISOString();
+      const noteId = generateId();
+
+      const note = buildNote(baseUrl, noteId, {
+        actorUsername: actor.username,
+        content,
+        published,
+        visibility: visibility as "public" | "unlisted" | "followers" | "direct",
+        inReplyTo: undefined,
+        sensitive,
+        summary: sensitive ? spoilerText : undefined,
+        language,
+        tags: [],
+      });
+
+      await env.DB
+        .prepare("INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id, language, url, replies_count, reblogs_count, favourites_count, published, is_local, raw) VALUES (?, 'Note', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 1, ?)")
+        .bind(note.id, s.actor_id, content, sensitive ? spoilerText : null, sensitive ? 1 : 0, visibility, null, language ?? null, note.url ?? note.id, published, JSON.stringify(note))
+        .run();
+
+      await env.DB
+        .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
+        .bind(s.actor_id)
+        .run();
+
+      await env.DB
+        .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
+        .bind(s.id)
+        .run();
+
+      publishedCount++;
+    } catch (e) {
+      console.error("[scheduled] Failed to publish scheduled status", s.id, e);
+      failedCount++;
+    }
+  }
+
+  return { published: publishedCount, failed: failedCount };
+}
+
 export default {
   // Proxy all HTTP requests to the OpenNext Next.js handler,
   // but intercept streaming and WebSocket endpoints first.
@@ -314,57 +375,7 @@ export default {
 
   // Scheduled handler: auto-delete old statuses for users who have enabled it
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    // Publish scheduled statuses whose time has come
-    const dueScheduled = await env.DB
-      .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now')")
-      .all<{ id: string; actor_id: string; scheduled_at: string; params: string; media_ids: string | null }>();
-
-    for (const s of dueScheduled.results) {
-      try {
-        const body = JSON.parse(s.params) as Record<string, unknown>;
-        body.scheduled_at = undefined;
-        const actor = await getActorById(env.DB, s.actor_id);
-        if (!actor || !actor.privateKeyPem) continue;
-
-        const baseUrl = `https://${actor.domain}`;
-        const content = (body.status as string | undefined)?.trim() ?? "";
-        const visibility = (body.visibility as string) ?? "public";
-        const sensitive = body.sensitive === true || body.sensitive === "true";
-        const spoilerText = (body.spoiler_text as string | undefined) ?? "";
-        const language = body.language as string | undefined;
-        const published = new Date().toISOString();
-        const noteId = generateId();
-
-        const note = buildNote(baseUrl, noteId, {
-          actorUsername: actor.username,
-          content,
-          published,
-          visibility: visibility as "public" | "unlisted" | "followers" | "direct",
-          inReplyTo: undefined,
-          sensitive,
-          summary: sensitive ? spoilerText : undefined,
-          language,
-          tags: [],
-        });
-
-        await env.DB
-          .prepare("INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id, language, url, replies_count, reblogs_count, favourites_count, published, local, raw) VALUES (?, 'Note', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 1, ?)")
-          .bind(note.id, s.actor_id, content, sensitive ? spoilerText : null, sensitive ? 1 : 0, visibility, null, language ?? null, note.url ?? note.id, published, JSON.stringify(note))
-          .run();
-
-        await env.DB
-          .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
-          .bind(s.actor_id)
-          .run();
-
-        await env.DB
-          .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
-          .bind(s.id)
-          .run();
-      } catch {
-        // Skip malformed scheduled statuses
-      }
-    }
+    await publishDueScheduled(env);
 
     const actors = await env.DB
       .prepare(

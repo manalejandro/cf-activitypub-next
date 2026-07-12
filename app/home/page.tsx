@@ -366,7 +366,7 @@ export default function HomePage() {
                 className="input"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); })()}
                 style={{ fontSize: "0.85rem", width: "100%" }}
               />
             )}

@@ -7,7 +7,7 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 [vars]
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.0.2"
+INSTANCE_VERSION = "1.0.3"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 # Public Turnstile site key (replace with your actual key from dash.cloudflare.com/turnstile)
@@ -74,7 +74,7 @@ tag = "v2"
 new_sqlite_classes = ["CallSignalingDO"]
 
 [triggers]
-crons = ["0 * * * *"]
+crons = ["* * * * *"]
 
 [observability]
 enabled = false
