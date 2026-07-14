@@ -32,12 +32,11 @@ export default function HomePage() {
   const mediaDescRefs = useRef<Record<string, string>>({});
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
   const seenIdsRef = useRef<Set<string>>(new Set());
   const { t, locale } = useLocale();
 
   // Real-time home feed streaming
-  useTimelineStream("user", token, (event, payload) => {
+  useTimelineStream("user", (event, payload) => {
     if (event === "update") {
       try {
         const status = JSON.parse(payload) as Status;
@@ -55,7 +54,7 @@ export default function HomePage() {
         setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
       } catch { /* ignore */ }
     }
-  }, { enabled: !!token });
+  });
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);
@@ -85,17 +84,13 @@ export default function HomePage() {
   const closeEmoji = useCallback(() => setEmojiOpen(false), []);
 
   useEffect(() => {
-    if (!token) { window.location.href = "/login"; return; }
     void fetchTimeline();
     void fetchMe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchTimeline() {
-    if (!token) return;
-    const res = await fetch("/api/v1/timelines/home", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/v1/timelines/home", { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses(data);
@@ -106,13 +101,11 @@ export default function HomePage() {
   }
 
   async function loadMore() {
-    if (!token || loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore) return;
     const oldestId = statuses[statuses.length - 1]?.id;
     if (!oldestId) return;
     setLoadingMore(true);
-    const res = await fetch(`/api/v1/timelines/home?max_id=${oldestId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(`/api/v1/timelines/home?max_id=${oldestId}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses((prev) => [...prev, ...data]);
@@ -122,17 +115,14 @@ export default function HomePage() {
   }
 
   async function fetchMe() {
-    if (!token) return;
-    const res = await fetch("/api/v1/accounts/verify_credentials", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/v1/accounts/verify_credentials", { credentials: "include" });
     if (res.ok) setMe(await res.json() as Me);
   }
 
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
-    if ((!composing.trim() && mediaFiles.length === 0 && !hasPoll) || !token) return;
+    if (!composing.trim() && mediaFiles.length === 0 && !hasPoll) return;
     setPosting(true);
     setEmojiOpen(false);
     const body: Record<string, unknown> = {
@@ -160,7 +150,8 @@ export default function HomePage() {
         if (desc !== undefined) {
           await fetch(`/api/v1/media/${f.id}`, {
             method: "PUT",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ description: desc.trim() || null }),
           });
         }
@@ -168,7 +159,8 @@ export default function HomePage() {
     }
     const res = await fetch("/api/v1/statuses", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (res.ok) {
@@ -201,7 +193,7 @@ export default function HomePage() {
   }, [composing]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!token || !e.target.files?.length) return;
+    if (!e.target.files?.length) return;
     const files = Array.from(e.target.files).slice(0, 4 - mediaFiles.length);
     e.target.value = "";
     setUploadingMedia(true);
@@ -212,7 +204,7 @@ export default function HomePage() {
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           body: form,
         });
         if (res.ok) {
@@ -227,10 +219,10 @@ export default function HomePage() {
   }
 
   async function updateMediaDesc(id: string, description: string, setter: React.Dispatch<React.SetStateAction<MediaAttachment[]>>) {
-    if (!token) return;
     await fetch(`/api/v1/media/${id}`, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ description: description.trim() || null }),
     });
     setter((prev) => prev.map((f) => f.id === id ? { ...f, description: description.trim() || null } : f));
@@ -258,11 +250,12 @@ export default function HomePage() {
   }
 
   async function handleEditSave() {
-    if (!editText.trim() || !editingStatus || !token) return;
+    if (!editText.trim() || !editingStatus) return;
     setEditBusy(true);
     const res = await fetch(`/api/v1/statuses/${editingStatus.id}`, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: editText, spoiler_text: editSpoiler, sensitive: !!editSpoiler }),
     });
     if (res.ok) {
@@ -274,11 +267,10 @@ export default function HomePage() {
   }
 
   async function handleDelete(s: Status) {
-    if (!token) return;
     if (!confirm("¿Eliminar este estado?")) return;
     const res = await fetch(`/api/v1/statuses/${s.id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
@@ -527,10 +519,9 @@ export default function HomePage() {
           </div>
         ) : (
           statuses.map((s) => (
-            <StatusCard
-              key={s.id}
-              status={s}
-              token={token}
+              <StatusCard
+                  key={s.id}
+                  status={s}
               onFav={handleFav}
               onReblog={handleReblog}
               onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}

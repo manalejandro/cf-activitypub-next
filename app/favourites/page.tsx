@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusCard } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import type { Status, Me } from "@/components/StatusCard";
 
 export default function FavouritesPage() {
@@ -12,7 +13,7 @@ export default function FavouritesPage() {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { t } = useLocale();
 
   useEffect(() => {
@@ -59,7 +60,6 @@ export default function FavouritesPage() {
             <StatusCard
               key={s.id}
               status={s}
-              token={token}
               me={me}
               onFav={() => {}}
               onReblog={() => {}}

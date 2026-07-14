@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 
@@ -23,7 +24,7 @@ export default function TimelinesPage() {
   const [editBusy, setEditBusy] = useState(false);
   const { t } = useLocale();
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const router = useRouter();
   const viewRef = useRef<TimelineView>("local");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -31,7 +32,7 @@ export default function TimelinesPage() {
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
-  useTimelineStream(streamName, null, (event, payload) => {
+  useTimelineStream(streamName, (event, payload) => {
     if (event === "update") {
       try {
         const status = JSON.parse(payload) as Status;
@@ -263,7 +264,6 @@ export default function TimelinesPage() {
               <StatusCard
                 key={s.id}
                 status={s}
-                token={token}
                 onFav={handleFav}
                 onReblog={handleReblog}
                 onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}

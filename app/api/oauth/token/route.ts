@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
-import { verifyPassword, generateSecureToken } from "@/lib/auth";
+import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
 // POST /oauth/token
@@ -83,11 +83,18 @@ export async function POST(request: NextRequest): Promise<Response> {
       createdAt: new Date().toISOString(),
     });
 
-    return json({
+    const cookie = setAuthCookie(accessToken);
+    return new Response(JSON.stringify({
       access_token: accessToken,
       token_type: "Bearer",
       scope: body.scope ?? "read write follow push",
       created_at: now,
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": cookie,
+      },
     });
   }
 
@@ -181,11 +188,18 @@ export async function POST(request: NextRequest): Promise<Response> {
       createdAt: new Date().toISOString(),
     });
 
-    return json({
+    const cookie = setAuthCookie(accessToken);
+    return new Response(JSON.stringify({
       access_token: accessToken,
       token_type: "Bearer",
       scope: payload.scope,
       created_at: now,
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": cookie,
+      },
     });
   }
 

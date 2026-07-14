@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
+import { getToken } from "@/lib/client-api";
 
 interface Account {
   id: string;
@@ -39,7 +40,7 @@ export default function BlocksPage() {
   const [removingDomain, setRemovingDomain] = useState<string | null>(null);
   const [domainError, setDomainError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
 
   useEffect(() => {
     if (!token) { router.push("/login"); return; }

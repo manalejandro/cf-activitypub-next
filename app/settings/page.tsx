@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 interface Preferences {
   "posting:default:visibility": string;
@@ -28,7 +29,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { t } = useLocale();
 
   useEffect(() => {

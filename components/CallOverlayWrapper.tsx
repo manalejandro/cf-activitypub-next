@@ -1,20 +1,18 @@
 /**
- * CallOverlayWrapper — client-side wrapper that reads the access token from
- * localStorage and renders the CallOverlay when authenticated.
+ * CallOverlayWrapper — client-side wrapper that reads the auth token from
+ * cookie and renders the CallOverlay when authenticated.
  */
 "use client";
 
 import { useEffect, useState } from "react";
 import { CallOverlay } from "./CallOverlay";
+import { getToken } from "@/lib/client-api";
 
 export function CallOverlayWrapper() {
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("access_token");
-      if (stored) setToken(stored);
-    } catch { /* SSR or disabled storage */ }
+    setToken(getToken());
   }, []);
 
   if (!token) return null;

@@ -10,10 +10,7 @@ export async function getAuthenticatedActor(
   request: Request,
   db: D1Database
 ): Promise<LocalActor | null> {
-  const auth = request.headers.get("Authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-
-  const token = auth.slice(7).trim();
+  const token = extractBearerToken(request);
   if (!token) return null;
 
   const tokenRow = await getTokenByAccessToken(db, token);
@@ -24,6 +21,30 @@ export async function getAuthenticatedActor(
 
   if (!tokenRow.actorId) return null;
   return getActorById(db, tokenRow.actorId);
+}
+
+export function extractBearerToken(request: Request): string | null {
+  const auth = request.headers.get("Authorization");
+  if (auth?.startsWith("Bearer ")) {
+    const t = auth.slice(7).trim();
+    if (t) return t;
+  }
+
+  const cookie = request.headers.get("Cookie");
+  if (cookie) {
+    const match = cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+  }
+
+  return null;
+}
+
+export function setAuthCookie(token: string): string {
+  return `auth_token=${encodeURIComponent(token)}; Secure; SameSite=Lax; Path=/; Max-Age=${3600 * 24 * 30}`;
+}
+
+export function clearAuthCookie(): string {
+  return `auth_token=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
 export function requireAuth(actor: LocalActor | null): Response | null {

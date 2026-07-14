@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
+import { clearAuthCookie } from "@/lib/auth";
 
 // POST /oauth/revoke  (RFC 7009)
 export async function POST(request: NextRequest): Promise<Response> {
@@ -23,5 +24,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     .bind(token, token)
     .run();
 
-  return json({});
+  return new Response(JSON.stringify({}), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Set-Cookie": clearAuthCookie(),
+    },
+  });
 }

@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { useStartCallButton } from "@/components/CallOverlay";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,7 +229,8 @@ function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
 }
 
 // Reusable status article card
-function StatusCard({ s, onFav, token, me: meProp, onEdit, onDelete }: { s: Status; onFav: () => void; token: string | null; me?: Me | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
+function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onFav: () => void; me?: Me | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
+  const token = getToken();
   const [expandedCw, setExpandedCw] = useState(false);
   const [pollState, setPollState] = useState<Poll | null>(s.poll ?? null);
   const [voting, setVoting] = useState(false);
@@ -540,7 +542,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
 
   async function load(uname: string) {
     const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
@@ -1144,7 +1146,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 </div>
               ) : (
                 <>
-                  {statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)}
+                  {statuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                     {loadingMorePosts ? "Cargando…" : ""}
                   </div>
@@ -1161,7 +1163,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                   {t.profile_no_replies}
                 </div>
               ) : (
-                replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} token={token} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)
+                replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)
               )
             )}
 

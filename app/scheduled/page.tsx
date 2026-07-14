@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 interface ScheduledStatus {
   id: string;
@@ -32,7 +33,7 @@ export default function ScheduledPage() {
   const [items, setItems] = useState<ScheduledStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { t } = useLocale();
 
   useEffect(() => {

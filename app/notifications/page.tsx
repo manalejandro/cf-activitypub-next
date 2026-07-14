@@ -47,13 +47,9 @@ export default function NotificationsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   async function fetchNotifications() {
-    if (!token) return;
-    const res = await fetch("/api/v1/notifications?limit=40", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/v1/notifications?limit=40", { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as Notification[];
       setNotifications(data);
@@ -63,12 +59,10 @@ export default function NotificationsPage() {
   }
 
   async function loadMore() {
-    if (!token || loadingMore || !hasMore || notifications.length === 0) return;
+    if (loadingMore || !hasMore || notifications.length === 0) return;
     setLoadingMore(true);
     const lastId = notifications[notifications.length - 1].id;
-    const res = await fetch(`/api/v1/notifications?limit=40&max_id=${encodeURIComponent(lastId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(`/api/v1/notifications?limit=40&max_id=${encodeURIComponent(lastId)}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json() as Notification[];
       setNotifications((prev) => [...prev, ...data]);
@@ -78,18 +72,12 @@ export default function NotificationsPage() {
   }
 
   async function fetchFollowRequests() {
-    if (!token) return;
-    const res = await fetch("/api/v1/follow_requests?limit=40", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/v1/follow_requests?limit=40", { credentials: "include" });
     if (res.ok) setPendingRequests(await res.json() as Account[]);
   }
 
   async function fetchMe() {
-    if (!token) return;
-    const res = await fetch("/api/v1/accounts/verify_credentials", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch("/api/v1/accounts/verify_credentials", { credentials: "include" });
     if (res.ok) setMe(await res.json() as Account);
   }
 
@@ -105,12 +93,12 @@ export default function NotificationsPage() {
   }
 
   async function handleFollowRequestAction(notificationId: string | null, accountId: string, action: "accept" | "reject") {
-    if (!token || pendingAction) return;
+    if (pendingAction) return;
     const actionKey = notificationId ?? accountId;
     setPendingAction(actionKey);
     const res = await fetch(`/api/v1/follow_requests/${encodeURIComponent(accountId)}/${action}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) {
       if (notificationId) {
@@ -122,15 +110,13 @@ export default function NotificationsPage() {
   }
 
   async function markAllRead() {
-    if (!token) return;
     await fetch("/api/v1/notifications/clear", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
   }
 
   useEffect(() => {
-    if (!token) { window.location.href = "/login"; return; }
     void fetchNotifications();
     void fetchFollowRequests();
     void fetchMe();
@@ -140,11 +126,10 @@ export default function NotificationsPage() {
 
   // Real-time: prepend new notifications as they arrive via streaming.
   // Payload is currently "{}" so we refetch the latest notification instead.
-  useTimelineStream("user:notification", token, (event) => {
+  useTimelineStream("user:notification", (event) => {
     if (event !== "notification") return;
     // Fetch just the latest notification and prepend it if not already seen
-    if (!token) return;
-    fetch("/api/v1/notifications?limit=1", { headers: { Authorization: `Bearer ${token}` } })
+    fetch("/api/v1/notifications?limit=1", { credentials: "include" })
       .then(async (res) => {
         if (!res.ok) return;
         const data = await res.json() as Notification[];
@@ -155,7 +140,7 @@ export default function NotificationsPage() {
         });
       })
       .catch(() => {});
-  }, { enabled: !!token });
+  });
 
   // Infinite scroll
   useEffect(() => {
@@ -228,26 +213,24 @@ export default function NotificationsPage() {
                           {t.notif_follow_request}
                         </span>
                       </div>
-                      {token && (
-                        <div className="flex gap-2" style={{ marginTop: "0.5rem" }}>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={pendingAction === account.id}
-                            onClick={() => void handleFollowRequestAction(null, account.id, "accept")}
-                          >
-                            {t.notif_accept}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            disabled={pendingAction === account.id}
-                            onClick={() => void handleFollowRequestAction(null, account.id, "reject")}
-                          >
-                            {t.notif_reject}
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex gap-2" style={{ marginTop: "0.5rem" }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={pendingAction === account.id}
+                          onClick={() => void handleFollowRequestAction(null, account.id, "accept")}
+                        >
+                          {t.notif_accept}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          disabled={pendingAction === account.id}
+                          onClick={() => void handleFollowRequestAction(null, account.id, "reject")}
+                        >
+                          {t.notif_reject}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -329,7 +312,7 @@ export default function NotificationsPage() {
                         />
                       </Link>
                     )}
-                    {n.type === "follow_request" && token && (
+                    {n.type === "follow_request" && (
                       <div className="flex gap-2" style={{ marginTop: "0.5rem" }}>
                         <button
                           type="button"

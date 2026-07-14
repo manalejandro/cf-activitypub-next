@@ -44,12 +44,6 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   const { t, locale, setLocale } = useLocale();
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    if (localStorage.getItem("access_token")) {
-      window.location.href = "/home";
-    }
-  }, []);
-
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
@@ -140,9 +134,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
         return;
       }
 
-      // API registration (shouldn't reach here from web form, but handle gracefully)
       if (data.access_token) {
-        localStorage.setItem("access_token", data.access_token);
         window.location.href = "/home";
       }
     } catch {

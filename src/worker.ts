@@ -98,6 +98,12 @@ function extractToken(request: Request, url: URL): string | null {
   // Sec-WebSocket-Protocol: <token> (non-standard but widely used)
   const proto = request.headers.get("Sec-WebSocket-Protocol") ?? "";
   if (proto && !proto.includes(",")) return proto.trim();
+  // Cookie-based auth
+  const cookie = request.headers.get("Cookie");
+  if (cookie) {
+    const match = cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+  }
   return null;
 }
 

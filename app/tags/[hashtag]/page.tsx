@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 
@@ -24,13 +25,13 @@ export default function HashtagPage() {
   const [followBusy, setFollowBusy] = useState(false);
   const { t } = useLocale();
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
 
   // Real-time hashtag streaming
-  useTimelineStream("hashtag", null, (event, payload) => {
+  useTimelineStream("hashtag", (event: string, payload: string) => {
     if (event !== "update") return;
     try {
       const status = JSON.parse(payload) as Status;
@@ -264,7 +265,6 @@ export default function HashtagPage() {
               <StatusCard
                 key={s.id}
                 status={s}
-                token={token}
                 onFav={handleFav}
                 onReblog={handleReblog}
                 onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}

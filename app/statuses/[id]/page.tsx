@@ -8,6 +8,7 @@ import { Lightbox } from "@/components/Lightbox";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -242,11 +243,10 @@ function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
 
 function PollView({
   poll: initialPoll,
-  token,
 }: {
   poll: Poll;
-  token: string | null;
 }) {
+  const token = getToken();
   const [poll, setPoll] = useState<Poll>(initialPoll);
   const [voting, setVoting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
@@ -324,7 +324,6 @@ function PollView({
 function StatusCard({
   status,
   isFocal = false,
-  token,
   onFav,
   onReblog,
   onReply,
@@ -334,7 +333,6 @@ function StatusCard({
 }: {
   status: Status;
   isFocal?: boolean;
-  token: string | null;
   onFav: (s: Status) => void;
   onReblog: (s: Status) => void;
   onReply?: (s: Status) => void;
@@ -342,6 +340,7 @@ function StatusCard({
   onDelete?: (s: Status) => void;
   onEdit?: (s: Status) => void;
 }) {
+  const token = getToken();
   const renderedContent = useMemo(
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
     [status.content, status.emojis]
@@ -460,7 +459,7 @@ function StatusCard({
           style={{ fontSize: isFocal ? "1.05rem" : "0.95rem", lineHeight: 1.6 }}
           dangerouslySetInnerHTML={{ __html: showTranslation && translatedContent ? translatedContent : renderedContent }}
         />
-        {status.poll && <PollView poll={status.poll} token={token} />}
+        {status.poll && <PollView poll={status.poll} />}
         {isFocal && (
           <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
             {new Date(status.created_at).toLocaleString()}
@@ -537,16 +536,15 @@ function StatusCard({
 function ReplyBox({
   replyTo,
   me,
-  token,
   onCancel,
   onPosted,
 }: {
   replyTo: Status;
   me: Me | null;
-  token: string | null;
   onCancel: () => void;
   onPosted: (newStatus: Status) => void;
 }) {
+  const token = getToken();
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(
     (["public", "unlisted", "followers", "direct"].includes(replyTo.visibility) ? replyTo.visibility : "public") as "public" | "unlisted" | "followers" | "direct"
@@ -831,7 +829,7 @@ export default function ThreadPage() {
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const searchParams = useSearchParams();
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
 
   useEffect(() => {
     if (searchParams.get("reply") === "1") {
@@ -1023,18 +1021,18 @@ export default function ThreadPage() {
             {/* Ancestors */}
             {ancestors.map((s) => (
               <>
-                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
+                <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
                 {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
                 )}
               </>
             ))}
 
             {/* Focal status (highlighted) */}
-            <StatusCard status={focal} isFocal token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
+            <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
-                <ReplyBox replyTo={focal} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
               </div>
             )}
 
@@ -1056,9 +1054,9 @@ export default function ThreadPage() {
             )}
             {descendants.map((s) => (
               <>
-                <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
+                <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
                 {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} token={token} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
                 )}
               </>
             ))}

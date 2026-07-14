@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ export default function ExplorePage() {
   const [editBusy, setEditBusy] = useState(false);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const router = useRouter();
   const { t } = useLocale();
 
@@ -240,7 +241,7 @@ export default function ExplorePage() {
                 {t.explore_trending_statuses}
               </div>
             )}
-            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
+            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
           </>
         )}
 
@@ -254,7 +255,7 @@ export default function ExplorePage() {
         {/* Search result tabs */}
         {tab === "accounts" && isSearching && (
           results.accounts.length === 0 && !loading ? <EmptyState emoji="👤" text={t.explore_no_accounts} /> :
-          <>{results.accounts.map((a) => <AccountCard key={a.id} account={a} token={token} />)}</>
+          <>{results.accounts.map((a) => <AccountCard key={a.id} account={a} />)}</>
         )}
         {tab === "hashtags" && isSearching && (
           results.hashtags.length === 0 && !loading ? <EmptyState emoji="#️⃣" text={t.explore_no_hashtags} /> :
@@ -262,7 +263,7 @@ export default function ExplorePage() {
         )}
         {tab === "statuses" && isSearching && (
           results.statuses.length === 0 && !loading ? <EmptyState emoji="📝" text={t.explore_no_posts} /> :
-          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} token={token} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
+          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
         )}
 
         {isSearching && !loading && !hasResults && (
@@ -371,7 +372,8 @@ function EmptyState({ emoji, text }: { emoji: string; text: string }) {
   );
 }
 
-function AccountCard({ account, token }: { account: Account; token: string | null }) {
+function AccountCard({ account }: { account: Account }) {
+  const token = getToken();
   const [following, setFollowing] = useState(false);
   const [requested, setRequested] = useState(false);
   const [busy, setBusy] = useState(false);

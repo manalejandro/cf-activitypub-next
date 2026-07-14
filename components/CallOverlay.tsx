@@ -52,7 +52,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
   }, [callState.phase]);
 
   // Wire up streaming events → call hook
-  useTimelineStream("user", accessToken, handleStreamingEvent);
+  useTimelineStream("user", handleStreamingEvent);
 
   // Listen for imperative start-call requests dispatched by call buttons in other components
   useEffect(() => {

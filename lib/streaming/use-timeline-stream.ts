@@ -1,13 +1,13 @@
 /**
  * useTimelineStream — React hook for Mastodon-compatible streaming via WebSocket.
  *
- * Connects to /api/v1/streaming?stream=<stream>[&tag=<tag>][&access_token=<token>]
+ * Connects to /api/v1/streaming?stream=<stream>[&tag=<tag>]
  * and delivers parsed Mastodon streaming events.  Reconnects automatically with
- * exponential back-off on connection loss.
+ * exponential back-off on connection loss.  Auth is handled via the auth_token cookie.
  *
  * Usage:
- *   useTimelineStream("public:local", null, (event, payload) => { ... });
- *   useTimelineStream("user", token, (event, payload) => { ... });
+ *   useTimelineStream("public:local", (event, payload) => { ... });
+ *   useTimelineStream("user", (event, payload) => { ... });
  */
 
 import { useEffect, useRef } from "react";
@@ -23,7 +23,6 @@ interface UseTimelineStreamOptions {
 
 export function useTimelineStream(
   stream: string,
-  token: string | null,
   onEvent: (event: StreamEvent, payload: string) => void,
   options: UseTimelineStreamOptions = {}
 ): void {
@@ -45,7 +44,6 @@ export function useTimelineStream(
       const url = new URL("/api/v1/streaming", window.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("stream", stream);
-      if (token) url.searchParams.set("access_token", token);
       if (extraParams) {
         for (const [k, v] of Object.entries(extraParams)) {
           url.searchParams.set(k, v);
@@ -106,5 +104,5 @@ export function useTimelineStream(
       ws?.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream, token, enabled]);
+  }, [stream, enabled]);
 }

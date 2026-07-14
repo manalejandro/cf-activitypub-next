@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
 import type { Status, Me } from "@/components/StatusCard";
+import { getToken } from "@/lib/client-api";
 
 interface Conversation {
   id: string;
@@ -19,7 +20,7 @@ export default function MessagesPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { t } = useLocale();
 
   useEffect(() => {

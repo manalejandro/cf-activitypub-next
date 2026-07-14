@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { useStartCallButton } from "@/components/CallOverlay";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,8 @@ function AccountRow({ account }: { account: Account }) {
   );
 }
 
-function StatusCard({ s, token, onFav, onReblog, me: meProp, onEdit, onDelete }: { s: Status; token: string | null; onFav: () => void; onReblog: () => void; me?: { id: string } | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
+function StatusCard({ s, onFav, onReblog, me: meProp, onEdit, onDelete }: { s: Status; onFav: () => void; onReblog: () => void; me?: { id: string } | null; onEdit?: (s: Status) => void; onDelete?: (s: Status) => void }) {
+  const token = getToken();
   const [expandedCw, setExpandedCw] = useState(false);
   const [pollState, setPollState] = useState<Poll | null>(s.poll ?? null);
   const [voting, setVoting] = useState(false);
@@ -347,7 +349,7 @@ function RemoteProfileInner() {
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { startCall: initiateCall } = useStartCallButton(token);
 
   async function load(url: string) {
@@ -736,7 +738,6 @@ function RemoteProfileInner() {
               <StatusCard
                 key={s.id}
                 s={s}
-                token={token}
                 onFav={() => void toggleFavourite(s)}
                 onReblog={() => void toggleReblog(s)}
                 me={me}

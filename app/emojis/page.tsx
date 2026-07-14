@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
+import { getToken } from "@/lib/client-api";
 
 interface Emoji {
   id: string;
@@ -23,7 +24,7 @@ export default function EmojisPage() {
   const [category, setCategory] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
 
   useEffect(() => {
     if (!token) { window.location.href = "/login"; return; }

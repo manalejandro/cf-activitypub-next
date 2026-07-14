@@ -13,7 +13,6 @@ export async function POST(
 ): Promise<Response> {
   const { env } = getCloudflareContext();
   const { username } = await params;
-  console.log("[inbox/user] POST received for", username, "from", request.headers.get("user-agent") ?? "unknown");
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
@@ -86,7 +85,6 @@ export async function POST(
   }
 
   if (!remoteActor?.publicKey?.publicKeyPem) {
-    console.error("[inbox/user] Could not retrieve public key for signing actor %s — rejecting", signingActorId);
     return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
@@ -111,7 +109,6 @@ export async function POST(
     body
   );
   if (!valid && env.NODE_ENV !== "development") {
-    console.error("[inbox/user] Invalid signature from actor %s for %s inbox", actorId, username);
     return json({ error: "Invalid signature" }, 401);
   }
 
@@ -131,8 +128,8 @@ export async function POST(
       },
       timelineStream: env.TIMELINE_STREAM,
     });
-  } catch (err) {
-    console.error("[inbox/user] processInboxActivity threw for %s inbox, activity %s: %s", username, (activity as { id?: string }).id, err);
+  } catch {
+    // ignore
   }
 
   return json({}, 202);

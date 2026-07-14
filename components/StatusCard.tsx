@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Lightbox } from "./Lightbox";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -236,10 +237,11 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
 
 // ─── PollView ─────────────────────────────────────────────────────────────────
 
-export function PollView({ poll: initialPoll, token }: { poll: Poll; token: string | null }) {
+export function PollView({ poll: initialPoll }: { poll: Poll }) {
   const [poll, setPoll] = useState<Poll>(initialPoll);
   const [voting, setVoting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  const token = getToken();
   const total = poll.votes_count > 0 ? poll.votes_count : 1;
   const showResults = poll.voted || poll.expired;
   const canVote = !poll.voted && !poll.expired && !!token;
@@ -250,7 +252,8 @@ export function PollView({ poll: initialPoll, token }: { poll: Poll; token: stri
     try {
       const res = await fetch(`/api/v1/polls/${poll.id}/votes`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ choices: selected }),
       });
       if (res.ok) setPoll(await res.json() as Poll);
@@ -308,7 +311,6 @@ export function PollView({ poll: initialPoll, token }: { poll: Poll; token: stri
 export function StatusCard({
   status,
   isFocal = false,
-  token,
   onFav,
   onReblog,
   onReply,
@@ -318,7 +320,6 @@ export function StatusCard({
 }: {
   status: Status;
   isFocal?: boolean;
-  token: string | null;
   onFav: (s: Status) => void;
   onReblog: (s: Status) => void;
   onReply: (s: Status) => void;
@@ -339,6 +340,7 @@ export function StatusCard({
   const [favouritesCount, setFavouritesCount] = useState(status.favourites_count);
   const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
 
+  const token = getToken();
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
@@ -401,13 +403,12 @@ export function StatusCard({
   async function handleFav() {
     if (!token) return;
     const wasFav = favourited;
-    // Optimistic update
     setFavourited(!wasFav);
     setFavouritesCount((c) => c + (wasFav ? -1 : 1));
     const path = wasFav ? "unfavourite" : "favourite";
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) {
       const updated = await res.json() as Status;
@@ -415,7 +416,6 @@ export function StatusCard({
       setFavouritesCount(updated.favourites_count);
       onFav(updated);
     } else {
-      // Revert on error
       setFavourited(wasFav);
       setFavouritesCount((c) => c + (wasFav ? 1 : -1));
     }
@@ -424,13 +424,12 @@ export function StatusCard({
   async function handleReblog() {
     if (!token) return;
     const wasReblogged = reblogged;
-    // Optimistic update
     setReblogged(!wasReblogged);
     setReblogsCount((c) => c + (wasReblogged ? -1 : 1));
     const path = wasReblogged ? "unreblog" : "reblog";
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (res.ok) {
       const updated = await res.json() as Status;
@@ -438,7 +437,6 @@ export function StatusCard({
       setReblogsCount(updated.reblogs_count);
       onReblog(updated);
     } else {
-      // Revert on error
       setReblogged(wasReblogged);
       setReblogsCount((c) => c + (wasReblogged ? 1 : -1));
     }
@@ -451,7 +449,7 @@ export function StatusCard({
     const path = wasBookmarked ? "unbookmark" : "bookmark";
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (!res.ok) setBookmarked(wasBookmarked);
   }
@@ -518,7 +516,7 @@ export function StatusCard({
           </div>
         )}
         {showContent && <MediaGrid attachments={status.media_attachments ?? []} />}
-        {showContent && status.poll && <PollView poll={status.poll} token={token} />}
+        {showContent && status.poll && <PollView poll={status.poll} />}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>✏️ editado</div>
         )}

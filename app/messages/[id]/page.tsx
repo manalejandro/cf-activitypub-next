@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusCard } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import type { Status, Me } from "@/components/StatusCard";
 
 export default function ConversationDetailPage() {
@@ -16,7 +17,7 @@ export default function ConversationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getToken();
   const { t } = useLocale();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +102,6 @@ export default function ConversationDetailPage() {
               <StatusCard
                 key={s.id}
                 status={s}
-                token={token}
                 me={me}
                 onFav={() => {}}
                 onReblog={() => {}}

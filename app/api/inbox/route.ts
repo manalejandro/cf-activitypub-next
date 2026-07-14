@@ -90,14 +90,11 @@ export async function POST(request: NextRequest): Promise<Response> {
         try { await upsertRemoteActor(env.DB, senderActor); } catch { /* ignore */ }
       }
     }
-  } catch (err) {
-    console.error(`[inbox/shared] Error fetching signing actor ${signingActorId}: ${err}`);
+  } catch {
+    // ignore
   }
 
   if (!senderActor?.publicKey?.publicKeyPem) {
-    console.error(
-      `[inbox/shared] No public key found for signing actor ${signingActorId} (activity actor: ${actorId}, keyId: ${sigKeyId ?? "(none)"}) — rejecting`
-    );
     return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
@@ -112,9 +109,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem, rawBody);
   if (!valid) {
-    console.error(
-      `[inbox/shared] Invalid HTTP signature — activity actor: ${actorId} | signing actor: ${signingActorId} | keyId: ${sigKeyId ?? "(none)"} | signature header: ${headers["signature"] ?? headers["Signature"] ?? "(none)"}`
-    );
     return json({ error: "Invalid HTTP signature" }, 401);
   }
 
@@ -126,8 +120,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       signingKey,
       timelineStream: env.TIMELINE_STREAM,
     });
-  } catch (err) {
-    console.error(`[inbox/shared] processInboxActivity threw for activity ${(body as { id?: string }).id}: ${err}\nraw body: ${rawBody}`);
+  } catch {
     // Still return 202 so the remote server does not keep retrying.
   }
 

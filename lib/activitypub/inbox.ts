@@ -109,8 +109,8 @@ export async function processInboxActivity(
         // Ignore unknown activity types
         break;
     }
-  } catch (err) {
-    console.error(`[inbox] processInboxActivity error for type=${type} id=${activity.id}: ${err}\nactivity body: ${JSON.stringify(activity)}`);
+  } catch {
+    // ignore
   }
 }
 
@@ -164,7 +164,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     // Use inline actor data if the sender embedded the full actor in the activity
     const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
     if (inlineActor?.publicKey?.publicKeyPem) {
-      try { await upsertRemoteActor(ctx.db, inlineActor); } catch (e) { console.error(`[inbox] upsertRemoteActor (inline) error for ${actorId}: ${e}`); }
+      try { await upsertRemoteActor(ctx.db, inlineActor); } catch { /* ignore */ }
     } else {
       // Fall back to fetching from the network — sign the request when possible
       try {
@@ -175,15 +175,12 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         ) as APActor | null;
         if (fetched?.publicKey?.publicKeyPem) {
           await upsertRemoteActor(ctx.db, fetched);
-        } else {
-          console.error("[inbox] handleCreate: could not fetch actor %s (no publicKey in response)", actorId);
         }
-      } catch (e) { console.error("[inbox] handleCreate: fetchRemoteObject error for %s: %s", actorId, e); }
+      } catch { /* ignore */ }
     }
     author = await getActorById(ctx.db, actorId);
   }
   if (!author) {
-    console.error(`[inbox] handleCreate: dropping activity ${activity.id} — cannot resolve actor ${actorId}`);
     return;
   }
 
@@ -236,9 +233,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       try {
         await createAttachment(ctx.db, localAttachment);
         storedAttachments.push(localAttachment);
-      } catch (e) {
-        console.error(`[inbox] handleCreate: failed to store attachment for ${obj.id}: ${e}`);
-      }
+      } catch { /* ignore */ }
     }
   }
 
@@ -351,9 +346,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         for (const row of localFollowers.results) {
           broadcastTasks.push(broadcastHomeStatus(ctx.timelineStream, row.id, serializedStatus));
         }
-      } catch (e) {
-        console.error("[inbox] handleCreate: failed to load local followers for broadcast:", e);
-      }
+      } catch { /* ignore */ }
 
       await Promise.allSettled(broadcastTasks);
     }
@@ -531,7 +524,6 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
       .bind(objectId)
       .first<{ id: string }>();
     if (urlRow) {
-      console.warn(`[inbox] handleLike: resolved object ${objectId} via objects.url → ${urlRow.id}`);
       objectId = urlRow.id;
       likedObject = await getObjectById(ctx.db, objectId);
     }
@@ -581,13 +573,12 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
           likedObject = await getObjectById(ctx.db, objectId);
         }
       }
-    } catch (e) {
-      console.warn(`[inbox] handleLike: could not fetch liked object ${objectId}: ${e}`);
+    } catch {
+      // ignore
     }
   }
 
   if (!likedObject) {
-    console.warn(`[inbox] handleLike: dropping like — object ${objectId} not found in DB`);
     return;
   }
 
@@ -675,8 +666,8 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
           raw: JSON.stringify(fetched),
         });
       }
-    } catch (e) {
-      console.error(`[inbox] handleAnnounce: failed to fetch boosted object ${objectId}: ${e}`);
+    } catch {
+      // ignore
     }
   }
 
@@ -684,7 +675,6 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
   // cannot create the announce — the FK on announces.object_id would fail.
   const resolvedObj = await getObjectById(ctx.db, objectId);
   if (!resolvedObj) {
-    console.warn(`[inbox] handleAnnounce: skipping announce for unfetchable object ${objectId}`);
     return;
   }
 
@@ -796,7 +786,6 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
 
     // Only allow an actor to update its own profile
     if (actor.id !== actorId) {
-      console.warn(`[inbox] handleUpdate: actor ${actorId} attempted to update ${actor.id} — rejected`);
       return;
     }
 

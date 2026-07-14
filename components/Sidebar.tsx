@@ -20,7 +20,6 @@ interface SidebarProps {
 export function Sidebar({ me, currentPath }: SidebarProps) {
   const { t, locale, setLocale } = useLocale();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [token, setToken] = useState<string | null>(null);
   // Start with "light" to match SSR; useEffect corrects from localStorage without hydration mismatch
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
@@ -43,38 +42,25 @@ export function Sidebar({ me, currentPath }: SidebarProps) {
     document.documentElement.setAttribute("data-theme", next);
   }
 
-  // Read token once on mount (localStorage not available during SSR)
-  useEffect(() => {
-    setToken(localStorage.getItem("access_token"));
-  }, []);
-
   // One-time fetch for existing unread count on mount
   useEffect(() => {
-    if (!token) return;
-    fetch("/api/v1/notifications/unread_count", {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(async (res) => {
-      if (res.status === 401) {
-        localStorage.removeItem("access_token");
-        setToken(null);
-        return;
-      }
+    fetch("/api/v1/notifications/unread_count", { credentials: "include" }).then(async (res) => {
       if (res.ok) {
         const data = await res.json() as { count: number };
         setUnreadCount(data.count);
       }
     }).catch(() => {});
-  }, [token]);
+  }, []);
 
   // Real-time notification count via WebSocket streaming (no polling)
-  useTimelineStream("user", token, (event) => {
+  useTimelineStream("user", (event) => {
     if (event === "notification") {
       setUnreadCount((c) => c + 1);
     }
-  }, { enabled: !!token });
+  });
 
-  function handleLogout() {
-    localStorage.removeItem("access_token");
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     window.location.href = "/login";
   }
 

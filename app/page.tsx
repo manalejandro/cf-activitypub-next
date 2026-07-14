@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { useAuth } from "@/lib/client-api";
 
 export default function Home() {
-  const router = useRouter();
+  const { authenticated, loading } = useAuth();
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("access_token")) {
-      router.replace("/home");
-    }
-  }, [router]);
+  if (loading) return null;
+  if (authenticated) {
+    if (typeof window !== "undefined") window.location.href = "/home";
+    return null;
+  }
 
   return (
     <main className="flex flex-col flex-1">
