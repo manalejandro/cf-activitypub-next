@@ -44,6 +44,12 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   const { t, locale, setLocale } = useLocale();
   const searchParams = useSearchParams();
 
+  useEffect(() => {
+    if (localStorage.getItem("access_token")) {
+      window.location.href = "/home";
+    }
+  }, []);
+
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
