@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 import { getDomainCallsSupport, setDomainCallsSupport, setActorFields } from "@/lib/db";
+import { validateOutboundUrl } from "@/lib/activitypub/federation";
 
 export interface RemoteActorResult {
   id: string;
@@ -22,6 +23,8 @@ async function resolveCollectionCount(field: unknown): Promise<number> {
     if (typeof items === "number") return items;
   }
   if (typeof field === "string" && field.startsWith("http")) {
+    const val = validateOutboundUrl(field);
+    if (!val.valid) return 0;
     try {
       const r = await fetch(field, {
         headers: { Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"' },
@@ -45,6 +48,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
   if (await getDomainCallsSupport(db, domain)) return true;
 
   const tryFetch = async (url: string): Promise<boolean> => {
+    const val = validateOutboundUrl(url);
+    if (!val.valid) return false;
     try {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
@@ -72,6 +77,11 @@ export async function fetchAndCacheRemoteActor(
   db: D1Database,
   actorUrl: string
 ): Promise<RemoteActorResult | null> {
+  const val = validateOutboundUrl(actorUrl);
+  if (!val.valid) {
+    console.warn(`[remote] Blocked actor fetch from ${actorUrl}: ${val.reason}`);
+    return null;
+  }
   try {
     const res = await fetch(actorUrl, {
       headers: {

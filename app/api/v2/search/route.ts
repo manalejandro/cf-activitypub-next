@@ -4,6 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
+import { validateOutboundUrl } from "@/lib/activitypub/federation";
 
 // GET /api/v2/search?q=...&type=accounts|statuses|hashtags&limit=20&offset=0
 export async function GET(request: NextRequest): Promise<Response> {
@@ -42,6 +43,10 @@ export async function GET(request: NextRequest): Promise<Response> {
       if (remoteDomain) {
         try {
           const webfingerUrl = `https://${remoteDomain}/.well-known/webfinger?resource=acct:${username}@${remoteDomain}`;
+          const val = validateOutboundUrl(webfingerUrl);
+          if (!val.valid) {
+            return json({ accounts: [], statuses: [], hashtags: [] });
+          }
           const wfRes = await fetch(webfingerUrl, {
             headers: { Accept: "application/json" },
             signal: AbortSignal.timeout(5000),
