@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 
@@ -17,9 +18,12 @@ interface SidebarProps {
   currentPath: string;
 }
 
-export function Sidebar({ me, currentPath }: SidebarProps) {
+export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const { t, locale, setLocale } = useLocale();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
+  const me = propMe ?? localMe;
+
   // Start with "light" to match SSR; useEffect corrects from localStorage without hydration mismatch
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
@@ -50,6 +54,24 @@ export function Sidebar({ me, currentPath }: SidebarProps) {
         setUnreadCount(data.count);
       }
     }).catch(() => {});
+  }, []);
+
+  // Self-fetch current user info when page doesn't pass `me` prop
+  useEffect(() => {
+    if (propMe !== undefined) return;
+    const token = getToken();
+    if (!token) { setLocalMe(null); return; }
+    fetch("/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json() as SidebarAccount;
+        setLocalMe(data);
+      } else {
+        setLocalMe(null);
+      }
+    }).catch(() => setLocalMe(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Real-time notification count via WebSocket streaming (no polling)

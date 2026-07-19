@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -97,6 +98,28 @@ export default function SettingsPage() {
           <button className="btn btn-primary btn-sm" onClick={() => void handleSave()} disabled={saving}>
             {saving ? "…" : saved ? "✓" : t.profile_save}
           </button>
+        </div>
+
+        {/* Settings sub-navigation */}
+        <div style={{ display: "flex", gap: "0.5rem", padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
+          <Link
+            href="/settings/push"
+            style={{
+              padding: "0.35rem 0.75rem", borderRadius: "var(--radius)", fontSize: "0.85rem",
+              background: "var(--bg-elevated)", color: "var(--text)", textDecoration: "none",
+            }}
+          >
+            🔔 Push Notifications
+          </Link>
+          <Link
+            href="/settings/featured-tags"
+            style={{
+              padding: "0.35rem 0.75rem", borderRadius: "var(--radius)", fontSize: "0.85rem",
+              background: "var(--bg-elevated)", color: "var(--text)", textDecoration: "none",
+            }}
+          >
+            🏷️ Featured Tags
+          </Link>
         </div>
         {saved && (
           <div style={{ padding: "0.5rem 1rem", background: "var(--accent-bg)", color: "var(--accent)", fontSize: "0.875rem" }}>
