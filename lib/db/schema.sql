@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS actors (
   auto_delete_after  INTEGER,                   -- auto-delete posts after N seconds (null = disabled)
   role               TEXT NOT NULL DEFAULT 'user', -- user, moderator, admin
   suspended          INTEGER NOT NULL DEFAULT 0,
+  reserved           INTEGER NOT NULL DEFAULT 0,
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (username, domain)

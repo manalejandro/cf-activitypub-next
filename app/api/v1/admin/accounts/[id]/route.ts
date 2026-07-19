@@ -9,8 +9,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
 
-  const row = await env.DB.prepare("SELECT * FROM actors WHERE id = ?").bind(id).first() as any;
-  if (!row) return notFound();
+  let row: any = {};
+  try {
+    row = (await env.DB.prepare("SELECT * FROM actors WHERE id = ?").bind(id).first()) as any;
+  } catch { /* missing columns — run migration */ }
+  if (!row?.id) return notFound();
 
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();

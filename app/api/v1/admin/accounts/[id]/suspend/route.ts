@@ -9,7 +9,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
 
-  await env.DB.prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?").bind(id).run();
+  try {
+    await env.DB.prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?").bind(id).run();
+  } catch {
+    return json({ error: "Missing suspended column — run migration: npx wrangler d1 execute cf-ap --remote --file=lib/db/migrations/007-admin-columns.sql" }, 500);
+  }
 
   return json({ id, suspended: true });
 }

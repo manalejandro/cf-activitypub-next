@@ -18,8 +18,11 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const fields = await getActorFields(env.DB, actor.id);
 
-  const row = await env.DB.prepare("SELECT role FROM actors WHERE id = ?").bind(actor.id).first<{ role: string }>();
-  const role = row?.role ?? "user";
+  let role = "user";
+  try {
+    const row = await env.DB.prepare("SELECT role FROM actors WHERE id = ?").bind(actor.id).first<{ role: string }>();
+    if (row?.role) role = row.role;
+  } catch {} // column may not exist until migration runs
 
   return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role }));
 }

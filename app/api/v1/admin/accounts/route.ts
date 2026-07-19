@@ -18,7 +18,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const binds: unknown[] = [];
 
   if (status === "active") {
-    sql += " AND suspended = 0 AND email_verified = 1";
+    sql += " AND email_verified = 1";
   } else if (status === "pending") {
     sql += " AND email_verified = 0";
   } else if (status === "suspended") {
@@ -38,14 +38,20 @@ export async function GET(request: NextRequest): Promise<Response> {
   sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
   binds.push(limit, offset);
 
-  const rows = await env.DB.prepare(sql).bind(...binds).all();
-
-  const total = await env.DB.prepare(
-    "SELECT COUNT(*) as count FROM actors WHERE 1=1" +
-    (status !== "all" ? (status === "active" ? " AND suspended = 0 AND email_verified = 1" : status === "pending" ? " AND email_verified = 0" : " AND suspended = 1") : "") +
-    (role !== "all" ? " AND role = ?" : "") +
-    (q ? " AND (username LIKE ? OR display_name LIKE ?)" : "")
-  ).bind(...(role !== "all" ? [role] : []), ...(q ? [`%${q}%`, `%${q}%`] : [])).first<{ count: number }>();
+  let rows: any = { results: [] };
+  let totalCount = 0;
+  try {
+    rows = await env.DB.prepare(sql).bind(...binds).all();
+    const totalRow = await env.DB.prepare(
+      "SELECT COUNT(*) as count FROM actors WHERE 1=1" +
+      (status !== "all" ? (status === "active" ? " AND email_verified = 1" : status === "pending" ? " AND email_verified = 0" : " AND suspended = 1") : "") +
+      (role !== "all" ? " AND role = ?" : "") +
+      (q ? " AND (username LIKE ? OR display_name LIKE ?)" : "")
+    ).bind(...(role !== "all" ? [role] : []), ...(q ? [`%${q}%`, `%${q}%`] : [])).first<{ count: number }>();
+    totalCount = totalRow?.count ?? 0;
+  } catch (e) {
+    // Missing columns (role, suspended) — run migration: npx wrangler d1 execute cf-ap --remote --file=lib/db/migrations/007-admin-columns.sql
+  }
 
   const accounts = rows.results.map((r: any) => {
     const actor = rowToActor(r as any);
@@ -63,7 +69,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     };
   });
 
-  return json({ accounts, total: total?.count ?? 0 });
+  return json({ accounts, total: totalCount });
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
