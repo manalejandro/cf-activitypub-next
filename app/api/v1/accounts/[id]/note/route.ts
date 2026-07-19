@@ -17,7 +17,6 @@ export async function POST(
   const target = await getActorById(env.DB, rawId);
   if (!target) return notFound();
   const body = await _request.json() as { comment?: string };
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_notes (id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, target_id TEXT NOT NULL, comment TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (actor_id, target_id))").run();
   if (body.comment) {
     await env.DB
       .prepare("INSERT OR REPLACE INTO account_notes (id, actor_id, target_id, comment, updated_at) VALUES (?, ?, ?, ?, datetime('now'))")

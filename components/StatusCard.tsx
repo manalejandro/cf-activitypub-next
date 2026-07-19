@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Lightbox } from "./Lightbox";
+import { InteractionList } from "./InteractionList";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -349,10 +351,24 @@ export function StatusCard({
   const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
 
   const token = getToken();
+  const router = useRouter();
+  const [interactionList, setInteractionList] = useState<{ type: "favourited_by" | "reblogged_by"; url: string } | null>(null);
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { t: i18n } = useLocale();
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleTranslate() {
     if (translatedContent) {
@@ -584,8 +600,14 @@ export function StatusCard({
             onClick={() => void handleReblog()}
             disabled={!token}
           >
-            🔁 {reblogsCount}
+            🔁
           </button>
+          <span
+            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
+            onClick={() => setInteractionList({ type: "reblogged_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/reblogged_by` })}
+          >
+            {reblogsCount} boost{reblogsCount !== 1 ? "s" : ""}
+          </span>
           <button
             className="btn btn-ghost btn-sm"
             style={{
@@ -598,8 +620,14 @@ export function StatusCard({
             onClick={() => void handleFav()}
             disabled={!token}
           >
-            {favourited ? "❤️" : "🤍"} {favouritesCount}
+            {favourited ? "❤️" : "🤍"}
           </button>
+          <span
+            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
+            onClick={() => setInteractionList({ type: "favourited_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/favourited_by` })}
+          >
+            {favouritesCount} fav{favouritesCount !== 1 ? "s" : ""}
+          </span>
           <button
             className="btn btn-ghost btn-sm"
             style={{
@@ -618,7 +646,7 @@ export function StatusCard({
           {status.language && (
             <button
               className="btn btn-ghost btn-sm"
-              style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem", marginLeft: "auto" }}
+              style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem" }}
               onClick={() => void handleTranslate()}
               disabled={translating}
               title={status.language}
@@ -626,6 +654,41 @@ export function StatusCard({
               {translating ? "…" : showTranslation ? i18n.show_original : i18n.translate}
             </button>
           )}
+          <div ref={menuRef} style={{ position: "relative", marginLeft: "auto" }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "0.2rem 0.4rem", fontSize: "1rem", lineHeight: 1 }}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div
+                style={{
+                  position: "absolute", right: 0, top: "100%", zIndex: 50,
+                  minWidth: 160, background: "var(--bg-surface)", border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                  padding: "0.25rem 0", marginTop: "0.25rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{
+                    width: "100%", justifyContent: "flex-start", gap: "0.5rem",
+                    padding: "0.5rem 0.75rem", fontSize: "0.85rem",
+                  }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push(`/reports/new?status_id=${encodeURIComponent(status.id)}&account_id=${encodeURIComponent(status.account.id)}`);
+                  }}
+                >
+                  🚩 Report @{status.account.acct}
+                </button>
+              </div>
+            )}
+          </div>
           {me && me.id === status.account.id && (
             <>
               <button
@@ -667,6 +730,13 @@ export function StatusCard({
             </>
           )}
         </div>
+        {interactionList && (
+          <InteractionList
+            apiUrl={interactionList.url}
+            title={interactionList.type === "favourited_by" ? "Favourited By" : "Reblogged By"}
+            onClose={() => setInteractionList(null)}
+          />
+        )}
       </div>
     </article>
   );

@@ -16,7 +16,6 @@ export async function POST(
   if (!me) return unauthorized();
   const target = await getActorById(env.DB, rawId);
   if (!target) return notFound();
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS endorsements (id TEXT PRIMARY KEY, actor_id TEXT NOT NULL, target_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (actor_id, target_id))").run();
   const eid = crypto.randomUUID();
   await env.DB
     .prepare("INSERT OR IGNORE INTO endorsements (id, actor_id, target_id) VALUES (?, ?, ?)")

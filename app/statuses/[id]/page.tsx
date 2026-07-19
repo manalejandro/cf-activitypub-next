@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { Lightbox } from "@/components/Lightbox";
 import { EmojiPicker } from "@/components/EmojiPicker";
+import { InteractionList } from "@/components/InteractionList";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -349,6 +350,7 @@ function StatusCard({
   onEdit?: (s: Status) => void;
 }) {
   const token = getToken();
+  const [interactionList, setInteractionList] = useState<{ type: "favourited_by" | "reblogged_by"; url: string } | null>(null);
   const renderedContent = useMemo(
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
     [status.content, status.emojis]
@@ -483,8 +485,14 @@ function StatusCard({
             style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", color: status.reblogged ? "var(--accent)" : "var(--text-muted)" }}
             onClick={handleReblog}
           >
-            🔁 {status.reblogs_count}
+            🔁
           </button>
+          <span
+            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
+            onClick={() => setInteractionList({ type: "reblogged_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/reblogged_by` })}
+          >
+            {status.reblogs_count} boost{status.reblogs_count !== 1 ? "s" : ""}
+          </span>
           <button
             className="btn btn-ghost btn-sm"
             style={{
@@ -494,8 +502,14 @@ function StatusCard({
             }}
             onClick={handleFav}
           >
-            {status.favourited ? "❤️" : "🤍"} {status.favourites_count}
+            {status.favourited ? "❤️" : "🤍"}
           </button>
+          <span
+            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
+            onClick={() => setInteractionList({ type: "favourited_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/favourited_by` })}
+          >
+            {status.favourites_count} fav{status.favourites_count !== 1 ? "s" : ""}
+          </span>
           {status.language && (
             <button
               className="btn btn-ghost btn-sm"
@@ -530,6 +544,13 @@ function StatusCard({
             </>
           )}
         </div>
+        {interactionList && (
+          <InteractionList
+            apiUrl={interactionList.url}
+            title={interactionList.type === "favourited_by" ? "Favourited By" : "Reblogged By"}
+            onClose={() => setInteractionList(null)}
+          />
+        )}
       </div>
     </article>
   );

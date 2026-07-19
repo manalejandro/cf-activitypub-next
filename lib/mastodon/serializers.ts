@@ -45,7 +45,7 @@ function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; 
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -77,7 +77,7 @@ export function serializeAccount(
     last_status_at: null,
     hide_collections: null,
     emojis: (opts.emojis ?? []).map(serializeEmoji),
-    roles: [],
+    roles: opts.role ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }] : [],
     fields: (opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: sanitizeFediverseHtml(f.value) ?? f.value,

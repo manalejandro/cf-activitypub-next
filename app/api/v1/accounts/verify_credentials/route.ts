@@ -17,7 +17,11 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
 
   const fields = await getActorFields(env.DB, actor.id);
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields }));
+
+  const row = await env.DB.prepare("SELECT role FROM actors WHERE id = ?").bind(actor.id).first<{ role: string }>();
+  const role = row?.role ?? "user";
+
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role }));
 }
 
 // PATCH /api/v1/accounts/update_credentials

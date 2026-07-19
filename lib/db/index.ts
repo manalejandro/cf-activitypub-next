@@ -804,6 +804,18 @@ export async function getReportById(db: D1Database, id: string): Promise<{ id: s
   return { ...row, forwarded: Boolean(row.forwarded), action_taken: Boolean(row.action_taken) } as any;
 }
 
+export async function getReportsByActor(db: D1Database, actorId: string): Promise<{
+  id: string; actor_id: string; target_id: string; status_ids: string | null;
+  comment: string; category: string; rule_ids: string | null;
+  forwarded: boolean; action_taken: boolean; created_at: string
+}[]> {
+  const rows = await db
+    .prepare("SELECT id, actor_id, target_id, status_ids, comment, category, rule_ids, forwarded, action_taken, created_at FROM reports WHERE actor_id = ? ORDER BY created_at DESC")
+    .bind(actorId)
+    .all<{ id: string; actor_id: string; target_id: string; status_ids: string | null; comment: string; category: string; rule_ids: string | null; forwarded: number; action_taken: number; created_at: string }>();
+  return rows.results.map((r) => ({ ...r, forwarded: Boolean(r.forwarded), action_taken: Boolean(r.action_taken) })) as any;
+}
+
 // ─────────────────────────────────────────
 // Featured tags
 // ─────────────────────────────────────────
@@ -833,6 +845,40 @@ export async function getFeaturedTagById(db: D1Database, id: string): Promise<{ 
     .bind(id)
     .first<{ id: string; actor_id: string; tag_name: string }>();
   return row ?? null;
+}
+
+export async function getTagSuggestions(db: D1Database, actorId: string): Promise<{ name: string; statuses_count: number }[]> {
+  const rows = await db
+    .prepare("SELECT raw FROM objects WHERE actor_id = ? AND raw LIKE '%\"type\":\"Hashtag\"%' ORDER BY published DESC LIMIT 200")
+    .bind(actorId)
+    .all<{ raw: string }>();
+
+  const featuredNames = new Set(
+    (await getFeaturedTags(db, actorId)).map((t) => t.tag_name)
+  );
+
+  const tagCounts = new Map<string, number>();
+  for (const row of rows.results) {
+    try {
+      const parsed = JSON.parse(row.raw) as { tag?: { type?: string; name?: string }[] };
+      const tags = parsed.tag ?? [];
+      for (const tag of tags) {
+        if (tag.type === "Hashtag" && tag.name) {
+          const name = tag.name.replace(/^#/, "").toLowerCase();
+          if (name && !featuredNames.has(name)) {
+            tagCounts.set(name, (tagCounts.get(name) ?? 0) + 1);
+          }
+        }
+      }
+    } catch {
+      // skip malformed raw JSON
+    }
+  }
+
+  return Array.from(tagCounts.entries())
+    .map(([name, count]) => ({ name, statuses_count: count }))
+    .sort((a, b) => b.statuses_count - a.statuses_count)
+    .slice(0, 10);
 }
 
 export async function updateActor(

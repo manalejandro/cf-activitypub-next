@@ -1,9 +1,61 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { createReport, getActorById, getReportById } from "@/lib/db";
-import { serializeAccount } from "@/lib/mastodon/serializers";
+import { createReport, getActorById, getReportById, getReportsByActor, getObjectById } from "@/lib/db";
+import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
 import { generateId } from "@/lib/activitypub/utils";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
+
+export async function GET(request: NextRequest): Promise<Response> {
+  const { env } = getCloudflareContext();
+  const domain = new URL(request.url).hostname;
+
+  const actor = await getAuthenticatedActor(request, env.DB);
+  if (!actor) return unauthorized();
+
+  const reports = await getReportsByActor(env.DB, actor.id);
+
+  const result = await Promise.all(
+    reports.map(async (r) => {
+      const target = await getActorById(env.DB, r.target_id);
+      let statusIds: string[] = [];
+      let statuses: Record<string, unknown>[] = [];
+      if (r.status_ids) {
+        statusIds = JSON.parse(r.status_ids) as string[];
+        statuses = (await Promise.all(
+          statusIds.map(async (sid) => {
+            const decoded = decodeStatusId(sid, domain);
+            const obj = await getObjectById(env.DB, decoded);
+            if (!obj) return null;
+            const author = await getActorById(env.DB, obj.actorId);
+            if (!author) return null;
+            return {
+              id: sid,
+              content: obj.content,
+              account: serializeAccount(author, domain),
+              created_at: obj.published,
+            };
+          })
+        )).filter(Boolean) as Record<string, unknown>[];
+      }
+      return {
+        id: r.id,
+        action_taken: r.action_taken,
+        action_taken_at: null,
+        category: r.category,
+        comment: r.comment,
+        forwarded: r.forwarded,
+        created_at: r.created_at,
+        status_ids: statusIds,
+        statuses,
+        rule_ids: r.rule_ids ? JSON.parse(r.rule_ids) : [],
+        target_account: target ? serializeAccount(target, domain) : null,
+      };
+    })
+  );
+
+  return json(result);
+}
 
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();

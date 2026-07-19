@@ -8,6 +8,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const domain = new URL(request.url).hostname;
 
   const { id } = await params;
+
+  const row = await env.DB.prepare("SELECT * FROM actors WHERE id = ?").bind(id).first() as any;
+  if (!row) return notFound();
+
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
 
@@ -18,9 +22,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     created_at: actor.createdAt,
     email: actor.email,
     ip: null,
-    role: { id: "1", name: "Admin", color: "" },
+    role: { id: row.role === "admin" ? "1" : row.role === "moderator" ? "2" : "3", name: row.role === "admin" ? "Admin" : row.role === "moderator" ? "Moderator" : "User", color: "" },
     confirmed: actor.emailVerified,
-    suspended: false,
+    suspended: Boolean(row.suspended),
     silenced: false,
     disabled: false,
     approved: true,

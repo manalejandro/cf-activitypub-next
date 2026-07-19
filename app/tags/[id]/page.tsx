@@ -5,47 +5,47 @@ import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
-import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 
-export default function HashtagPage() {
+interface TagInfo {
+  id: string;
+  name: string;
+  url: string;
+  following: boolean;
+  history: { day: string; accounts: string; uses: string }[];
+}
+
+export default function TagPage() {
   const params = useParams();
-  const hashtag = typeof params.hashtag === "string" ? params.hashtag : "";
+  const tagName = typeof params.id === "string" ? params.id : typeof params.hashtag === "string" ? params.hashtag : "";
 
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
+  const [tagInfo, setTagInfo] = useState<TagInfo | null>(null);
+  const [following, setFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const [editText, setEditText] = useState("");
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
-  const [following, setFollowing] = useState(false);
-  const [followBusy, setFollowBusy] = useState(false);
   const { t } = useLocale();
 
   const token = getToken();
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Real-time hashtag streaming
-  useTimelineStream("hashtag", (event: string, payload: string) => {
-    if (event !== "update") return;
-    try {
-      const status = JSON.parse(payload) as Status;
-      if (seenIdsRef.current.has(status.id)) return;
-      seenIdsRef.current.add(status.id);
-      setStatuses((prev) => [status, ...prev]);
-    } catch { /* ignore */ }
-  }, { enabled: !!hashtag, extraParams: hashtag ? { tag: hashtag.toLowerCase() } : undefined });
+  const totalAccounts = tagInfo?.history?.reduce((sum, h) => sum + parseInt(h.accounts || "0"), 0) ?? 0;
 
   async function fetchTimeline() {
     setLoading(true);
     setHasMore(true);
     seenIdsRef.current = new Set();
-    const res = await fetch(`/api/v1/timelines/tag/${encodeURIComponent(hashtag)}?limit=20`);
+    const res = await fetch(`/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=20`);
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses(data);
@@ -53,6 +53,22 @@ export default function HashtagPage() {
       if (data.length < 20) setHasMore(false);
     }
     setLoading(false);
+  }
+
+  async function pollTimeline() {
+    if (loading || statuses.length === 0) return;
+    const topId = statuses[0]?.id;
+    let url = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=20`;
+    if (topId) url += `&max_id=${encodeURIComponent(topId)}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json() as Status[];
+      const newStatuses = data.filter((s) => !seenIdsRef.current.has(s.id));
+      for (const s of newStatuses) seenIdsRef.current.add(s.id);
+      if (newStatuses.length > 0) {
+        setStatuses((prev) => [...newStatuses, ...prev]);
+      }
+    }
   }
 
   async function fetchMe() {
@@ -64,12 +80,11 @@ export default function HashtagPage() {
   }
 
   async function fetchTagInfo() {
-    if (!token) return;
-    const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`/api/v1/tags/${encodeURIComponent(tagName)}`, { headers });
     if (res.ok) {
-      const data = await res.json() as { following?: boolean };
+      const data = await res.json() as TagInfo;
+      setTagInfo(data);
       setFollowing(data.following ?? false);
     }
   }
@@ -79,11 +94,14 @@ export default function HashtagPage() {
     setFollowBusy(true);
     try {
       const path = following ? "unfollow" : "follow";
-      const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}/${path}`, {
+      const res = await fetch(`/api/v1/tags/${encodeURIComponent(tagName)}/${path}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) setFollowing(!following);
+      if (res.ok) {
+        setFollowing(!following);
+        setTagInfo((prev) => prev ? { ...prev, following: !following } : null);
+      }
     } catch {
       // silently fail
     } finally {
@@ -96,7 +114,7 @@ export default function HashtagPage() {
     setLoadingMore(true);
     const lastId = statuses[statuses.length - 1].id;
     const res = await fetch(
-      `/api/v1/timelines/tag/${encodeURIComponent(hashtag)}?max_id=${encodeURIComponent(lastId)}&limit=20`
+      `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?max_id=${encodeURIComponent(lastId)}&limit=20`
     );
     if (res.ok) {
       const more = await res.json() as Status[];
@@ -155,12 +173,22 @@ export default function HashtagPage() {
   }
 
   useEffect(() => {
-    if (!hashtag) return;
+    if (!tagName) return;
     void fetchTimeline();
     void fetchMe();
     void fetchTagInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hashtag]);
+  }, [tagName]);
+
+  // Periodic polling every 30 seconds
+  useEffect(() => {
+    if (!tagName || loading) return;
+    pollRef.current = setInterval(() => void pollTimeline(), 30000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagName, loading, statuses.length]);
 
   // Infinite scroll
   useEffect(() => {
@@ -178,7 +206,7 @@ export default function HashtagPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
-      <Sidebar me={me} currentPath={`/tags/${hashtag}`} />
+      <Sidebar me={me} currentPath={`/tags/${tagName}`} />
 
       <main style={{ flex: 1, maxWidth: 600, borderRight: "1px solid var(--border)" }}>
         {/* Header */}
@@ -203,10 +231,12 @@ export default function HashtagPage() {
             </button>
             <div style={{ flex: 1 }}>
               <h1 style={{ fontWeight: 700, fontSize: "1.15rem", margin: 0 }}>
-                #{hashtag}
+                #{tagName}
               </h1>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0 }}>
-                {t.hashtag_timeline} #{hashtag}
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: "0.15rem 0 0" }}>
+                {totalAccounts > 0
+                  ? `${totalAccounts} ${totalAccounts === 1 ? "persona" : "personas"} hablando sobre este tag`
+                  : t.hashtag_timeline}
               </p>
             </div>
             {token && (
@@ -274,7 +304,7 @@ export default function HashtagPage() {
               />
             ))}
             <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-              {loadingMore ? t.loading : hasMore ? "" : ""}
+              {loadingMore ? t.loading : ""}
             </div>
           </div>
         )}
