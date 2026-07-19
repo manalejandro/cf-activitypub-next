@@ -1481,8 +1481,8 @@ export async function getAttachmentsByObjectIds(
   return map;
 }
 
-/** Export rowToActor for use in route handlers that read raw DB rows */
-export { rowToActor };
+/** Export rowToActor / rowToObject for use in route handlers that read raw DB rows */
+export { rowToActor, rowToObject };
 
 // ─────────────────────────────────────────
 // Actor Fields (profile key/value pairs)

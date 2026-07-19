@@ -42,7 +42,7 @@ interface Account {
   };
 }
 
-type ActiveTab = "posts" | "replies" | "media" | "followers" | "following";
+type ActiveTab = "posts" | "replies" | "media" | "followers" | "following" | "pinned";
 
 interface MediaAttachment {
   id: string;
@@ -77,6 +77,7 @@ interface Status {
   replies_count: number;
   favourited: boolean;
   reblogged: boolean;
+  pinned?: boolean;
   sensitive: boolean;
   spoiler_text: string;
   media_attachments: MediaAttachment[];
@@ -238,6 +239,7 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [pinned, setPinned] = useState(s.pinned ?? false);
   const { t: i18n } = useLocale();
 
   async function handleTranslate() {
@@ -245,23 +247,19 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
       setShowTranslation((v) => !v);
       return;
     }
-    if (!s.language) return;
+    if (!token) return;
     setTranslating(true);
     try {
       const targetLang = navigator.language.slice(0, 2) || "en";
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}/translate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: s.content,
-          source_lang: s.language,
-          target_lang: targetLang,
-        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: targetLang }),
       });
       if (res.ok) {
-        const data = await res.json() as { translatedText?: string };
-        if (data.translatedText) {
-          setTranslatedContent(data.translatedText);
+        const data = await res.json() as { content?: string };
+        if (data.content) {
+          setTranslatedContent(data.content);
           setShowTranslation(true);
         }
       }
@@ -270,6 +268,18 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
     } finally {
       setTranslating(false);
     }
+  }
+
+  async function handlePin() {
+    if (!token) return;
+    const wasPinned = pinned;
+    setPinned(!wasPinned);
+    const path = wasPinned ? "unpin" : "pin";
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) setPinned(wasPinned);
   }
 
   const isRemote = s.account.acct.includes("@");
@@ -308,6 +318,7 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
             {s.account.display_name || s.account.username}
           </Link>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{s.account.acct}</span>
+          {pinned && <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginLeft: "0.25rem" }}>📌</span>}
           <Link href={threadHref} title={new Date(s.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
             {formatTime(s.created_at)}
           </Link>
@@ -399,6 +410,14 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
           )}
           {meProp && meProp.id === s.account.id && (
             <>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", color: pinned ? "var(--accent)" : "var(--text-muted)" }}
+                onClick={() => void handlePin()}
+                title={pinned ? "Desfijar" : "Fijar"}
+              >
+                📌
+              </button>
               {onEdit && (
                 <button
                   className="btn btn-ghost btn-sm"
@@ -502,12 +521,18 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const [me, setMe] = useState<Me | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [replies, setReplies] = useState<Status[]>([]);
+  const [pinnedStatuses, setPinnedStatuses] = useState<Status[]>([]);
   const [followers, setFollowers] = useState<Account[]>([]);
   const [following, setFollowing] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("posts");
   const [tabLoaded, setTabLoaded] = useState<Record<string, boolean>>({ posts: false });
+  const [endorsed, setEndorsed] = useState(false);
+  const [endorseBusy, setEndorseBusy] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -676,6 +701,12 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
         { headers: authHeaders }
       );
       if (res.ok) setReplies(await res.json() as Status[]);
+    } else if (tab === "pinned") {
+      const res = await fetch(
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?pinned=true&limit=20`,
+        { headers: authHeaders }
+      );
+      if (res.ok) setPinnedStatuses(await res.json() as Status[]);
     } else if (tab === "followers") {
       const res = await fetch(
         `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=40`,
@@ -898,6 +929,30 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
     setMuteBusy(false);
   }
 
+  async function toggleEndorse() {
+    if (!token || !account || endorseBusy) return;
+    setEndorseBusy(true);
+    const path = endorsed ? "unpin" : "pin";
+    const res = await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) setEndorsed((v) => !v);
+    setEndorseBusy(false);
+  }
+
+  async function handleSaveNote() {
+    if (!token || !account || noteBusy) return;
+    setNoteBusy(true);
+    await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/note`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ comment: noteText }),
+    });
+    setNoteOpen(false);
+    setNoteBusy(false);
+  }
+
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
   const { t } = useLocale();
@@ -1013,6 +1068,23 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                         💬
                       </button>
                     )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)", color: endorsed ? "var(--accent)" : "var(--text-muted)" }}
+                      onClick={() => void toggleEndorse()}
+                      disabled={endorseBusy}
+                      title={endorsed ? "Dejar de recomendar" : "Recomendar"}
+                    >
+                      {endorseBusy ? "…" : endorsed ? "⭐" : "☆"}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: "1px solid var(--border)" }}
+                      onClick={() => setNoteOpen(true)}
+                      title="Nota"
+                    >
+                      📝
+                    </button>
                     {account.supports_calls && (<>
                       <button
                         className="btn btn-ghost btn-sm"
@@ -1110,6 +1182,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
               {([
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
                 { key: "replies" as ActiveTab, label: t.profile_replies },
+                { key: "pinned" as ActiveTab, label: "📌", count: pinnedStatuses.length },
                 { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
                 { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
@@ -1164,6 +1237,19 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 </div>
               ) : (
                 replies.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)
+              )
+            )}
+
+            {activeTab === "pinned" && (
+              !tabLoaded.pinned ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+              ) : pinnedStatuses.length === 0 ? (
+                <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
+                  <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}>📌</span>
+                  {t.profile_no_pinned}
+                </div>
+              ) : (
+                pinnedStatuses.map((s) => <StatusCard key={s.id} s={s} onFav={() => void toggleFavourite(s)} me={me} onEdit={openStatusEdit} onDelete={handleDelete} />)
               )
             )}
 
@@ -1474,6 +1560,45 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Note modal */}
+      {noteOpen && account && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 50,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.7)",
+            padding: "1rem",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setNoteOpen(false); }}
+        >
+          <div
+            style={{
+              background: "var(--bg-surface)", borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border)", width: "100%", maxWidth: 400,
+              boxShadow: "var(--shadow-lg)", padding: "1.25rem",
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: "0.75rem" }}>
+              Nota sobre @{account.username}
+            </div>
+            <textarea
+              className="input"
+              style={{ width: "100%", minHeight: 80, resize: "none", fontFamily: "inherit", marginBottom: "0.75rem" }}
+              placeholder="Escribe una nota personal…"
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              maxLength={500}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNoteOpen(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={noteBusy} onClick={() => void handleSaveNote()}>
+                {noteBusy ? "…" : "Guardar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

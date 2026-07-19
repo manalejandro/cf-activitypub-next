@@ -186,23 +186,20 @@ function StatusCard({ s, onFav, onReblog, me: meProp, onEdit, onDelete }: { s: S
       setShowTranslation((v) => !v);
       return;
     }
-    if (!s.language) return;
+    const t = getToken();
+    if (!t) return;
     setTranslating(true);
     try {
       const targetLang = navigator.language.slice(0, 2) || "en";
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}/translate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: s.content,
-          source_lang: s.language,
-          target_lang: targetLang,
-        }),
+        headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: targetLang }),
       });
       if (res.ok) {
-        const data = await res.json() as { translatedText?: string };
-        if (data.translatedText) {
-          setTranslatedContent(data.translatedText);
+        const data = await res.json() as { content?: string };
+        if (data.content) {
+          setTranslatedContent(data.content);
           setShowTranslation(true);
         }
       }

@@ -115,7 +115,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[] } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -161,6 +161,7 @@ export function serializeStatus(
     reblogged: opts.reblogged ?? false,
     muted: false,
     bookmarked: false,
+    pinned: opts.pinned ?? false,
   };
 }
 
@@ -272,7 +273,7 @@ export function serializeInstanceV2(
 // Helpers
 // ─────────────────────────────────────────
 
-function serializeAttachment(att: LocalAttachment): MastodonAttachment {
+export function serializeAttachment(att: LocalAttachment): MastodonAttachment {
   const mimeToType = (mime: string | null): MastodonAttachment["type"] => {
     if (!mime) return "unknown";
     if (mime.startsWith("image/gif")) return "gifv";

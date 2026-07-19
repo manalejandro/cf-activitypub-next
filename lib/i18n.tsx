@@ -170,6 +170,7 @@ const EN = {
   profile_remote_no_following: "No cached following.",
   profile_remote_view_full: "View full profile on original server →",
   profile_replies: "Replies",
+  profile_no_pinned: "No pinned posts yet",
   profile_edit_placeholder_name: "Your name",
   profile_edit_placeholder_bio: "Tell the world a bit about yourself…",
   // Explore trends
@@ -218,6 +219,9 @@ const EN = {
   mutes_empty: "No muted users",
   mutes_empty_sub: "Muted users won't be able to notify you.",
   mutes_unmute: "Unmute",
+  // Lists members tab
+  lists_members: "Members",
+  lists_timeline: "Timeline",
   // Scheduled posts
   scheduled_title: "Scheduled posts",
   scheduled_empty: "No scheduled posts",
@@ -424,6 +428,7 @@ const ES: typeof EN = {
   profile_remote_no_following: "Sin seguidos cacheados.",
   profile_remote_view_full: "Ver perfil completo en el servidor original →",
   profile_replies: "Respuestas",
+  profile_no_pinned: "Sin publicaciones fijadas",
   profile_edit_placeholder_name: "Tu nombre",
   profile_edit_placeholder_bio: "Cuéntale al mundo sobre ti…",
   // Tendencias
@@ -472,6 +477,9 @@ const ES: typeof EN = {
   mutes_empty: "Sin usuarios silenciados",
   mutes_empty_sub: "Los usuarios silenciados no podrán notificarte.",
   mutes_unmute: "Silenciar",
+  // Listas - pestaña miembros
+  lists_members: "Miembros",
+  lists_timeline: "Cronología",
   // Posts programados
   scheduled_title: "Posts programados",
   scheduled_empty: "Sin posts programados",

@@ -58,6 +58,8 @@ export interface Status {
   favourited: boolean;
   reblogged: boolean;
   bookmarked?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
   media_attachments: MediaAttachment[];
   sensitive: boolean;
   spoiler_text: string;
@@ -317,6 +319,8 @@ export function StatusCard({
   me,
   onDelete,
   onEdit,
+  onPin,
+  onMute,
 }: {
   status: Status;
   isFocal?: boolean;
@@ -326,6 +330,8 @@ export function StatusCard({
   me?: Me | null;
   onDelete?: (s: Status) => void;
   onEdit?: (s: Status) => void;
+  onPin?: (s: Status) => void;
+  onMute?: (s: Status) => void;
 }) {
   const [cwExpanded, setCwExpanded] = useState(false);
   const renderedContent = useMemo(
@@ -337,6 +343,8 @@ export function StatusCard({
   const [favourited, setFavourited] = useState(status.favourited);
   const [reblogged, setReblogged] = useState(status.reblogged);
   const [bookmarked, setBookmarked] = useState(status.bookmarked ?? false);
+  const [pinned, setPinned] = useState(status.pinned ?? false);
+  const [muted, setMuted] = useState(status.muted ?? false);
   const [favouritesCount, setFavouritesCount] = useState(status.favourites_count);
   const [reblogsCount, setReblogsCount] = useState(status.reblogs_count);
 
@@ -351,23 +359,19 @@ export function StatusCard({
       setShowTranslation((v) => !v);
       return;
     }
-    if (!status.language) return;
+    if (!token) return;
     setTranslating(true);
     try {
       const targetLang = navigator.language.slice(0, 2) || "en";
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/translate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: status.content,
-          source_lang: status.language,
-          target_lang: targetLang,
-        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: targetLang }),
       });
       if (res.ok) {
-        const data = await res.json() as { translatedText?: string };
-        if (data.translatedText) {
-          setTranslatedContent(data.translatedText);
+        const data = await res.json() as { content?: string };
+        if (data.content) {
+          setTranslatedContent(data.content);
           setShowTranslation(true);
         }
       }
@@ -392,6 +396,14 @@ export function StatusCard({
   useEffect(() => {
     setBookmarked(status.bookmarked ?? false);
   }, [status.id, status.bookmarked]);
+
+  useEffect(() => {
+    setPinned(status.pinned ?? false);
+  }, [status.id, status.pinned]);
+
+  useEffect(() => {
+    setMuted(status.muted ?? false);
+  }, [status.id, status.muted]);
 
   const isRemote = status.account.acct.includes("@");
   const profileHref = isRemote
@@ -454,6 +466,36 @@ export function StatusCard({
     if (!res.ok) setBookmarked(wasBookmarked);
   }
 
+  async function handlePin() {
+    if (!token) return;
+    const wasPinned = pinned;
+    setPinned(!wasPinned);
+    const path = wasPinned ? "unpin" : "pin";
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      setPinned(updated.pinned ?? !wasPinned);
+      onPin?.(updated);
+    } else {
+      setPinned(wasPinned);
+    }
+  }
+
+  async function handleMute() {
+    if (!token) return;
+    const wasMuted = muted;
+    setMuted(!wasMuted);
+    const path = wasMuted ? "unmute" : "mute";
+    const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/${path}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) setMuted(wasMuted);
+  }
+
   return (
     <article
       style={{
@@ -473,6 +515,7 @@ export function StatusCard({
             {status.account.display_name || status.account.username}
           </Link>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{status.account.acct}</span>
+          {pinned && <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginLeft: "0.25rem" }}>📌</span>}
           <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto", textDecoration: "none" }}>
             {formatTime(status.created_at)}
           </Link>
@@ -585,6 +628,22 @@ export function StatusCard({
           )}
           {me && me.id === status.account.id && (
             <>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", color: pinned ? "var(--accent)" : "var(--text-muted)" }}
+                onClick={() => void handlePin()}
+                title={pinned ? "Desfijar" : "Fijar"}
+              >
+                📌
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", color: muted ? "var(--danger)" : "var(--text-muted)" }}
+                onClick={() => void handleMute()}
+                title={muted ? "Dejar de silenciar" : "Silenciar"}
+              >
+                🔇
+              </button>
               {onEdit && (
                 <button
                   className="btn btn-ghost btn-sm"

@@ -1,35 +1,77 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { serializeAttachment } from "@/lib/mastodon/serializers";
 
-// PUT /api/v1/media/:id — Update description of a pending media attachment
-export async function PUT(
-  request: NextRequest,
+export async function GET(
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
-
   const { id } = await params;
-  const pendingRaw = await env.KV.get(`pending_media:${id}`);
-  if (!pendingRaw) return json({ error: "Media not found" }, 404);
+  const att = await env.DB
+    .prepare("SELECT * FROM attachments WHERE id = ?")
+    .first<Record<string, unknown>>(id);
+  if (!att) return notFound();
+  return json(serializeAttachment({
+    id: att.id as string,
+    objectId: att.object_id as string,
+    type: att.type as string,
+    url: att.url as string,
+    remoteUrl: (att.remote_url as string | null) ?? null,
+    description: (att.description as string | null) ?? null,
+    blurhash: (att.blurhash as string | null) ?? null,
+    width: (att.width as number | null) ?? null,
+    height: (att.height as number | null) ?? null,
+    fileSize: (att.file_size as number | null) ?? null,
+    mimeType: (att.mime_type as string | null) ?? null,
+    createdAt: att.created_at as string,
+  }));
+}
 
-  const body = await request.json() as { description?: string };
-  const description = (body.description as string | null | undefined) ?? null;
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  const { env } = getCloudflareContext();
+  const { id } = await params;
+  const me = await getAuthenticatedActor(_request, env.DB);
+  if (!me) return unauthorized();
+  await env.DB.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
+  return json({});
+}
 
-  const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
-  pending.description = description;
-  await env.KV.put(`pending_media:${id}`, JSON.stringify(pending), { expirationTtl: 3600 });
-
-  return json({
-    id,
-    type: pending.type,
-    url: pending.url,
-    preview_url: pending.url,
-    remote_url: null,
-    description,
-    blurhash: null,
-    meta: {},
-  });
+export async function PUT(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  const { env } = getCloudflareContext();
+  const { id } = await params;
+  const me = await getAuthenticatedActor(_request, env.DB);
+  if (!me) return unauthorized();
+  const body = await _request.json() as Record<string, unknown>;
+  if (typeof body.description === "string") {
+    await env.DB
+      .prepare("UPDATE attachments SET description = ? WHERE id = ?")
+      .bind(body.description, id)
+      .run();
+  }
+  const att = await env.DB
+    .prepare("SELECT * FROM attachments WHERE id = ?")
+    .first<Record<string, unknown>>(id);
+  if (!att) return notFound();
+  return json(serializeAttachment({
+    id: att.id as string,
+    objectId: att.object_id as string,
+    type: att.type as string,
+    url: att.url as string,
+    remoteUrl: (att.remote_url as string | null) ?? null,
+    description: (att.description as string | null) ?? null,
+    blurhash: (att.blurhash as string | null) ?? null,
+    width: (att.width as number | null) ?? null,
+    height: (att.height as number | null) ?? null,
+    fileSize: (att.file_size as number | null) ?? null,
+    mimeType: (att.mime_type as string | null) ?? null,
+    createdAt: att.created_at as string,
+  }));
 }

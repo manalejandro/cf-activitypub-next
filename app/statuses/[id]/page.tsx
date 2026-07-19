@@ -75,6 +75,14 @@ interface Me {
   avatar: string;
 }
 
+interface StatusEdit {
+  content: string;
+  spoiler_text: string;
+  sensitive: boolean;
+  created_at: string;
+  account: Account;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTime(iso: string) {
@@ -355,23 +363,19 @@ function StatusCard({
       setShowTranslation((v) => !v);
       return;
     }
-    if (!status.language) return;
+    if (!token) return;
     setTranslating(true);
     try {
       const targetLang = navigator.language.slice(0, 2) || "en";
-      const res = await fetch("/api/translate", {
+      const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/translate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: status.content,
-          source_lang: status.language,
-          target_lang: targetLang,
-        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: targetLang }),
       });
       if (res.ok) {
-        const data = await res.json() as { translatedText?: string };
-        if (data.translatedText) {
-          setTranslatedContent(data.translatedText);
+        const data = await res.json() as { content?: string };
+        if (data.content) {
+          setTranslatedContent(data.content);
           setShowTranslation(true);
         }
       }
@@ -828,6 +832,9 @@ export default function ThreadPage() {
   const [editText, setEditText] = useState("");
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  const [history, setHistory] = useState<StatusEdit[]>([]);
+  const [historyTab, setHistoryTab] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const searchParams = useSearchParams();
   const token = getToken();
 
@@ -903,6 +910,20 @@ export default function ThreadPage() {
     setFocal((f) => (f ? update(f) : f));
     setAncestors((prev) => prev.map(update));
     setDescendants((prev) => prev.map(update));
+  }
+
+  async function loadHistory() {
+    if (history.length > 0 || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}/history`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) setHistory(await res.json() as StatusEdit[]);
+    } catch {
+      // silently fail
+    }
+    setHistoryLoading(false);
   }
 
   const replyRef = useRef<HTMLDivElement | null>(null);
@@ -983,32 +1004,83 @@ export default function ThreadPage() {
       <Sidebar me={me} currentPath="" />
 
       <main style={{ flex: 1, maxWidth: 600, borderRight: "1px solid var(--border)" }}>
-        {/* Back header */}
+        {/* Back header with tabs */}
         <div
           style={{
             position: "sticky",
             top: 0,
             background: "var(--bg)",
             borderBottom: "1px solid var(--border)",
-            padding: "0.75rem 1rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "1rem",
             zIndex: 10,
           }}
         >
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => router.back()}
-            style={{ fontSize: "1.1rem" }}
-          >
-            ←
-          </button>
-          <span style={{ fontWeight: 600 }}>Post</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.75rem 1rem" }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => router.back()}
+              style={{ fontSize: "1.1rem" }}
+            >
+              ←
+            </button>
+            <span style={{ fontWeight: 600 }}>Post</span>
+          </div>
+          <div className="flex" style={{ borderTop: "1px solid var(--border)" }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setHistoryTab(false)}
+              style={{
+                flex: 1, borderRadius: 0, padding: "0.625rem 1rem",
+                borderBottom: !historyTab ? "2px solid var(--accent)" : "2px solid transparent",
+                color: !historyTab ? "var(--accent)" : "var(--text-muted)",
+                fontWeight: !historyTab ? 600 : 400,
+                fontSize: "0.875rem",
+              }}
+            >
+              Hilo
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => { setHistoryTab(true); void loadHistory(); }}
+              style={{
+                flex: 1, borderRadius: 0, padding: "0.625rem 1rem",
+                borderBottom: historyTab ? "2px solid var(--accent)" : "2px solid transparent",
+                color: historyTab ? "var(--accent)" : "var(--text-muted)",
+                fontWeight: historyTab ? 600 : 400,
+                fontSize: "0.875rem",
+              }}
+            >
+              Historial de edición
+            </button>
+          </div>
         </div>
 
-        {loading ? (
+        {historyTab ? (
+          historyLoading ? (
+            <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
+              Loading history...
+            </div>
+          ) : history.length === 0 ? (
+            <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}>📝</span>
+              No hay historial de ediciones.
+            </div>
+          ) : (
+            history.map((edit, i) => (
+              <div key={i} style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+                  Edición del {new Date(edit.created_at).toLocaleString()}
+                </div>
+                {edit.spoiler_text && (
+                  <div style={{ padding: "0.375rem 0.625rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.4rem", color: "var(--text-secondary)" }}>
+                    ⚠️ {edit.spoiler_text}
+                  </div>
+                )}
+                <div className="status-content" style={{ fontSize: "0.95rem", lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: edit.content }} />
+              </div>
+            ))
+          )
+        ) : loading ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             Loading thread...
           </div>

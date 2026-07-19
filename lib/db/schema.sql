@@ -590,3 +590,46 @@ CREATE TABLE IF NOT EXISTS dismissed_suggestions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dismissed_suggestions_actor ON dismissed_suggestions(actor_id);
+
+-- ─────────────────────────────────────────
+-- Endorsements (account pinning)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS endorsements (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_endorsements_actor ON endorsements(actor_id);
+CREATE INDEX IF NOT EXISTS idx_endorsements_target ON endorsements(target_id);
+
+-- ─────────────────────────────────────────
+-- Status pins
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS status_pins (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  status_id   TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, status_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_status_pins_actor ON status_pins(actor_id);
+
+-- ─────────────────────────────────────────
+-- Account notes
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS account_notes (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  target_id   TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  comment     TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (actor_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_notes_actor ON account_notes(actor_id);
+CREATE INDEX IF NOT EXISTS idx_account_notes_target ON account_notes(target_id);

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = await request.json() as Record<string, unknown>;
     if (body.notifications !== undefined) notifications = Boolean(body.notifications);
     if (body.duration !== undefined) duration = Number(body.duration);
-  } else {
+  } else if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     const notifVal = form.get("notifications");
     if (notifVal !== null) notifications = notifVal === "true";
