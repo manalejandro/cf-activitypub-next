@@ -1,3 +1,4 @@
+const SW_CODE = `
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(clients.claim()));
 
@@ -30,3 +31,15 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+`;
+
+export async function GET() {
+  return new Response(SW_CODE, {
+    headers: {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Service-Worker-Allowed": "/",
+    },
+  });
+}
