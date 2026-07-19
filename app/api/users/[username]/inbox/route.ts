@@ -135,7 +135,3 @@ export async function POST(
   return json({}, 202);
 }
 
-// GET /users/:username/inbox (not publicly readable)
-export async function GET(): Promise<Response> {
-  return json({ error: "Forbidden" }, 403);
-}
