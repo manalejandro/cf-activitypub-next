@@ -11,36 +11,48 @@ export async function GET(request: NextRequest): Promise<Response> {
     20
   );
 
-  // Extract hashtag names from the AP raw JSON stored in objects.
-  // The 'tag' array in each Note looks like: [{"type":"Hashtag","name":"#foo","href":"..."}]
+  // Fetch recent public objects and parse hashtags in JS
   const rows = await env.DB
     .prepare(
-      `SELECT
-         LOWER(REPLACE(json_extract(t.value, '$.name'), '#', '')) AS tag_name,
-         COUNT(DISTINCT o.actor_id) AS accounts,
-         COUNT(*) AS uses
-       FROM objects o,
-            json_each(json_extract(o.raw, '$.tag')) t
-       WHERE json_extract(t.value, '$.type') = 'Hashtag'
-         AND json_extract(t.value, '$.name') IS NOT NULL
-         AND o.visibility IN ('public', 'unlisted')
-         AND o.published >= datetime('now', '-7 days')
-       GROUP BY tag_name
-       ORDER BY uses DESC
-       LIMIT ?`
+      `SELECT id, actor_id, raw
+       FROM objects
+       WHERE json_valid(raw)
+         AND visibility IN ('public', 'unlisted')
+         AND published >= datetime('now', '-7 days')
+       ORDER BY published DESC
+       LIMIT 500`
     )
-    .bind(limit)
-    .all<{ tag_name: string; accounts: number; uses: number }>();
+    .all<{ id: string; actor_id: string; raw: string }>();
 
-  const tags = (rows.results ?? [])
-    .filter((r) => r.tag_name && r.tag_name.length > 0)
-    .map((r) => serializeTag(r.tag_name, domain, r.uses, r.accounts));
+  const tagStats = new Map<string, { uses: number; actors: Set<string> }>();
+  for (const r of rows.results) {
+    let parsed: { tag?: { type?: string; name?: string }[] };
+    try { parsed = JSON.parse(r.raw); } catch { continue; }
+    const tags = parsed.tag ?? [];
+    for (const t of tags) {
+      if (t.type === "Hashtag" && t.name) {
+        const name = t.name.replace(/^#/, "").toLowerCase();
+        if (!name) continue;
+        let stat = tagStats.get(name);
+        if (!stat) {
+          stat = { uses: 0, actors: new Set() };
+          tagStats.set(name, stat);
+        }
+        stat.uses++;
+        stat.actors.add(r.actor_id);
+      }
+    }
+  }
 
-  return json(tags);
+  const sorted = [...tagStats.entries()]
+    .sort((a, b) => b[1].uses - a[1].uses)
+    .slice(0, limit)
+    .map(([name, stat]) => serializeTag(name, domain, stat.uses, stat.actors.size));
+
+  return json(sorted);
 }
 
 function tagId(name: string): string {
-  // Deterministic ID derived from tag name via DJB2 hash.
   let h = 5381;
   for (const c of name.toLowerCase()) {
     h = (((h << 5) + h) ^ c.charCodeAt(0)) & 0x7fffffff;
