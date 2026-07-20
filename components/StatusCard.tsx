@@ -600,14 +600,8 @@ export function StatusCard({
             onClick={() => void handleReblog()}
             disabled={!token}
           >
-            🔁
+            🔁 {reblogsCount}
           </button>
-          <span
-            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
-            onClick={() => setInteractionList({ type: "reblogged_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/reblogged_by` })}
-          >
-            {reblogsCount} boost{reblogsCount !== 1 ? "s" : ""}
-          </span>
           <button
             className="btn btn-ghost btn-sm"
             style={{
@@ -620,14 +614,8 @@ export function StatusCard({
             onClick={() => void handleFav()}
             disabled={!token}
           >
-            {favourited ? "❤️" : "🤍"}
+            {favourited ? "❤️" : "🤍"} {favouritesCount}
           </button>
-          <span
-            style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: "0.82rem", padding: "0.2rem 0" }}
-            onClick={() => setInteractionList({ type: "favourited_by", url: `/api/v1/statuses/${encodeURIComponent(status.id)}/favourited_by` })}
-          >
-            {favouritesCount} fav{favouritesCount !== 1 ? "s" : ""}
-          </span>
           <button
             className="btn btn-ghost btn-sm"
             style={{
