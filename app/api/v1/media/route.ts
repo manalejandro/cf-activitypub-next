@@ -59,31 +59,17 @@ export async function POST(request: NextRequest): Promise<Response> {
   let finalDescription = description;
   if (!description && file.type.startsWith("image/") && env.AI) {
     try {
-      const systemMsg = locale === "es"
-        ? "Eres un asistente que describe imágenes para personas con discapacidad visual. Sé conciso y específico."
-        : "You are an assistant that describes images for people with visual disabilities. Be concise and specific.";
-      const userMsg = locale === "es"
-        ? "Describe esta imagen de forma clara y concisa. Menciona el tema principal, personas, objetos, acciones, colores relevantes y cualquier texto visible. Responde en español."
-        : "Describe this image clearly and concisely. Mention the main subject, people, objects, actions, relevant colors, and any visible text.";
-
       const aiResult = await env.AI.run(
         "@cf/meta/llama-3.2-11b-vision-instruct" as Parameters<Ai["run"]>[0],
         {
-          messages: [
-            { role: "system", content: systemMsg },
-            {
-              role: "user",
-              content: [
-                { type: "image", image: imageBytes },
-                { type: "text", text: userMsg },
-              ],
-            },
-          ],
+          image: imageBytes,
+          prompt: locale === "es"
+            ? "Describe esta imagen de forma clara y concisa para personas con discapacidad visual. Menciona el tema principal, personas, objetos, acciones, colores relevantes y cualquier texto visible. Responde siempre en español."
+            : "Describe this image clearly and concisely for people with visual disabilities. Mention the main subject, people, objects, actions, relevant colors, and any visible text.",
           max_tokens: 768,
-          temperature: 0.3,
         } as Parameters<Ai["run"]>[1],
-      ) as { response?: string };
-      const aiText = (aiResult.response ?? "").trim();
+      ) as { response?: string; description?: string };
+      const aiText = (aiResult.response ?? aiResult.description ?? "").trim();
       if (aiText) {
         finalDescription = aiText;
       }
