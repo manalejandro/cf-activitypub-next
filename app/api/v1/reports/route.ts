@@ -5,6 +5,8 @@ import { createReport, getActorById, getReportById, getReportsByActor, getObject
 import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
 import { generateId } from "@/lib/activitypub/utils";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { evaluateReport } from "@/lib/moderation/ai";
+import { sendReportOutcomeEmail } from "@/lib/email";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -107,6 +109,80 @@ export async function POST(request: NextRequest): Promise<Response> {
     ruleIds.length > 0 ? JSON.stringify(ruleIds) : null,
     forward
   );
+
+  // AI moderation: evaluate the report and take action automatically
+  if (env.AI) {
+    try {
+      const statusContents: string[] = [];
+      let invalidStatuses = false;
+      let mismatchedOwnership = false;
+
+      for (const sid of statusIds) {
+        const decoded = decodeStatusId(sid, domain);
+        const obj = await getObjectById(env.DB, decoded);
+        if (!obj) {
+          invalidStatuses = true;
+          continue;
+        }
+        if (obj.actorId !== target.id) {
+          mismatchedOwnership = true;
+        }
+        if (obj?.content) {
+          const stripped = obj.content.replace(/<[^>]+>/g, "").trim();
+          if (stripped) statusContents.push(stripped);
+        }
+      }
+
+      const verdict = await evaluateReport(env as { AI: Ai; DB: D1Database }, {
+        category,
+        comment,
+        statusContent: statusContents.join("\n---\n").slice(0, 2000),
+        targetUsername: target.username,
+        reporterUsername: actor.username,
+        invalidStatuses,
+        mismatchedOwnership,
+      });
+
+      if (verdict && verdict.confidence !== "low") {
+        let actionNote = `[AI] Decisión: ${verdict.action}. Razón: ${verdict.reason} (confianza: ${verdict.confidence})`;
+
+        if (verdict.action === "suspend") {
+          await env.DB.prepare("UPDATE actors SET suspended = 1 WHERE id = ?").bind(target.id).run();
+          actionNote += " — Cuenta suspendida.";
+        }
+
+        if (verdict.action === "delete") {
+          for (const sid of statusIds) {
+            const decoded = decodeStatusId(sid, domain);
+            await env.DB.prepare("UPDATE objects SET content = NULL, sensitive = 1 WHERE id = ?").bind(decoded).run();
+          }
+          actionNote += " — Publicación(es) eliminada(s).";
+        }
+
+        await env.DB.prepare(
+          "UPDATE reports SET action_taken = 1, comment = comment || '\n' || ? WHERE id = ?"
+        ).bind(actionNote, id).run();
+
+        if (actor.email && env.EMAIL) {
+          try {
+            await sendReportOutcomeEmail(env.EMAIL, {
+              to: actor.email,
+              from: env.FROM_EMAIL,
+              reporterUsername: actor.username,
+              targetUsername: target.username,
+              action: verdict.action,
+              reason: verdict.reason,
+              instanceTitle: env.INSTANCE_TITLE,
+            });
+          } catch {
+            // email error — don't fail the report
+          }
+        }
+      }
+    } catch {
+      // AI error — leave report open for manual review
+    }
+  }
 
   return json({
     id,

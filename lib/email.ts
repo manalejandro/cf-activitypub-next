@@ -94,3 +94,43 @@ export async function sendWelcomeEmail(
     ].join("\n"),
   });
 }
+
+export async function sendReportOutcomeEmail(
+  emailBinding: SendEmail,
+  opts: {
+    to: string;
+    from: string;
+    reporterUsername: string;
+    targetUsername: string;
+    action: string;
+    reason: string;
+    instanceTitle: string;
+  }
+): Promise<void> {
+  const { to, from, reporterUsername, targetUsername, action, reason, instanceTitle } = opts;
+
+  const actionLabels: Record<string, string> = {
+    dismiss: "No se ha tomado ninguna acción",
+    warn: "Se ha emitido una advertencia",
+    delete: "Se ha eliminado la publicación",
+    suspend: "Se ha suspendido la cuenta",
+  };
+
+  await emailBinding.send({
+    from,
+    to,
+    subject: `[${instanceTitle}] Reporte procesado`,
+    text: [
+      `Hola ${reporterUsername},`,
+      ``,
+      `El reporte que enviaste contra @${targetUsername} ha sido procesado.`,
+      ``,
+      `Acción tomada: ${actionLabels[action] ?? action}`,
+      `Motivo: ${reason}`,
+      ``,
+      `Gracias por ayudar a mantener ${instanceTitle} seguro.`,
+      ``,
+      `— ${instanceTitle}`,
+    ].join("\n"),
+  });
+}
