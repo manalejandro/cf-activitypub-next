@@ -291,7 +291,7 @@ function StatusCard({ s, onFav, onReblog, me: meProp, onEdit, onDelete }: { s: S
             </div>
           </div>
         )}
-        <div style={{ display: "flex", gap: "1rem", marginTop: "0.625rem", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+        <div style={{ display: "flex", gap: "1rem", marginTop: "0.625rem", color: "var(--text-muted)", fontSize: "0.82rem", flexWrap: "wrap" }}>
           <a href={threadHref} className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", textDecoration: "none", color: "var(--text-muted)" }}>💬 {s.replies_count}</a>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.reblogged ? "var(--accent)" : "var(--text-muted)" }} onClick={onReblog}>🔁 {s.reblogs_count}</button>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.15rem 0.35rem", gap: "0.25rem", color: s.favourited ? "var(--danger)" : "var(--text-muted)" }} onClick={onFav}>{s.favourited ? "❤️" : "🤍"} {s.favourites_count}</button>

@@ -579,7 +579,7 @@ export function StatusCard({
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>✏️ editado</div>
         )}
-        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem", flexWrap: "wrap" }}>
           <button
             className="btn btn-ghost btn-sm"
             style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}
@@ -671,52 +671,64 @@ export function StatusCard({
                     setMenuOpen(false);
                     router.push(`/reports/new?status_id=${encodeURIComponent(status.id)}&account_id=${encodeURIComponent(status.account.id)}`);
                   }}
-                >
-                  🚩 Report @{status.account.acct}
-                </button>
-              </div>
-            )}
-          </div>
-          {me && me.id === status.account.id && (
-            <>
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ padding: "0.2rem 0.4rem", color: pinned ? "var(--accent)" : "var(--text-muted)" }}
-                onClick={() => void handlePin()}
-                title={pinned ? "Desfijar" : "Fijar"}
               >
-                📌
+                🚩 Report @{status.account.acct}
               </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ padding: "0.2rem 0.4rem", color: muted ? "var(--danger)" : "var(--text-muted)" }}
-                onClick={() => void handleMute()}
-                title={muted ? "Dejar de silenciar" : "Silenciar"}
-              >
-                🔇
-              </button>
-              {onEdit && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ padding: "0.2rem 0.4rem", marginLeft: "auto" }}
-                  onClick={() => onEdit(status)}
-                  title="Editar"
-                >
-                  ✏️
-                </button>
+              {me && me.id === status.account.id && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      width: "100%", justifyContent: "flex-start", gap: "0.5rem",
+                      padding: "0.5rem 0.75rem", fontSize: "0.85rem",
+                      color: pinned ? "var(--accent)" : undefined,
+                    }}
+                    onClick={() => { setMenuOpen(false); void handlePin(); }}
+                  >
+                    📌 {pinned ? "Desfijar" : "Fijar"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      width: "100%", justifyContent: "flex-start", gap: "0.5rem",
+                      padding: "0.5rem 0.75rem", fontSize: "0.85rem",
+                      color: muted ? "var(--danger)" : undefined,
+                    }}
+                    onClick={() => { setMenuOpen(false); void handleMute(); }}
+                  >
+                    🔇 {muted ? "Dejar de silenciar" : "Silenciar"}
+                  </button>
+                </>
               )}
-              {onDelete && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ padding: "0.2rem 0.4rem", color: "var(--danger)", marginLeft: onEdit ? undefined : "auto" }}
-                  onClick={() => onDelete(status)}
-                  title="Eliminar"
-                >
-                  🗑️
-                </button>
-              )}
-            </>
+            </div>
           )}
+        </div>
+        {me && me.id === status.account.id && (
+          <>
+            {onEdit && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", marginLeft: "auto" }}
+                onClick={() => onEdit(status)}
+                title="Editar"
+              >
+                ✏️
+              </button>
+            )}
+            {onDelete && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "0.2rem 0.4rem", color: "var(--danger)", marginLeft: onEdit ? undefined : "auto" }}
+                onClick={() => onDelete(status)}
+                title="Eliminar"
+              >
+                🗑️
+              </button>
+            )}
+          </>
+        )}
         </div>
         {interactionList && (
           <InteractionList

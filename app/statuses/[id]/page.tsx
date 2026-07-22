@@ -358,7 +358,7 @@ function StatusCard({
   const [translating, setTranslating] = useState(false);
   const [translatedContent, setTranslatedContent] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
-  const { t: i18n } = useLocale();
+  const { t: i18n, locale } = useLocale();
 
   async function handleTranslate() {
     if (translatedContent) {
@@ -472,7 +472,7 @@ function StatusCard({
           </div>
         )}
         <MediaGrid attachments={status.media_attachments ?? []} />
-        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem", flexWrap: "wrap" }}>
           <button
             className="btn btn-ghost btn-sm"
             style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}
@@ -598,6 +598,7 @@ function ReplyBox({
     for (const file of files) {
       const form = new FormData();
       form.append("file", file);
+      form.append("locale", locale);
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",

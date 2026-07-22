@@ -387,7 +387,7 @@ function StatusCard({ s, onFav, me: meProp, onEdit, onDelete }: { s: Status; onF
             </div>
           </div>
         )}
-        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+        <div className="flex gap-5 mt-3" style={{ color: "var(--text-muted)", fontSize: "0.82rem", flexWrap: "wrap" }}>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}>💬 {s.replies_count}</button>
           <button className="btn btn-ghost btn-sm" style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}>🔁 {s.reblogs_count}</button>
           <button

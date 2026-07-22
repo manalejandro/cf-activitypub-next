@@ -61,19 +61,19 @@ export async function POST(request: NextRequest): Promise<Response> {
     try {
       type ImageToTextResult = { description: string };
       const aiResult = await env.AI.run(
-        "@cf/llava-hf/llava-1.5-7b-hf" as Parameters<Ai["run"]>[0],
+        "@cf/meta/llama-3.2-11b-vision-instruct" as Parameters<Ai["run"]>[0],
         {
           image: imageBytes,
           prompt: locale === "es"
-            ? "Haz una descripción concisa de esta imagen teniendo en cuenta que la leerán personas con discapacidad visual que necesitan conocer los detalles y el texto escrito si lo tuviera, en español."
-            : "Make a concise description of this image taking into account that it will be read by people with visual disabilities who need to know the details and the written text if they have it.",
-          max_tokens: 512,
+            ? "Describe esta imagen de forma clara y concisa para personas con discapacidad visual. Menciona el tema principal, personas, objetos, acciones, colores relevantes y cualquier texto visible. Responde siempre en español."
+            : "Describe this image clearly and concisely for people with visual disabilities. Mention the main subject, people, objects, actions, relevant colors, and any visible text.",
+          max_tokens: 768,
+          temperature: 0.3,
         } as Parameters<Ai["run"]>[1],
       ) as ImageToTextResult;
       const aiText = (aiResult.description ?? "").trim();
       if (aiText) {
-        const prefix = locale === "es" ? "Autodescripción: " : "Autodescribe: ";
-        finalDescription = prefix + aiText;
+        finalDescription = aiText;
       }
     } catch {
       // AI unavailable or model error — leave description as null

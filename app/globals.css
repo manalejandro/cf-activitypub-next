@@ -133,8 +133,10 @@ a:hover { color: var(--accent); }
 .status-card:hover { background: var(--accent-bg); }
 
 /* Status content — paragraphs for blank-line spacing, emoji alignment */
+.status-content { overflow-wrap: break-word; word-break: break-word; }
 .status-content p { margin-bottom: 0.75em; }
 .status-content p:last-child { margin-bottom: 0; }
+.status-content a { overflow-wrap: break-word; word-break: break-word; }
 img.emojione { vertical-align: middle; }
 
 .avatar { border-radius: 50%; object-fit: cover; background: var(--bg-overlay); flex-shrink: 0; }
