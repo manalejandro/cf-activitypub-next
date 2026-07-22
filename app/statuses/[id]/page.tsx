@@ -558,6 +558,7 @@ function ReplyBox({
   onPosted: (newStatus: Status) => void;
 }) {
   const token = getToken();
+  const { locale } = useLocale();
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(
     (["public", "unlisted", "followers", "direct"].includes(replyTo.visibility) ? replyTo.visibility : "public") as "public" | "unlisted" | "followers" | "direct"
