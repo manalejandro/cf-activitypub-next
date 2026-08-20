@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
+import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 
 interface Account {
@@ -27,6 +28,7 @@ interface Me {
 
 export default function BlocksPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<"users" | "instances">("users");
 
@@ -109,7 +111,7 @@ export default function BlocksPage() {
       setNewDomain("");
     } else {
       const err = await res.json() as { error?: string };
-      setDomainError(err.error ?? "Error al bloquear dominio");
+      setDomainError(err.error ?? t.blocks_domain_error);
     }
     setAddingDomain(false);
   }
@@ -141,34 +143,34 @@ export default function BlocksPage() {
             zIndex: 10,
           }}
         >
-          <span style={{ fontWeight: 600 }}>Bloqueos</span>
+          <span style={{ fontWeight: 600 }}>{t.blocks_title}</span>
         </div>
 
         {/* Tabs */}
         <div role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
-          {(["users", "instances"] as const).map((t) => (
+          {(["users", "instances"] as const).map((tabKey) => (
             <button
-              key={t}
+              key={tabKey}
               type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
+              aria-selected={tab === tabKey}
+              onClick={() => setTab(tabKey)}
               style={{
                 flex: 1,
                 padding: "0.75rem",
-                fontWeight: tab === t ? 700 : 400,
-                color: tab === t ? "var(--accent)" : "var(--text-muted)",
-                borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
+                fontWeight: tab === tabKey ? 700 : 400,
+                color: tab === tabKey ? "var(--accent)" : "var(--text-muted)",
+                borderBottom: tab === tabKey ? "2px solid var(--accent)" : "2px solid transparent",
                 background: "none",
                 border: "none",
                 borderBottomStyle: "solid",
                 borderBottomWidth: 2,
-                borderBottomColor: tab === t ? "var(--accent)" : "transparent",
+                borderBottomColor: tab === tabKey ? "var(--accent)" : "transparent",
                 cursor: "pointer",
                 fontSize: "0.95rem",
               }}
             >
-              {t === "users" ? "Usuarios" : "Instancias"}
+              {tabKey === "users" ? t.blocks_tab_users : t.blocks_tab_instances}
             </button>
           ))}
         </div>
@@ -178,11 +180,11 @@ export default function BlocksPage() {
           <div>
             {loadingUsers ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                Cargando…
+                {t.loading}
               </div>
             ) : blocked.length === 0 ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                No tienes ningún usuario bloqueado.
+                {t.blocks_empty_users}
               </div>
             ) : (
               blocked.map((account) => {
@@ -241,7 +243,7 @@ export default function BlocksPage() {
                       disabled={unblockingId === account.id}
                       onClick={() => handleUnblock(account)}
                     >
-                      {unblockingId === account.id ? "…" : "Desbloquear"}
+                      {unblockingId === account.id ? "…" : t.action_unblock}
                     </button>
                   </div>
                 );
@@ -260,8 +262,8 @@ export default function BlocksPage() {
                   type="text"
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
-                  placeholder="ej: mastodon.social"
-                  aria-label="Dominio a bloquear"
+                  placeholder={t.blocks_domain_ph}
+                  aria-label={t.blocks_domain_label}
                   style={{
                     flex: 1,
                     padding: "0.5rem 0.75rem",
@@ -278,7 +280,7 @@ export default function BlocksPage() {
                   className="btn btn-primary btn-sm"
                   disabled={addingDomain || !newDomain.trim()}
                 >
-                  {addingDomain ? "…" : "Bloquear instancia"}
+                  {addingDomain ? "…" : t.blocks_add_domain}
                 </button>
               </form>
               {domainError && (
@@ -290,11 +292,11 @@ export default function BlocksPage() {
 
             {loadingDomains ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                Cargando…
+                {t.loading}
               </div>
             ) : domains.length === 0 ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                No tienes ninguna instancia bloqueada.
+                {t.blocks_empty_instances}
               </div>
             ) : (
               domains.map((domain) => (
@@ -320,7 +322,7 @@ export default function BlocksPage() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>{domain}</div>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                      Instancia bloqueada
+                      {t.blocks_instance_blocked}
                     </div>
                   </div>
                   <button
@@ -330,7 +332,7 @@ export default function BlocksPage() {
                     disabled={removingDomain === domain}
                     onClick={() => handleRemoveDomain(domain)}
                   >
-                    {removingDomain === domain ? "…" : "Desbloquear"}
+                    {removingDomain === domain ? "…" : t.action_unblock}
                   </button>
                 </div>
               ))

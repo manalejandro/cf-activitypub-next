@@ -154,11 +154,11 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     { label: t.nav_profile, icon: "user", href: me ? `/users/${me.username}` : "/login", badge: 0 },
     { label: t.nav_settings, icon: "cog", href: "/settings", badge: 0 },
     { label: t.nav_blocks, icon: "ban", href: "/blocks", badge: 0 },
-    { label: t.nav_emojis, icon: "smile-o", href: "/emojis", badge: 0 },
     { label: t.nav_announcements, icon: "bullhorn", href: "/announcements", badge: 0 },
   ];
 
   if (isStaff) {
+    navItems.push({ label: t.nav_emojis, icon: "smile-o", href: "/emojis", badge: 0 });
     navItems.push({ label: t.nav_admin, icon: "shield", href: "/admin", badge: 0 });
   }
 

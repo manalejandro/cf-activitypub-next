@@ -1,13 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getAuthenticatedActor } from "@/lib/auth";
+import { getCloudflareContext, json } from "@/lib/cf";
 import { getAllCustomEmojis, upsertCustomEmoji } from "@/lib/db";
+import { requireAdmin } from "@/lib/admin-auth";
 
 // GET /api/admin/emojis — List all custom emoji (including disabled)
-export async function GET(_request: NextRequest): Promise<Response> {
+export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  const actor = await getAuthenticatedActor(_request, env.DB);
-  if (!actor) return unauthorized();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   const emojis = await getAllCustomEmojis(env.DB, true);
   return json(emojis);
@@ -16,8 +17,9 @@ export async function GET(_request: NextRequest): Promise<Response> {
 // POST /api/admin/emojis — Upload a new custom emoji
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     category,
     visibleInPicker: true,
     domain: null,
-    actorId: actor.id,
+    actorId: null,
   });
 
   return json({ id, shortcode, url, static_url: staticUrl, category, visible_in_picker: true }, 201);

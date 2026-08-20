@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
+import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 
 interface DirectoryEntry {
@@ -30,6 +31,7 @@ interface Me {
 
 export default function DirectoryPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +73,7 @@ export default function DirectoryPage() {
     <PageLayout sidebar={<Sidebar me={me} currentPath="/directory" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", zIndex: 10 }}>
           <div style={{ padding: "1rem 1rem 0.5rem" }}>
-            <h1 className="text-lg font-bold">Directory</h1>
+            <h1 className="text-lg font-bold">{t.directory_title}</h1>
           </div>
           <div style={{ display: "flex", padding: "0 1rem 0.75rem", gap: "0.5rem" }}>
             <div style={{ display: "flex", borderRadius: "var(--radius)", border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -86,7 +88,7 @@ export default function DirectoryPage() {
                 }}
                 onClick={() => setLocal(true)}
               >
-                Local
+                {t.timeline_local}
               </button>
               <button
                 type="button"
@@ -99,7 +101,7 @@ export default function DirectoryPage() {
                 }}
                 onClick={() => setLocal(false)}
               >
-                All
+                {t.directory_all}
               </button>
             </div>
             <div style={{ display: "flex", borderRadius: "var(--radius)", border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -114,7 +116,7 @@ export default function DirectoryPage() {
                 }}
                 onClick={() => setOrder("new")}
               >
-                New
+                {t.directory_new}
               </button>
               <button
                 type="button"
@@ -127,17 +129,17 @@ export default function DirectoryPage() {
                 }}
                 onClick={() => setOrder("popular")}
               >
-                Popular
+                {t.directory_popular}
               </button>
             </div>
           </div>
         </div>
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>Loading…</div>
+          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
         ) : entries.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="users" size="2rem" /></div>
-            <div style={{ fontWeight: 600 }}>No users found</div>
+            <div style={{ fontWeight: 600 }}>{t.directory_empty}</div>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "0.75rem", padding: "0.75rem" }}>
@@ -203,8 +205,8 @@ export default function DirectoryPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: "1rem", fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                      <span><strong style={{ color: "var(--text)" }}>{entry.followers_count}</strong> followers</span>
-                      <span><strong style={{ color: "var(--text)" }}>{entry.statuses_count}</strong> posts</span>
+                      <span><strong style={{ color: "var(--text)" }}>{entry.followers_count}</strong> {t.profile_followers}</span>
+                      <span><strong style={{ color: "var(--text)" }}>{entry.statuses_count}</strong> {t.profile_posts}</span>
                     </div>
                   </div>
                 </Link>

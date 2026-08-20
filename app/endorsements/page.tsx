@@ -78,16 +78,16 @@ export default function EndorsementsPage() {
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/endorsements" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "1rem", zIndex: 10 }}>
-          <h1 className="text-lg font-bold">Endorsements</h1>
+          <h1 className="text-lg font-bold">{t.endorsements_title}</h1>
         </div>
         {loading ? (
           <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
         ) : endorsed.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="star" size="2rem" /></div>
-            <div style={{ fontWeight: 600 }}>No endorsements yet</div>
+            <div style={{ fontWeight: 600 }}>{t.endorsements_empty}</div>
             <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-              Pin accounts you recommend to see them here.
+              {t.endorsements_empty_sub}
             </div>
           </div>
         ) : (
@@ -166,7 +166,7 @@ export default function EndorsementsPage() {
                   disabled={unendorsingId === account.id}
                   onClick={() => void handleUnendorse(account)}
                 >
-                  {unendorsingId === account.id ? "…" : "Unendorse"}
+                  {unendorsingId === account.id ? "…" : t.endorsements_unendorse}
                 </button>
               </div>
             );

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
+import { useLocale } from "@/lib/i18n";
 
 interface Emoji {
   id: string;
@@ -19,6 +20,7 @@ interface Emoji {
 }
 
 export default function EmojisPage() {
+  const { t } = useLocale();
   const [emojis, setEmojis] = useState<Emoji[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -26,7 +28,23 @@ export default function EmojisPage() {
   const [category, setCategory] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [isStaff, setIsStaff] = useState(false);
   const token = getToken();
+
+  useEffect(() => {
+    if (!token) { window.location.href = "/login"; return; }
+    fetch("/api/v1/accounts/verify_credentials", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() as Promise<{ role?: string; roles?: { name?: string }[] }> : null)
+      .then((me) => {
+        const role = me?.role ?? me?.roles?.[0]?.name?.toLowerCase() ?? "";
+        if (role !== "admin" && role !== "moderator") {
+          window.location.href = "/home";
+          return;
+        }
+        setIsStaff(true);
+      })
+      .catch(() => { window.location.href = "/home"; });
+  }, [token]);
 
   const loadEmojis = useCallback(async () => {
     setLoading(true);
@@ -40,9 +58,8 @@ export default function EmojisPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) { window.location.href = "/login"; return; }
-    Promise.resolve().then(() => void loadEmojis());
-  }, [loadEmojis, token]);
+    if (isStaff) Promise.resolve().then(() => void loadEmojis());
+  }, [isStaff, loadEmojis]);
 
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
@@ -60,17 +77,17 @@ export default function EmojisPage() {
         body: form,
       });
       if (res.ok) {
-        setMessage({ type: "success", text: `Emoji :${shortcode.trim()}: subido` });
+        setMessage({ type: "success", text: t.emojis_uploaded.replace("{shortcode}", shortcode.trim()) });
         setShortcode("");
         setCategory("");
         setFile(null);
         await loadEmojis();
       } else {
         const err = await res.json() as { error?: string };
-        setMessage({ type: "error", text: err.error ?? "Error al subir" });
+        setMessage({ type: "error", text: err.error ?? t.emojis_upload_error });
       }
     } catch {
-      setMessage({ type: "error", text: "Error de red" });
+      setMessage({ type: "error", text: t.network_error });
     }
     setUploading(false);
   }
@@ -86,7 +103,7 @@ export default function EmojisPage() {
   }
 
   async function handleDelete(emoji: Emoji) {
-    if (!token || !confirm(`Eliminar :${emoji.shortcode}: permanentemente?`)) return;
+    if (!token || !confirm(t.emojis_delete_confirm.replace("{shortcode}", emoji.shortcode))) return;
     await fetch(`/api/admin/emojis/${emoji.id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
@@ -97,18 +114,26 @@ export default function EmojisPage() {
   const localEmojis = emojis.filter((e) => !e.domain);
   const federatedEmojis = emojis.filter((e) => e.domain);
 
+  if (!isStaff) {
+    return (
+      <PageLayout sidebar={<Sidebar currentPath="/emojis" />}>
+        <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout sidebar={<Sidebar currentPath="/emojis" />}>
       <div style={{ padding: "1rem" }}>
-        <h1 style={{ fontWeight: 700, fontSize: "1.25rem", marginBottom: "1rem" }}>Emojis personalizados</h1>
+        <h1 style={{ fontWeight: 700, fontSize: "1.25rem", marginBottom: "1rem" }}>{t.emojis_title}</h1>
 
         {/* Upload form */}
         <form onSubmit={handleUpload} style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "2rem", padding: "1rem", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-          <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>Subir nuevo emoji</div>
+          <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{t.emojis_upload_new}</div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <input
               type="text"
-              placeholder="shortcode (ej: blobaww)"
+              placeholder={t.emojis_shortcode_ph}
               value={shortcode}
               onChange={(e) => setShortcode(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
               className="input"
@@ -117,7 +142,7 @@ export default function EmojisPage() {
             />
             <input
               type="text"
-              placeholder="Categoria (opcional)"
+              placeholder={t.emojis_category_ph}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className="input"
@@ -137,18 +162,18 @@ export default function EmojisPage() {
             </div>
           )}
           <button type="submit" className="btn btn-primary btn-sm" disabled={uploading || !file || !shortcode.trim()} style={{ alignSelf: "flex-start" }}>
-            {uploading ? "Subiendo…" : "Subir emoji"}
+            {uploading ? t.emojis_uploading : t.emojis_upload}
           </button>
         </form>
 
         {/* Local emoji list */}
         <div style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "0.75rem" }}>
-          Locales ({localEmojis.length})
+          {t.emojis_local_count.replace("{count}", String(localEmojis.length))}
         </div>
         {loading ? (
-          <div style={{ color: "var(--text-muted)", padding: "1rem" }}>Cargando…</div>
+          <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
         ) : localEmojis.length === 0 ? (
-          <div style={{ color: "var(--text-muted)", padding: "0.5rem 0", fontSize: "0.9rem" }}>No hay emojis locales. Sube uno arriba.</div>
+          <div style={{ color: "var(--text-muted)", padding: "0.5rem 0", fontSize: "0.9rem" }}>{t.emojis_empty_local}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
             {localEmojis.map((emoji) => (
@@ -164,7 +189,7 @@ export default function EmojisPage() {
                   style={{ fontSize: "0.78rem", color: emoji.disabled ? "var(--accent)" : "var(--text-muted)" }}
                   onClick={() => toggleDisable(emoji)}
                 >
-                  {emoji.disabled ? "Activar" : "Desactivar"}
+                  {emoji.disabled ? t.emojis_enable : t.emojis_disable}
                 </button>
                 <button
                   type="button"
@@ -172,7 +197,7 @@ export default function EmojisPage() {
                   style={{ fontSize: "0.78rem", color: "var(--danger)" }}
                   onClick={() => handleDelete(emoji)}
                 >
-                  Eliminar
+                  {t.emojis_delete}
                 </button>
               </div>
             ))}
@@ -183,7 +208,7 @@ export default function EmojisPage() {
         {federatedEmojis.length > 0 && (
           <>
             <div style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "0.75rem", marginTop: "1rem" }}>
-              Federados ({federatedEmojis.length})
+              {t.emojis_federated_count.replace("{count}", String(federatedEmojis.length))}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               {federatedEmojis.map((emoji) => (

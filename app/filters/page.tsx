@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
+import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 
 interface Filter {
@@ -26,10 +27,10 @@ interface Me {
 
 const CONTEXT_OPTIONS = ["home", "notifications", "public", "thread", "account"] as const;
 
-function formatExpires(expiresAt: string | null): string {
-  if (!expiresAt) return "Never";
+function formatExpires(expiresAt: string | null, t: Translations): string {
+  if (!expiresAt) return t.filters_never;
   const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return "Expired";
+  if (diff <= 0) return t.filters_expired;
   const mins = Math.round(diff / 60000);
   if (mins < 60) return `${mins}m`;
   const hours = Math.round(mins / 60);
@@ -37,19 +38,22 @@ function formatExpires(expiresAt: string | null): string {
   const days = Math.round(hours / 24);
   return `${days}d`;
 }
-const EXPIRES_OPTIONS = [
-  { label: "Never", value: 0 },
-  { label: "30 minutes", value: 1800 },
-  { label: "1 hour", value: 3600 },
-  { label: "6 hours", value: 21600 },
-  { label: "12 hours", value: 43200 },
-  { label: "1 day", value: 86400 },
-  { label: "2 days", value: 172800 },
-  { label: "7 days", value: 604800 },
-];
+function expiresOptions(t: Translations): { label: string; value: number }[] {
+  return [
+    { label: t.filters_never, value: 0 },
+    { label: t.filters_30m, value: 1800 },
+    { label: t.filters_1h, value: 3600 },
+    { label: t.filters_6h, value: 21600 },
+    { label: t.filters_12h, value: 43200 },
+    { label: t.filters_1d, value: 86400 },
+    { label: t.filters_2d, value: 172800 },
+    { label: t.filters_7d, value: 604800 },
+  ];
+}
 
 export default function FiltersPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [filters, setFilters] = useState<Filter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,9 +151,9 @@ export default function FiltersPage() {
             justifyContent: "space-between",
           }}
         >
-          <h1 className="text-lg font-bold">Filters</h1>
+          <h1 className="text-lg font-bold">{t.filters_title}</h1>
           <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Cancel" : "New filter"}
+            {showForm ? t.profile_cancel : t.filters_new}
           </button>
         </div>
 
@@ -166,8 +170,8 @@ export default function FiltersPage() {
           >
             <input
               className="input"
-              placeholder="Filter phrase"
-              aria-label="Filter phrase"
+              placeholder={t.filters_phrase_ph}
+              aria-label={t.filters_phrase_ph}
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               autoFocus
@@ -175,7 +179,7 @@ export default function FiltersPage() {
 
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.375rem", color: "var(--text-muted)" }}>
-                Context
+                {t.filters_context}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
                 {CONTEXT_OPTIONS.map((c) => (
@@ -204,28 +208,28 @@ export default function FiltersPage() {
 
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.375rem", color: "var(--text-muted)" }}>
-                Action
+                {t.filters_action}
               </div>
               <select
                 className="input"
                 value={irreversible ? "hide" : "warn"}
                 onChange={(e) => setIrreversible(e.target.value === "hide")}
               >
-                <option value="warn">Warn</option>
-                <option value="hide">Hide</option>
+                <option value="warn">{t.filters_warn}</option>
+                <option value="hide">{t.filters_hide}</option>
               </select>
             </div>
 
             <div>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.375rem", color: "var(--text-muted)" }}>
-                Expires in
+                {t.filters_expires_in}
               </div>
               <select
                 className="input"
                 value={expiresIn}
                 onChange={(e) => setExpiresIn(Number(e.target.value))}
               >
-                {EXPIRES_OPTIONS.map((opt) => (
+                {expiresOptions(t).map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
@@ -239,27 +243,27 @@ export default function FiltersPage() {
                 className="btn btn-primary btn-sm"
                 disabled={creating || !phrase.trim() || context.length === 0}
               >
-                {creating ? "…" : "Create"}
+                {creating ? "…" : t.filters_create}
               </button>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => setShowForm(false)}
               >
-                Cancel
+                {t.profile_cancel}
               </button>
             </div>
           </form>
         )}
 
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>Loading…</div>
+          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
         ) : filters.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="folder-o" size="2rem" /></div>
-            <div style={{ fontWeight: 600 }}>No filters yet</div>
+            <div style={{ fontWeight: 600 }}>{t.filters_empty}</div>
             <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-              Create a filter to hide or warn posts matching certain words.
+              {t.filters_empty_sub}
             </div>
           </div>
         ) : (
@@ -295,10 +299,10 @@ export default function FiltersPage() {
                   </div>
                   <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.375rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
                     <span>
-                      Action: <strong>{filter.irreversible ? "Hide" : "Warn"}</strong>
+                      {t.filters_action_label}<strong>{filter.irreversible ? t.filters_hide : t.filters_warn}</strong>
                     </span>
                     <span>
-                      Expires: <strong>{formatExpires(filter.expires_at)}</strong>
+                      {t.filters_expires_label}<strong>{formatExpires(filter.expires_at, t)}</strong>
                     </span>
                   </div>
                 </div>
@@ -318,7 +322,7 @@ export default function FiltersPage() {
                   disabled={deletingId === filter.id}
                   onClick={() => void handleDelete(filter)}
                 >
-                  {deletingId === filter.id ? "…" : "Delete"}
+                  {deletingId === filter.id ? "…" : t.action_delete}
                 </button>
               </div>
             </div>

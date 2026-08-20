@@ -53,12 +53,6 @@ function stripHtml(html: string): string {
   return div.textContent ?? div.innerText ?? "";
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  spam: "Spam",
-  violation: "Violation",
-  other: "Other",
-};
-
 export default function ReportsPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
@@ -106,7 +100,7 @@ export default function ReportsPage() {
           >
             <Icon name="arrow-left" />
           </button>
-          <span style={{ fontWeight: 600 }}>Reports</span>
+          <span style={{ fontWeight: 600 }}>{t.reports_title}</span>
         </div>
 
         {loading ? (
@@ -116,7 +110,7 @@ export default function ReportsPage() {
         ) : reports.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="flag" size="2rem" /></div>
-            <div style={{ fontWeight: 600 }}>You haven&apos;t submitted any reports</div>
+            <div style={{ fontWeight: 600 }}>{t.reports_empty}</div>
           </div>
         ) : (
           reports.map((report) => {
@@ -178,7 +172,7 @@ export default function ReportsPage() {
                         color: report.category === "spam" ? "var(--danger)" : "var(--accent)",
                       }}
                     >
-                      {CATEGORY_LABELS[report.category] ?? report.category}
+                      {report.category === "spam" ? t.reports_spam : report.category === "violation" ? t.reports_violation : t.reports_other}
                     </span>
                     <span
                       style={{
@@ -188,7 +182,7 @@ export default function ReportsPage() {
                         color: report.action_taken ? "var(--accent)" : "var(--text-muted)",
                       }}
                     >
-                      {report.action_taken ? "Resolved" : "Open"}
+                      {report.action_taken ? t.reports_resolved : t.reports_open}
                     </span>
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getAuthenticatedActor } from "@/lib/auth";
+import { getCloudflareContext, json } from "@/lib/cf";
 import { deleteCustomEmoji, disableCustomEmoji } from "@/lib/db";
+import { requireAdmin } from "@/lib/admin-auth";
 
 // DELETE /api/admin/emojis/:id — Permanently delete a custom emoji
 export async function DELETE(
@@ -9,8 +9,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   const { id } = await params;
   await deleteCustomEmoji(env.DB, id);
@@ -23,8 +24,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
 
   const { id } = await params;
   const body = await request.json() as Record<string, unknown>;

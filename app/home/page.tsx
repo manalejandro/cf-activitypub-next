@@ -327,35 +327,35 @@ export default function HomePage() {
             {/* Poll options */}
             {pollMode && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.75rem", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.25rem" }}>Opciones de la encuesta</div>
+                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.25rem" }}>{t.composer_poll_options}</div>
                 {pollOptions.map((opt, i) => (
                   <div key={i} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
                     <input
                       type="text"
                       className="input"
-                      placeholder={`Opción ${i + 1}`}
-                      aria-label={`Opción ${i + 1}`}
+                      placeholder={t.composer_poll_option.replace("{number}", String(i + 1))}
+                      aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
                       value={opt}
                       onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
                       maxLength={50}
                       style={{ flex: 1, fontSize: "0.875rem" }}
                     />
                     {pollOptions.length > 2 && (
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.25rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={`Eliminar opción ${i + 1}`}><Icon name="times" color="var(--danger)" /></button>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.25rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={t.composer_poll_remove_option.replace("{number}", String(i + 1))}><Icon name="times" color="var(--danger)" /></button>
                     )}
                   </div>
                 ))}
                 {pollOptions.length < 4 && (
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>+ Añadir opción</button>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
                 )}
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
                   <select value={pollExpiry} onChange={(e) => setPollExpiry(Number(e.target.value))} className="btn btn-ghost btn-sm" style={{ fontSize: "0.78rem", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg)", color: "var(--text)" }}>
-                    <option value={300}>5 minutos</option>
-                    <option value={3600}>1 hora</option>
-                    <option value={21600}>6 horas</option>
-                    <option value={86400}>1 día</option>
-                    <option value={259200}>3 días</option>
-                    <option value={604800}>7 días</option>
+                    <option value={300}>{t.composer_poll_5m}</option>
+                    <option value={3600}>{t.composer_poll_1h}</option>
+                    <option value={21600}>{t.composer_poll_6h}</option>
+                    <option value={86400}>{t.composer_poll_1d}</option>
+                    <option value={259200}>{t.composer_poll_3d}</option>
+                    <option value={604800}>{t.composer_poll_7d}</option>
                   </select>
                   <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem", cursor: "pointer" }}>
                     <input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} />
