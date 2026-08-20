@@ -53,6 +53,7 @@ export function InteractionList({
     <div
       role="dialog"
       aria-modal="true"
+      aria-label={title}
       style={{
         position: "fixed",
         inset: 0,
@@ -91,6 +92,7 @@ export function InteractionList({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             style={{
               background: "none",
               border: "none",

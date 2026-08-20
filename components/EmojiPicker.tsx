@@ -93,9 +93,11 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
     <div ref={pickerRef} style={style}>
       {/* Tabs */}
       {customEmojis.length > 0 && (
-        <div style={{ display: "flex", gap: "0.25rem", marginBottom: "0.4rem", borderBottom: "1px solid var(--border)", paddingBottom: "0.35rem" }}>
+        <div role="tablist" style={{ display: "flex", gap: "0.25rem", marginBottom: "0.4rem", borderBottom: "1px solid var(--border)", paddingBottom: "0.35rem" }}>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "unicode"}
             onClick={() => setTab("unicode")}
             style={{
               flex: 1, padding: "0.25rem", fontSize: "0.78rem", fontWeight: tab === "unicode" ? 600 : 400,
@@ -108,6 +110,8 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "custom"}
             onClick={() => setTab("custom")}
             style={{
               flex: 1, padding: "0.25rem", fontSize: "0.78rem", fontWeight: tab === "custom" ? 600 : 400,

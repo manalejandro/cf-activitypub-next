@@ -127,6 +127,7 @@ export default function AnnouncementsPage() {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={t.announcements_create_placeholder}
+              aria-label={t.announcements_create_placeholder}
               rows={2}
               maxLength={10000}
               className="input"

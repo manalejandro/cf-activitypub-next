@@ -113,6 +113,8 @@ export function EmojiAutocompleteDropdown({ suggestions, activeIndex, onSelect }
 
   return (
     <div
+      role="listbox"
+      aria-label="Emoji suggestions"
       style={{
         position: "absolute",
         top: "calc(100% + 4px)",
@@ -132,6 +134,8 @@ export function EmojiAutocompleteDropdown({ suggestions, activeIndex, onSelect }
         <button
           key={s.type === "custom" ? `c:${s.shortcode}` : `u:${s.char}`}
           type="button"
+          role="option"
+          aria-selected={i === activeIndex}
           onMouseDown={(e) => { e.preventDefault(); onSelect(i); }}
           style={{
             display: "flex",

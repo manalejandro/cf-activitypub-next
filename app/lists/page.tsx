@@ -116,14 +116,14 @@ export default function ListsPage() {
 
         {creating && (
           <form onSubmit={(e) => void handleCreate(e)} style={{ padding: "1rem", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <input className="input" placeholder={t.lists_name_ph} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
+            <input className="input" placeholder={t.lists_name_ph} aria-label={t.lists_name_ph} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
             <select className="input" value={newPolicy} onChange={(e) => setNewPolicy(e.target.value)}>
               {repliesPolicies.map((p) => (
                 <option key={p.value} value={p.value}>{t[p.labelKey]}</option>
               ))}
             </select>
             <div className="flex gap-2">
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!newTitle.trim()}><Icon name="check" color="#fff" /></button>
+              <button type="submit" className="btn btn-primary btn-sm" aria-label={t.lists_create} disabled={!newTitle.trim()}><Icon name="check" color="#fff" /></button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(false)}>{t.profile_cancel}</button>
             </div>
           </form>
@@ -142,14 +142,14 @@ export default function ListsPage() {
             <div key={list.id} style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)" }}>
               {editingId === list.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} autoFocus />
+                  <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} aria-label={t.lists_name_ph} autoFocus />
                   <select className="input" value={editPolicy} onChange={(e) => setEditPolicy(e.target.value)}>
                     {repliesPolicies.map((p) => (
                       <option key={p.value} value={p.value}>{t[p.labelKey]}</option>
                     ))}
                   </select>
                   <div className="flex gap-2">
-                    <button className="btn btn-primary btn-sm" onClick={() => void handleSaveEdit(list)} disabled={!editTitle.trim()}><Icon name="check" color="#fff" /></button>
+                    <button className="btn btn-primary btn-sm" aria-label={t.profile_save} onClick={() => void handleSaveEdit(list)} disabled={!editTitle.trim()}><Icon name="check" color="#fff" /></button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>{t.profile_cancel}</button>
                   </div>
                 </div>
@@ -159,10 +159,10 @@ export default function ListsPage() {
                     <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)" }}>{list.title}</div>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{t.lists_manage_accounts}</div>
                   </Link>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setEditingId(list.id); setEditTitle(list.title); setEditPolicy(list.replies_policy); }}>
+                  <button className="btn btn-ghost btn-sm" aria-label={t.profile_edit} onClick={() => { setEditingId(list.id); setEditTitle(list.title); setEditPolicy(list.replies_policy); }}>
                     <Icon name="pencil" />
                   </button>
-                  <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => void handleDelete(list)}>
+                  <button className="btn btn-ghost btn-sm" aria-label={t.lists_delete} style={{ color: "var(--danger)" }} onClick={() => void handleDelete(list)}>
                     <Icon name="trash" color="var(--danger)" />
                   </button>
                 </div>

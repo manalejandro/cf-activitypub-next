@@ -123,6 +123,16 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     };
   }, [mounted, menuOpen]);
 
+  // Close the mobile drawer with Escape
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     window.location.href = "/login";
@@ -155,6 +165,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   return (
     <>
     <aside
+      aria-label="Primary"
       style={{
         width: 260,
         flexShrink: 0,
@@ -340,6 +351,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Menu"
+              aria-expanded={menuOpen}
               style={{
                 background: "none",
                 border: "none",

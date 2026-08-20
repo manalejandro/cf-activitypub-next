@@ -297,6 +297,7 @@ export default function HomePage() {
                 type="text"
                 className="input"
                 placeholder={`${t.cw_placeholder}…`}
+                aria-label={t.cw_placeholder}
                 value={cwText}
                 onChange={(e) => setCwText(e.target.value)}
                 maxLength={200}
@@ -310,6 +311,7 @@ export default function HomePage() {
                 className="input"
                 style={{ resize: "none", minHeight: 80, fontFamily: "inherit" }}
                 placeholder={t.compose_placeholder}
+                aria-label={t.compose_label}
                 value={composing}
                 onChange={emojiAuto.onChange}
                 onKeyDown={emojiAuto.onKeyDown}
@@ -332,13 +334,14 @@ export default function HomePage() {
                       type="text"
                       className="input"
                       placeholder={`Opción ${i + 1}`}
+                      aria-label={`Opción ${i + 1}`}
                       value={opt}
                       onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
                       maxLength={50}
                       style={{ flex: 1, fontSize: "0.875rem" }}
                     />
                     {pollOptions.length > 2 && (
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.25rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))}><Icon name="times" color="var(--danger)" /></button>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.25rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={`Eliminar opción ${i + 1}`}><Icon name="times" color="var(--danger)" /></button>
                     )}
                   </div>
                 ))}
@@ -367,6 +370,7 @@ export default function HomePage() {
               <input
                 type="datetime-local"
                 className="input"
+                aria-label={t.composer_schedule}
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 min={SCHEDULE_MIN}
@@ -386,11 +390,13 @@ export default function HomePage() {
                         <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.5rem" /></div>
                       )}
                       <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))}
+                        aria-label={t.action_delete}
                         style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
                     </div>
                     <input
                       type="text"
                       placeholder="Descripción (alt text)…"
+                      aria-label="Descripción (alt text)"
                       defaultValue={f.description ?? ""}
                       maxLength={420}
                       onChange={(e) => { mediaDescRefs.current[f.id] = e.target.value; }}
@@ -416,6 +422,9 @@ export default function HomePage() {
                     style={{ fontSize: "1.15rem", padding: "0.3rem 0.5rem", background: emojiOpen ? "var(--accent-bg)" : undefined }}
                     onClick={() => setEmojiOpen((o) => !o)}
                     title={t.composer_emoji}
+                    aria-label={t.composer_emoji}
+                    aria-haspopup="dialog"
+                    aria-expanded={emojiOpen}
                   >
                     <Icon name="smile-o" size="1.15rem" />
                   </button>
@@ -433,6 +442,7 @@ export default function HomePage() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={mediaFiles.length >= 4 || uploadingMedia}
                   title={t.compose_attach}
+                  aria-label={t.compose_attach}
                 >
                   {uploadingMedia ? <Icon name="hourglass" spin size="1.15rem" /> : <Icon name="paperclip" size="1.15rem" />}
                 </button>
@@ -451,6 +461,8 @@ export default function HomePage() {
                   style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: showCw ? "var(--accent-bg)" : undefined }}
                   onClick={() => setShowCw((v) => !v)}
                   title={t.cw_placeholder}
+                  aria-label={t.cw_placeholder}
+                  aria-pressed={showCw}
                 >
                   <Icon name="exclamation-triangle" size="1rem" />
                 </button>
@@ -462,6 +474,8 @@ export default function HomePage() {
                   onClick={() => setPollMode((v) => !v)}
                   disabled={mediaFiles.length > 0}
                   title={t.composer_poll}
+                  aria-label={t.composer_poll}
+                  aria-pressed={pollMode}
                 >
                   <Icon name="bar-chart" size="1rem" />
                 </button>
@@ -472,6 +486,8 @@ export default function HomePage() {
                   style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: scheduling ? "var(--accent-bg)" : undefined }}
                   onClick={() => setScheduling((v) => !v)}
                   title={t.composer_schedule}
+                  aria-label={t.composer_schedule}
+                  aria-pressed={scheduling}
                 >
                   <Icon name="clock-o" size="1rem" />
                 </button>
@@ -482,6 +498,7 @@ export default function HomePage() {
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: "0.8rem", padding: "0.3rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)", maxWidth: "7rem" }}
                   title={t.compose_visibility}
+                  aria-label={t.compose_visibility}
                 >
                   <option value="public">{t.vis_public}</option>
                   <option value="unlisted">{t.vis_unlisted}</option>
@@ -557,13 +574,14 @@ export default function HomePage() {
         <div
           role="dialog"
           aria-modal="true"
+          aria-label={t.edit_status_title}
           style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
           onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
         >
           <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontWeight: 700, fontSize: "1rem" }}>{t.edit_status_title}</span>
-              <button type="button" onClick={() => setEditingStatus(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}><Icon name="times" color="var(--text-muted)" /></button>
+              <button type="button" onClick={() => setEditingStatus(null)} aria-label={t.action_close} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}><Icon name="times" color="var(--text-muted)" /></button>
             </div>
             {editSpoiler !== "" || editingStatus.spoiler_text ? (
               <input
@@ -571,6 +589,7 @@ export default function HomePage() {
                 value={editSpoiler}
                 onChange={(e) => setEditSpoiler(e.target.value)}
                 placeholder={t.cw_placeholder}
+                aria-label={t.cw_placeholder}
                 className="input"
                 style={{ width: "100%" }}
               />
@@ -583,6 +602,7 @@ export default function HomePage() {
                 onChange={editEmojiAuto.onChange}
                 onKeyDown={editEmojiAuto.onKeyDown}
                 placeholder={t.edit_status_placeholder}
+                aria-label={t.edit_label}
                 maxLength={500}
                 className="input"
                 style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}

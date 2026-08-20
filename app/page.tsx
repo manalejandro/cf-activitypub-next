@@ -50,6 +50,7 @@ export default function Home() {
               <button
                 onClick={() => setLocale("en")}
                 className="btn btn-ghost btn-sm"
+                aria-pressed={locale === "en"}
                 style={{
                   fontWeight: locale === "en" ? 700 : 400,
                   background: locale === "en" ? "var(--accent-bg)" : undefined,
@@ -62,6 +63,7 @@ export default function Home() {
               <button
                 onClick={() => setLocale("es")}
                 className="btn btn-ghost btn-sm"
+                aria-pressed={locale === "es"}
                 style={{
                   fontWeight: locale === "es" ? 700 : 400,
                   background: locale === "es" ? "var(--accent-bg)" : undefined,

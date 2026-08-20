@@ -324,7 +324,7 @@ export default function NotificationsPage() {
               );
             })}
             <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-              {loadingMore ? "Cargando…" : ""}
+              {loadingMore ? t.loading : ""}
             </div>
           </div>
         )}

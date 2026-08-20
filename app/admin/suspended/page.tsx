@@ -95,6 +95,7 @@ export default function AdminSuspendedPage() {
         <input
           className="input"
           placeholder={t.admin_search_username}
+          aria-label={t.admin_search_username}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ maxWidth: 280, padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}

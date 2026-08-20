@@ -43,6 +43,7 @@ export function SettingsHeader() {
             <Link
               key={tab.href}
               href={tab.href}
+              aria-current={active ? "page" : undefined}
               style={{
                 padding: "0.35rem 0.75rem",
                 borderRadius: "var(--radius)",

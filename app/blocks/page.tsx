@@ -145,11 +145,13 @@ export default function BlocksPage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+        <div role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
           {(["users", "instances"] as const).map((t) => (
             <button
               key={t}
               type="button"
+              role="tab"
+              aria-selected={tab === t}
               onClick={() => setTab(t)}
               style={{
                 flex: 1,
@@ -259,6 +261,7 @@ export default function BlocksPage() {
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
                   placeholder="ej: mastodon.social"
+                  aria-label="Dominio a bloquear"
                   style={{
                     flex: 1,
                     padding: "0.5rem 0.75rem",

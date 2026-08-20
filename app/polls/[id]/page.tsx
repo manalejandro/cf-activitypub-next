@@ -121,6 +121,7 @@ export default function PollPage() {
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => router.back()}
+            aria-label="Back"
             style={{ fontSize: "1.1rem" }}
           >
             <Icon name="arrow-left" />

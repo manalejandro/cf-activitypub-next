@@ -297,6 +297,7 @@ function ReplyBox({
               value={cwText}
               onChange={(e) => setCwText(e.target.value)}
               placeholder={`${t.cw_placeholder}…`}
+              aria-label={t.cw_placeholder}
               maxLength={500}
               style={{ width: "100%", marginBottom: "0.4rem", padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
             />
@@ -308,6 +309,7 @@ function ReplyBox({
               onChange={emojiAuto.onChange}
               onKeyDown={emojiAuto.onKeyDown}
               placeholder={t.reply_placeholder}
+              aria-label={t.reply_placeholder}
               rows={3}
               style={{ width: "100%", resize: "vertical", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.95rem", fontFamily: "inherit" }}
             />
@@ -327,11 +329,12 @@ function ReplyBox({
                     value={opt}
                     onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
                     placeholder={`Opción ${i + 1}`}
+                    aria-label={`Opción ${i + 1}`}
                     maxLength={50}
                     style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.875rem" }}
                   />
                   {pollOptions.length > 2 && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.2rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))}><Icon name="times" color="var(--danger)" /></button>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.2rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={`Eliminar opción ${i + 1}`}><Icon name="times" color="var(--danger)" /></button>
                   )}
                 </div>
               ))}
@@ -363,11 +366,12 @@ function ReplyBox({
                     ) : (
                       <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.4rem" /></div>
                     )}
-                    <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
+                    <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))} aria-label={t.action_delete} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
                   </div>
                   <input
                     type="text"
                     placeholder="Descripción (alt text)…"
+                    aria-label="Descripción (alt text)"
                     defaultValue={f.description ?? ""}
                     maxLength={420}
                     onChange={(e) => { descRefs.current[f.id] = e.target.value; }}
@@ -392,7 +396,7 @@ function ReplyBox({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
               <div ref={emojiRef} style={{ position: "relative" }}>
-                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: emojiOpen ? "var(--accent-bg)" : undefined }} onClick={() => setEmojiOpen((o) => !o)} title={t.composer_emoji}><Icon name="smile-o" size="1.05rem" /></button>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: emojiOpen ? "var(--accent-bg)" : undefined }} onClick={() => setEmojiOpen((o) => !o)} title={t.composer_emoji} aria-label={t.composer_emoji} aria-haspopup="dialog" aria-expanded={emojiOpen}><Icon name="smile-o" size="1.05rem" /></button>
                 <EmojiPicker
                   onInsert={insertEmoji}
                   open={emojiOpen}
@@ -401,13 +405,14 @@ function ReplyBox({
                   direction="up"
                 />
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= 4 || uploadingMedia || pollMode} title={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= 4 || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder}><Icon name="exclamation-triangle" size="1.05rem" /></button>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll}><Icon name="bar-chart" size="1.05rem" /></button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
               <select
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as typeof visibility)}
+                aria-label={t.compose_visibility}
                 style={{ fontSize: "0.78rem", padding: "0.25rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)" }}
               >
                 <option value="public">{t.vis_public}</option>
@@ -766,13 +771,14 @@ export default function ThreadPage() {
           <div
             role="dialog"
             aria-modal="true"
+            aria-label={t.edit_status_title}
             style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
             onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
           >
             <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontWeight: 700, fontSize: "1rem" }}>{t.edit_status_title}</span>
-                <button type="button" onClick={() => setEditingStatus(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}><Icon name="times" color="var(--text-muted)" /></button>
+                <button type="button" onClick={() => setEditingStatus(null)} aria-label={t.action_close} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}><Icon name="times" color="var(--text-muted)" /></button>
               </div>
               {editSpoiler !== "" || editingStatus.spoiler_text ? (
                 <input
@@ -780,6 +786,7 @@ export default function ThreadPage() {
                   value={editSpoiler}
                   onChange={(e) => setEditSpoiler(e.target.value)}
                   placeholder={t.cw_placeholder}
+                  aria-label={t.cw_placeholder}
                   className="input"
                   style={{ width: "100%" }}
                 />
@@ -789,6 +796,7 @@ export default function ThreadPage() {
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 placeholder={t.edit_status_placeholder}
+                aria-label={t.edit_label}
                 maxLength={500}
                 className="input"
                 style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}

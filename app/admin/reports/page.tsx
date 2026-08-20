@@ -387,6 +387,7 @@ function ReportCard({
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder={t.admin_note_placeholder}
+                aria-label={t.admin_note_placeholder}
                 rows={2}
                 style={{
                   flex: 1, padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",

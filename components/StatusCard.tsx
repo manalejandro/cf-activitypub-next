@@ -139,6 +139,7 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
   const closeLb = useCallback(() => setLbIdx(null), []);
+  const { t } = useLocale();
   if (!attachments.length) return null;
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
   return (
@@ -160,6 +161,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                 key={att.id}
                 type="button"
                 onClick={() => setLbIdx(i)}
+                aria-label={att.description ?? t.action_view_media}
                 title={att.description ?? undefined}
                 style={{
                   display: "block",
@@ -188,6 +190,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                 key={att.id}
                 type="button"
                 onClick={() => setLbIdx(i)}
+                aria-label={att.description ?? t.action_view_media}
                 style={{
                   display: "block",
                   aspectRatio: "16/9",
@@ -210,6 +213,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                 key={att.id}
                 type="button"
                 onClick={() => setLbIdx(i)}
+                aria-label={att.description ?? t.action_view_media}
                 style={{
                   display: "block",
                   aspectRatio: "3/1",
@@ -578,7 +582,7 @@ export function StatusCard({
           >
             <Icon name={visibilityInfo.icon} size="0.7rem" /> {visibilityInfo.label}
           </span>
-          <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
+          <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} aria-label={`${new Date(status.created_at).toLocaleString()}, ${t.action_reply}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
             {formatTime(status.created_at)}
           </Link>
         </div>
@@ -638,6 +642,7 @@ export function StatusCard({
             style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}
             onClick={() => onReply(status)}
             disabled={!token}
+            aria-label={t.action_reply}
           >
             <Icon name="comment" /> {status.replies_count}
           </button>
@@ -652,6 +657,7 @@ export function StatusCard({
             }}
             onClick={() => void handleReblog()}
             disabled={!token}
+            aria-label={t.action_reblog}
           >
             <Icon name="retweet" /> {reblogsCount}
           </button>
@@ -666,6 +672,7 @@ export function StatusCard({
             }}
             onClick={() => void handleFav()}
             disabled={!token}
+            aria-label={t.action_favourite}
           >
             {favourited ? <Icon name="heart" color="var(--danger)" /> : <Icon name="heart-o" />} {favouritesCount}
           </button>
@@ -681,6 +688,7 @@ export function StatusCard({
             onClick={() => void handleBookmark()}
             disabled={!token}
             title={bookmarked ? t.bookmark_remove : t.bookmark_add}
+            aria-label={bookmarked ? t.bookmark_remove : t.bookmark_add}
           >
             {bookmarked ? <Icon name="bookmark" /> : <Icon name="bookmark-o" />}
           </button>
@@ -701,6 +709,9 @@ export function StatusCard({
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.2rem 0.4rem", fontSize: "1rem", lineHeight: 1 }}
               onClick={() => setMenuOpen((v) => !v)}
+              aria-label={t.action_open_menu}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
             >
               <Icon name="ellipsis-h" />
             </button>
@@ -796,6 +807,7 @@ export function StatusCard({
                   style={{ padding: "0.2rem 0.4rem" }}
                   onClick={() => onEdit(status)}
                   title={t.action_edit}
+                  aria-label={t.action_edit}
                 >
                   <Icon name="pencil" />
                 </button>
@@ -806,6 +818,7 @@ export function StatusCard({
                   style={{ padding: "0.2rem 0.4rem", color: "var(--danger)" }}
                   onClick={() => onDelete(status)}
                   title={t.action_delete}
+                  aria-label={t.action_delete}
                 >
                   <Icon name="trash" color="var(--danger)" />
                 </button>
@@ -823,6 +836,7 @@ export function StatusCard({
                 style={{ padding: "0.2rem 0.4rem", marginLeft: "auto" }}
                 onClick={() => onEdit(status)}
                 title={t.action_edit}
+                aria-label={t.action_edit}
               >
                 <Icon name="pencil" />
               </button>
@@ -833,6 +847,7 @@ export function StatusCard({
                 style={{ padding: "0.2rem 0.4rem", color: "var(--danger)" }}
                 onClick={() => onDelete(status)}
                 title={t.action_delete}
+                aria-label={t.action_delete}
               >
                 <Icon name="trash" color="var(--danger)" />
               </button>

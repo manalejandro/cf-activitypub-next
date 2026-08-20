@@ -69,6 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={`admin-nav-item${active ? " active" : ""}`}
             >
               <Icon name={item.icon} /> {t[item.key]}

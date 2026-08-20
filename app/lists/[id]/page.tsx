@@ -141,15 +141,17 @@ export default function ListDetailPage() {
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/lists" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => router.push("/lists")}><Icon name="arrow-left" /></button>
+          <button className="btn btn-ghost btn-sm" aria-label={t.action_close} onClick={() => router.push("/lists")}><Icon name="arrow-left" /></button>
           <h1 className="text-lg font-bold">{list?.title || t.lists_title}</h1>
         </div>
 
-        <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="flex" role="tablist" style={{ borderBottom: "1px solid var(--border)" }}>
           {(["members", "timeline"] as ActiveTab[]).map((tab) => (
             <button
               key={tab}
               className="btn btn-ghost"
+              role="tab"
+              aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
               style={{
                 flex: 1,
@@ -177,7 +179,7 @@ export default function ListDetailPage() {
                 onChange={(e) => setAddAcct(e.target.value)}
                 disabled={adding}
               />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!addAcct.trim() || adding}>
+              <button type="submit" className="btn btn-primary btn-sm" aria-label={t.lists_add_account} disabled={!addAcct.trim() || adding}>
                 {adding ? "…" : "+"}
               </button>
             </form>

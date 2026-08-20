@@ -58,6 +58,9 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Media viewer"
       style={{
         position: "fixed", inset: 0, zIndex: 9999,
         background: "rgba(0,0,0,0.92)",
@@ -69,6 +72,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {/* Close */}
       <button
         onClick={onClose}
+        aria-label="Close"
         style={{
           position: "absolute", top: "1rem", right: "1rem",
           background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",
@@ -85,6 +89,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {index > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNav(index - 1); }}
+          aria-label="Previous media"
           style={{
             position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)",
             background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",
@@ -166,6 +171,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {index < media.length - 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNav(index + 1); }}
+          aria-label="Next media"
           style={{
             position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)",
             background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",

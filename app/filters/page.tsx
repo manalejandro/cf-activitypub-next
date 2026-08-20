@@ -167,6 +167,7 @@ export default function FiltersPage() {
             <input
               className="input"
               placeholder="Filter phrase"
+              aria-label="Filter phrase"
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               autoFocus

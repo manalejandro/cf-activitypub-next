@@ -101,7 +101,7 @@ export default function ConversationDetailPage() {
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/messages" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => router.push("/messages")}><Icon name="arrow-left" /></button>
+          <button className="btn btn-ghost btn-sm" aria-label={t.action_close} onClick={() => router.push("/messages")}><Icon name="arrow-left" /></button>
           <div className="avatar" style={{ width: 36, height: 36, flexShrink: 0, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
             {other ? (other.display_name?.[0] ?? other.username?.[0] ?? "?").toUpperCase() : "?"}
           </div>
@@ -140,6 +140,7 @@ export default function ConversationDetailPage() {
             className="input"
             style={{ flex: 1 }}
             placeholder={t.messages_placeholder}
+            aria-label={t.messages_placeholder}
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={sending}

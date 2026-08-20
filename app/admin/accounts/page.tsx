@@ -117,12 +117,14 @@ export default function AdminAccountsPage() {
         <input
           className="input"
           placeholder={t.admin_search_username}
+          aria-label={t.admin_search_username}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ maxWidth: 280, padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
         />
         <select
           className="input"
+          aria-label={t.admin_all_roles}
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
           style={{ width: "auto", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
@@ -134,6 +136,7 @@ export default function AdminAccountsPage() {
         </select>
         <select
           className="input"
+          aria-label={t.admin_all_status}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           style={{ width: "auto", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
