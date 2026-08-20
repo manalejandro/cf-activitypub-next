@@ -625,7 +625,7 @@ export default function E2EEPage() {
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.82rem", color: "var(--text-muted)" }}>{t.e2ee_publish_desc}</p>
           </div>
           <button className="btn btn-primary btn-sm" onClick={handlePublish} disabled={publishing}>
-            {publishing ? "…" : <><Icon name="plus" /> {t.e2ee_publish_button}</>}
+            {publishing ? "…" : <><Icon name="plus" color="#fff" /> {t.e2ee_publish_button}</>}
           </button>
         </div>
         {publishMsg && <p style={{ margin: "0.5rem 0 0", fontSize: "0.82rem", color: publishMsg.ok ? "var(--success)" : "var(--danger)" }}>{publishMsg.text}</p>}

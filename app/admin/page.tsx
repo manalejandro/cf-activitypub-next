@@ -71,7 +71,7 @@ export default function AdminDashboard() {
       </div>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <Link href="/admin/accounts" className="btn btn-primary">
-          <Icon name="users" /> {t.admin_accounts}
+          <Icon name="users" color="#fff" /> {t.admin_accounts}
         </Link>
         <Link href="/admin/reports" className="btn btn-outline">
           <Icon name="flag" /> {t.admin_reports}

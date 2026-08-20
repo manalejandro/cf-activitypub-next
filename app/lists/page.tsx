@@ -123,7 +123,7 @@ export default function ListsPage() {
               ))}
             </select>
             <div className="flex gap-2">
-              <button type="submit" className="btn btn-primary btn-sm" disabled={!newTitle.trim()}><Icon name="check" /></button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!newTitle.trim()}><Icon name="check" color="#fff" /></button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(false)}>{t.profile_cancel}</button>
             </div>
           </form>
@@ -149,7 +149,7 @@ export default function ListsPage() {
                     ))}
                   </select>
                   <div className="flex gap-2">
-                    <button className="btn btn-primary btn-sm" onClick={() => void handleSaveEdit(list)} disabled={!editTitle.trim()}><Icon name="check" /></button>
+                    <button className="btn btn-primary btn-sm" onClick={() => void handleSaveEdit(list)} disabled={!editTitle.trim()}><Icon name="check" color="#fff" /></button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>{t.profile_cancel}</button>
                   </div>
                 </div>

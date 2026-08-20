@@ -13,6 +13,7 @@ import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
+import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
@@ -286,6 +287,7 @@ export default function HomePage() {
     <PageLayout sidebar={<Sidebar me={me} currentPath="/home" />}>
 
       {/* Main feed */}
+        <AnnouncementsBanner />
         {/* Compose */}
         <div style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
           <form onSubmit={handlePost} className="flex flex-col gap-3">
@@ -496,7 +498,7 @@ export default function HomePage() {
                   className="btn btn-primary btn-sm"
                   disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= 2))}
                 >
-                  {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin /> : t.compose_post}
+                  {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.compose_post}
                 </button>
               </div>
             </div>
