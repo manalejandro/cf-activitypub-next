@@ -389,7 +389,6 @@ export async function runModerationCycle(env: GuardianCycleEnv): Promise<void> {
   // and the AI paths inside them already degrade to "no verdict". An early
   // `if (!env.AI) return` here silently disabled the whole cycle whenever the
   // AI binding misbehaved in production.
-  console.log(`[moderation] cycle start at ${new Date().toISOString()} ai=${Boolean(env.AI)}`);
 
   // Each stage is isolated so one failure (DB, KV, AI) never silences the rest.
   await screenRecentLocalStatuses(env).catch((e) => console.error("[moderation] status screen failed", e));
