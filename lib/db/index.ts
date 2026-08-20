@@ -1047,8 +1047,9 @@ export async function updateActor(
       setClauses.push(`${sqlKey} = ?`);
       const v = (fields as Record<string, unknown>)[jsKey];
       // JSON columns (arrays) are stored as TEXT; D1 binds arrays directly but
-      // stringifying keeps the round-trip through rowToActor consistent.
-      values.push(Array.isArray(v) ? JSON.stringify(v) : typeof v === "boolean" ? (v ? 1 : 0) : v);
+      // stringifying keeps the round-trip through rowToActor consistent. D1
+      // rejects `undefined`, so normalize it to NULL like the other writers.
+      values.push(Array.isArray(v) ? JSON.stringify(v) : typeof v === "boolean" ? (v ? 1 : 0) : (v ?? null));
     }
   }
 
