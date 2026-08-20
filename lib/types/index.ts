@@ -394,6 +394,18 @@ export interface OAuthToken {
   expiresAt: string | null;
 }
 
+/** A connection in the "authorized apps / sessions" list (no secrets). */
+export interface AuthorizedAppConnection {
+  id: string;
+  actorId: string;
+  appId: string | null;
+  appName: string | null;
+  appWebsite: string | null;
+  scope: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
 // Mastodon API types
 
 export interface MastodonAccount {

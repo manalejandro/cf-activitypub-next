@@ -254,6 +254,7 @@ const EN = {
   settings_tab_tags: "Featured tags",
   settings_tab_import: "Import & Export",
   settings_tab_migration: "Account migration",
+  settings_tab_apps: "Authorized apps",
   // Settings — push notifications
   settings_push_unsupported: "Push notifications require a Web Push compatible browser. Your browser does not appear to support this feature.",
   settings_push_intro: "Push notifications require a Web Push compatible browser. Your browser must support the Push API and Service Workers to receive notifications even when the tab is closed.",
@@ -303,6 +304,17 @@ const EN = {
   settings_migration_button: "Move account",
   settings_migration_failed: "Migration failed",
   settings_migration_result: "Moved to {moved}. {followers} local followers migrated, Move delivered to {servers} remote servers.",
+  // Settings — authorized apps & sessions
+  settings_apps_title: "Authorized apps & sessions",
+  settings_apps_desc: "Apps and sessions that have access to your account. Revoke anything you don't recognize.",
+  settings_apps_web_session: "This instance — web session",
+  settings_apps_current: "Current session",
+  settings_apps_empty: "You have no authorized apps or other sessions.",
+  settings_apps_revoke: "Revoke",
+  settings_apps_revoked: "Connection revoked",
+  settings_apps_revoke_failed: "Failed to revoke connection",
+  settings_apps_scope_label: "Access scopes:",
+  settings_apps_revoked_current: "Your current session was revoked. You have been signed out.",
   // Settings — delete account
   settings_tab_delete: "Delete account",
   settings_delete_warning: "Deleting your account is permanent and cannot be undone.",
@@ -968,6 +980,7 @@ const ES: typeof EN = {
   settings_tab_tags: "Etiquetas destacadas",
   settings_tab_import: "Importar y exportar",
   settings_tab_migration: "Migración de cuenta",
+  settings_tab_apps: "Aplicaciones autorizadas",
   // Settings — push notifications
   settings_push_unsupported: "Las notificaciones push requieren un navegador compatible con Web Push. Tu navegador no parece soportar esta función.",
   settings_push_intro: "Las notificaciones push requieren un navegador compatible con Web Push. Tu navegador debe soportar la Push API y los Service Workers para recibir notificaciones incluso con la pestaña cerrada.",
@@ -1017,6 +1030,17 @@ const ES: typeof EN = {
   settings_migration_button: "Mover cuenta",
   settings_migration_failed: "Error en la migración",
   settings_migration_result: "Cuenta movida a {moved}. {followers} seguidores locales migrados, Move entregado a {servers} servidores remotos.",
+  // Settings — aplicaciones autorizadas y sesiones
+  settings_apps_title: "Aplicaciones autorizadas y sesiones",
+  settings_apps_desc: "Aplicaciones y sesiones que tienen acceso a tu cuenta. Revoca cualquier cosa que no reconozcas.",
+  settings_apps_web_session: "Esta instancia — sesión web",
+  settings_apps_current: "Sesión actual",
+  settings_apps_empty: "No tienes aplicaciones autorizadas ni otras sesiones.",
+  settings_apps_revoke: "Revocar",
+  settings_apps_revoked: "Conexión revocada",
+  settings_apps_revoke_failed: "Error al revocar la conexión",
+  settings_apps_scope_label: "Alcances de acceso:",
+  settings_apps_revoked_current: "Tu sesión actual fue revocada. Has cerrado sesión.",
   // Settings — delete account
   settings_tab_delete: "Borrar cuenta",
   settings_delete_warning: "Borrar tu cuenta es permanente y no se puede deshacer.",

@@ -16,6 +16,7 @@ import type {
   LocalPushSubscription,
   OAuthApp,
   OAuthToken,
+  AuthorizedAppConnection,
   APActor,
   ObjectEdit,
   LocalMlsKeyPackage,
@@ -1747,6 +1748,50 @@ export async function getTokenByAccessToken(db: D1Database, token: string): Prom
     .bind(token)
     .first<Row>();
   return row ? rowToToken(row) : null;
+}
+
+export async function getOAuthAppById(db: D1Database, appId: string): Promise<OAuthApp | null> {
+  const row = await db
+    .prepare("SELECT * FROM oauth_apps WHERE id = ?")
+    .bind(appId)
+    .first<Row>();
+  return row ? rowToApp(row) : null;
+}
+
+export async function getOAuthTokenById(db: D1Database, id: string): Promise<OAuthToken | null> {
+  const row = await db
+    .prepare("SELECT * FROM oauth_tokens WHERE id = ?")
+    .bind(id)
+    .first<Row>();
+  return row ? rowToToken(row) : null;
+}
+
+export async function listOAuthTokensForActor(db: D1Database, actorId: string): Promise<AuthorizedAppConnection[]> {
+  const rows = await db
+    .prepare(
+      `SELECT t.id, t.actor_id, t.app_id, t.scope, t.created_at, t.expires_at,
+              a.name AS app_name, a.website AS app_website
+       FROM oauth_tokens t
+       LEFT JOIN oauth_apps a ON a.id = t.app_id
+       WHERE t.actor_id = ?
+       ORDER BY t.created_at DESC`
+    )
+    .bind(actorId)
+    .all<Row>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    actorId: r.actor_id,
+    appId: r.app_id ?? null,
+    appName: r.app_name ?? null,
+    appWebsite: r.app_website ?? null,
+    scope: r.scope,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at ?? null,
+  }));
+}
+
+export async function deleteOAuthToken(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM oauth_tokens WHERE id = ?").bind(id).run();
 }
 
 // ─────────────────────────────────────────

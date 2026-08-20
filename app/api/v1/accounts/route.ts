@@ -193,7 +193,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const expiresIn = 3600 * 24 * 30;
 
   await createOAuthToken(env.DB, {
-    id: accessToken,
+    id: crypto.randomUUID(),
     appId: app?.id ?? null,
     actorId,
     accessToken,

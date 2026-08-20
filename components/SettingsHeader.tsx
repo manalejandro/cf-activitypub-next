@@ -10,6 +10,7 @@ const TABS = [
   { href: "/settings/featured-tags", key: "settings_tab_tags" as const },
   { href: "/settings/import-export", key: "settings_tab_import" as const },
   { href: "/settings/migration", key: "settings_tab_migration" as const },
+  { href: "/settings/authorized-apps", key: "settings_tab_apps" as const },
   { href: "/settings/delete-account", key: "settings_tab_delete" as const },
 ];
 
