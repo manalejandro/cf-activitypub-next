@@ -1053,6 +1053,74 @@
         }
       }
     },
+    "/api/oauth/authorized/{id}": {
+      "delete": {
+        "summary": "Delete /api/oauth/authorized/{id}",
+        "operationId": "delete_api_oauth_authorized_Byid",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/authorized": {
+      "get": {
+        "summary": "Get /api/oauth/authorized",
+        "operationId": "get_api_oauth_authorized",
+        "tags": [
+          "Misc"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/oauth/token": {
       "post": {
         "summary": "Post /api/oauth/token",

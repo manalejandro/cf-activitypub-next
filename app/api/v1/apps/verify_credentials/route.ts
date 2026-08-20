@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getOAuthAppByClientId } from "@/lib/db";
+import { getOAuthAppById } from "@/lib/db";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     .bind(token)
     .first<{ app_id: string }>();
   if (!tokenRow?.app_id) return json({ name: "API", website: null, vapid_key: null, client_id: null }, 200);
-  const app = await getOAuthAppByClientId(env.DB, tokenRow.app_id);
+  const app = await getOAuthAppById(env.DB, tokenRow.app_id);
   if (!app) return json({ name: "API", website: null, vapid_key: null, client_id: null }, 200);
   return json({
     name: app.name,
