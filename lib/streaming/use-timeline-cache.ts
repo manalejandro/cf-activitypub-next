@@ -130,7 +130,12 @@ export function useTimelineCache<T extends { id: string }>(
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
         setLoading(false);
-        if (shouldRestore) restoreScroll(targetY);
+        if (shouldRestore) {
+          // Synchronous so the feed renders already at its own offset instead of
+          // flashing the previous feed's scroll position.
+          if (tabSwitch) window.scrollTo(0, targetY);
+          restoreScroll(targetY);
+        }
         return;
       }
 
@@ -141,7 +146,10 @@ export function useTimelineCache<T extends { id: string }>(
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
         setLoading(false);
-        if (shouldRestore) restoreScroll(targetY);
+        if (shouldRestore) {
+          if (tabSwitch) window.scrollTo(0, targetY);
+          restoreScroll(targetY);
+        }
       } else {
         seenIdsRef.current = new Set();
         setStatuses([]);

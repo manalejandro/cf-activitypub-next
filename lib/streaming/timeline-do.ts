@@ -221,7 +221,19 @@ export class TimelineStreamDO extends CFDurableObject {
 
     const maxConns = isAnon ? ANON_MAX_CONNS_PER_IP : AUTH_MAX_CONNS_PER_IP;
     if (active >= maxConns) {
-      return false;
+      if (!isAnon) return false;
+      // Anonymous cap is 1 per IP. A second anonymous socket from the same IP
+      // is almost always this browser reconnecting or switching timelines (the
+      // local/federated tabs) while the previous socket's close event has not
+      // propagated to the DO yet. Rejecting would silently kill the live
+      // stream, so instead close the superseded socket and take its slot.
+      for (const ws of this.state.getWebSockets()) {
+        const att = (ws.deserializeAttachment() ?? {}) as SocketAttachment;
+        if (att.ip && encodeURIComponent(att.ip) === ipKey && att.anon && att.socketId !== socketId) {
+          try { ws.close(1000, "superseded by a new connection"); } catch { /* already closed */ }
+          await this.state.storage.delete(`${prefix}${att.socketId}`).catch(() => {});
+        }
+      }
     }
 
     await this.state.storage.put(`${prefix}${socketId}`, {
