@@ -113,6 +113,14 @@ export function useTimelineCache<T extends { id: string }>(
       const historyRestore = restoredOnHistoryTraversal;
       restoredOnHistoryTraversal = false;
       const tabSwitch = prevKeyRef.current !== key;
+      // Persist the feed we are leaving right away: a fast tab switch can
+      // otherwise drop the last scroll event before it is written back. Skip
+      // when the window is still at the top — the scroll handler has nothing
+      // newer to report and we must not clobber a remembered offset with 0.
+      if (tabSwitch && window.scrollY > 0) {
+        const prevEntry = getTimelineCache(prevKeyRef.current);
+        if (prevEntry) prevEntry.scrollY = window.scrollY;
+      }
       prevKeyRef.current = key;
       const cached = getTimelineCache<T>(key);
       // Position this feed should end up at: its own remembered offset, or the
@@ -165,8 +173,8 @@ export function useTimelineCache<T extends { id: string }>(
         if (tabSwitch) window.scrollTo(0, 0);
       }
 
-      const anchorId = shouldRestore ? (cached?.items[0]?.id ?? null) : null;
-      const fallbackY = shouldRestore ? targetY : 0;
+      const anchorId = historyRestore ? (cached?.items[0]?.id ?? null) : null;
+      const fallbackY = historyRestore ? targetY : 0;
       (async () => {
         try {
           const result = await fetchPageRef.current();
@@ -188,7 +196,7 @@ export function useTimelineCache<T extends { id: string }>(
           });
           setHasMore(result.hasMore);
           setLoading(false);
-          if (shouldRestore) scrollToStatusAnchor(anchorId, fallbackY);
+          if (historyRestore) scrollToStatusAnchor(anchorId, fallbackY);
         } catch {
           if (!cancelled) setLoading(false);
         }

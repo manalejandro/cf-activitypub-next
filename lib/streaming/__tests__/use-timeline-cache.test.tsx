@@ -169,4 +169,30 @@ describe("useTimelineCache tab switching", () => {
     expect(await screen.findByTestId("st-LNEW")).toBeTruthy();
     expect(screen.getByTestId("st-L1")).toBeTruthy();
   });
+
+  it("keeps the absolute scroll position on tab switch instead of re-anchoring to the first item", async () => {
+    cacheLocal(); // remembered at 800
+
+    render(<App />);
+    expect(await screen.findByTestId("st-L1")).toBeTruthy();
+    scrollSpy.mockClear();
+
+    fetchResults.local = [{ id: "LNEW" }, { id: "L1" }, { id: "L2" }];
+
+    await act(async () => {
+      screen.getByText("go-federated").click();
+    });
+    await screen.findByTestId("st-F1");
+
+    scrollSpy.mockClear();
+    await act(async () => {
+      screen.getByText("go-local").click();
+    });
+    expect(await screen.findByTestId("st-LNEW")).toBeTruthy();
+    expect(screen.getByTestId("st-L1")).toBeTruthy();
+
+    // The restore lands only on the feed's own offset (800) or the top (0).
+    // A re-anchor to the first cached item would scroll somewhere in between.
+    expect(scrollSpy.mock.calls.every(([, y]) => y === 0 || y === 800)).toBe(true);
+  });
 });
