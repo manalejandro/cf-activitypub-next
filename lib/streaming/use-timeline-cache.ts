@@ -125,7 +125,12 @@ export function useTimelineCache<T extends { id: string }>(
       // of inheriting the previous feed's. History traversals restore too.
       const shouldRestore = historyRestore || tabSwitch;
 
-      if (cached?.ready && isTimelineCacheFresh(cached)) {
+      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch) {
+        // Mount or history traversal with a fresh cache: restore instantly,
+        // nothing to refetch yet. A tab switch never short-circuits here —
+        // switching feeds is an explicit request to see the latest content, so
+        // the (fresh) cache is shown immediately and refreshed in the
+        // background below (new posts appear even if the stream missed them).
         seenIdsRef.current = new Set(cached.seenIds);
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
