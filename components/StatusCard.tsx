@@ -580,7 +580,7 @@ export function StatusCard({
             title={visibilityInfo.label}
             style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginLeft: "auto", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
           >
-            <Icon name={visibilityInfo.icon} size="0.7rem" /> {visibilityInfo.label}
+            <Icon name={visibilityInfo.icon} size="0.7rem" /> <span className="hidden md:inline">{visibilityInfo.label}</span>
           </span>
           <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} aria-label={`${new Date(status.created_at).toLocaleString()}, ${t.action_reply}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
             {formatTime(status.created_at)}

@@ -10,6 +10,7 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
 import { Icon } from "@/components/Icon";
+import { VisibilityPicker } from "@/components/VisibilityPicker";
 import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -409,17 +410,7 @@ function ReplyBox({
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
-              <select
-                value={visibility}
-                onChange={(e) => setVisibility(e.target.value as typeof visibility)}
-                aria-label={t.compose_visibility}
-                style={{ fontSize: "0.78rem", padding: "0.25rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)" }}
-              >
-                <option value="public">{t.vis_public}</option>
-                <option value="unlisted">{t.vis_unlisted}</option>
-                <option value="followers">{t.vis_followers}</option>
-                <option value="direct">{t.vis_direct}</option>
-              </select>
+              <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />
             </div>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} disabled={submitting}>

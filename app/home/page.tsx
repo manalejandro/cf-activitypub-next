@@ -13,6 +13,7 @@ import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
+import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
 
@@ -492,19 +493,7 @@ export default function HomePage() {
                   <Icon name="clock-o" size="1rem" />
                 </button>
                 {/* Visibility selector */}
-                <select
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as typeof visibility)}
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.4rem", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)", maxWidth: "7rem" }}
-                  title={t.compose_visibility}
-                  aria-label={t.compose_visibility}
-                >
-                  <option value="public">{t.vis_public}</option>
-                  <option value="unlisted">{t.vis_unlisted}</option>
-                  <option value="followers">{t.vis_followers}</option>
-                  <option value="direct">{t.vis_direct}</option>
-                </select>
+                <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "0.8rem", color: composing.length > 450 ? "var(--danger)" : "var(--text-muted)" }}>
