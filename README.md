@@ -1,5 +1,9 @@
 # CF ActivityPub
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/github/v/tag/manalejandro/cf-activitypub-next?label=version)](https://github.com/manalejandro/cf-activitypub-next/releases)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/manalejandro/cf-activitypub-next/pulls)
+
 > A Mastodon-compatible ActivityPub server built for the edge — powered by Cloudflare Workers, D1, and the open web.
 
 ## Overview

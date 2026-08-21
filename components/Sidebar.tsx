@@ -392,10 +392,10 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
             </Link>
             <button
               onClick={toggleTheme}
-              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "1.3rem", lineHeight: 1, color: "var(--text-muted)" }}
+              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: "1.3rem", lineHeight: 1, color: "var(--accent)" }}
               title={theme === "dark" ? t.theme_dark : t.theme_light}
             >
-              <Icon name={theme === "dark" ? "moon" : "sun"} color="var(--text-muted)" />
+              <Icon name={theme === "dark" ? "moon" : "sun"} color="var(--accent)" />
             </button>
           </div>
 
