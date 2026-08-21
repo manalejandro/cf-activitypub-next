@@ -52,13 +52,13 @@ export default function NotificationsPage() {
   const fetchPage = useCallback(async (maxId?: string) => {
     const base = "/api/v1/notifications?limit=40";
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
-    const res = await fetch(url, { credentials: "include" });
+    const res = await fetch(url, { credentials: "include", cache: "no-store" });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Notification[];
     return { items, hasMore: items.length >= 40 };
   }, []);
 
-  const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore } = useTimelineCache<Notification>("notifications", fetchPage);
+  const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>("notifications", fetchPage, { refetchOnMount: true });
 
   async function fetchFollowRequests() {
     const res = await fetch("/api/v1/follow_requests?limit=40", { credentials: "include" });
@@ -116,7 +116,7 @@ export default function NotificationsPage() {
   useTimelineStream("user:notification", (event) => {
     if (event !== "notification") return;
     // Fetch just the latest notification and prepend it if not already seen
-    fetch("/api/v1/notifications?limit=1", { credentials: "include" })
+    fetch("/api/v1/notifications?limit=1", { credentials: "include", cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) return;
         const data = await res.json() as Notification[];
@@ -127,6 +127,11 @@ export default function NotificationsPage() {
         });
       })
       .catch(() => {});
+  }, {
+    onReconnect: () => {
+      // Catch up on notifications that arrived while the socket was down.
+      void catchUp();
+    },
   });
 
   // Infinite scroll
