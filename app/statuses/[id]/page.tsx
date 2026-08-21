@@ -329,13 +329,13 @@ function ReplyBox({
                     type="text"
                     value={opt}
                     onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
-                    placeholder={`Opción ${i + 1}`}
-                    aria-label={`Opción ${i + 1}`}
+                    placeholder={t.composer_poll_option.replace("{number}", String(i + 1))}
+                    aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
                     maxLength={50}
                     style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.875rem" }}
                   />
                   {pollOptions.length > 2 && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.2rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={`Eliminar opción ${i + 1}`}><Icon name="times" color="var(--danger)" /></button>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", padding: "0.2rem 0.4rem" }} onClick={() => setPollOptions((p) => p.filter((_, j) => j !== i))} aria-label={t.composer_poll_remove_option.replace("{number}", String(i + 1))}><Icon name="times" color="var(--danger)" /></button>
                   )}
                 </div>
               ))}
@@ -371,8 +371,8 @@ function ReplyBox({
                   </div>
                   <input
                     type="text"
-                    placeholder="Descripción (alt text)…"
-                    aria-label="Descripción (alt text)"
+                      placeholder={`${t.media_alt_text}…`}
+                      aria-label={t.media_alt_text}
                     defaultValue={f.description ?? ""}
                     maxLength={420}
                     onChange={(e) => { descRefs.current[f.id] = e.target.value; }}

@@ -396,8 +396,8 @@ export default function HomePage() {
                     </div>
                     <input
                       type="text"
-                      placeholder="Descripción (alt text)…"
-                      aria-label="Descripción (alt text)"
+                      placeholder={`${t.media_alt_text}…`}
+                      aria-label={t.media_alt_text}
                       defaultValue={f.description ?? ""}
                       maxLength={420}
                       onChange={(e) => { mediaDescRefs.current[f.id] = e.target.value; }}

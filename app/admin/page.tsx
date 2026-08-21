@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   const { t } = useLocale();
   const [totalUsers, setTotalUsers] = useState<number | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
+  const [federatedAccounts, setFederatedAccounts] = useState<number | null>(null);
   const [reportedCount, setReportedCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,9 +41,14 @@ export default function AdminDashboard() {
         setTotalUsers(data.total);
         return data.total;
       }),
-      fetch("/api/v1/admin/accounts?status=pending&limit=1", { headers }).then(async (r) => {
+      fetch("/api/v1/admin/accounts?status=pending&local=true&limit=1", { headers }).then(async (r) => {
         const data = await r.json() as { total: number };
         setPendingApprovals(data.total);
+        return data.total;
+      }),
+      fetch("/api/v1/admin/accounts?remote=true&limit=1", { headers }).then(async (r) => {
+        const data = await r.json() as { total: number };
+        setFederatedAccounts(data.total);
         return data.total;
       }),
       fetch("/api/v1/admin/reports", { headers }).then(async (r) => {
@@ -67,6 +73,7 @@ export default function AdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
         <StatCard label={t.admin_users} value={totalUsers ?? 0} />
         <StatCard label={t.admin_pending} value={pendingApprovals ?? 0} accent />
+        <StatCard label={t.admin_federated} value={federatedAccounts ?? 0} />
         <StatCard label={t.admin_open_reports} value={reportedCount ?? 0} danger={!!reportedCount && reportedCount > 0} />
       </div>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>

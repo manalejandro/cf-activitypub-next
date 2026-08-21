@@ -12,6 +12,7 @@ interface AdminAccount {
   domain: string;
   created_at: string;
   email: string | null;
+  last_active_at: string | null;
   role: string;
   confirmed: boolean;
   suspended: boolean;
@@ -104,6 +105,11 @@ export default function AdminAccountsPage() {
     return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
   }
 
+  function formatLastActive(dateStr: string | null) {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
   return (
     <div>
       <h1 style={{ fontSize: "1.5rem", marginBottom: "1.5rem" }}>
@@ -161,6 +167,8 @@ export default function AdminAccountsPage() {
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_account}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_role}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_status}</th>
+                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_email}</th>
+                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_last_active}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_created}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_actions}</th>
               </tr>
@@ -200,6 +208,12 @@ export default function AdminAccountsPage() {
                       ) : (
                         <span className="badge badge-success">{t.admin_status_active}</span>
                       )}
+                    </td>
+                    <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {a.email || <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    </td>
+                    <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                      {formatLastActive(a.last_active_at)}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                       {formatDate(a.created_at)}

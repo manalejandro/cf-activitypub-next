@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 /**
  * Floating "back to top" button. Appears bottom-right once the page has been
@@ -9,6 +10,7 @@ import { Icon } from "@/components/Icon";
  * scrolls back to the top on click.
  */
 export function BackToTop() {
+  const { t } = useLocale();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function BackToTop() {
   return (
     <button
       type="button"
-      aria-label="Back to top"
+      aria-label={t.a11y_back_to_top}
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       style={{
         position: "fixed",

@@ -1,17 +1,23 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getDomainBlocks, createDomainBlock, deleteDomainBlock } from "@/lib/db";
+import { getDomainBlocks, createDomainBlock, deleteDomainBlock, getInstanceDomainBlocks } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { generateId } from "@/lib/activitypub/utils";
 
-// GET /api/v1/domain_blocks
+// GET /api/v1/domain_blocks — the user's own blocks plus the instance-wide
+// domain blocks (so clients see every domain this instance rejects).
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const domains = await getDomainBlocks(env.DB, actor.id);
-  return json(domains);
+  const [domains, instanceBlocks] = await Promise.all([
+    getDomainBlocks(env.DB, actor.id),
+    getInstanceDomainBlocks(env.DB),
+  ]);
+
+  const merged = new Set<string>([...domains, ...instanceBlocks.map((b) => b.domain)]);
+  return json([...merged]);
 }
 
 // POST /api/v1/domain_blocks  (body: { domain: string })

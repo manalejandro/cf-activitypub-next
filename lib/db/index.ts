@@ -2302,6 +2302,91 @@ export async function getDomainBlocks(db: D1Database, actorId: string): Promise<
 }
 
 // ─────────────────────────────────────────
+// Instance-wide domain blocks (admin)
+// ─────────────────────────────────────────
+
+export interface InstanceDomainBlock {
+  domain: string;
+  severity: "silence" | "suspend";
+  rejectMedia: boolean;
+  rejectReports: boolean;
+  privateComment: string | null;
+  publicComment: string | null;
+  obfuscate: boolean;
+  createdAt: string;
+}
+
+function rowToInstanceDomainBlock(r: Row): InstanceDomainBlock {
+  return {
+    domain: r.domain,
+    severity: r.severity === "silence" ? "silence" : "suspend",
+    rejectMedia: Boolean(r.reject_media),
+    rejectReports: Boolean(r.reject_reports),
+    privateComment: r.private_comment ?? null,
+    publicComment: r.public_comment ?? null,
+    obfuscate: Boolean(r.obfuscate),
+    createdAt: r.created_at,
+  };
+}
+
+export async function getInstanceDomainBlocks(db: D1Database): Promise<InstanceDomainBlock[]> {
+  const rows = await db
+    .prepare("SELECT * FROM instance_domain_blocks ORDER BY created_at DESC")
+    .all<Row>();
+  return (rows.results ?? []).map(rowToInstanceDomainBlock);
+}
+
+export async function getInstanceDomainBlock(db: D1Database, domain: string): Promise<InstanceDomainBlock | null> {
+  const row = await db
+    .prepare("SELECT * FROM instance_domain_blocks WHERE domain = ?")
+    .bind(domain.toLowerCase())
+    .first<Row>();
+  return row ? rowToInstanceDomainBlock(row) : null;
+}
+
+export async function createInstanceDomainBlock(
+  db: D1Database,
+  block: InstanceDomainBlock
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instance_domain_blocks
+         (domain, severity, reject_media, reject_reports, private_comment, public_comment, obfuscate, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         severity = excluded.severity,
+         reject_media = excluded.reject_media,
+         reject_reports = excluded.reject_reports,
+         private_comment = excluded.private_comment,
+         public_comment = excluded.public_comment,
+         obfuscate = excluded.obfuscate`
+    )
+    .bind(
+      block.domain.toLowerCase(),
+      block.severity,
+      block.rejectMedia ? 1 : 0,
+      block.rejectReports ? 1 : 0,
+      block.privateComment,
+      block.publicComment,
+      block.obfuscate ? 1 : 0,
+      block.createdAt
+    )
+    .run();
+}
+
+export async function deleteInstanceDomainBlock(db: D1Database, domain: string): Promise<void> {
+  await db.prepare("DELETE FROM instance_domain_blocks WHERE domain = ?").bind(domain.toLowerCase()).run();
+}
+
+export async function isInstanceDomainBlocked(db: D1Database, domain: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 FROM instance_domain_blocks WHERE domain = ?")
+    .bind(domain.toLowerCase())
+    .first();
+  return row !== null;
+}
+
+// ─────────────────────────────────────────
 // Polls
 // ─────────────────────────────────────────
 

@@ -3514,6 +3514,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "remote",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
@@ -3594,42 +3601,10 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response."
           },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/domain_blocks/{id}": {
-      "delete": {
-        "summary": "Delete /api/v1/admin/domain_blocks/{id}",
-        "operationId": "delete_api_v1_admin_domain_blocks_Byid",
-        "tags": [
-          "Admin"
-        ],
-        "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
+            "name": "remote",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -3641,8 +3616,8 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successfully deleted."
+          "200": {
+            "description": "Successful response."
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3664,6 +3639,15 @@
         "tags": [
           "Admin"
         ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -3672,6 +3656,103 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Post /api/v1/admin/domain_blocks",
+        "operationId": "post_api_v1_admin_domain_blocks",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete /api/v1/admin/domain_blocks",
+        "operationId": "delete_api_v1_admin_domain_blocks",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successfully deleted."
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",

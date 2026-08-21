@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 interface LightboxItem {
   url: string;
@@ -19,6 +20,7 @@ interface LightboxProps {
 
 export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
   const item = media[index];
+  const { t } = useLocale();
   const [imgLoaded, setImgLoaded] = useState(false);
   const onCloseRef = useRef(onClose);
   const onNavRef = useRef(onNav);
@@ -60,7 +62,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Media viewer"
+      aria-label={t.a11y_media_viewer}
       style={{
         position: "fixed", inset: 0, zIndex: 9999,
         background: "rgba(0,0,0,0.92)",
@@ -72,7 +74,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {/* Close */}
       <button
         onClick={onClose}
-        aria-label="Close"
+        aria-label={t.action_close}
         style={{
           position: "absolute", top: "1rem", right: "1rem",
           background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",
@@ -89,7 +91,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {index > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNav(index - 1); }}
-          aria-label="Previous media"
+          aria-label={t.a11y_previous_media}
           style={{
             position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)",
             background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",
@@ -171,7 +173,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
       {index < media.length - 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); onNav(index + 1); }}
-          aria-label="Next media"
+          aria-label={t.a11y_next_media}
           style={{
             position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)",
             background: "rgba(255,255,255,0.12)", color: "#fff", border: "none",

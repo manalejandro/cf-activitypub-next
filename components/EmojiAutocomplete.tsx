@@ -9,6 +9,7 @@ import {
   type CustomEmoji,
   type EmojiSuggestion,
 } from "@/lib/emoji-autocomplete";
+import { useLocale } from "@/lib/i18n";
 
 const MAX_SUGGESTIONS = 8;
 
@@ -109,12 +110,13 @@ interface EmojiAutocompleteDropdownProps {
 }
 
 export function EmojiAutocompleteDropdown({ suggestions, activeIndex, onSelect }: EmojiAutocompleteDropdownProps) {
+  const { t } = useLocale();
   if (suggestions.length === 0) return null;
 
   return (
     <div
       role="listbox"
-      aria-label="Emoji suggestions"
+      aria-label={t.a11y_emoji_suggestions}
       style={{
         position: "absolute",
         top: "calc(100% + 4px)",

@@ -18,6 +18,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const status = request.nextUrl.searchParams.get("status") ?? "all";
   const role = request.nextUrl.searchParams.get("role") ?? "all";
   const local = request.nextUrl.searchParams.get("local") ?? "false";
+  const remote = request.nextUrl.searchParams.get("remote") ?? "false";
   const q = request.nextUrl.searchParams.get("q") ?? "";
 
   let sql = "SELECT * FROM actors WHERE 1=1";
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   if (local === "true") {
     sql += " AND is_local = 1";
+  } else if (remote === "true") {
+    sql += " AND is_local = 0";
   }
 
   if (status === "active") {
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     rows = result.results;
     const totalRow = await env.DB.prepare(
       "SELECT COUNT(*) as count FROM actors WHERE 1=1" +
-      (local === "true" ? " AND is_local = 1" : "") +
+      (local === "true" ? " AND is_local = 1" : remote === "true" ? " AND is_local = 0" : "") +
       (status !== "all" ? (status === "active" ? " AND email_verified = 1" : status === "pending" ? " AND email_verified = 0" : status === "suspended" ? " AND suspended = 1" : " AND silenced = 1") : "") +
       (role !== "all" ? " AND role = ?" : "") +
       (q ? " AND (username LIKE ? OR display_name LIKE ?)" : "")
@@ -75,6 +78,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       domain: actor.domain,
       created_at: actor.createdAt,
       email: actor.email,
+      last_active_at: r.last_active_at ? String(r.last_active_at) : null,
       role: String(r.role ?? "user"),
       confirmed: actor.emailVerified,
       suspended: Boolean(r.suspended),

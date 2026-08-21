@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { AvatarBubble } from "./StatusCard";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 interface Account {
   id: string;
@@ -24,6 +25,7 @@ export function InteractionList({
 }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useLocale();
 
   useEffect(() => {
     Promise.resolve().then(() => {
@@ -92,7 +94,7 @@ export function InteractionList({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.action_close}
             style={{
               background: "none",
               border: "none",

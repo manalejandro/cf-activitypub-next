@@ -26,6 +26,18 @@ export async function getAuthenticatedActor(
   // Suspended accounts cannot authenticate (Guardian / admin suspension).
   if (actor.suspended) return null;
 
+  // Throttled last-access tracking (at most one write per actor per hour).
+  try {
+    const now = new Date().toISOString();
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await db
+      .prepare(
+        "UPDATE actors SET last_active_at = ? WHERE id = ? AND (last_active_at IS NULL OR last_active_at < ?)"
+      )
+      .bind(now, tokenRow.actorId, cutoff)
+      .run();
+  } catch { /* last_active_at column may be missing pre-migration */ }
+
   return actor;
 }
 

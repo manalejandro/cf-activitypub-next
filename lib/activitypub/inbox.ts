@@ -33,6 +33,7 @@ import {
   getAllCustomEmojis,
   getLocalInteractedActorIds,
   isActorBlockedBy,
+  isInstanceDomainBlocked,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -144,6 +145,18 @@ export async function processInboxActivity(
     !signerOwnsActor(ctx.signingActorId, activityActorId)
   ) {
     return;
+  }
+
+  // Reject activities from domains the instance has blocked (like Mastodon's
+  // suspend-level domain block).
+  const blockedActorId = ctx.signingActorId ?? activityActorId;
+  if (blockedActorId) {
+    try {
+      const domain = new URL(blockedActorId).hostname;
+      if (domain && (await isInstanceDomainBlocked(ctx.db, domain))) {
+        return;
+      }
+    } catch { /* non-URL actor id */ }
   }
 
   try {

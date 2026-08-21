@@ -65,7 +65,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
 
   // One-time fetch for existing unread count on mount
   useEffect(() => {
-    fetch("/api/v1/notifications/unread_count", { credentials: "include" }).then(async (res) => {
+    fetch("/api/v1/notifications/unread_count", { credentials: "include", cache: "no-store" }).then(async (res) => {
       if (res.ok) {
         const data = await res.json() as { count: number };
         setUnreadCount(data.count);
@@ -111,6 +111,15 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     if (event === "notification") {
       setUnreadCount((c) => c + 1);
     }
+  }, {
+    onReconnect: () => {
+      // Re-sync after a reconnect gap so the badge doesn't go stale while the
+      // socket was down (increments are missed for that window).
+      fetch("/api/v1/notifications/unread_count", { credentials: "include", cache: "no-store" })
+        .then((res) => (res.ok ? res.json() as Promise<{ count: number }> : null))
+        .then((data) => { if (data) setUnreadCount(data.count); })
+        .catch(() => {});
+    },
   });
 
   // Mobile browsers move `position: fixed; top: 0` behind the URL bar when it
@@ -180,7 +189,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   return (
     <>
     <aside
-      aria-label="Primary"
+      aria-label={t.a11y_primary_nav}
       style={{
         width: 260,
         flexShrink: 0,
@@ -368,7 +377,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
           >
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Menu"
+              aria-label={t.a11y_menu}
               aria-expanded={menuOpen}
               style={{
                 background: "none",

@@ -17,6 +17,7 @@ import Image from "next/image";
 import { useCall } from "@/lib/webrtc/use-call";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n";
 
 interface CallOverlayProps {
   /** Mastodon OAuth access token for the authenticated user. */
@@ -24,6 +25,7 @@ interface CallOverlayProps {
 }
 
 export function CallOverlay({ accessToken }: CallOverlayProps) {
+  const { t } = useLocale();
   const {
     callState,
     localStream,
@@ -97,7 +99,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
         style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
         role="dialog"
         aria-modal="true"
-        aria-label="Incoming call"
+        aria-label={t.a11y_incoming_call}
       >
         <div
           className="rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-5 w-80"
@@ -131,14 +133,14 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             <button
               onClick={endCall}
               className="w-14 h-14 rounded-full bg-error text-white flex items-center justify-center text-2xl shadow"
-              aria-label="Decline call"
+              aria-label={t.a11y_decline_call}
             >
               <Icon name="times" color="#fff" />
             </button>
             <button
               onClick={acceptCall}
               className="w-14 h-14 rounded-full bg-success text-white flex items-center justify-center text-2xl shadow"
-              aria-label="Accept call"
+              aria-label={t.a11y_accept_call}
             >
               <Icon name="phone" color="#fff" />
             </button>
@@ -302,8 +304,8 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             <button
               onClick={endCall}
               className="btn btn-circle btn-sm btn-error"
-              aria-label="End call"
-              title="Colgar"
+              aria-label={t.a11y_end_call}
+              title={t.a11y_hang_up}
             >
 <Icon name="times" color="#fff" />
           </button>

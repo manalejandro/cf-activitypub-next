@@ -61,7 +61,7 @@ function NewReportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = getToken();
-  useLocale();
+  const { t } = useLocale();
 
   const [me, setMe] = useState<Me | null>(null);
   const [accountId] = useState(searchParams.get("account_id") ?? "");
@@ -157,7 +157,7 @@ function NewReportPage() {
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => router.back()}
-            aria-label="Back"
+            aria-label={t.a11y_back}
             style={{ fontSize: "1.1rem" }}
           >
             <Icon name="arrow-left" />

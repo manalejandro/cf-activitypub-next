@@ -836,7 +836,7 @@ export default function ProfilePage() {
                       <button
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
-                        title="Voice call"
+                        title={t.profile_call_voice}
                         onClick={() => void initiateCall(account.acct, "audio")}
                       >
                         <Icon name="phone" />
@@ -844,7 +844,7 @@ export default function ProfilePage() {
                       <button
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
-                        title="Video call"
+                        title={t.profile_call_video}
                         onClick={() => void initiateCall(account.acct, "video")}
                       >
                         <Icon name="video-camera" />
@@ -852,7 +852,7 @@ export default function ProfilePage() {
                       <button
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
-                        title="Share screen"
+                        title={t.profile_call_screen}
                         onClick={() => void initiateCall(account.acct, "screen")}
                       >
                         <Icon name="desktop" />
@@ -865,7 +865,7 @@ export default function ProfilePage() {
                         className="btn btn-ghost btn-sm"
                         style={{ border: "1px solid var(--border)" }}
                         onClick={() => setProfileMenuOpen((v) => !v)}
-                        aria-label="More actions"
+                        aria-label={t.a11y_more_actions}
                       >
                         {profileMenuOpen ? <Icon name="times" /> : <Icon name="ellipsis-h" />}
                       </button>
@@ -964,10 +964,10 @@ export default function ProfilePage() {
               <div style={{ fontWeight: 700, fontSize: "1.15rem" }}>
                 {account.display_name || account.username}
                 {account.roles?.some((r) => r.name.toLowerCase() === "admin") && (
-                  <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title="Admin"><Icon name="trophy" size="0.9rem" /></span>
+                  <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_admin}><Icon name="trophy" size="0.9rem" /></span>
                 )}
                 {account.roles?.some((r) => r.name.toLowerCase() === "moderator") && (
-                  <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title="Moderator"><Icon name="trophy" size="0.9rem" color="var(--text-muted)" /></span>
+                  <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_moderator}><Icon name="trophy" size="0.9rem" color="var(--text-muted)" /></span>
                 )}
                 {account.bot && (
                   <span

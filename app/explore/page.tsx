@@ -203,7 +203,7 @@ export default function ExplorePage() {
             />
             {loading && <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", flexShrink: 0 }}>{t.explore_searching}</span>}
             {query && !loading && (
-              <button onClick={() => { setQuery(""); setDebouncedQuery(""); }} aria-label="Clear search"
+              <button onClick={() => { setQuery(""); setDebouncedQuery(""); }} aria-label={t.a11y_clear_search}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1rem", padding: 0, flexShrink: 0 }}>
                 <Icon name="times" color="var(--text-muted)" />
               </button>
@@ -441,7 +441,7 @@ function AccountCard({ account }: { account: Account }) {
       {isRemote && (
         <a href={account.url ?? "#"} target="_blank" rel="noopener noreferrer"
           style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}
-          title="Ver perfil remoto"><Icon name="globe" /></a>
+          title={t.a11y_view_remote_profile}><Icon name="globe" /></a>
       )}
     </div>
   );

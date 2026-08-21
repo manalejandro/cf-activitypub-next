@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { Icon } from "@/components/Icon";
 import { getToken } from "@/lib/client-api";
+import { useLocale } from "@/lib/i18n";
 
 interface PollOption {
   title: string;
@@ -48,6 +49,7 @@ export default function PollPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = getToken();
+  const { t } = useLocale();
 
   const rawId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const pollId = decodeURIComponent(rawId);
@@ -121,7 +123,7 @@ export default function PollPage() {
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => router.back()}
-            aria-label="Back"
+            aria-label={t.a11y_back}
             style={{ fontSize: "1.1rem" }}
           >
             <Icon name="arrow-left" />

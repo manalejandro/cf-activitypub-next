@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS actors (
   moved_to           TEXT,                          -- actor IRI the account migrated to
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  last_active_at     TEXT,
   UNIQUE (username, domain)
 );
 
@@ -185,6 +186,17 @@ CREATE TABLE IF NOT EXISTS domain_blocks (
   domain      TEXT NOT NULL,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id, domain)
+);
+
+CREATE TABLE IF NOT EXISTS instance_domain_blocks (
+  domain          TEXT PRIMARY KEY,
+  severity        TEXT NOT NULL DEFAULT 'suspend',
+  reject_media    INTEGER NOT NULL DEFAULT 1,
+  reject_reports  INTEGER NOT NULL DEFAULT 1,
+  private_comment TEXT,
+  public_comment  TEXT,
+  obfuscate       INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ─────────────────────────────────────────

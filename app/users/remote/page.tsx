@@ -430,7 +430,7 @@ function RemoteProfileInner() {
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)" }}
                       onClick={() => router.push("/messages")}
-                      title="Mensaje directo"
+                      title={t.messages_title}
                     >
                       <Icon name="comment" />
                     </button>
@@ -439,7 +439,7 @@ function RemoteProfileInner() {
                     <button
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)" }}
-                      title="Llamada de voz"
+                      title={t.profile_call_voice}
                       onClick={() => void initiateCall(account.acct, "audio")}
                     >
                       <Icon name="phone" />
@@ -447,7 +447,7 @@ function RemoteProfileInner() {
                     <button
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)" }}
-                      title="Videollamada"
+                      title={t.profile_call_video}
                       onClick={() => void initiateCall(account.acct, "video")}
                     >
                       <Icon name="video-camera" />
@@ -455,7 +455,7 @@ function RemoteProfileInner() {
                     <button
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)" }}
-                      title="Compartir pantalla"
+                      title={t.profile_call_screen}
                       onClick={() => void initiateCall(account.acct, "screen")}
                     >
                       <Icon name="desktop" />
@@ -468,7 +468,7 @@ function RemoteProfileInner() {
                       className="btn btn-ghost btn-sm"
                       style={{ border: "1px solid var(--border)" }}
                       onClick={() => setProfileMenuOpen((v) => !v)}
-                      aria-label="More actions"
+                      aria-label={t.a11y_more_actions}
                     >
                       {profileMenuOpen ? <Icon name="times" /> : <Icon name="ellipsis-h" />}
                     </button>
@@ -548,10 +548,10 @@ function RemoteProfileInner() {
           <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.1rem" }}>
             {displayName}
             {account.roles?.some((r) => r.name.toLowerCase() === "admin") && (
-              <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title="Admin"><Icon name="trophy" size="0.9rem" /></span>
+              <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_admin}><Icon name="trophy" size="0.9rem" /></span>
             )}
             {account.roles?.some((r) => r.name.toLowerCase() === "moderator") && (
-              <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title="Moderator"><Icon name="trophy" size="0.9rem" color="var(--text-muted)" /></span>
+              <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_moderator}><Icon name="trophy" size="0.9rem" color="var(--text-muted)" /></span>
             )}
             {account.bot && (
               <span
