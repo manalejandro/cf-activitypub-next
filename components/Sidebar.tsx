@@ -359,14 +359,14 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
                 cursor: "pointer",
                 fontSize: "1.4rem",
                 lineHeight: 1,
-                color: "var(--text)",
+                color: "var(--accent)",
                 padding: "0.35rem 0.5rem",
                 borderRadius: "var(--radius)",
               }}
             >
-              {menuOpen ? <Icon name="times" color="var(--text)" /> : <Icon name="bars" color="var(--text)" />}
+              {menuOpen ? <Icon name="times" color="var(--accent)" /> : <Icon name="bars" color="var(--accent)" />}
             </button>
-            <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--text)", textDecoration: "none" }}>
+            <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--accent-light)", textDecoration: "none" }}>
               <Image src="/logo.svg" alt="CF ActivityPub" width={26} height={26} />
               <span style={{ fontSize: "1rem" }}>CF ActivityPub</span>
             </Link>
