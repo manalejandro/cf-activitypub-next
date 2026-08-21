@@ -14,6 +14,8 @@ import type {
   LocalCustomEmoji,
   LocalMarker,
   LocalPushSubscription,
+  LocalCollection,
+  LocalCollectionItem,
   OAuthApp,
   OAuthToken,
   AuthorizedAppConnection,
@@ -665,6 +667,230 @@ export async function removeAccountsFromList(
       .bind(listId, actorId)
       .run();
   }
+}
+
+// ─────────────────────────────────────────
+// Collections
+// ─────────────────────────────────────────
+
+/** A collections table row augmented with its item count. */
+export interface CollectionRow {
+  id: string;
+  account_id: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  tag_name: string | null;
+  sensitive: number;
+  discoverable: number;
+  local: number;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+}
+
+function rowToCollection(r: Row): CollectionRow {
+  return {
+    id: r.id,
+    account_id: r.account_id,
+    name: r.name,
+    description: r.description ?? null,
+    language: r.language ?? null,
+    tag_name: r.tag_name ?? null,
+    sensitive: r.sensitive,
+    discoverable: r.discoverable,
+    local: r.local,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    item_count: r.item_count ?? 0,
+  };
+}
+
+const COLLECTION_SELECT = `SELECT c.*, (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) AS item_count FROM collections c`;
+
+export async function createCollection(db: D1Database, col: LocalCollection): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO collections (id, account_id, name, description, language, tag_name, sensitive, discoverable, local, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      col.id,
+      col.accountId,
+      col.name,
+      col.description ?? null,
+      col.language ?? null,
+      col.tagName ?? null,
+      col.sensitive ? 1 : 0,
+      col.discoverable ? 1 : 0,
+      col.local ? 1 : 0,
+      col.createdAt,
+      col.updatedAt
+    )
+    .run();
+}
+
+export async function getCollectionById(db: D1Database, id: string): Promise<CollectionRow | null> {
+  const row = await db
+    .prepare(`${COLLECTION_SELECT} WHERE c.id = ?`)
+    .bind(id)
+    .first<Row>();
+  return row ? rowToCollection(row) : null;
+}
+
+export async function listCollectionsForAccount(
+  db: D1Database,
+  accountId: string,
+  opts: { discoverableOnly?: boolean; limit?: number; offset?: number } = {}
+): Promise<CollectionRow[]> {
+  const { discoverableOnly = false, limit = 40, offset = 0 } = opts;
+  const where = discoverableOnly ? "WHERE c.account_id = ? AND c.discoverable = 1" : "WHERE c.account_id = ?";
+  const rows = await db
+    .prepare(`${COLLECTION_SELECT} ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`)
+    .bind(accountId, limit, offset)
+    .all<Row>();
+  return (rows.results ?? []).map(rowToCollection);
+}
+
+export async function listCollectionsFeaturedIn(
+  db: D1Database,
+  accountId: string,
+  opts: { limit?: number; offset?: number } = {}
+): Promise<CollectionRow[]> {
+  const { limit = 40, offset = 0 } = opts;
+  const rows = await db
+    .prepare(
+      `${COLLECTION_SELECT} JOIN collection_items ci ON ci.collection_id = c.id
+       WHERE ci.account_id = ? AND ci.state = 'accepted'
+       GROUP BY c.id
+       ORDER BY c.created_at DESC LIMIT ? OFFSET ?`
+    )
+    .bind(accountId, limit, offset)
+    .all<Row>();
+  return (rows.results ?? []).map(rowToCollection);
+}
+
+export async function updateCollection(
+  db: D1Database,
+  id: string,
+  fields: {
+    name?: string;
+    description?: string | null;
+    language?: string | null;
+    tagName?: string | null;
+    sensitive?: boolean;
+    discoverable?: boolean;
+  }
+): Promise<void> {
+  const sets: string[] = ["updated_at = ?"];
+  const vals: unknown[] = [new Date().toISOString()];
+  if (fields.name !== undefined) { sets.push("name = ?"); vals.push(fields.name); }
+  if (fields.description !== undefined) { sets.push("description = ?"); vals.push(fields.description); }
+  if (fields.language !== undefined) { sets.push("language = ?"); vals.push(fields.language); }
+  if (fields.tagName !== undefined) { sets.push("tag_name = ?"); vals.push(fields.tagName); }
+  if (fields.sensitive !== undefined) { sets.push("sensitive = ?"); vals.push(fields.sensitive ? 1 : 0); }
+  if (fields.discoverable !== undefined) { sets.push("discoverable = ?"); vals.push(fields.discoverable ? 1 : 0); }
+  if (vals.length === 1) return;
+  vals.push(id);
+  await db.prepare(`UPDATE collections SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+}
+
+export async function deleteCollection(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM collections WHERE id = ?").bind(id).run();
+}
+
+export async function getCollectionItems(db: D1Database, collectionId: string): Promise<LocalCollectionItem[]> {
+  const rows = await db
+    .prepare("SELECT id, collection_id, account_id, state, created_at FROM collection_items WHERE collection_id = ? ORDER BY created_at ASC")
+    .bind(collectionId)
+    .all<{ id: string; collection_id: string; account_id: string; state: string; created_at: string }>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    collectionId: r.collection_id,
+    accountId: r.account_id,
+    state: r.state === "pending" ? "pending" : "accepted",
+    createdAt: r.created_at,
+  }));
+}
+
+export async function getCollectionAccountIds(db: D1Database, collectionId: string): Promise<string[]> {
+  const rows = await db
+    .prepare("SELECT account_id FROM collection_items WHERE collection_id = ?")
+    .bind(collectionId)
+    .all<{ account_id: string }>();
+  return (rows.results ?? []).map((r) => r.account_id);
+}
+
+export async function getCollectionItemByAccount(
+  db: D1Database,
+  collectionId: string,
+  accountId: string
+): Promise<LocalCollectionItem | null> {
+  const row = await db
+    .prepare("SELECT id, collection_id, account_id, state, created_at FROM collection_items WHERE collection_id = ? AND account_id = ?")
+    .bind(collectionId, accountId)
+    .first<{ id: string; collection_id: string; account_id: string; state: string; created_at: string }>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    collectionId: row.collection_id,
+    accountId: row.account_id,
+    state: row.state === "pending" ? "pending" : "accepted",
+    createdAt: row.created_at,
+  };
+}
+
+export async function getCollectionItemById(
+  db: D1Database,
+  id: string
+): Promise<LocalCollectionItem | null> {
+  const row = await db
+    .prepare("SELECT id, collection_id, account_id, state, created_at FROM collection_items WHERE id = ?")
+    .bind(id)
+    .first<{ id: string; collection_id: string; account_id: string; state: string; created_at: string }>();
+  if (!row) return null;
+  return {
+    id: row.id,
+    collectionId: row.collection_id,
+    accountId: row.account_id,
+    state: row.state === "pending" ? "pending" : "accepted",
+    createdAt: row.created_at,
+  };
+}
+
+export async function addAccountToCollection(
+  db: D1Database,
+  collectionId: string,
+  accountId: string
+): Promise<LocalCollectionItem | null> {
+  const actor = await getActorById(db, accountId);
+  if (!actor) return null;
+  const existing = await getCollectionItemByAccount(db, collectionId, accountId);
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  await db
+    .prepare("INSERT INTO collection_items (id, collection_id, account_id, state, created_at) VALUES (?, ?, ?, 'accepted', ?)")
+    .bind(id, collectionId, accountId, createdAt)
+    .run();
+  return { id, collectionId, accountId, state: "accepted" as const, createdAt };
+}
+
+export async function removeAccountFromCollection(
+  db: D1Database,
+  collectionId: string,
+  accountId: string
+): Promise<boolean> {
+  const result = await db
+    .prepare("DELETE FROM collection_items WHERE collection_id = ? AND account_id = ?")
+    .bind(collectionId, accountId)
+    .run();
+  return result.meta.changes > 0;
+}
+
+export async function deleteCollectionItem(db: D1Database, id: string): Promise<boolean> {
+  const result = await db.prepare("DELETE FROM collection_items WHERE id = ?").bind(id).run();
+  return result.meta.changes > 0;
 }
 
 // ─────────────────────────────────────────

@@ -12,6 +12,7 @@ import type {
   LocalPoll,
   LocalPollOption,
   LocalCustomEmoji,
+  LocalCollectionItem,
   MastodonAccount,
   MastodonAttachment,
   MastodonAttachmentMeta,
@@ -20,6 +21,7 @@ import type {
   MastodonNotification,
   MastodonInstance,
   MastodonMention,
+  MastodonCollection,
   APTag,
   APObject,
   APObjectMeta,
@@ -142,8 +144,55 @@ export function serializeAccount(
 }
 
 // ─────────────────────────────────────────
-// Status serializer
+// Collection serializer
 // ─────────────────────────────────────────
+
+/** Structurally matches the collections row shape returned by lib/db. */
+export interface CollectionInput {
+  id: string;
+  account_id: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  tag_name: string | null;
+  sensitive: number;
+  discoverable: number;
+  local: number;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+}
+
+export function serializeCollection(
+  col: CollectionInput,
+  localDomain: string,
+  items: LocalCollectionItem[] = []
+): MastodonCollection {
+  const baseUrl = `https://${localDomain}`;
+  const tagName = col.tag_name ? col.tag_name.replace(/^#/, "") : null;
+  return {
+    id: col.id,
+    account_id: col.account_id,
+    uri: `${baseUrl}/collections/${col.id}`,
+    url: `${baseUrl}/collections/${col.id}`,
+    name: col.name,
+    description: col.description,
+    language: col.language,
+    local: Boolean(col.local),
+    sensitive: Boolean(col.sensitive),
+    discoverable: Boolean(col.discoverable),
+    tag: tagName ? { name: tagName, url: `${baseUrl}/tags/${encodeURIComponent(tagName)}` } : null,
+    item_count: col.item_count,
+    items: items.map((i) => ({
+      id: i.id,
+      account_id: i.accountId,
+      state: i.state,
+      created_at: toIso(i.createdAt) ?? i.createdAt,
+    })),
+    created_at: toIso(col.created_at) ?? col.created_at,
+    updated_at: toIso(col.updated_at) ?? col.updated_at,
+  };
+}
 
 /**
  * Render federated status content for display.

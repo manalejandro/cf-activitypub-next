@@ -487,6 +487,37 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS idx_conversations_actor ON conversations(actor_id);
 
 -- ─────────────────────────────────────────
+-- Collections (curated collections of accounts)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS collections (
+  id            TEXT PRIMARY KEY,
+  account_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  language      TEXT,
+  tag_name      TEXT,
+  sensitive     INTEGER NOT NULL DEFAULT 0,
+  discoverable  INTEGER NOT NULL DEFAULT 0,
+  local         INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_collections_account ON collections(account_id);
+
+CREATE TABLE IF NOT EXISTS collection_items (
+  id            TEXT PRIMARY KEY,
+  collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  account_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  state         TEXT NOT NULL DEFAULT 'accepted',
+  created_at    TEXT NOT NULL,
+  UNIQUE (collection_id, account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id);
+CREATE INDEX IF NOT EXISTS idx_collection_items_account ON collection_items(account_id);
+
+-- ─────────────────────────────────────────
 -- Filters (v2)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS filters (

@@ -53,7 +53,7 @@ export default function HomePage() {
     return { items, hasMore: items.length >= 20 };
   }, []);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh } = useTimelineCache("home", fetchPage);
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache("home", fetchPage, { refetchOnMount: true });
 
   // Real-time home feed streaming
   useTimelineStream("user", (event, payload) => {
@@ -74,7 +74,7 @@ export default function HomePage() {
         setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
       } catch { /* ignore */ }
     }
-  });
+  }, { onReconnect: () => { void catchUp(); } });
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);

@@ -15,6 +15,21 @@ export interface FetchPageResult<T> {
   hasMore: boolean;
 }
 
+export interface UseTimelineCacheOptions {
+  /**
+   * When true, entering this feed (a fresh mount, not a tab switch) always
+   * starts at the top: the remembered scroll offset is discarded and any
+   * browser/Next.js scroll restoration (e.g. back/forward) is overridden.
+   */
+  resetScrollOnEntry?: boolean;
+  /**
+   * When true, a fresh cached feed is still refetched in the background on
+   * mount so posts that arrived while the page was closed are caught up. This
+   * fixes feeds (like home) that have no tab-switch to trigger a refresh.
+   */
+  refetchOnMount?: boolean;
+}
+
 // Set to true whenever the user traverses history (browser back/forward). The
 // scroll position is only restored after such traversals — entering a feed
 // through the sidebar or a tab switch should always start at the top.
@@ -58,9 +73,27 @@ function restoreScroll(y: number) {
   setTimeout(() => window.removeEventListener("scroll", guard), 1000);
 }
 
+// Force the window back to the top, defending against a browser/Next.js scroll
+// restore running after ours (the mirror of restoreScroll, but for offset 0).
+function resetScrollToTop() {
+  const apply = () => window.scrollTo(0, 0);
+  requestAnimationFrame(() => requestAnimationFrame(apply));
+  let reapplied = false;
+  const guard = () => {
+    if (reapplied) return;
+    if (window.scrollY !== 0) {
+      reapplied = true;
+      apply();
+    }
+  };
+  window.addEventListener("scroll", guard);
+  setTimeout(() => window.removeEventListener("scroll", guard), 1000);
+}
+
 export function useTimelineCache<T extends { id: string }>(
   key: string,
-  fetchPage: (maxId?: string) => Promise<FetchPageResult<T>>
+  fetchPage: (maxId?: string) => Promise<FetchPageResult<T>>,
+  options: UseTimelineCacheOptions = {}
 ): {
   statuses: T[];
   setStatuses: Dispatch<SetStateAction<T[]>>;
@@ -73,6 +106,7 @@ export function useTimelineCache<T extends { id: string }>(
   seenIdsRef: RefObject<Set<string>>;
   loadMore: () => void;
   refresh: () => Promise<void>;
+  catchUp: () => Promise<void>;
 } {
   const initial = getTimelineCache<T>(key);
   const [statuses, setStatuses] = useState<T[]>(initial?.items ?? []);
@@ -84,6 +118,7 @@ export function useTimelineCache<T extends { id: string }>(
   const keyRef = useRef(key);
   const prevKeyRef = useRef(key);
   const fetchPageRef = useRef(fetchPage);
+  const optionsRef = useRef(options);
   const statusesRef = useRef(statuses);
   const hasMoreRef = useRef(hasMore);
   const loadingMoreRef = useRef(loadingMore);
@@ -96,10 +131,11 @@ export function useTimelineCache<T extends { id: string }>(
   useEffect(() => {
     keyRef.current = key;
     fetchPageRef.current = fetchPage;
+    optionsRef.current = options;
     statusesRef.current = statuses;
     hasMoreRef.current = hasMore;
     loadingMoreRef.current = loadingMore;
-  }, [key, fetchPage, statuses, hasMore, loadingMore]);
+  }, [key, fetchPage, options, statuses, hasMore, loadingMore]);
 
   // Loads the first page, or restores a cached feed for the active key. Runs on
   // mount and whenever the key changes (e.g. switching local/federated tabs).
@@ -110,7 +146,8 @@ export function useTimelineCache<T extends { id: string }>(
       // From this point on `statuses` belongs to the new key, so the cache-sync
       // effect may write it under the new key (and must not under the old one).
       loadedKeyRef.current = key;
-      const historyRestore = restoredOnHistoryTraversal;
+      const resetOnEntry = optionsRef.current.resetScrollOnEntry === true;
+      const historyRestore = !resetOnEntry && restoredOnHistoryTraversal;
       restoredOnHistoryTraversal = false;
       const tabSwitch = prevKeyRef.current !== key;
       // Persist the feed we are leaving right away: a fast tab switch can
@@ -122,7 +159,16 @@ export function useTimelineCache<T extends { id: string }>(
         if (prevEntry) prevEntry.scrollY = window.scrollY;
       }
       prevKeyRef.current = key;
+      // Entering a reset-on-entry feed always starts at the top: discard the
+      // remembered offset and force the scroll so browser/Next.js restoration
+      // (e.g. back/forward) cannot leave us scrolled down.
+      if (resetOnEntry && !tabSwitch) {
+        const entry = getTimelineCache(key);
+        if (entry) entry.scrollY = 0;
+        resetScrollToTop();
+      }
       const cached = getTimelineCache<T>(key);
+      const refetchOnMount = optionsRef.current.refetchOnMount === true;
       // Position this feed should end up at: its own remembered offset, or the
       // top when it has no usable cache. Enforced on tab switches (and history
       // traversals); the initial mount leaves the browser's scroll alone.
@@ -133,12 +179,14 @@ export function useTimelineCache<T extends { id: string }>(
       // of inheriting the previous feed's. History traversals restore too.
       const shouldRestore = historyRestore || tabSwitch;
 
-      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch) {
+      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch && !refetchOnMount) {
         // Mount or history traversal with a fresh cache: restore instantly,
         // nothing to refetch yet. A tab switch never short-circuits here —
         // switching feeds is an explicit request to see the latest content, so
         // the (fresh) cache is shown immediately and refreshed in the
         // background below (new posts appear even if the stream missed them).
+        // Feeds that opt into refetchOnMount also skip the short-circuit so
+        // they always catch up on posts that arrived while the page was closed.
         seenIdsRef.current = new Set(cached.seenIds);
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
@@ -291,6 +339,35 @@ export function useTimelineCache<T extends { id: string }>(
     }
   }, [setStatuses, setHasMore, setLoading]);
 
+  // Fetch the first page and merge any new items on top, preserving the current
+  // scroll position and any items already in the feed. Used to catch up after a
+  // WebSocket reconnect gap without the disruptive full replace that `refresh`
+  // performs.
+  const catchUp = useCallback(async () => {
+    try {
+      const result = await fetchPageRef.current();
+      setStatuses((prev) => {
+        const known = new Set(prev.map((s) => s.id));
+        const freshTop = result.items.filter((s) => !known.has(s.id));
+        const merged = prev.length > 0 && result.items.length > 0 ? [...freshTop, ...prev] : result.items;
+        seenIdsRef.current = new Set(merged.map((s) => s.id));
+        setTimelineCache(keyRef.current, {
+          items: merged,
+          hasMore: result.hasMore,
+          seenIds: [...seenIdsRef.current],
+          scrollY: getTimelineCache(keyRef.current)?.scrollY ?? 0,
+          fetchedAt: Date.now(),
+          ready: true,
+        });
+        return merged;
+      });
+      setHasMore(result.hasMore);
+      setLoading(false);
+    } catch {
+      setLoading(false);
+    }
+  }, [setStatuses, setHasMore, setLoading]);
+
   return {
     statuses,
     setStatuses,
@@ -303,5 +380,6 @@ export function useTimelineCache<T extends { id: string }>(
     seenIdsRef,
     loadMore,
     refresh,
+    catchUp,
   };
 }

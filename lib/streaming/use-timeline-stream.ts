@@ -19,6 +19,8 @@ interface UseTimelineStreamOptions {
   enabled?: boolean;
   /** Extra query params to append to the WebSocket URL (e.g. { tag: "cats" }) */
   extraParams?: Record<string, string>;
+  /** Called each time the connection re-opens after a previous connection. */
+  onReconnect?: () => void;
 }
 
 export function useTimelineStream(
@@ -26,7 +28,7 @@ export function useTimelineStream(
   onEvent: (event: StreamEvent, payload: string) => void,
   options: UseTimelineStreamOptions = {}
 ): void {
-  const { enabled = true, extraParams } = options;
+  const { enabled = true, extraParams, onReconnect } = options;
   const onEventRef = useRef(onEvent);
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -40,6 +42,7 @@ export function useTimelineStream(
     let retryDelay = 1000;
     let destroyed = false;
     let openedAt = 0;
+    let everOpened = false;
 
     function connect() {
       if (destroyed) return;
@@ -57,6 +60,10 @@ export function useTimelineStream(
 
       ws.onopen = () => {
         openedAt = Date.now();
+        // Catch up after a reconnect: the gap between the old and new socket
+        // may have dropped statuses the stream will not replay.
+        if (everOpened) onReconnect?.();
+        everOpened = true;
       };
 
       ws.onmessage = (event) => {

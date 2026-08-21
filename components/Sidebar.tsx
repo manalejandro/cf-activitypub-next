@@ -148,6 +148,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     { label: t.nav_bookmarks, icon: "bookmark", href: "/bookmarks", badge: 0 },
     { label: t.nav_favourites, icon: "heart", href: "/favourites", badge: 0 },
     { label: t.nav_lists, icon: "list-alt", href: "/lists", badge: 0 },
+    { label: t.nav_collections, icon: "users", href: "/collections", badge: 0 },
     { label: t.nav_followed_tags, icon: "tags", href: "/followed_tags", badge: 0 },
     { label: t.nav_mutes, icon: "microphone-slash", href: "/mutes", badge: 0 },
     { label: t.nav_scheduled, icon: "calendar", href: "/scheduled", badge: 0 },

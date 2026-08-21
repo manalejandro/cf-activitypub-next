@@ -692,7 +692,7 @@ export function StatusCard({
           >
             {bookmarked ? <Icon name="bookmark" /> : <Icon name="bookmark-o" />}
           </button>
-          {status.language && (
+          {status.language && !(me && me.id === status.account.id) && (
             <button
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem" }}

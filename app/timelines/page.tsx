@@ -9,7 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { getLastTimelineView, setLastTimelineView } from "@/lib/streaming/timeline-cache";
+import { getLastTimelineView, setLastTimelineView, getTimelineCache } from "@/lib/streaming/timeline-cache";
 import { statusHtmlToPlain } from "@/lib/activitypub/content";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
@@ -43,7 +43,7 @@ export default function TimelinesPage() {
     return { items, hasMore: items.length > 0 };
   }, [view]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage);
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true });
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
@@ -124,6 +124,13 @@ export default function TimelinesPage() {
   // Mount: initial account load (timeline is loaded by useTimelineCache)
   useEffect(() => {
     Promise.resolve().then(() => void fetchMe());
+    // Entering the timelines page resets the remembered scroll offsets of BOTH
+    // feeds so neither local nor federated restores an old position on this
+    // visit (the active feed is handled by useTimelineCache's resetScrollOnEntry).
+    for (const k of ["local", "federated"]) {
+      const entry = getTimelineCache(k);
+      if (entry) entry.scrollY = 0;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

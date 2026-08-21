@@ -649,6 +649,30 @@ export interface LocalPushSubscription {
   updatedAt: string;
 }
 
+/** A curated collection of accounts a user recommends others to follow. */
+export interface LocalCollection {
+  id: string;
+  accountId: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  tagName: string | null;
+  sensitive: boolean;
+  discoverable: boolean;
+  local: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An account featured inside a collection. */
+export interface LocalCollectionItem {
+  id: string;
+  collectionId: string;
+  accountId: string;
+  state: "accepted" | "pending";
+  createdAt: string;
+}
+
 export interface MastodonSource {
   note: string;
   fields: MastodonField[];
@@ -718,6 +742,31 @@ export interface MastodonList {
   title: string;
   replies_policy: string;
   exclusive: boolean;
+}
+
+export interface MastodonCollectionItem {
+  id: string;
+  account_id: string;
+  state: string;
+  created_at: string;
+}
+
+export interface MastodonCollection {
+  id: string;
+  account_id: string;
+  uri: string;
+  url: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  local: boolean;
+  sensitive: boolean;
+  discoverable: boolean;
+  tag: { name: string; url: string } | null;
+  item_count: number;
+  items: MastodonCollectionItem[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MastodonFilterV2 {
