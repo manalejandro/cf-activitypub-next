@@ -199,7 +199,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 px-2">
         <Image src="/logo.svg" alt="CF ActivityPub" width={32} height={32} />
-        <span style={{ fontWeight: 700, fontSize: "1.1rem" }}>CF ActivityPub</span>
+        <span style={{ fontWeight: 700, fontSize: "1rem" }}>CF ActivityPub</span>
         {version && (
           <span style={{ fontSize: "0.7rem", fontWeight: 400, color: "var(--accent-light)", opacity: 0.75 }}>v{version}</span>
         )}
