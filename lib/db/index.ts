@@ -288,6 +288,21 @@ export async function getActorByUsername(
 }
 
 /**
+ * The instance's contact account: the first (oldest) local admin or moderator
+ * that is not the Guardian bot.
+ */
+export async function getInstanceContactActor(db: D1Database): Promise<LocalActor | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM actors
+       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND username != 'guardian'
+       ORDER BY created_at ASC LIMIT 1`
+    )
+    .first<Row>();
+  return row ? rowToActor(row) : null;
+}
+
+/**
  * Resolve an actor from any of the IRIs a remote object may reference:
  * the canonical id ("https://host/users/name"), the web profile URL
  * ("https://host/@name") or a plain "name@host" acct. Falls back to

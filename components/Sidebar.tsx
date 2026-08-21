@@ -24,6 +24,7 @@ interface SidebarProps {
 export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const { t, locale, setLocale } = useLocale();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [version, setVersion] = useState<string | null>(null);
   const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
   const me = propMe ?? localMe;
   const isStaff = me?.roles?.some((r) => r.name.toLowerCase() === "admin" || r.name.toLowerCase() === "moderator") ?? false;
@@ -68,6 +69,19 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
       if (res.ok) {
         const data = await res.json() as { count: number };
         setUnreadCount(data.count);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Fetch the instance version for the logo caption.
+  useEffect(() => {
+    fetch("/api/v1/instance").then(async (res) => {
+      if (res.ok) {
+        const data = await res.json() as { version?: string };
+        if (data.version) {
+          const m = data.version.match(/compatible;\s*([^)]+)/);
+          setVersion(m ? m[1] : data.version);
+        }
       }
     }).catch(() => {});
   }, []);
@@ -186,6 +200,9 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
       <Link href="/" className="flex items-center gap-2 px-2">
         <Image src="/logo.svg" alt="CF ActivityPub" width={32} height={32} />
         <span style={{ fontWeight: 700, fontSize: "1.1rem" }}>CF ActivityPub</span>
+        {version && (
+          <span style={{ fontSize: "0.7rem", fontWeight: 400, color: "var(--accent-light)", opacity: 0.75 }}>v{version}</span>
+        )}
       </Link>
 
       {/* Nav */}
@@ -369,6 +386,9 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
             <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--accent-light)", textDecoration: "none" }}>
               <Image src="/logo.svg" alt="CF ActivityPub" width={26} height={26} />
               <span style={{ fontSize: "1rem" }}>CF ActivityPub</span>
+              {version && (
+                <span style={{ fontSize: "0.68rem", fontWeight: 400, opacity: 0.75 }}>v{version}</span>
+              )}
             </Link>
             <button
               onClick={toggleTheme}

@@ -1,14 +1,17 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
+import { getInstanceContactActor } from "@/lib/db";
+import { serializeAccount } from "@/lib/mastodon/serializers";
 
 // GET /api/v1/instance (legacy Mastodon v1)
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
-  const [userRow, postRow] = await Promise.all([
+  const [userRow, postRow, contactActor] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
     env.DB.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
+    getInstanceContactActor(env.DB),
   ]);
 
   const userCount = userRow?.count ?? 0;
@@ -23,12 +26,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     description,
     short_description: description,
     email: `admin@${domain}`,
-    version: `4.3.0 (compatible; ${appVersion})`,
+    version: `4.7.0 (compatible; ${appVersion})`,
     urls: { streaming_api: `wss://${domain}/api/v1/streaming` },
     stats: { user_count: userCount, status_count: statusCount, domain_count: 1 },
     thumbnail: `https://${domain}/logo.svg`,
     languages: ["en"],
-    contact_account: null,
+    contact_account: contactActor ? serializeAccount(contactActor, domain) : null,
     vapid_public_key: env.VAPID_PUBLIC_KEY ?? null,
     rules: [],
     registrations: true,

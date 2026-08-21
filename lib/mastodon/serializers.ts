@@ -593,7 +593,7 @@ export function serializeInstanceV2(
   return {
     uri: domain,
     title,
-    version: `4.3.0 (compatible; ${version})`,
+    version: `4.7.0 (compatible; ${version})`,
     source_url: "https://github.com/manalejandro/cf-activitypub-next",
     description,
     usage: { users: { active_month: userCount } },
