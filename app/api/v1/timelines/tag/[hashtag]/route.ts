@@ -22,9 +22,9 @@ export async function GET(
   const sinceIdRaw = searchParams.get("since_id") ?? undefined;
   const sinceId = sinceIdRaw ? decodeStatusId(sinceIdRaw, domain) : undefined;
 
-  const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId);
-
   const authActor = await getAuthenticatedActor(request, env.DB);
+
+  const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),

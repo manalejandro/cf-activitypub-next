@@ -31,8 +31,9 @@ interface Account {
 }
 
 interface TrendingTag { name: string; url: string; history: { day: string; uses: string; accounts: string }[]; }
-interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: TrendingTag[]; }
-type Tab = "trending" | "trending_tags" | "accounts" | "hashtags" | "statuses";
+interface Collection { id: string; name: string; description: string | null; item_count: number; account_id: string; }
+interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: TrendingTag[]; collections: Collection[]; }
+type Tab = "trending" | "trending_tags" | "accounts" | "hashtags" | "statuses" | "collections";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ export default function ExplorePage() {
   const [tab, setTab] = useState<Tab>("trending");
   const [trendingStatuses, setTrendingStatuses] = useState<Status[]>([]);
   const [trendingTags, setTrendingTags] = useState<TrendingTag[]>([]);
-  const [results, setResults] = useState<SearchResults>({ accounts: [], statuses: [], hashtags: [] });
+  const [results, setResults] = useState<SearchResults>({ accounts: [], statuses: [], hashtags: [], collections: [] });
   const [loading, setLoading] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const [editText, setEditText] = useState("");
@@ -83,6 +84,7 @@ export default function ExplorePage() {
       if (data.accounts.length) setTab("accounts");
       else if (data.hashtags.length) setTab("hashtags");
       else if (data.statuses.length) setTab("statuses");
+      else if (data.collections.length) setTab("collections");
       else setTab("accounts");
     }
     setLoading(false);
@@ -161,13 +163,14 @@ export default function ExplorePage() {
   }
 
   const isSearching = debouncedQuery.trim().length > 0;
-  const hasResults = results.accounts.length + results.statuses.length + results.hashtags.length > 0;
+  const hasResults = results.accounts.length + results.statuses.length + results.hashtags.length + results.collections.length > 0;
 
   const TABS: { id: Tab; label: string; count?: number }[] = isSearching
     ? [
         { id: "accounts", label: t.explore_tab_accounts, count: results.accounts.length },
         { id: "hashtags", label: t.explore_tab_hashtags, count: results.hashtags.length },
         { id: "statuses", label: t.explore_tab_posts, count: results.statuses.length },
+        { id: "collections", label: t.explore_tab_collections, count: results.collections.length },
       ]
     : [
         { id: "trending", label: t.explore_tab_trending_all },
@@ -192,7 +195,7 @@ export default function ExplorePage() {
                 setQuery(next);
                 if (!next.trim()) {
                   setDebouncedQuery("");
-                  setResults({ accounts: [], statuses: [], hashtags: [] });
+                  setResults({ accounts: [], statuses: [], hashtags: [], collections: [] });
                   setTab("trending");
                 }
               }}
@@ -267,6 +270,10 @@ export default function ExplorePage() {
         {tab === "statuses" && isSearching && (
           results.statuses.length === 0 && !loading ? <EmptyState icon="pencil" text={t.explore_no_posts} /> :
           <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
+        )}
+        {tab === "collections" && isSearching && (
+          results.collections.length === 0 && !loading ? <EmptyState icon="users" text={t.explore_no_collections} /> :
+          <>{results.collections.map((c) => <CollectionCard key={c.id} collection={c} />)}</>
         )}
 
         {isSearching && !loading && !hasResults && (
@@ -437,6 +444,28 @@ function AccountCard({ account }: { account: Account }) {
           title="Ver perfil remoto"><Icon name="globe" /></a>
       )}
     </div>
+  );
+}
+
+function CollectionCard({ collection }: { collection: Collection }) {
+  const { t } = useLocale();
+  return (
+    <Link href={`/collections/${encodeURIComponent(collection.id)}`}
+      style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}>
+      <div style={{ width: 42, height: 42, flexShrink: 0, borderRadius: "var(--radius)", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
+        <Icon name="users" size="1.1rem" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600 }}>{collection.name}</div>
+        {collection.description && (
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{collection.description}</div>
+        )}
+        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+          {t.collections_item_count.replace("{count}", String(collection.item_count))}
+        </div>
+      </div>
+      <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: "1rem" }}><Icon name="chevron-right" /></span>
+    </Link>
   );
 }
 

@@ -147,7 +147,7 @@ export function useTimelineCache<T extends { id: string }>(
       // effect may write it under the new key (and must not under the old one).
       loadedKeyRef.current = key;
       const resetOnEntry = optionsRef.current.resetScrollOnEntry === true;
-      const historyRestore = !resetOnEntry && restoredOnHistoryTraversal;
+      const historyRestore = restoredOnHistoryTraversal;
       restoredOnHistoryTraversal = false;
       const tabSwitch = prevKeyRef.current !== key;
       // Persist the feed we are leaving right away: a fast tab switch can
@@ -159,10 +159,11 @@ export function useTimelineCache<T extends { id: string }>(
         if (prevEntry) prevEntry.scrollY = window.scrollY;
       }
       prevKeyRef.current = key;
-      // Entering a reset-on-entry feed always starts at the top: discard the
-      // remembered offset and force the scroll so browser/Next.js restoration
-      // (e.g. back/forward) cannot leave us scrolled down.
-      if (resetOnEntry && !tabSwitch) {
+      // A fresh entry into a reset-on-entry feed starts at the top: discard the
+      // remembered offset and force the scroll so a lingering browser scroll
+      // cannot leave us scrolled down. Returning via back/forward (history
+      // traversal) or switching tabs must NOT reset — those restore the offset.
+      if (resetOnEntry && !tabSwitch && !historyRestore) {
         const entry = getTimelineCache(key);
         if (entry) entry.scrollY = 0;
         resetScrollToTop();
@@ -179,14 +180,16 @@ export function useTimelineCache<T extends { id: string }>(
       // of inheriting the previous feed's. History traversals restore too.
       const shouldRestore = historyRestore || tabSwitch;
 
-      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch && !refetchOnMount) {
+      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch && (!refetchOnMount || historyRestore)) {
         // Mount or history traversal with a fresh cache: restore instantly,
         // nothing to refetch yet. A tab switch never short-circuits here —
         // switching feeds is an explicit request to see the latest content, so
         // the (fresh) cache is shown immediately and refreshed in the
         // background below (new posts appear even if the stream missed them).
-        // Feeds that opt into refetchOnMount also skip the short-circuit so
-        // they always catch up on posts that arrived while the page was closed.
+        // Feeds that opt into refetchOnMount still skip the short-circuit on a
+        // fresh mount so they catch up on posts that arrived while the page was
+        // closed — but a history traversal (back from a status detail) restores
+        // the exact scroll offset and must not refetch/re-anchor.
         seenIdsRef.current = new Set(cached.seenIds);
         setStatuses(cached.items);
         setHasMore(cached.hasMore);

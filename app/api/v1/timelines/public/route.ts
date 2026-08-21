@@ -59,7 +59,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const minId = minIdRaw ? decodeStatusId(minIdRaw, domain) : undefined;
 
   const authActor = await getAuthenticatedActor(request, env.DB);
-  const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId);
+  const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),

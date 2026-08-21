@@ -17,11 +17,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!me) return unauthorized();
 
   const where = `la.list_id = ?
-     AND o.visibility IN ('public', 'unlisted')`;
+     AND o.visibility IN ('public', 'unlisted')
+     AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+     AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`;
   let sql = `SELECT o.* FROM objects o
      JOIN list_accounts la ON la.actor_id = o.actor_id
      WHERE ${where}`;
-  const args: unknown[] = [listId];
+  const args: unknown[] = [listId, me.id, me.id];
 
   if (maxId) {
     sql += ` AND o.published < (SELECT published FROM objects WHERE id = ?)`;

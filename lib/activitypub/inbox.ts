@@ -32,6 +32,7 @@ import {
   createPollVotes,
   getAllCustomEmojis,
   getLocalInteractedActorIds,
+  isActorBlockedBy,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -368,8 +369,9 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   });
 
   // Direct messages create an unread conversation for the local recipient
-  // and show up in the notifications column.
-  if (visibility === "direct" && ctx.recipient) {
+  // and show up in the notifications column. Blocked (or domain-blocked)
+  // accounts cannot send the recipient DMs.
+  if (visibility === "direct" && ctx.recipient && !(await isActorBlockedBy(ctx.db, ctx.recipient.id, actorId))) {
     await upsertDirectConversation(ctx.db, ctx.recipient.id, [actorId], obj.id, true);
     const notif: LocalNotification = {
       id: generateId(),
@@ -563,6 +565,9 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const recipient = await getActorById(ctx.db, recipientInfo.id);
   if (!recipient) return;
+
+  // A blocked (or domain-blocked) account cannot follow the recipient.
+  if (await isActorBlockedBy(ctx.db, recipientInfo.id, actorId)) return;
 
   // Ensure the remote follower actor is in the DB before writing FK rows
   const followerActor = await ensureActorCached(ctx.db, actorId);

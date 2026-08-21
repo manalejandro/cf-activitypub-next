@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis } from "@/lib/db";
-import { serializeAccount, serializeStatus } from "@/lib/mastodon/serializers";
+import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections } from "@/lib/db";
+import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const offset = parseInt(sp.get("offset") ?? "0");
   const resolve = sp.get("resolve") === "true";
 
-  if (!q) return json({ accounts: [], statuses: [], hashtags: [] });
+  if (!q) return json({ accounts: [], statuses: [], hashtags: [], collections: [] });
 
   const me = await getAuthenticatedActor(request, env.DB);
 
@@ -27,11 +27,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     accounts: unknown[];
     statuses: unknown[];
     hashtags: { name: string; url: string; history: unknown[] }[];
-  } = { accounts: [], statuses: [], hashtags: [] };
+    collections: unknown[];
+  } = { accounts: [], statuses: [], hashtags: [], collections: [] };
 
   const doAccounts = type === "all" || type === "accounts";
   const doStatuses = type === "all" || type === "statuses";
   const doHashtags = type === "all" || type === "hashtags";
+  const doCollections = type === "all" || type === "collections";
 
   // ── Accounts ─────────────────────────────────────────────────────────────
   if (doAccounts) {
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           const webfingerUrl = `https://${remoteDomain}/.well-known/webfinger?resource=acct:${username}@${remoteDomain}`;
           const val = validateOutboundUrl(webfingerUrl);
           if (!val.valid) {
-            return json({ accounts: [], statuses: [], hashtags: [] });
+            return json({ accounts: [], statuses: [], hashtags: [], collections: [] });
           }
           const wfRes = await fetch(webfingerUrl, {
             headers: { Accept: "application/json" },
@@ -191,6 +193,14 @@ export async function GET(request: NextRequest): Promise<Response> {
         history: await getTagHistory(env.DB, name),
       }))
     );
+  }
+
+  // ── Collections ───────────────────────────────────────────────────────────
+  if (doCollections) {
+    const collections = await searchCollections(env.DB, q, { limit, offset });
+    for (const col of collections) {
+      results.collections.push(serializeCollection(col, domain));
+    }
   }
 
   return json(results);

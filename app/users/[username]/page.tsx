@@ -50,7 +50,7 @@ interface Account {
   };
 }
 
-type ActiveTab = "posts" | "replies" | "media" | "followers" | "following" | "pinned";
+type ActiveTab = "posts" | "replies" | "media" | "followers" | "following" | "pinned" | "collections";
 
 interface MediaAttachment {
   id: string;
@@ -117,6 +117,13 @@ interface Relationship {
   blocking: boolean;
   muting?: boolean;
   followed_by?: boolean;
+}
+
+interface Collection {
+  id: string;
+  name: string;
+  description: string | null;
+  item_count: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -236,6 +243,7 @@ export default function ProfilePage() {
   const [pinnedStatuses, setPinnedStatuses] = useState<Status[]>([]);
   const [followers, setFollowers] = useState<Account[]>([]);
   const [following, setFollowing] = useState<Account[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("posts");
@@ -337,6 +345,7 @@ export default function ProfilePage() {
     setPinnedStatuses([]);
     setFollowers([]);
     setFollowing([]);
+    setCollections([]);
     setRelationship(null);
     setNotFound(false);
     setActiveTab("posts");
@@ -456,6 +465,15 @@ export default function ProfilePage() {
         const data = await res.json() as Account[];
         setFollowing(data);
         setHasMoreFollowing(data.length >= 40);
+      }
+    } else if (tab === "collections") {
+      const res = await fetch(
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/collections`,
+        { headers: authHeaders }
+      );
+      if (res.ok) {
+        const data = await res.json() as { collections: Collection[] };
+        setCollections(data.collections ?? []);
       }
     }
     setTabLoaded((p) => ({ ...p, [tab]: true }));
@@ -1028,6 +1046,7 @@ export default function ProfilePage() {
                 { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
                 { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
+                { key: "collections" as ActiveTab, label: t.profile_collections },
               ]).map((tab) => (
                 <button
                   key={tab.key}
@@ -1162,6 +1181,41 @@ export default function ProfilePage() {
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                     {loadingMoreFollowing ? "Cargando…" : ""}
                   </div>
+                </>
+              )
+            )}
+
+            {activeTab === "collections" && (
+              !tabLoaded.collections ? (
+                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+              ) : collections.length === 0 ? (
+                <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>
+                  <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="users" size="2rem" /></span>
+                  {t.collections_empty}
+                </div>
+              ) : (
+                <>
+                  {collections.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/collections/${encodeURIComponent(c.id)}`}
+                      style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
+                    >
+                      <div style={{ width: 42, height: 42, flexShrink: 0, borderRadius: "var(--radius)", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
+                        <Icon name="users" size="1.1rem" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{c.name}</div>
+                        {c.description && (
+                          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.1rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description}</div>
+                        )}
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+                          {t.collections_item_count.replace("{count}", String(c.item_count))}
+                        </div>
+                      </div>
+                      <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: "1rem" }}><Icon name="chevron-right" /></span>
+                    </Link>
+                  ))}
                 </>
               )
             )}

@@ -124,7 +124,14 @@ export async function screenStatus(
       confidence: "high",
       source: "heuristic",
       model: "heuristic",
-      details: { stage: "trusted_allow", flags: signals.flags },
+      details: {
+        stage: "trusted_allow",
+        authorId: input.authorId,
+        authorUsername: input.authorUsername,
+        objectId: input.objectId,
+        content: plainText.slice(0, 300),
+        flags: signals.flags,
+      },
       relatedId: input.authorId,
     });
     return { blocked: false, markedSensitive: false };

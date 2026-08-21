@@ -770,6 +770,29 @@ export async function listCollectionsFeaturedIn(
   return (rows.results ?? []).map(rowToCollection);
 }
 
+export async function searchCollections(
+  db: D1Database,
+  query: string,
+  opts: { limit?: number; offset?: number } = {}
+): Promise<CollectionRow[]> {
+  const { limit = 40, offset = 0 } = opts;
+  const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
+  const tagLike = `%${query.replace(/^#/, "").replace(/[%_]/g, "\\$&")}%`;
+  const rows = await db
+    .prepare(
+      `SELECT c.*, (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) AS item_count
+       FROM collections c
+       JOIN actors a ON a.id = c.account_id
+       WHERE c.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+         AND (c.name LIKE ? ESCAPE '\\' OR c.description LIKE ? ESCAPE '\\' OR c.tag_name LIKE ? ESCAPE '\\')
+       ORDER BY c.created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(like, like, tagLike, limit, offset)
+    .all<Row>();
+  return (rows.results ?? []).map(rowToCollection);
+}
+
 export async function updateCollection(
   db: D1Database,
   id: string,
@@ -1374,7 +1397,8 @@ export async function getPublicTimeline(
   sinceId?: string,
   remote = false,
   onlyMedia = false,
-  minId?: string
+  minId?: string,
+  viewerId?: string
 ): Promise<LocalObject[]> {
   // local=true  → only statuses from this instance
   // local=false → all public statuses (federated timeline)
@@ -1385,6 +1409,13 @@ export async function getPublicTimeline(
   const mediaFilter = onlyMedia ? "AND EXISTS (SELECT 1 FROM attachments a WHERE a.object_id = o.id)" : "";
   // Silenced (limited) and suspended accounts never appear on public timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
+  // Blocked accounts and accounts from a domain-blocked instance are hidden for
+  // the authenticated viewer.
+  const blockFilter = viewerId
+    ? `AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`
+    : "";
+  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId] : [];
   if (sinceId || minId) {
     const pivot = sinceId ?? minId!;
     const pivotRow = await db
@@ -1395,11 +1426,11 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
            AND o.published > ?
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(pivotRow.published, limit)
+      .bind(...blockBinds, pivotRow.published, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1407,21 +1438,21 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
            AND o.published < (SELECT published FROM objects WHERE id = ?)
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(maxId, limit)
+      .bind(...blockBinds, maxId, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
     .prepare(
       `SELECT o.* FROM objects o
-       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter}
+       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
        ORDER BY o.published DESC LIMIT ?`
     )
-    .bind(limit)
+    .bind(...blockBinds, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1439,8 +1470,11 @@ export async function getHomeTimeline(
   // Suspended accounts never appear in any timeline, including the home of
   // their followers (mirrors Mastodon). Silenced accounts still show to
   // followers, so only `suspended` is filtered here.
+  // Blocked accounts and accounts from a domain-blocked instance are hidden.
   const baseWhere = `
     NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
+    AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+    AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
     AND (
       (o.actor_id = ? AND o.visibility != 'direct')
       OR (
@@ -1464,7 +1498,7 @@ export async function getHomeTimeline(
            AND o.published > ?
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(actorId, actorId, pivotRow.published, limit)
+      .bind(actorId, actorId, actorId, actorId, pivotRow.published, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1476,13 +1510,13 @@ export async function getHomeTimeline(
            AND o.published < (SELECT published FROM objects WHERE id = ?)
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(actorId, actorId, maxId, limit)
+      .bind(actorId, actorId, actorId, actorId, maxId, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
     .prepare(`SELECT o.* FROM objects o WHERE ${baseWhere} ORDER BY o.published DESC LIMIT ?`)
-    .bind(actorId, actorId, limit)
+    .bind(actorId, actorId, actorId, actorId, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1492,13 +1526,20 @@ export async function getHashtagTimeline(
   hashtag: string,
   limit = 20,
   maxId?: string,
-  sinceId?: string
+  sinceId?: string,
+  viewerId?: string
 ): Promise<LocalObject[]> {
   // Search the raw AP JSON for Hashtag tag entries matching the given hashtag name.
   // LIKE is case-insensitive for ASCII in SQLite, so #test matches #Test etc.
   const likePattern = `%"name":"#${hashtag.toLowerCase()}"%`;
   // Silenced (limited) and suspended accounts never appear on hashtag timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
+  // Blocked accounts and accounts from a domain-blocked instance are hidden.
+  const blockFilter = viewerId
+    ? `AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`
+    : "";
+  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId] : [];
   if (sinceId) {
     // Newer-than cursor — used for live polling. Returns the newest posts newer
     // than the reference post (exclusive), newest first to match timeline order.
@@ -1516,10 +1557,10 @@ export async function getHashtagTimeline(
          WHERE o.visibility IN ('public', 'unlisted')
            AND o.raw LIKE ?
            AND o.published > ?
-           ${stateFilter}
+           ${stateFilter} ${blockFilter}
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(likePattern, pivot.published, limit)
+      .bind(likePattern, pivot.published, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1530,10 +1571,10 @@ export async function getHashtagTimeline(
          WHERE o.visibility IN ('public', 'unlisted')
            AND o.raw LIKE ?
            AND o.published < (SELECT published FROM objects WHERE id = ?)
-           ${stateFilter}
+           ${stateFilter} ${blockFilter}
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(likePattern, maxId, limit)
+      .bind(likePattern, maxId, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1542,10 +1583,10 @@ export async function getHashtagTimeline(
       `SELECT o.* FROM objects o
        WHERE o.visibility IN ('public', 'unlisted')
          AND o.raw LIKE ?
-         ${stateFilter}
+         ${stateFilter} ${blockFilter}
        ORDER BY o.published DESC LIMIT ?`
     )
-    .bind(likePattern, limit)
+    .bind(likePattern, ...blockBinds, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1862,6 +1903,9 @@ export async function getLocalInteractedActorIds(db: D1Database, objectId: strin
 }
 
 export async function createNotification(db: D1Database, notif: LocalNotification): Promise<void> {
+  // Blocked accounts (and accounts from domain-blocked instances) cannot
+  // interact with the recipient: drop their notifications entirely.
+  if (await isActorBlockedBy(db, notif.targetAccountId, notif.accountId)) return;
   await db
     .prepare(
       `INSERT OR IGNORE INTO notifications (id, type, account_id, target_account_id, object_id, is_read)
@@ -2181,6 +2225,23 @@ export async function isBlocked(db: D1Database, actorId: string, targetId: strin
   return row !== null;
 }
 
+/**
+ * Whether `viewerId` has blocked `targetActorId` (direct block) or the whole
+ * instance the target actor belongs to (domain block).
+ */
+export async function isActorBlockedBy(db: D1Database, viewerId: string, targetActorId: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 FROM blocks WHERE actor_id = ? AND target_id = ?
+       UNION ALL
+       SELECT 1 FROM actors WHERE id = ? AND domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?)
+       LIMIT 1`
+    )
+    .bind(viewerId, targetActorId, targetActorId, viewerId)
+    .first<Row>();
+  return row !== null;
+}
+
 export async function getBlockedActors(
   db: D1Database,
   actorId: string,
@@ -2210,16 +2271,17 @@ export async function createDomainBlock(db: D1Database, id: string, actorId: str
     .run();
 }
 
-export async function deleteDomainBlock(db: D1Database, domain: string): Promise<void> {
+export async function deleteDomainBlock(db: D1Database, actorId: string, domain: string): Promise<void> {
   await db
-    .prepare("DELETE FROM domain_blocks WHERE domain = ?")
-    .bind(domain.toLowerCase())
+    .prepare("DELETE FROM domain_blocks WHERE actor_id = ? AND domain = ?")
+    .bind(actorId, domain.toLowerCase())
     .run();
 }
 
-export async function getDomainBlocks(db: D1Database): Promise<string[]> {
+export async function getDomainBlocks(db: D1Database, actorId: string): Promise<string[]> {
   const rows = await db
-    .prepare("SELECT DISTINCT domain FROM domain_blocks ORDER BY created_at DESC")
+    .prepare("SELECT domain FROM domain_blocks WHERE actor_id = ? ORDER BY created_at DESC")
+    .bind(actorId)
     .all<{ domain: string }>();
   return rows.results.map((r) => r.domain);
 }

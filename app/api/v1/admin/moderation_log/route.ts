@@ -27,3 +27,17 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   return json({ log: entries });
 }
+
+/**
+ * DELETE /api/v1/admin/moderation_log — remove every moderation_log row.
+ * Lets an admin wipe the audit trail in one go.
+ */
+export async function DELETE(request: NextRequest): Promise<Response> {
+  const { env } = getCloudflareContext();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  const res = await env.DB.prepare("DELETE FROM moderation_log").run();
+  return json({ ok: true, removed: res.meta.changes });
+}

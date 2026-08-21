@@ -59,6 +59,7 @@ export default function AdminModerationLogPage() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const fetchLog = useCallback(async () => {
     if (!token) return;
@@ -95,6 +96,20 @@ export default function AdminModerationLogPage() {
     setActionLoading(null);
   }
 
+  async function clearAll() {
+    if (!token || !window.confirm(t.admin_log_clear_all_confirm)) return;
+    setClearingAll(true);
+    try {
+      const res = await fetch("/api/v1/admin/moderation_log", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { router.push("/login"); return; }
+      setEntries([]);
+    } catch { /* ignore */ }
+    setClearingAll(false);
+  }
+
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -113,6 +128,19 @@ export default function AdminModerationLogPage() {
       <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
         {t.admin_log_desc}
       </p>
+
+      {entries.length > 0 && (
+        <div style={{ marginBottom: "1rem" }}>
+          <button
+            className="btn btn-outline btn-sm"
+            style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+            disabled={clearingAll}
+            onClick={() => void clearAll()}
+          >
+            {clearingAll ? "..." : t.admin_btn_clear_all}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ color: "var(--text-muted)", padding: "2rem 0" }}>{t.admin_loading_log}</div>
@@ -151,6 +179,12 @@ export default function AdminModerationLogPage() {
                       <div style={{ fontSize: "0.8rem" }}>{e.targetType}</div>
                       {e.targetId && (
                         <div style={{ fontSize: "0.72rem", fontFamily: "monospace", wordBreak: "break-all", maxWidth: 220 }}>{e.targetId}</div>
+                      )}
+                      {e.relatedId && e.relatedId !== e.targetId && (
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                          <span style={{ fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>{t.admin_col_account}: </span>
+                          <span style={{ fontFamily: "monospace", wordBreak: "break-all" }}>{e.relatedId}</span>
+                        </div>
                       )}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem" }}>

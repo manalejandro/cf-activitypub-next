@@ -10,7 +10,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const domains = await getDomainBlocks(env.DB);
+  const domains = await getDomainBlocks(env.DB, actor.id);
   return json(domains);
 }
 
@@ -44,6 +44,6 @@ export async function DELETE(request: NextRequest): Promise<Response> {
   }
   if (!domain) return json({ error: "domain is required" }, 422);
 
-  await deleteDomainBlock(env.DB, domain);
+  await deleteDomainBlock(env.DB, actor.id, domain);
   return json({}, 200);
 }
