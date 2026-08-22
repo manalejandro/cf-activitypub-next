@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon, type IconName } from "@/components/Icon";
@@ -12,10 +12,23 @@ export default function Home() {
   const { authenticated, loading } = useAuth();
   const { t, locale, setLocale } = useLocale();
   const router = useRouter();
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (authenticated && !loading) router.replace("/home");
   }, [authenticated, loading, router]);
+
+  useEffect(() => {
+    fetch("/api/v1/instance")
+      .then((res) => (res.ok ? res.json() as Promise<{ version?: string }> : null))
+      .then((data) => {
+        if (data?.version) {
+          const m = data.version.match(/compatible;\s*([^)]+)/);
+          setVersion(m ? m[1] : data.version);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   if (loading) return null;
   if (authenticated) return null;
@@ -32,6 +45,7 @@ export default function Home() {
     { icon: "phone", title: t.f_webrtc_title, desc: t.f_webrtc_desc },
     { icon: "database", title: t.f_d1_title, desc: t.f_d1_desc },
     { icon: "shield", title: t.f_mls_title, desc: t.f_mls_desc },
+    { icon: "exclamation-triangle", title: t.f_disclaimer_title, desc: t.f_disclaimer_desc },
   ];
 
   return (
@@ -138,7 +152,7 @@ export default function Home() {
       {/* Footer */}
       <footer style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
-          <span>© {new Date().getFullYear()} CF ActivityPub — {t.landing_footer}</span>
+          <span>© {new Date().getFullYear()} CF ActivityPub — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
           <div className="flex gap-5">
             <a href="/docs" style={{ color: "var(--text-muted)" }}>API Docs</a>
             <a href="/.well-known/nodeinfo" style={{ color: "var(--text-muted)" }}>NodeInfo</a>

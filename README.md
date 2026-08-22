@@ -282,6 +282,10 @@ Credentials at [dash.cloudflare.com](https://dash.cloudflare.com) â†’ Realtime â
 - Cron trigger runs every minute for polling, auto-delete, and other maintenance tasks
 - Includes the Guardian patrol cycle (spam/abuse sweeps with AI review)
 
+## Disclaimer
+
+The author is not responsible for the use of this instance, nor for any charges Cloudflare may apply for its use.
+
 ## License
 
 MIT

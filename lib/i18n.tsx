@@ -652,6 +652,8 @@ const EN = {
   f_d1_desc: "Persistent data on Cloudflare D1 (SQLite), KV for cache and sessions, R2 for media.",
   f_mls_title: "MLS end-to-end encryption",
   f_mls_desc: "End-to-end encrypted direct messages with MLS (RFC 9420) — the server only ever relays ciphertext.",
+  f_disclaimer_title: "Disclaimer",
+  f_disclaimer_desc: "The author is not responsible for the use of this instance, nor for any charges Cloudflare may apply for its use.",
   // E2EE key backup / restore
   e2ee_keys_title: "Backup your encryption keys",
   e2ee_keys_desc:
@@ -1431,6 +1433,8 @@ const ES: typeof EN = {
   f_d1_desc: "Datos persistentes en Cloudflare D1 (SQLite), KV para caché y sesiones, R2 para multimedia.",
   f_mls_title: "Cifrado de extremo a extremo MLS",
   f_mls_desc: "Mensajes directos cifrados de extremo a extremo con MLS (RFC 9420) — el servidor solo reenvía texto cifrado.",
+  f_disclaimer_title: "Descargo de responsabilidad",
+  f_disclaimer_desc: "El autor no se hace responsable del uso de esta instancia ni de los importes que Cloudflare pueda cobrar por su uso.",
   // E2EE key backup / restore
   e2ee_keys_title: "Copia de seguridad de tus claves",
   e2ee_keys_desc:

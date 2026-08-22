@@ -283,6 +283,10 @@ Credenciales en [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime 
 - Trigger cron cada minuto para encuestas, auto-borrado y otras tareas de mantenimiento
 - Incluye el ciclo de patrulla del Guardian (barridos de spam/abuso con revisión de IA)
 
+## Descargo de responsabilidad
+
+El autor no se hace responsable del uso de esta instancia ni de los importes que Cloudflare pueda cobrar por su uso.
+
 ## Licencia
 
 MIT
