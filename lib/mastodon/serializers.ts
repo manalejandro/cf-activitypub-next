@@ -63,6 +63,18 @@ function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; 
   };
 }
 
+/**
+ * Only the custom emojis whose shortcode actually appears in the given content.
+ * Mastodon's `emojis` field on a status/account lists just the emojis used there
+ * (so the client can render them), never the whole instance emoji set.
+ */
+function filterUsedEmojis(contents: (string | null | undefined)[], emojis: LocalCustomEmoji[]): LocalCustomEmoji[] {
+  if (emojis.length === 0) return [];
+  const haystack = contents.filter((c): c is string => typeof c === "string" && c.length > 0).join(" ");
+  if (!haystack) return [];
+  return emojis.filter((e) => haystack.includes(`:${e.shortcode}:`));
+}
+
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
@@ -105,7 +117,10 @@ export function serializeAccount(
     statuses_count: actor.statusesCount,
     last_status_at: opts.lastStatusAt ?? null,
     hide_collections: null,
-    emojis: (opts.emojis ?? []).map(serializeEmoji),
+    emojis: filterUsedEmojis(
+      [actor.displayName, actor.summary, ...(opts.fields ?? []).map((f) => f.name), ...(opts.fields ?? []).map((f) => f.value)],
+      opts.emojis ?? []
+    ).map(serializeEmoji),
     roles: opts.role ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }] : (actor.isLocal && (actor.role === "admin" || actor.role === "moderator")) ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }] : [],
     fields: (opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
@@ -259,7 +274,7 @@ export function serializeStatus(
     media_attachments: (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
-    emojis: (opts.emojis ?? []).map(serializeEmoji),
+    emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
     card: null,
     poll: opts.poll ?? null,
     filtered: [],
