@@ -276,6 +276,7 @@ export default function ProfilePage() {
 
   // Profile header actions menu (⋯ on mobile)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [avatarLb, setAvatarLb] = useState(false);
 
   // Edit form state
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -738,7 +739,10 @@ export default function ProfilePage() {
                 zIndex: 1,
               }}
             >
-              <div
+              <button
+                type="button"
+                onClick={() => account.avatar ? setAvatarLb(true) : undefined}
+                aria-label={account.avatar ? `${account.display_name} avatar` : undefined}
                 style={{
                   width: 88, height: 88,
                   borderRadius: "50%",
@@ -748,6 +752,8 @@ export default function ProfilePage() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   position: "relative",
                   fontSize: "2.5rem", fontWeight: 700, color: "var(--accent)",
+                  cursor: account.avatar ? "zoom-in" : "default",
+                  padding: 0,
                 }}
               >
                 {account.avatar ? (
@@ -761,7 +767,7 @@ export default function ProfilePage() {
                 ) : (
                   (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()
                 )}
-              </div>
+              </button>
 
               <div className="flex gap-2" style={{ paddingBottom: "0.5rem", position: "relative" }}>
                 {isOwnProfile ? (
@@ -1222,6 +1228,16 @@ export default function ProfilePage() {
           </>
         )}
       </PageLayout>
+
+      {/* Avatar lightbox */}
+      {avatarLb && account?.avatar && (
+        <Lightbox
+          media={[{ url: account.avatar, preview_url: account.avatar, description: account.display_name, type: "image" }]}
+          index={0}
+          onClose={() => setAvatarLb(false)}
+          onNav={() => undefined}
+        />
+      )}
 
       {/* Edit profile modal */}
       {editOpen && account && (

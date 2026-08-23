@@ -226,6 +226,7 @@ function RemoteProfileInner() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   // Profile header actions menu (⋯ on mobile)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [avatarLb, setAvatarLb] = useState(false);
 
   const token = getToken();
   const { startCall: initiateCall } = useStartCallButton(token);
@@ -541,7 +542,10 @@ function RemoteProfileInner() {
             zIndex: 1,
           }}
         >
-          <div
+          <button
+            type="button"
+            onClick={() => account.avatar ? setAvatarLb(true) : undefined}
+            aria-label={account.avatar ? `${account.display_name} avatar` : undefined}
             style={{
               width: 88, height: 88,
               borderRadius: "50%",
@@ -551,6 +555,8 @@ function RemoteProfileInner() {
               display: "flex", alignItems: "center", justifyContent: "center",
               position: "relative",
               fontSize: "2.5rem", fontWeight: 700, color: "var(--accent)",
+              cursor: account.avatar ? "zoom-in" : "default",
+              padding: 0,
             }}
           >
             {account.avatar ? (
@@ -564,7 +570,7 @@ function RemoteProfileInner() {
             ) : (
               (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()
             )}
-          </div>
+          </button>
 
           <div className="flex gap-2" style={{ paddingBottom: "0.5rem", position: "relative" }}>
             {/* View on original server */}
@@ -984,6 +990,16 @@ function RemoteProfileInner() {
           )
         )}
     </PageLayout>
+
+      {/* Avatar lightbox */}
+      {avatarLb && account?.avatar && (
+        <Lightbox
+          media={[{ url: account.avatar, preview_url: account.avatar, description: account.display_name, type: "image" }]}
+          index={0}
+          onClose={() => setAvatarLb(false)}
+          onNav={() => undefined}
+        />
+      )}
 
       {/* Note modal */}
       {noteOpen && account && (
