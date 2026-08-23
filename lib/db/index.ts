@@ -2087,8 +2087,8 @@ export async function deleteOAuthToken(db: D1Database, id: string): Promise<void
 export async function createAttachment(db: D1Database, att: LocalAttachment): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO attachments (id, object_id, type, url, remote_url, description, blurhash, width, height, file_size, mime_type)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO attachments (id, object_id, type, url, remote_url, description, blurhash, width, height, file_size, mime_type, sensitive)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       att.id,
@@ -2101,7 +2101,8 @@ export async function createAttachment(db: D1Database, att: LocalAttachment): Pr
       att.width ?? null,
       att.height ?? null,
       att.fileSize ?? null,
-      att.mimeType ?? null
+      att.mimeType ?? null,
+      att.sensitive ? 1 : 0
     )
     .run();
 }
