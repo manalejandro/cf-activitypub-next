@@ -145,7 +145,8 @@ export function MediaGrid({ attachments, sensitive }: { attachments: MediaAttach
   if (!attachments.length) return null;
   // Blur by default when the status is sensitive or any attachment is sensitive
   // (Mastodon behaviour), until the user explicitly reveals the media.
-  const blurred = !revealed && (sensitive === true || attachments.some((a) => a.sensitive));
+  const hasSensitive = sensitive === true || attachments.some((a) => a.sensitive);
+  const blurred = !revealed && hasSensitive;
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
   const revealBtn = (
     <button
@@ -171,6 +172,33 @@ export function MediaGrid({ attachments, sensitive }: { attachments: MediaAttach
     >
       <Icon name="eye-slash" size="1.4rem" color="#fff" />
       <span>{t.media_sensitive_label}</span>
+    </button>
+  );
+  const hideBtn = (
+    <button
+      type="button"
+      onClick={() => setRevealed(false)}
+      aria-label={t.media_hide}
+      title={t.media_hide}
+      style={{
+        position: "absolute",
+        top: "0.4rem",
+        right: "0.4rem",
+        zIndex: 2,
+        display: "flex",
+        alignItems: "center",
+        gap: "0.3rem",
+        background: "rgba(0,0,0,0.55)",
+        color: "#fff",
+        border: "none",
+        borderRadius: "var(--radius-sm)",
+        padding: "0.25rem 0.5rem",
+        cursor: "pointer",
+        fontSize: "0.72rem",
+        fontWeight: 600,
+      }}
+    >
+      <Icon name="eye" size="0.9rem" color="#fff" /> {t.media_hide}
     </button>
   );
   return (
@@ -272,6 +300,7 @@ export function MediaGrid({ attachments, sensitive }: { attachments: MediaAttach
           return null;
         })}
         {blurred && revealBtn}
+        {!blurred && hasSensitive && hideBtn}
       </div>
       {!blurred && lbIdx !== null && (
         <Lightbox

@@ -421,7 +421,9 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         height: attachment.height ?? null,
         fileSize: null,
         mimeType: attachment.mediaType ?? null,
-        sensitive: false,
+        // A sensitive object marks its media sensitive; some servers also set
+        // `sensitive` directly on the attachment.
+        sensitive: obj.sensitive === true || (attachment as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       };
       try {
@@ -877,7 +879,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
             local: false,
             raw: JSON.stringify(fetched),
           });
-          await saveObjectAttachments(ctx.db, fetched.id, fetched.attachment);
+          await saveObjectAttachments(ctx.db, fetched.id, fetched.attachment, fetched.sensitive === true);
           await ensurePollRowsForQuestion(ctx, fetched);
           likedObject = await getObjectById(ctx.db, objectId);
         }
@@ -952,7 +954,7 @@ async function persistRemoteNote(
         raw: JSON.stringify(note),
       });
     }
-    await saveObjectAttachments(ctx.db, note.id, note.attachment);
+    await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
     return;
   }
 
@@ -974,7 +976,7 @@ async function persistRemoteNote(
     local: false,
     raw: JSON.stringify(note),
   });
-  await saveObjectAttachments(ctx.db, note.id, note.attachment);
+  await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
   await ensurePollRowsForQuestion(ctx, note);
 }
 
@@ -1302,7 +1304,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
           local: false,
           raw: JSON.stringify(note),
         });
-        await saveObjectAttachments(ctx.db, note.id, note.attachment);
+        await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
         await ensurePollRowsForQuestion(ctx, note);
       }
       return;
@@ -1882,7 +1884,8 @@ async function handleCallRenegotiateAnswer(activity: APActivity, ctx: InboxConte
 async function saveObjectAttachments(
   db: D1Database,
   objectId: string,
-  attachment: APAttachment[] | undefined
+  attachment: APAttachment[] | undefined,
+  sensitive = false
 ): Promise<void> {
   if (!Array.isArray(attachment)) return;
   for (const att of attachment) {
@@ -1900,7 +1903,7 @@ async function saveObjectAttachments(
         height: att.height ?? null,
         fileSize: null,
         mimeType: att.mediaType ?? null,
-        sensitive: false,
+        sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       });
     } catch { /* ignore */ }
