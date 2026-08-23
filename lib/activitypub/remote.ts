@@ -423,6 +423,114 @@ export async function fetchAndCacheRemoteActorStatuses(
   return ingested;
 }
 
+/**
+ * Fetch a remote actor's pinned posts (the ActivityPub `featured` collection,
+ * usually at <actorId>/collections/featured) and ingest them into the local
+ * objects table + status_pins, so remote profile "pinned" tabs work like local
+ * ones. Idempotent: already-stored objects are skipped and pins use OR IGNORE.
+ */
+export async function fetchAndCacheRemoteActorFeatured(
+  db: D1Database,
+  actorId: string
+): Promise<number> {
+  const actor = await getActorById(db, actorId);
+  if (!actor || actor.isLocal) return 0;
+
+  const featuredUrl = `${actorId.replace(/\/+$/, "")}/collections/featured`;
+  const items = await fetchOutboxItems(featuredUrl, undefined, 20);
+  let pinned = 0;
+
+  for (const rawItem of items) {
+    // Featured entries are status URLs (strings) or embedded objects.
+    let item: Record<string, unknown>;
+    if (typeof rawItem === "string") {
+      try {
+        const fetched = await fetchRemoteObject(rawItem);
+        if (fetched && typeof fetched === "object") item = fetched as Record<string, unknown>;
+        else continue;
+      } catch {
+        continue;
+      }
+    } else if (rawItem && typeof rawItem === "object") {
+      item = rawItem as Record<string, unknown>;
+    } else {
+      continue;
+    }
+
+    const oid = item.id as string | undefined;
+    if (!oid) continue;
+
+    const objType = String(item.type ?? "").split("/").pop() ?? "";
+    if (!isContentObjectType(objType)) continue;
+
+    // Store the object if not already present.
+    if (!(await getObjectById(db, oid))) {
+      const visibility = outboxVisibility(item.to, item.cc);
+      if (visibility !== "public" && visibility !== "unlisted") continue;
+      const sanitized = sanitizeRemoteNoteContent(
+        item.content as string | undefined,
+        item.summary as string | undefined,
+        item.sensitive === true
+      );
+      try {
+        await createObject(db, {
+          id: oid,
+          type: objType,
+          actorId,
+          content: sanitized.content,
+          contentWarning: sanitized.contentWarning,
+          sensitive: item.sensitive === true,
+          visibility,
+          inReplyToId: (item.inReplyTo as string) ?? null,
+          language: item.contentMap ? Object.keys(item.contentMap)[0] : null,
+          url: outboxObjectUrl(item.url, oid),
+          repliesCount: 0,
+          reblogsCount: 0,
+          favouritesCount: 0,
+          published: toIso(item.published),
+          local: false,
+          raw: JSON.stringify(item),
+        });
+
+        // Inline attachments.
+        if (Array.isArray(item.attachment)) {
+          for (const attachment of item.attachment as APAttachment[]) {
+            if (!attachment?.url || typeof attachment.url !== "string") continue;
+            const localAttachment: LocalAttachment = {
+              id: attachment.id || generateId(),
+              objectId: oid,
+              type: (attachment.type ?? "image").toLowerCase(),
+              url: attachment.url,
+              remoteUrl: attachment.url,
+              description: attachment.name ?? null,
+              blurhash: attachment.blurhash ?? null,
+              width: attachment.width ?? null,
+              height: attachment.height ?? null,
+              fileSize: null,
+              mimeType: attachment.mediaType ?? null,
+              createdAt: new Date().toISOString(),
+            };
+            try { await createAttachment(db, localAttachment); } catch { /* ignore */ }
+          }
+        }
+      } catch {
+        /* insert may race; ignore */
+      }
+    }
+
+    // Record the pin (idempotent).
+    try {
+      await db
+        .prepare("INSERT OR IGNORE INTO status_pins (id, actor_id, status_id) VALUES (?, ?, ?)")
+        .bind(generateId(), actorId, oid)
+        .run();
+      pinned++;
+    } catch { /* ignore */ }
+  }
+
+  return pinned;
+}
+
 function toIso(dateStr: unknown): string {
   if (typeof dateStr === "string") {
     try { return new Date(dateStr).toISOString(); } catch { /* fallthrough */ }

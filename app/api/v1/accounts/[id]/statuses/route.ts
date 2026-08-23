@@ -5,7 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
-import { fetchAndCacheRemoteActorStatuses } from "@/lib/activitypub/remote";
+import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
 
 // GET /api/v1/accounts/:id/statuses
 export async function GET(
@@ -34,6 +34,12 @@ export async function GET(
   // and ingest the visible statuses so the timeline isn't empty.
   if (!actor.isLocal && !pinnedOnly && !onlyReplies && !maxId) {
     await fetchAndCacheRemoteActorStatuses(env.DB, actor.id, limit);
+  }
+
+  // Remote pinned posts come from the actor's `featured` collection, not the
+  // local status_pins table — ingest them so the pinned tab shows content.
+  if (pinnedOnly && !actor.isLocal) {
+    await fetchAndCacheRemoteActorFeatured(env.DB, actor.id);
   }
 
   // Fetch pinned statuses from status_pins table
