@@ -2900,6 +2900,13 @@
             }
           },
           {
+            "name": "bot",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "discoverable",
             "in": "query",
             "schema": {
@@ -2980,6 +2987,13 @@
           },
           {
             "name": "locked",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bot",
             "in": "query",
             "schema": {
               "type": "string"

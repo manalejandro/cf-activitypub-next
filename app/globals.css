@@ -77,6 +77,13 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
+/* Sidebar scrollbar — thinner and in the logo/brand colour */
+.sidebar-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 9999px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-hover); }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+
 ::selection { background: rgba(99,102,241,0.25); color: var(--text-primary); }
 
 /* Mastodon link shortening in federated HTML (overrides Tailwind .invisible) */

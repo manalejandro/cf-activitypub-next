@@ -203,7 +203,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
         gap: "1.5rem",
         overflowX: "hidden",
       }}
-      className="hidden md:flex"
+      className="hidden md:flex sidebar-scroll"
     >
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 px-2">
