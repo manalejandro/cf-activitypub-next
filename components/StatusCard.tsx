@@ -137,12 +137,42 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 
 // ─── MediaGrid ────────────────────────────────────────────────────────────────
 
-export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
+export function MediaGrid({ attachments, sensitive }: { attachments: MediaAttachment[]; sensitive?: boolean }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  const [revealed, setRevealed] = useState(false);
   const closeLb = useCallback(() => setLbIdx(null), []);
   const { t } = useLocale();
   if (!attachments.length) return null;
+  // Blur by default when the status is sensitive or any attachment is sensitive
+  // (Mastodon behaviour), until the user explicitly reveals the media.
+  const blurred = !revealed && (sensitive === true || attachments.some((a) => a.sensitive));
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
+  const revealBtn = (
+    <button
+      type="button"
+      onClick={() => setRevealed(true)}
+      aria-label={t.media_reveal}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 2,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "0.5rem",
+        background: "rgba(0,0,0,0.55)",
+        color: "#fff",
+        border: "none",
+        cursor: "pointer",
+        fontSize: "0.85rem",
+        fontWeight: 600,
+      }}
+    >
+      <Icon name="eye-slash" size="1.4rem" color="#fff" />
+      <span>{t.media_sensitive_label}</span>
+    </button>
+  );
   return (
     <>
       <div
@@ -153,6 +183,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
           marginTop: "0.75rem",
           borderRadius: "var(--radius)",
           overflow: "hidden",
+          position: "relative",
         }}
       >
         {attachments.map((att, i) => {
@@ -161,7 +192,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
               <button
                 key={att.id}
                 type="button"
-                onClick={() => setLbIdx(i)}
+                onClick={() => { if (!blurred) setLbIdx(i); }}
                 aria-label={att.description ?? t.action_view_media}
                 title={att.description ?? undefined}
                 style={{
@@ -171,7 +202,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                   overflow: "hidden",
                   border: "none",
                   padding: 0,
-                  cursor: "zoom-in",
+                  cursor: blurred ? "default" : "zoom-in",
                   background: "none",
                 }}
               >
@@ -180,7 +211,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                   alt={att.description ?? ""}
                   fill
                   sizes="(max-width: 768px) 100vw, 600px"
-                  style={{ objectFit: "cover", filter: att.sensitive ? "blur(12px)" : undefined }}
+                  style={{ objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }}
                 />
               </button>
             );
@@ -190,7 +221,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
               <button
                 key={att.id}
                 type="button"
-                onClick={() => setLbIdx(i)}
+                onClick={() => { if (!blurred) setLbIdx(i); }}
                 aria-label={att.description ?? t.action_view_media}
                 style={{
                   display: "block",
@@ -198,12 +229,12 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                   overflow: "hidden",
                   border: "none",
                   padding: 0,
-                  cursor: "pointer",
+                  cursor: blurred ? "default" : "pointer",
                   background: "var(--bg-elevated)",
                   position: "relative",
                 }}
               >
-                <video src={att.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <video src={att.url} style={{ width: "100%", height: "100%", objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }} />
                 <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="play" color="rgba(255,255,255,0.9)" /></div>
               </button>
             );
@@ -213,7 +244,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
               <button
                 key={att.id}
                 type="button"
-                onClick={() => setLbIdx(i)}
+                onClick={() => { if (!blurred) setLbIdx(i); }}
                 aria-label={att.description ?? t.action_view_media}
                 style={{
                   display: "block",
@@ -222,7 +253,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                   border: "1px solid var(--border)",
                   borderRadius: "var(--radius)",
                   padding: 0,
-                  cursor: "pointer",
+                  cursor: blurred ? "default" : "pointer",
                   background: "var(--bg-elevated)",
                   position: "relative",
                 }}
@@ -240,8 +271,9 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
           }
           return null;
         })}
+        {blurred && revealBtn}
       </div>
-      {lbIdx !== null && (
+      {!blurred && lbIdx !== null && (
         <Lightbox
           media={attachments.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
           index={lbIdx}
@@ -628,7 +660,7 @@ export function StatusCard({
           </div>
         )}
         {showContent && <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />}
-        {showContent && <MediaGrid attachments={status.media_attachments ?? []} />}
+        {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><Icon name="pencil" size="0.7rem" /> {t.status_edited}</div>

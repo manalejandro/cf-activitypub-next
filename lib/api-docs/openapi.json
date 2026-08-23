@@ -7262,6 +7262,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sensitive",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [],
@@ -7288,6 +7295,13 @@
           },
           {
             "name": "description",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sensitive",
             "in": "query",
             "schema": {
               "type": "string"
@@ -7361,6 +7375,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sensitive",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
@@ -7402,6 +7423,13 @@
           },
           {
             "name": "description",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sensitive",
             "in": "query",
             "schema": {
               "type": "string"
