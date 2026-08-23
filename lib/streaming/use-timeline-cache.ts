@@ -147,8 +147,6 @@ export function useTimelineCache<T extends { id: string }>(
       // effect may write it under the new key (and must not under the old one).
       loadedKeyRef.current = key;
       const resetOnEntry = optionsRef.current.resetScrollOnEntry === true;
-      const historyRestore = restoredOnHistoryTraversal;
-      restoredOnHistoryTraversal = false;
       const tabSwitch = prevKeyRef.current !== key;
       // Persist the feed we are leaving right away: a fast tab switch can
       // otherwise drop the last scroll event before it is written back. Skip
@@ -159,6 +157,13 @@ export function useTimelineCache<T extends { id: string }>(
         if (prevEntry) prevEntry.scrollY = window.scrollY;
       }
       prevKeyRef.current = key;
+      const cached = getTimelineCache<T>(key);
+      // A history traversal restores the feed that actually has cached content.
+      // Only that feed consumes the flag, so a feed mounting during the
+      // transition with nothing to restore (e.g. a fresh tag/other page) can't
+      // steal the restore intent from the real timeline.
+      const historyRestore = restoredOnHistoryTraversal && cached?.ready === true;
+      if (historyRestore) restoredOnHistoryTraversal = false;
       // A fresh entry into a reset-on-entry feed starts at the top: discard the
       // remembered offset and force the scroll so a lingering browser scroll
       // cannot leave us scrolled down. Returning via back/forward (history
@@ -168,7 +173,6 @@ export function useTimelineCache<T extends { id: string }>(
         if (entry) entry.scrollY = 0;
         resetScrollToTop();
       }
-      const cached = getTimelineCache<T>(key);
       const refetchOnMount = optionsRef.current.refetchOnMount === true;
       // Position this feed should end up at: its own remembered offset, or the
       // top when it has no usable cache. Enforced on tab switches (and history

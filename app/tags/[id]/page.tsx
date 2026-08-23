@@ -202,7 +202,7 @@ export default function TagPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <button
               type="button"
-              onClick={() => history.back()}
+              onClick={() => router.back()}
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.3rem 0.5rem", fontSize: "1rem" }}
             >
