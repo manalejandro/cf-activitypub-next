@@ -18,6 +18,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const form = await request.formData();
   const file = form.get("file") as File | null;
   const description = (form.get("description") as string | null) ?? null;
+  const sensitive = form.get("sensitive") === "true";
   // UI locale sent by the client to determine auto-description prefix language
   const locale = (form.get("locale") as string | null) ?? "en";
 
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     height: null,
     fileSize: file.size,
     mimeType: file.type,
+    sensitive,
     createdAt: new Date().toISOString(),
   };
 
@@ -105,6 +107,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     remote_url: null,
     description: finalDescription,
     blurhash: null,
+    sensitive,
     meta: {},
   }, 200);
 }

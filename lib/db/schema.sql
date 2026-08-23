@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   height      INTEGER,
   file_size   INTEGER,
   mime_type   TEXT,
+  sensitive   INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

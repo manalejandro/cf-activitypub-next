@@ -30,6 +30,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     height: null,
     fileSize: file.size,
     mimeType: file.type,
+    sensitive: false,
     createdAt: new Date().toISOString(),
   };
   await env.KV.put(`pending_media:${id}`, JSON.stringify({ ...att, r2Key: key }), { expirationTtl: 3600 });

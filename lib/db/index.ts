@@ -245,6 +245,7 @@ function rowToAttachment(r: Row): LocalAttachment {
     height: r.height ?? null,
     fileSize: r.file_size ?? null,
     mimeType: r.mime_type ?? null,
+    sensitive: Boolean(r.sensitive),
     createdAt: r.created_at,
   };
 }

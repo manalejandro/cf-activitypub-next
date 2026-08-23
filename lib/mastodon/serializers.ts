@@ -706,6 +706,7 @@ export function serializeAttachment(att: LocalAttachment): MastodonAttachment {
     text_url: null,
     description: att.description ?? null,
     blurhash: att.blurhash ?? null,
+    sensitive: att.sensitive,
     meta,
   };
 }

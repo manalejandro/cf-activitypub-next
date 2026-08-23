@@ -322,6 +322,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (!pendingRaw) continue;
     try {
       const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+      // A CW/sensitive status blurs its media by default.
+      const mediaSensitive = sensitive || pending.sensitive === true;
       const att = {
         id: mediaId,
         objectId: note.id,
@@ -334,6 +336,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         height: null,
         fileSize: (pending.fileSize as number | null) ?? null,
         mimeType: (pending.mimeType as string | null) ?? null,
+        sensitive: mediaSensitive,
         createdAt: new Date().toISOString(),
       };
       await createAttachment(env.DB, att);

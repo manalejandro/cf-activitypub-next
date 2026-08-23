@@ -52,6 +52,7 @@ interface MediaAttachment {
   preview_url: string | null;
   description: string | null;
   blurhash?: string | null;
+  sensitive?: boolean;
 }
 
 interface EmojiData {
@@ -199,6 +200,8 @@ function ReplyBox({
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
+      // CW on → media blurred by default
+      if (showCw) form.append("sensitive", "true");
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",
@@ -214,6 +217,18 @@ function ReplyBox({
       }
     }
     setUploadingMedia(false);
+  }
+
+  async function toggleMediaSensitive(id: string) {
+    const target = mediaFiles.find((f) => f.id === id);
+    if (!target) return;
+    const next = !target.sensitive;
+    await fetch(`/api/v1/media/${id}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ sensitive: next }),
+    });
+    setMediaFiles((prev) => prev.map((f) => f.id === id ? { ...f, sensitive: next } : f));
   }
 
   useEffect(() => {
@@ -363,11 +378,17 @@ function ReplyBox({
                 <div key={f.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                   <div style={{ position: "relative", flexShrink: 0, width: 64, height: 64 }}>
                     {f.type === "image" || f.type === "gifv" ? (
-                      <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)" }} />
+                      <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                     ) : (
                       <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.4rem" /></div>
                     )}
                     <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))} aria-label={t.action_delete} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
+                    <button
+                      type="button"
+                      onClick={() => void toggleMediaSensitive(f.id)}
+                      aria-pressed={!!f.sensitive}
+                      title={t.media_sensitive_toggle}
+                      style={{ position: "absolute", bottom: 2, left: 2, background: "rgba(0,0,0,0.65)", color: f.sensitive ? "var(--warning)" : "#fff", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name={f.sensitive ? "eye-slash" : "eye"} color={f.sensitive ? "var(--warning)" : "#fff"} /></button>
                   </div>
                   <input
                     type="text"

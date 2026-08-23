@@ -421,6 +421,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         height: attachment.height ?? null,
         fileSize: null,
         mimeType: attachment.mediaType ?? null,
+        sensitive: false,
         createdAt: new Date().toISOString(),
       };
       try {
@@ -1899,6 +1900,7 @@ async function saveObjectAttachments(
         height: att.height ?? null,
         fileSize: null,
         mimeType: att.mediaType ?? null,
+        sensitive: false,
         createdAt: new Date().toISOString(),
       });
     } catch { /* ignore */ }

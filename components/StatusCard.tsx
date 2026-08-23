@@ -30,6 +30,7 @@ export interface MediaAttachment {
   preview_url: string | null;
   description: string | null;
   blurhash?: string | null;
+  sensitive?: boolean;
 }
 
 export interface PollOption { title: string; votes_count: number | null }
@@ -179,7 +180,7 @@ export function MediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
                   alt={att.description ?? ""}
                   fill
                   sizes="(max-width: 768px) 100vw, 600px"
-                  style={{ objectFit: "cover" }}
+                  style={{ objectFit: "cover", filter: att.sensitive ? "blur(12px)" : undefined }}
                 />
               </button>
             );

@@ -369,6 +369,7 @@ export interface LocalAttachment {
   height: number | null;
   fileSize: number | null;
   mimeType: string | null;
+  sensitive: boolean;
   createdAt: string;
 }
 
@@ -509,6 +510,7 @@ export interface MastodonAttachment {
   text_url: string | null;
   description: string | null;
   blurhash: string | null;
+  sensitive: boolean;
   meta?: MastodonAttachmentMeta;
 }
 

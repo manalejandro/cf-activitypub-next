@@ -16,6 +16,7 @@ function fromRow(att: Record<string, unknown>) {
     height: (att.height as number | null) ?? null,
     fileSize: (att.file_size as number | null) ?? null,
     mimeType: (att.mime_type as string | null) ?? null,
+    sensitive: Boolean(att.sensitive),
     createdAt: att.created_at as string,
   };
 }
@@ -48,6 +49,7 @@ export async function GET(
         height: null,
         fileSize: (pending.fileSize as number | null) ?? null,
         mimeType: (pending.mimeType as string | null) ?? null,
+        sensitive: pending.sensitive === true,
         createdAt: pending.createdAt as string,
       }));
     } catch { /* fall through to 404 */ }
@@ -78,13 +80,17 @@ export async function PUT(
   if (!me) return unauthorized();
 
   let description: string | null = null;
+  let sensitive: boolean | undefined;
   const contentType = _request.headers.get("Content-Type") ?? "";
   if (contentType.includes("multipart/form-data")) {
     const form = await _request.formData();
     description = (form.get("description") as string | null) ?? null;
+    const s = form.get("sensitive");
+    if (s !== null) sensitive = s === "true";
   } else {
     const body = await _request.json() as Record<string, unknown>;
     if (typeof body.description === "string") description = body.description;
+    if (body.sensitive !== undefined) sensitive = body.sensitive === true || body.sensitive === "true";
   }
 
   const att = await env.DB
@@ -92,11 +98,13 @@ export async function PUT(
     .bind(id)
     .first<Record<string, unknown>>();
   if (att) {
-    if (description !== null) {
-      await env.DB
-        .prepare("UPDATE attachments SET description = ? WHERE id = ?")
-        .bind(description, id)
-        .run();
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (description !== null) { sets.push("description = ?"); vals.push(description); }
+    if (sensitive !== undefined) { sets.push("sensitive = ?"); vals.push(sensitive ? 1 : 0); }
+    if (sets.length > 0) {
+      vals.push(id);
+      await env.DB.prepare(`UPDATE attachments SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
     }
     const refreshed = await env.DB
       .prepare("SELECT * FROM attachments WHERE id = ?")
@@ -111,6 +119,7 @@ export async function PUT(
   try {
     const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
     if (description !== null) pending.description = description;
+    if (sensitive !== undefined) pending.sensitive = sensitive;
     await env.KV.put(`pending_media:${id}`, JSON.stringify(pending), { expirationTtl: 3600 });
     return json(serializeAttachment({
       id: pending.id as string,
@@ -124,6 +133,7 @@ export async function PUT(
       height: null,
       fileSize: (pending.fileSize as number | null) ?? null,
       mimeType: (pending.mimeType as string | null) ?? null,
+      sensitive: pending.sensitive === true,
       createdAt: pending.createdAt as string,
     }));
   } catch {

@@ -207,6 +207,8 @@ export default function HomePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
+      // CW on → media blurred by default
+      if (showCw) form.append("sensitive", "true");
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",
@@ -232,6 +234,19 @@ export default function HomePage() {
       body: JSON.stringify({ description: description.trim() || null }),
     });
     setter((prev) => prev.map((f) => f.id === id ? { ...f, description: description.trim() || null } : f));
+  }
+
+  async function toggleMediaSensitive(id: string) {
+    const target = mediaFiles.find((f) => f.id === id);
+    if (!target) return;
+    const next = !target.sensitive;
+    await fetch(`/api/v1/media/${id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sensitive: next }),
+    });
+    setMediaFiles((prev) => prev.map((f) => f.id === id ? { ...f, sensitive: next } : f));
   }
 
   function handleFav(updated: Status) {
@@ -386,13 +401,19 @@ export default function HomePage() {
                   <div key={f.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                     <div style={{ position: "relative", flexShrink: 0, width: 72, height: 72 }}>
                       {f.type === "image" || f.type === "gifv" ? (
-                        <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={72} height={72} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)" }} />
+                        <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={72} height={72} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                       ) : (
                         <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.5rem" /></div>
                       )}
                       <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))}
                         aria-label={t.action_delete}
                         style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
+                      <button
+                        type="button"
+                        onClick={() => void toggleMediaSensitive(f.id)}
+                        aria-pressed={!!f.sensitive}
+                        title={t.media_sensitive_toggle}
+                        style={{ position: "absolute", bottom: 2, left: 2, background: "rgba(0,0,0,0.65)", color: f.sensitive ? "var(--warning)" : "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name={f.sensitive ? "eye-slash" : "eye"} color={f.sensitive ? "var(--warning)" : "#fff"} /></button>
                     </div>
                     <input
                       type="text"

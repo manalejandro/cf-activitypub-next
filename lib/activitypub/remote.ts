@@ -403,6 +403,7 @@ export async function fetchAndCacheRemoteActorStatuses(
             height: attachment.height ?? null,
             fileSize: null,
             mimeType: attachment.mediaType ?? null,
+            sensitive: false,
             createdAt: new Date().toISOString(),
           };
           try { await createAttachment(db, localAttachment); } catch { /* ignore */ }
@@ -508,6 +509,7 @@ export async function fetchAndCacheRemoteActorFeatured(
               height: attachment.height ?? null,
               fileSize: null,
               mimeType: attachment.mediaType ?? null,
+              sensitive: false,
               createdAt: new Date().toISOString(),
             };
             try { await createAttachment(db, localAttachment); } catch { /* ignore */ }
