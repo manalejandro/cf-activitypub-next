@@ -374,7 +374,7 @@ export function StatusCard({
   const [showTranslation, setShowTranslation] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -692,7 +692,7 @@ export function StatusCard({
           >
             {bookmarked ? <Icon name="bookmark" /> : <Icon name="bookmark-o" />}
           </button>
-          {status.language && !(me && me.id === status.account.id) && (
+          {status.language && !(me && me.id === status.account.id) && status.language.slice(0, 2) !== locale.slice(0, 2) && (
             <button
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem" }}

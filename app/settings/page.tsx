@@ -24,6 +24,7 @@ interface Me {
   display_name: string;
   avatar: string;
   locked: boolean;
+  bot: boolean;
   source?: {
     auto_delete_after?: number | null;
   };
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [locked, setLocked] = useState(false);
+  const [bot, setBot] = useState(false);
   const [autoDelete, setAutoDelete] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,7 @@ export default function SettingsPage() {
         const data = await res.json() as Me;
         setMe(data);
         setLocked(Boolean(data.locked));
+        setBot(Boolean(data.bot));
         setAutoDelete(data.source?.auto_delete_after ?? 0);
       }
     }
@@ -85,6 +88,7 @@ export default function SettingsPage() {
     // update endpoint, which persists them on the actors table.
     const form = new FormData();
     form.append("locked", locked ? "true" : "false");
+    form.append("bot", bot ? "true" : "false");
     form.append("auto_delete_after", autoDelete > 0 ? String(autoDelete) : "");
     const res = await fetch("/api/v1/accounts/verify_credentials", {
       method: "PATCH",
@@ -94,6 +98,7 @@ export default function SettingsPage() {
     if (prefsRes.ok && res.ok) {
       const updated = await res.json() as Me;
       setLocked(Boolean(updated.locked));
+      setBot(Boolean(updated.bot));
       setAutoDelete(updated.source?.auto_delete_after ?? 0);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -202,6 +207,16 @@ export default function SettingsPage() {
               onChange={(e) => setLocked(e.target.checked)}
             />
             <label htmlFor="locked" style={{ fontSize: "0.875rem" }}>{t.settings_approve_follows}</label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="bot"
+              checked={bot}
+              onChange={(e) => setBot(e.target.checked)}
+            />
+            <label htmlFor="bot" style={{ fontSize: "0.875rem" }}>{t.settings_bot}</label>
           </div>
 
           <div>

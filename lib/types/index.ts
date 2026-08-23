@@ -679,6 +679,7 @@ export interface MastodonSource {
   privacy: string;
   sensitive: boolean;
   language: string | null;
+  bot: boolean;
   follow_requests_count: number;
   auto_delete_after: number | null;
 }

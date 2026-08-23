@@ -150,6 +150,7 @@ export function serializeAccount(
       privacy: "public",
       sensitive: false,
       language: null,
+      bot: actor.isBot,
       follow_requests_count: 0,
       auto_delete_after: actor.autoDeleteAfter ?? null,
     };

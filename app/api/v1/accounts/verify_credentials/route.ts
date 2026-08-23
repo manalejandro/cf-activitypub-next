@@ -52,6 +52,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let displayName: string | undefined;
   let note: string | undefined;
   let locked: boolean | undefined;
+  let bot: boolean | undefined;
   let discoverable: boolean | undefined;
   let avatarUrl: string | undefined;
   let headerUrl: string | undefined;
@@ -65,6 +66,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     note = form.get("note") as string | undefined ?? undefined;
     const lockedVal = form.get("locked") as string | null;
     if (lockedVal !== null) locked = lockedVal === "true";
+    const botVal = form.get("bot") as string | null;
+    if (botVal !== null) bot = botVal === "true";
     const discoverableVal = form.get("discoverable") as string | null;
     if (discoverableVal !== null) discoverable = discoverableVal === "true";
     const autoDeleteVal = form.get("auto_delete_after") as string | null;
@@ -122,6 +125,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (body.display_name !== undefined) displayName = body.display_name as string;
     if (body.note !== undefined) note = body.note as string;
     if (body.locked !== undefined) locked = body.locked === "true" || body.locked === true;
+    if (body.bot !== undefined) bot = body.bot === "true" || body.bot === true;
     if (body.discoverable !== undefined) discoverable = body.discoverable === "true" || body.discoverable === true;
     if (Array.isArray(body.fields)) {
       fieldsRaw = body.fields as { name: string; value: string }[];
@@ -148,6 +152,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     values.push(htmlNote);
   }
   if (locked !== undefined) { setClauses.push("manually_approves_followers = ?"); values.push(locked ? 1 : 0); }
+  if (bot !== undefined) { setClauses.push("is_bot = ?"); values.push(bot ? 1 : 0); }
   if (discoverable !== undefined) { setClauses.push("discoverable = ?"); values.push(discoverable ? 1 : 0); }
   if (avatarUrl !== undefined) { setClauses.push("avatar_url = ?"); values.push(avatarUrl); }
   if (headerUrl !== undefined) { setClauses.push("header_url = ?"); values.push(headerUrl); }
