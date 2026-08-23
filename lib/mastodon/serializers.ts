@@ -328,7 +328,20 @@ export function rewriteProfileLinks(
     // but GoToSocial/Akkoma use plain `class="hashtag"`) must never be routed
     // to the remote-profile resolver — they are tags, not actors.
     const isHashtag = /\bhashtag\b/.test(pre + post) || /\brel="tag"\b/.test(pre + post) || /\/tags\//.test(href);
-    if (isHashtag) return match;
+    // Hashtag links (Mastodon marks them `class="mention hashtag" rel="tag"`,
+    // GoToSocial/Akkoma use plain `class="hashtag"`) are tags, not actors — they
+    // must resolve on the local instance, not the remote-profile resolver.
+    if (isHashtag) {
+      const tagName = href.split("/").filter(Boolean).pop() ?? "";
+      try {
+        const decoded = decodeURIComponent(tagName);
+        if (decoded) {
+          const cleanPost = post.replace(/\s*target="_blank"/g, "");
+          return `<a${pre} href="/tags/${decoded.toLowerCase()}"${cleanPost}>`;
+        }
+      } catch { /* malformed percent-encoding */ }
+      return match;
+    }
     if (isLocal || (!isKnownRemote && !isMentionClass)) return match;
 
     const local = `/users/remote?url=${encodeURIComponent(href)}`;

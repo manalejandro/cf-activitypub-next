@@ -288,17 +288,18 @@ describe("rewriteProfileLinks", () => {
     expect(out).toContain('href="/users/remote?url=' + encodeURIComponent("https://other.example/@bob") + '"');
   });
 
-  it("keeps remote hashtag links untouched (Mastodon marks them class=\"mention hashtag\")", () => {
+  it("resolves remote hashtag links to the local tag page (Mastodon class=\"mention hashtag\")", () => {
     const content = '<p><a href="https://mastodon.bot/tags/NEWLIV" class="mention hashtag" rel="tag">#NEWLIV</a></p>';
     const out = rewriteProfileLinks(content, "{}", "local.example");
-    expect(out).toContain('href="https://mastodon.bot/tags/NEWLIV"');
+    expect(out).toContain('href="/tags/newliv"');
     expect(out).not.toContain("/users/remote");
+    expect(out).not.toContain("mastodon.bot/tags/NEWLIV");
   });
 
-  it("keeps remote hashtag links untouched when the class is just hashtag", () => {
+  it("resolves remote hashtag links to the local tag page when the class is just hashtag", () => {
     const content = '<p><a href="https://other.example/tags/cats" class="hashtag" rel="tag">#cats</a></p>';
     const out = rewriteProfileLinks(content, "{}", "local.example");
-    expect(out).toContain('href="https://other.example/tags/cats"');
+    expect(out).toContain('href="/tags/cats"');
     expect(out).not.toContain("/users/remote");
   });
 
