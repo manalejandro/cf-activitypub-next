@@ -531,12 +531,15 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
 }
 
 /** Build the { ap_type, ap_meta } payload for a serialized status. */
-function buildTypeMeta(obj: LocalObject): { ap_type: string | null; ap_meta: APObjectMeta | null } {
+function buildTypeMeta(obj: LocalObject): { ap_type?: string; ap_meta?: APObjectMeta | null } {
   const type = resolveAPType(obj);
   // Public MLS messages appear on the public timeline as encrypted-envelope
   // posts; surface their type so the UI can render the MLS/PublicMessage badge.
   if (type === "PublicMessage") return { ap_type: type, ap_meta: extractAPMeta(obj) };
-  if (!isRenderableObjectType(type)) return { ap_type: null, ap_meta: null };
+  // A plain Note never renders a badge or type block, so emitting
+  // `ap_type: "Note"` / `ap_meta: null` on every status is needless payload.
+  // Only meaningful (non-Note) renderable types carry the extension fields.
+  if (type === "Note" || !isRenderableObjectType(type)) return {};
   return { ap_type: type, ap_meta: extractAPMeta(obj) };
 }
 

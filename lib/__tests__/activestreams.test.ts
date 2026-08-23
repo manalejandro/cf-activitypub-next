@@ -158,15 +158,16 @@ describe("serializeStatus type passthrough", () => {
     expect(status.ap_meta?.url).toBe("https://remote.example/objects/1");
   });
 
-  it("falls back to Non-typeless for a plain Note", () => {
+  it("omits ap_type/ap_meta for a plain Note (no badge, no metadata)", () => {
     const status = serializeStatus(makeObject("Note", { content: "hola" }), author, "local.example");
-    expect(status.ap_type).toBe("Note");
+    expect(status.ap_type).toBeUndefined();
+    expect(status.ap_meta).toBeUndefined();
   });
 
-  it("does not set ap_type for non-renderable object types", () => {
+  it("omits ap_type/ap_meta for non-renderable object types", () => {
     const status = serializeStatus(makeObject("Object", { content: "hi" }), author, "local.example");
-    expect(status.ap_type).toBeNull();
-    expect(status.ap_meta).toBeNull();
+    expect(status.ap_type).toBeUndefined();
+    expect(status.ap_meta).toBeUndefined();
   });
 
   it("surfaces ap_type + ap_meta for Tombstone objects", () => {
