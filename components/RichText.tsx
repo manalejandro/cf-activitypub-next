@@ -11,6 +11,7 @@
  */
 
 import { memo, createElement, type ReactNode } from "react";
+import Link from "next/link";
 
 const ALLOWED_TAGS = new Set([
   "p", "br", "span", "a", "del", "s", "pre", "blockquote", "code",
@@ -139,7 +140,15 @@ export function toReactNodes(html: string): ReactNode[] {
       for (let i = stack.length - 1; i >= 0; i--) {
         if (stack[i].tag === rawTag) {
           const closed = stack.splice(i)[0];
-          const element = createElement(closed.tag, { ...closed.props, key: keySeq++ }, ...closed.children);
+          // Internal links (start with "/" but not "//") render as Next.js Links
+          // so navigation stays client-side and in-memory caches survive;
+          // external links stay plain anchors.
+          const isInternalLink =
+            closed.tag === "a" &&
+            typeof closed.props.href === "string" &&
+            closed.props.href.startsWith("/") &&
+            !closed.props.href.startsWith("//");
+          const element = createElement(isInternalLink ? (Link as React.ElementType) : closed.tag, { ...closed.props, key: keySeq++ }, ...closed.children);
           push(element);
           break;
         }
