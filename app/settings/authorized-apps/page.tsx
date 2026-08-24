@@ -8,6 +8,7 @@ import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import type { Me } from "@/components/StatusCard";
 
 interface Connection {
   id: string;
@@ -27,9 +28,13 @@ export default function AuthorizedAppsPage() {
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
     if (!token) { router.push("/login"); return; }
+    void fetch("/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((res) => (res.ok ? res.json() as Promise<Me> : null)).then((m) => { if (m) setMe(m); });
     async function load() {
       const res = await fetch("/api/oauth/authorized", {
         headers: { Authorization: `Bearer ${token}` },
@@ -82,7 +87,7 @@ export default function AuthorizedAppsPage() {
   }
 
   return (
-    <PageLayout sidebar={<Sidebar me={null} currentPath="/settings/authorized-apps" />}>
+    <PageLayout sidebar={<Sidebar me={me} currentPath="/settings/authorized-apps" />}>
       <SettingsHeader />
 
       <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1.25rem", maxWidth: 560 }}>
