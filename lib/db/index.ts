@@ -2389,6 +2389,28 @@ export async function isInstanceDomainBlocked(db: D1Database, domain: string): P
 }
 
 // ─────────────────────────────────────────
+// Instance settings (configurable instance content)
+// ─────────────────────────────────────────
+
+export async function getInstanceSetting(db: D1Database, key: string): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT value FROM instance_settings WHERE key = ?")
+    .bind(key)
+    .first<{ value: string }>();
+  return row?.value ?? null;
+}
+
+export async function setInstanceSetting(db: D1Database, key: string, value: string): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instance_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .bind(key, value, new Date().toISOString())
+    .run();
+}
+
+// ─────────────────────────────────────────
 // Polls
 // ─────────────────────────────────────────
 

@@ -45,7 +45,7 @@ import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { deliverToInbox, fetchRemoteObject } from "./federation";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
@@ -1089,6 +1089,13 @@ async function handleDelete(activity: APActivity, ctx: InboxContext): Promise<vo
   const obj = await getObjectById(ctx.db, objectId);
   if (obj && obj.actorId === actorId) {
     await deleteObject(ctx.db, objectId);
+
+    // Remove the status from connected clients' timelines live (no reload
+    // needed): federated/local/remote feeds, local followers' home feeds,
+    // hashtag timelines and list timelines, mirroring the local delete route.
+    if (ctx.timelineStream) {
+      await broadcastObjectDelete(ctx.timelineStream, ctx.db, obj);
+    }
   }
 }
 

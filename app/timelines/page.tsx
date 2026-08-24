@@ -9,7 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { getLastTimelineView, setLastTimelineView } from "@/lib/streaming/timeline-cache";
+import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { statusHtmlToPlain } from "@/lib/activitypub/content";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
@@ -58,6 +58,7 @@ export default function TimelinesPage() {
     } else if (event === "delete") {
       const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
       seenIdsRef.current.delete(deletedId);
+      purgeStatusFromCache(deletedId);
       setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
     } else if (event === "status.update") {
       try {

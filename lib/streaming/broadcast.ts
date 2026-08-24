@@ -12,6 +12,15 @@ export type DONamespace = {
   get(id: unknown): { fetch(input: string | URL, init?: RequestInit): Promise<Response> };
 };
 
+// Structural D1 type (avoids @cloudflare/workers-types version mismatches).
+type D1DatabaseLike = {
+  prepare(sql: string): {
+    bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> };
+  };
+};
+
+import { encodeStatusId } from "@/lib/mastodon/statusId";
+
 const DO_HOST = "https://timeline-do";
 
 function getStub(ns: DONamespace) {
@@ -133,6 +142,8 @@ export async function broadcastDelete(
     tasks.push(broadcastToChannel(ns, "public", "delete", statusId));
     if (isLocal) {
       tasks.push(broadcastToChannel(ns, "public:local", "delete", statusId));
+    } else {
+      tasks.push(broadcastToChannel(ns, "public:remote", "delete", statusId));
     }
   }
   await Promise.allSettled(tasks);
@@ -147,6 +158,73 @@ export async function broadcastHomeDelete(
   statusId: string
 ): Promise<void> {
   await broadcastToChannel(ns, `home:${actorUsername(actorId)}`, "delete", statusId);
+}
+
+/** Extract hashtag names (lowercased, without "#") from a stored object's raw AP JSON. */
+function extractHashtagNames(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { tag?: unknown };
+    const tags = Array.isArray(parsed.tag) ? parsed.tag : [];
+    const names: string[] = [];
+    for (const t of tags) {
+      const tag = t as { type?: string; name?: string };
+      if (tag.type === "Hashtag" && typeof tag.name === "string") {
+        names.push(tag.name.replace(/^#/, "").toLowerCase());
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Broadcast a status deletion to EVERY timeline that could show it: public
+ * (federated/local/remote), home feeds of local followers, hashtag channels the
+ * object is tagged with, and list channels containing the author. Used by both
+ * local deletions and inbound federated deletes so connected clients remove the
+ * status live without a reload.
+ */
+export async function broadcastObjectDelete(
+  ns: DONamespace,
+  db: D1DatabaseLike,
+  obj: { id: string; local: boolean; visibility: string; actorId: string; raw?: string | null }
+): Promise<void> {
+  const encodedStatusId = encodeStatusId(obj.id, obj.local);
+  const isPublic = obj.visibility === "public";
+  const tasks: Promise<void>[] = [
+    broadcastDelete(ns, encodedStatusId, isPublic, obj.local),
+  ];
+
+  // Local followers' home feeds.
+  try {
+    const followerRows = await db
+      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+      .bind(obj.actorId)
+      .all<{ id: string }>();
+    for (const row of followerRows.results) {
+      tasks.push(broadcastHomeDelete(ns, row.id, encodedStatusId));
+    }
+  } catch { /* ignore */ }
+
+  // Hashtag timelines.
+  for (const tag of extractHashtagNames(obj.raw ?? undefined)) {
+    tasks.push(broadcastToChannel(ns, `hashtag:${tag}`, "delete", encodedStatusId));
+  }
+
+  // List timelines containing the author.
+  try {
+    const listRows = await db
+      .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+      .bind(obj.actorId)
+      .all<{ list_id: string }>();
+    for (const row of listRows.results) {
+      tasks.push(broadcastToChannel(ns, `list:${row.list_id}`, "delete", encodedStatusId));
+    }
+  } catch { /* ignore */ }
+
+  await Promise.allSettled(tasks);
 }
 
 /**

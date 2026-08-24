@@ -14,6 +14,8 @@ import { VisibilityPicker } from "@/components/VisibilityPicker";
 import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
+import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { statusHtmlToPlain } from "@/lib/activitypub/content";
 
 interface PollOption { title: string; votes_count: number | null }
@@ -128,6 +130,7 @@ function ReplyBox({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCw, setShowCw] = useState(false);
+  const [defaultSensitive, setDefaultSensitive] = useState(false);
   const [cwText, setCwText] = useState("");
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
@@ -200,8 +203,8 @@ function ReplyBox({
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
-      // CW on → media blurred by default
-      if (showCw) form.append("sensitive", "true");
+      // CW on, or the "mark media as sensitive" preference → media blurred by default
+      if (showCw || defaultSensitive) form.append("sensitive", "true");
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",
@@ -233,6 +236,18 @@ function ReplyBox({
 
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  // Mastodon: "always mark media as sensitive" → new attachments blur by default.
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/v1/preferences", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() as Promise<Record<string, string | boolean | null>> : null))
+      .then((data) => {
+        if (data?.["posting:default:sensitive"] === true) setDefaultSensitive(true);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -459,6 +474,7 @@ export default function ThreadPage() {
 
   const [me, setMe] = useState<Me | null>(null);
   const [focal, setFocal] = useState<Status | null>(null);
+  const [deleted, setDeleted] = useState(false);
   const [ancestors, setAncestors] = useState<Status[]>([]);
   const [descendants, setDescendants] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
@@ -539,6 +555,15 @@ export default function ThreadPage() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusId]);
+
+  // Remove the status from the screen live when it's deleted (streaming delete
+  // events carry the encoded status id), and purge it from any cached timelines.
+  useTimelineStream("public", (event, payload) => {
+    if (event !== "delete") return;
+    const deletedId = payload.replace(/^"|"$/g, "");
+    purgeStatusFromCache(deletedId);
+    if (deletedId === statusId) setDeleted(true);
+  });
 
   function handleFav(toggled: Status) {
     const update = (s: Status): Status =>
@@ -727,9 +752,9 @@ export default function ThreadPage() {
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             Loading thread...
           </div>
-        ) : !focal ? (
+        ) : deleted || !focal ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Post not found.
+            {deleted ? t.status_deleted : t.profile_not_found}
           </div>
         ) : (
           <>

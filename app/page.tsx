@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, LOCALES, type Locale } from "@/lib/i18n";
 import { Icon, type IconName } from "@/components/Icon";
 
 export default function Home() {
@@ -60,34 +60,17 @@ export default function Home() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "0.15rem" }}>
-              <button
-                onClick={() => setLocale("en")}
-                className="btn btn-ghost btn-sm"
-                aria-pressed={locale === "en"}
-                style={{
-                  fontWeight: locale === "en" ? 700 : 400,
-                  background: locale === "en" ? "var(--accent-bg)" : undefined,
-                  color: locale === "en" ? "var(--accent)" : "var(--text-muted)",
-                  padding: "0.15rem 0.5rem",
-                }}
-              >
-                EN
-              </button>
-              <button
-                onClick={() => setLocale("es")}
-                className="btn btn-ghost btn-sm"
-                aria-pressed={locale === "es"}
-                style={{
-                  fontWeight: locale === "es" ? 700 : 400,
-                  background: locale === "es" ? "var(--accent-bg)" : undefined,
-                  color: locale === "es" ? "var(--accent)" : "var(--text-muted)",
-                  padding: "0.15rem 0.5rem",
-                }}
-              >
-                ES
-              </button>
-            </div>
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              aria-label={t.a11y_menu}
+              className="input"
+              style={{ width: "auto", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
+            >
+              {LOCALES.map((l) => (
+                <option key={l.code} value={l.code}>{l.name}</option>
+              ))}
+            </select>
             <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
             <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
           </div>

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { getToken } from "@/lib/client-api";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, LOCALES, type Locale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
 
@@ -270,33 +270,18 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
           <span>{theme === "dark" ? t.theme_dark : t.theme_light}</span>
         </button>
 
-        {/* Language toggle */}
-        <div style={{ display: "flex", gap: "0.375rem" }}>
-          <button
-            onClick={() => setLocale("en")}
-            className="btn btn-ghost btn-sm"
-            style={{
-              flex: 1,
-              fontWeight: locale === "en" ? 700 : 400,
-              background: locale === "en" ? "var(--accent-bg)" : undefined,
-              color: locale === "en" ? "var(--accent)" : "var(--text-muted)",
-            }}
-          >
-            EN
-          </button>
-          <button
-            onClick={() => setLocale("es")}
-            className="btn btn-ghost btn-sm"
-            style={{
-              flex: 1,
-              fontWeight: locale === "es" ? 700 : 400,
-              background: locale === "es" ? "var(--accent-bg)" : undefined,
-              color: locale === "es" ? "var(--accent)" : "var(--text-muted)",
-            }}
-          >
-            ES
-          </button>
-        </div>
+        {/* Language selector */}
+        <select
+          value={locale}
+          onChange={(e) => setLocale(e.target.value as Locale)}
+          aria-label={t.a11y_menu}
+          className="input"
+          style={{ width: "100%", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
+        >
+          {LOCALES.map((l) => (
+            <option key={l.code} value={l.code}>{l.name}</option>
+          ))}
+        </select>
 
         {/* User info + logout */}
         {me ? (
@@ -474,32 +459,19 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
                 ))}
               </nav>
 
-              {/* Language toggle */}
-              <div style={{ display: "flex", gap: "0.375rem", marginTop: "0.75rem", padding: "0 0.5rem" }}>
-                <button
-                  onClick={() => setLocale("en")}
-                  className="btn btn-ghost btn-sm"
-                  style={{
-                    flex: 1,
-                    fontWeight: locale === "en" ? 700 : 400,
-                    background: locale === "en" ? "var(--accent-bg)" : undefined,
-                    color: locale === "en" ? "var(--accent)" : "var(--text-muted)",
-                  }}
+              {/* Language selector */}
+              <div style={{ marginTop: "0.75rem", padding: "0 0.5rem" }}>
+                <select
+                  value={locale}
+                  onChange={(e) => setLocale(e.target.value as Locale)}
+                  aria-label={t.a11y_menu}
+                  className="input"
+                  style={{ width: "100%", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
                 >
-                  EN
-                </button>
-                <button
-                  onClick={() => setLocale("es")}
-                  className="btn btn-ghost btn-sm"
-                  style={{
-                    flex: 1,
-                    fontWeight: locale === "es" ? 700 : 400,
-                    background: locale === "es" ? "var(--accent-bg)" : undefined,
-                    color: locale === "es" ? "var(--accent)" : "var(--text-muted)",
-                  }}
-                >
-                  ES
-                </button>
+                  {LOCALES.map((l) => (
+                    <option key={l.code} value={l.code}>{l.name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* User info + logout */}

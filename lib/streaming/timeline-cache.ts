@@ -23,6 +23,14 @@ export function clearTimelineCache(key: string): void {
   entries.delete(key);
 }
 
+/** Remove a status from every cached timeline so a restored feed never shows it. */
+export function purgeStatusFromCache(statusId: string): void {
+  for (const entry of entries.values()) {
+    entry.items = entry.items.filter((s) => (s as { id: string }).id !== statusId);
+    entry.seenIds = entry.seenIds.filter((id) => id !== statusId);
+  }
+}
+
 export function isTimelineCacheFresh<T>(entry: TimelineCacheEntry<T>): boolean {
   return entry.ready && Date.now() - entry.fetchedAt < TIMELINE_CACHE_TTL_MS;
 }

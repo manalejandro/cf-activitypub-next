@@ -3,12 +3,12 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
-import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
+import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
-import { broadcastDelete, broadcastHomeDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
+import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
@@ -206,8 +206,6 @@ export async function DELETE(
   if (obj.actorId !== actor.id) return json({ error: "Forbidden" }, 403);
 
   const author = await getActorById(env.DB, obj.actorId);
-  // Capture the encoded status ID before deletion (needed for streaming delete event)
-  const encodedStatusId = encodeStatusId(obj.id, obj.local);
   await deleteObject(env.DB, obj.id);
   await updateActor(env.DB, actor.id, { statusesCount: Math.max(0, actor.statusesCount - 1) });
 
@@ -230,21 +228,10 @@ export async function DELETE(
     }
   }
 
-  // Broadcast streaming delete event
+  // Broadcast streaming delete event to every timeline that could show it
+  // (public/local/remote feeds, home feeds of local followers, hashtags, lists).
   if (env.TIMELINE_STREAM) {
-    const isPublic = obj.visibility === "public";
-    const broadcastTasks: Promise<void>[] = [
-      broadcastDelete(env.TIMELINE_STREAM, encodedStatusId, isPublic, /* isLocal */ true),
-      broadcastHomeDelete(env.TIMELINE_STREAM, actor.id, encodedStatusId),
-    ];
-    const localFollowerRows = await env.DB
-      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-      .bind(actor.id)
-      .all<{ id: string }>();
-    for (const row of localFollowerRows.results) {
-      broadcastTasks.push(broadcastHomeDelete(env.TIMELINE_STREAM, row.id, encodedStatusId));
-    }
-    await Promise.allSettled(broadcastTasks);
+    await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, obj);
   }
 
   const allEmojis = await getAllCustomEmojis(env.DB);

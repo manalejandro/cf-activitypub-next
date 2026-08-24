@@ -22,10 +22,18 @@ export async function GET(): Promise<Response> {
         .bind(weekStart, weekEnd)
         .first<{ c: number }>(),
     ]);
+    let logins = 0;
+    try {
+      const loginRow = await env.DB
+        .prepare("SELECT COUNT(*) as c FROM actors WHERE is_local = 1 AND last_active_at >= ? AND last_active_at <= ?")
+        .bind(weekStart, weekEnd)
+        .first<{ c: number }>();
+      logins = loginRow?.c ?? 0;
+    } catch { /* last_active_at column may be missing pre-migration */ }
     weeks.push({
       week: Math.floor(start.getTime() / 1000).toString(),
       statuses: (statusRow?.c ?? 0).toString(),
-      logins: "0",
+      logins: logins.toString(),
       registrations: (actorRow?.c ?? 0).toString(),
     });
   }

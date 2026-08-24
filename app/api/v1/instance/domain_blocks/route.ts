@@ -1,9 +1,8 @@
 import { getCloudflareContext, json } from "@/lib/cf";
+import { getInstanceDomainBlocks } from "@/lib/db";
 
 export async function GET(): Promise<Response> {
   const { env } = getCloudflareContext();
-  const rows = await env.DB
-    .prepare("SELECT DISTINCT domain FROM domain_blocks ORDER BY domain")
-    .all<{ domain: string }>();
-  return json(rows.results.map((r) => r.domain));
+  const blocks = await getInstanceDomainBlocks(env.DB);
+  return json(blocks.map((b) => b.domain));
 }

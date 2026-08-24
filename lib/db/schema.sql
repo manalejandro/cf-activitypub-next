@@ -200,6 +200,12 @@ CREATE TABLE IF NOT EXISTS instance_domain_blocks (
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS instance_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- ─────────────────────────────────────────
 -- Notifications
 -- ─────────────────────────────────────────

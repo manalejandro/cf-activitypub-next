@@ -1,18 +1,21 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { serializeInstanceV2, serializeAccount } from "@/lib/mastodon/serializers";
-import { getInstanceContactActor } from "@/lib/db";
+import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
+import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
 
 // GET /api/v2/instance
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
-  const [userRow, contactActor] = await Promise.all([
+  const [userRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
     env.DB
       .prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1")
       .first<{ count: number }>(),
     getInstanceContactActor(env.DB),
+    getInstanceSetting(env.DB, "rules"),
+    getInstanceSetting(env.DB, "languages"),
   ]);
 
   const userCount = userRow?.count ?? 0;
@@ -20,6 +23,14 @@ export async function GET(request: NextRequest): Promise<Response> {
   const title = env.INSTANCE_TITLE ?? domain;
   const description = env.INSTANCE_DESCRIPTION ?? "An ActivityPub server";
   const version = env.INSTANCE_VERSION ?? "0.1.0";
+
+  let rules: { id: string; text: string }[] = [];
+  try { rules = rulesRaw ? JSON.parse(rulesRaw) : []; } catch { /* ignore */ }
+  let languages: string[] = SUPPORTED_LANGUAGE_CODES;
+  try {
+    const langs = languagesRaw ? JSON.parse(languagesRaw) as { code: string }[] : [];
+    if (langs.length > 0) languages = langs.map((l) => l.code);
+  } catch { /* ignore */ }
 
   return json(
     serializeInstanceV2(
@@ -29,7 +40,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       version,
       userCount,
       contactActor ? serializeAccount(contactActor, domain) : null,
-      env.VAPID_PUBLIC_KEY
+      env.VAPID_PUBLIC_KEY,
+      languages,
+      rules
     )
   );
 }

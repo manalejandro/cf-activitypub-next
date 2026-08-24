@@ -8,6 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -65,9 +66,10 @@ export default function HomePage() {
         seenIdsRef.current.add(status.id);
         setStatuses((prev) => [status, ...prev]);
       } catch { /* ignore */ }
-    } else if (event === "delete") {
-      const deletedId = payload.replace(/^"|"$/g, "");
+} else if (event === "delete") {
+      const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
       seenIdsRef.current.delete(deletedId);
+      purgeStatusFromCache(deletedId);
       setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
     } else if (event === "status.update") {
       try {
@@ -79,6 +81,7 @@ export default function HomePage() {
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);
+  const [defaultSensitive, setDefaultSensitive] = useState(false);
   const [cwText, setCwText] = useState("");
   // Poll compose state
   const [pollMode, setPollMode] = useState(false);
@@ -115,7 +118,8 @@ export default function HomePage() {
     const data = await res.json() as Record<string, string | boolean | null>;
     const vis = data["posting:default:visibility"];
     if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "followers" | "direct");
-    if (data["posting:default:sensitive"] === true) setShowCw(true);
+    // Mastodon: "always mark media as sensitive" → new attachments blur by default.
+    if (data["posting:default:sensitive"] === true) setDefaultSensitive(true);
   }
 
   useEffect(() => {
@@ -207,8 +211,8 @@ export default function HomePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
-      // CW on → media blurred by default
-      if (showCw) form.append("sensitive", "true");
+      // CW on, or the "mark media as sensitive" preference → media blurred by default
+      if (showCw || defaultSensitive) form.append("sensitive", "true");
       try {
         const res = await fetch("/api/v1/media", {
           method: "POST",

@@ -726,7 +726,7 @@ export interface MastodonInstance {
   };
   registrations: { enabled: boolean; approval_required: boolean; message: null };
   contact: { email: string; account: MastodonAccount | null };
-  rules: { id: string; text: string; hint: string }[];
+  rules: { id: string; text: string; hint?: string | null }[];
 }
 
 // ─────────────────────────────────────────

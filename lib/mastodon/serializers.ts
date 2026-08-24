@@ -625,7 +625,9 @@ export function serializeInstanceV2(
   version: string,
   userCount: number,
   contactAccount: MastodonAccount | null = null,
-  vapidPublicKey?: string
+  vapidPublicKey?: string,
+  languages: string[] = ["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh-Hans"],
+  rules: { id: string; text: string }[] = []
 ): MastodonInstance {
   return {
     uri: domain,
@@ -635,7 +637,7 @@ export function serializeInstanceV2(
     description,
     usage: { users: { active_month: userCount } },
     thumbnail: { url: `https://${domain}/logo.svg` },
-    languages: ["en"],
+    languages,
     ...(vapidPublicKey ? { vapid_public_key: vapidPublicKey } : {}),
     configuration: {
       urls: { streaming: `wss://${domain}/api/v1/streaming` },
@@ -664,7 +666,7 @@ export function serializeInstanceV2(
     },
     registrations: { enabled: true, approval_required: false, message: null },
     contact: { email: `admin@${domain}`, account: contactAccount },
-    rules: [],
+    rules,
   };
 }
 

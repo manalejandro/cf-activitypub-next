@@ -6,6 +6,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 declare global {
   interface Window {
@@ -37,7 +38,7 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState("");
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
   const searchParams = useSearchParams();
 
   const turnstileRef = useRef<HTMLDivElement>(null);
@@ -160,32 +161,9 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
         className="flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
       >
-        {/* Language toggle */}
-        <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", gap: "0.375rem" }}>
-          <button
-            onClick={() => setLocale("en")}
-            className="btn btn-ghost btn-sm"
-            aria-pressed={locale === "en"}
-            style={{
-              fontWeight: locale === "en" ? 700 : 400,
-              background: locale === "en" ? "var(--accent-bg)" : undefined,
-              color: locale === "en" ? "var(--accent)" : "var(--text-muted)",
-            }}
-          >
-            EN
-          </button>
-          <button
-            onClick={() => setLocale("es")}
-            className="btn btn-ghost btn-sm"
-            aria-pressed={locale === "es"}
-            style={{
-              fontWeight: locale === "es" ? 700 : 400,
-              background: locale === "es" ? "var(--accent-bg)" : undefined,
-              color: locale === "es" ? "var(--accent)" : "var(--text-muted)",
-            }}
-          >
-            ES
-          </button>
+        {/* Language selector */}
+        <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
+          <LanguageSelector />
         </div>
 
         <div className="w-full max-w-sm">

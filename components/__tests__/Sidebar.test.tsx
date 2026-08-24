@@ -46,6 +46,10 @@ vi.mock("@/lib/i18n", () => ({
     locale: "en" as const,
     setLocale: vi.fn(),
   }),
+  LOCALES: [
+    { code: "en", name: "English" },
+    { code: "es", name: "Español" },
+  ],
 }));
 
 // Mock getToken
@@ -111,10 +115,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
-  it("renders language toggle buttons", () => {
+  it("renders a language selector with the supported locales", () => {
     render(<Sidebar me={null} currentPath="/home" />);
-    expect(screen.getByText("EN")).toBeInTheDocument();
-    expect(screen.getByText("ES")).toBeInTheDocument();
+    expect(screen.getAllByText("English").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Español")).toBeInTheDocument();
   });
 
   it("renders mobile top bar with theme toggle", () => {

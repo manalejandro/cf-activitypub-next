@@ -4,13 +4,14 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,31 +62,8 @@ export default function ForgotPasswordForm() {
       className="flex flex-col items-center justify-center min-h-screen px-4"
       style={{ background: "var(--bg)" }}
     >
-      <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", gap: "0.375rem" }}>
-        <button
-          onClick={() => setLocale("en")}
-          className="btn btn-ghost btn-sm"
-          aria-pressed={locale === "en"}
-          style={{
-            fontWeight: locale === "en" ? 700 : 400,
-            background: locale === "en" ? "var(--accent-bg)" : undefined,
-            color: locale === "en" ? "var(--accent)" : "var(--text-muted)",
-          }}
-        >
-          EN
-        </button>
-        <button
-          onClick={() => setLocale("es")}
-          className="btn btn-ghost btn-sm"
-          aria-pressed={locale === "es"}
-          style={{
-            fontWeight: locale === "es" ? 700 : 400,
-            background: locale === "es" ? "var(--accent-bg)" : undefined,
-            color: locale === "es" ? "var(--accent)" : "var(--text-muted)",
-          }}
-        >
-          ES
-        </button>
+      <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
+        <LanguageSelector />
       </div>
 
       <div className="w-full max-w-sm">

@@ -50,6 +50,7 @@ function toAPAttachment(att: LocalAttachment): APAttachment {
     ...(att.blurhash ? { blurhash: att.blurhash } : {}),
     ...(att.width != null ? { width: att.width } : {}),
     ...(att.height != null ? { height: att.height } : {}),
+    ...(att.sensitive ? { sensitive: true } : {}),
   };
 }
 
@@ -133,6 +134,18 @@ export async function POST(request: NextRequest): Promise<Response> {
   let spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
   const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+
+  // If any pending media is marked sensitive, the whole status is sensitive
+  // (matches Mastodon): remote instances then blur the media even without a CW.
+  for (const mediaId of mediaIds.slice(0, 4)) {
+    if (sensitive) break;
+    const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
+    if (!pendingRaw) continue;
+    try {
+      const pending = JSON.parse(pendingRaw) as { sensitive?: boolean };
+      if (pending.sensitive === true) sensitive = true;
+    } catch { /* ignore */ }
+  }
 
   // Process content: linkify mentions, hashtags, URLs, custom emoji → HTML
   const localEmojis = await getAllCustomEmojis(env.DB);
