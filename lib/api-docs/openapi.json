@@ -1121,60 +1121,6 @@
         }
       }
     },
-    "/api/oauth/token": {
-      "post": {
-        "summary": "Post /api/oauth/token",
-        "operationId": "post_api_oauth_token",
-        "tags": [
-          "Misc"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/users/{username}/followers": {
       "get": {
         "summary": "Get /api/users/{username}/followers",

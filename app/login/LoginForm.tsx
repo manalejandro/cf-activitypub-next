@@ -92,7 +92,7 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
     setError(null);
 
     try {
-      const res = await fetch("/api/oauth/token", {
+      const res = await fetch("/oauth/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
