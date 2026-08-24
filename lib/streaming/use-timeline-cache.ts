@@ -54,40 +54,34 @@ function scrollToStatusAnchor(anchorId: string | null, fallbackY: number) {
   requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 
-// Restore the window scroll position, defending against Next.js scrolling to
-// the top again right after our restore (its scroll handler runs in the layout
-// phase of the navigation, potentially after ours).
-function restoreScroll(y: number) {
-  const apply = () => window.scrollTo(0, y);
-  requestAnimationFrame(() => requestAnimationFrame(apply));
-  let reapplied = false;
-  const guard = () => {
-    if (reapplied) return;
-    if (window.scrollY === 0) {
-      reapplied = true;
-      apply();
-      window.removeEventListener("scroll", guard);
+/**
+ * Force the window to a scroll position immediately and keep re-applying it
+ * across the route transition (Next.js may scroll the window during
+ * navigation) until it sticks. Uses requestAnimationFrame — no timers.
+ */
+function forceScroll(y: number) {
+  let attempts = 0;
+  const apply = () => {
+    if (attempts >= 12) return;
+    attempts++;
+    if (Math.abs(window.scrollY - y) > 1) {
+      window.scrollTo(0, y);
+      requestAnimationFrame(apply);
     }
   };
-  window.addEventListener("scroll", guard);
-  setTimeout(() => window.removeEventListener("scroll", guard), 1000);
+  apply();
 }
 
-// Force the window back to the top, defending against a browser/Next.js scroll
+// Restore a remembered scroll offset, defended against a browser/Next.js
+// scroll-to-top running after ours.
+function restoreScroll(y: number) {
+  forceScroll(y);
+}
+
+// Force the window back to the top, defended against a browser/Next.js scroll
 // restore running after ours (the mirror of restoreScroll, but for offset 0).
 function resetScrollToTop() {
-  const apply = () => window.scrollTo(0, 0);
-  requestAnimationFrame(() => requestAnimationFrame(apply));
-  let reapplied = false;
-  const guard = () => {
-    if (reapplied) return;
-    if (window.scrollY !== 0) {
-      reapplied = true;
-      apply();
-    }
-  };
-  window.addEventListener("scroll", guard);
-  setTimeout(() => window.removeEventListener("scroll", guard), 1000);
+  forceScroll(0);
 }
 
 export function useTimelineCache<T extends { id: string }>(
@@ -263,28 +257,22 @@ export function useTimelineCache<T extends { id: string }>(
     };
   }, [key]);
 
-  // Track the window scroll position so it survives unmount (navigation away).
-  // useLayoutEffect ensures the cleanup runs during the layout phase — before
-  // Next.js scrolls the window to the top on navigation — so the position of
-  // the feed is captured before it is clobbered.
-  useIsomorphicLayoutEffect(() => {
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const entry = getTimelineCache(keyRef.current);
-        if (entry) entry.scrollY = window.scrollY;
-      });
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-      const entry = getTimelineCache(keyRef.current);
-      if (entry && window.scrollY > 0) entry.scrollY = window.scrollY;
-    };
-  }, []);
+// Track the window scroll position so it survives unmount (navigation away).
+// The value is written synchronously on every scroll so it is always current,
+// and re-saved on unmount (guarded against Next.js resetting it to 0 mid
+// navigation).
+useIsomorphicLayoutEffect(() => {
+  const onScroll = () => {
+    const entry = getTimelineCache(keyRef.current);
+    if (entry) entry.scrollY = window.scrollY;
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    window.removeEventListener("scroll", onScroll);
+    const entry = getTimelineCache(keyRef.current);
+    if (entry && window.scrollY > 0) entry.scrollY = window.scrollY;
+  };
+}, []);
 
   // Keep the cache in sync with the live statuses (streaming, favs, edits…).
   // Skip while a tab switch is in flight: at that moment `statuses` still holds
