@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { EmojiInput } from "@/components/EmojiInput";
+import { EmojiTextarea } from "@/components/EmojiTextarea";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -113,12 +115,12 @@ export default function AdminSettingsPage() {
           )}
           {data.rules.map((rule) => (
             <div key={rule.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.375rem" }}>
-              <input className="input" style={inputStyle} value={rule.text} onChange={(e) => setData({ ...data, rules: data.rules.map((r) => r.id === rule.id ? { ...r, text: e.target.value } : r) })} />
+              <EmojiInput className="input" containerStyle={{ flex: 1 }} style={inputStyle} value={rule.text} onChange={(v) => setData({ ...data, rules: data.rules.map((r) => r.id === rule.id ? { ...r, text: v } : r) })} />
               <button type="button" className="btn btn-ghost btn-sm" aria-label={t.action_delete} style={{ color: "var(--danger)", flexShrink: 0 }} onClick={() => removeRule(rule.id)}><Icon name="trash" color="var(--danger)" /></button>
             </div>
           ))}
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input className="input" style={inputStyle} value={newRule} onChange={(e) => setNewRule(e.target.value)} placeholder={t.admin_settings_rule_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRule(); } }} />
+            <EmojiInput className="input" containerStyle={{ flex: 1 }} style={inputStyle} value={newRule} onChange={setNewRule} placeholder={t.admin_settings_rule_ph} onKeyDown={(e) => { if (e.key === "Enter" && !e.defaultPrevented) { e.preventDefault(); addRule(); } }} />
             <button type="button" className="btn btn-outline btn-sm" onClick={addRule} disabled={!newRule.trim()}>{t.admin_settings_add_rule}</button>
           </div>
         </div>
@@ -126,19 +128,19 @@ export default function AdminSettingsPage() {
         {/* Extended description */}
         <div>
           <label style={labelStyle}>{t.admin_settings_ext_desc}</label>
-          <textarea className="input" style={{ ...inputStyle, minHeight: 90 }} value={data.extended_description} onChange={(e) => setData({ ...data, extended_description: e.target.value })} />
+          <EmojiTextarea className="input" style={{ ...inputStyle, minHeight: 90 }} value={data.extended_description} onChange={(v) => setData({ ...data, extended_description: v })} />
         </div>
 
         {/* Privacy policy */}
         <div>
           <label style={labelStyle}>{t.admin_settings_privacy}</label>
-          <textarea className="input" style={{ ...inputStyle, minHeight: 120 }} value={data.privacy_policy} onChange={(e) => setData({ ...data, privacy_policy: e.target.value })} />
+          <EmojiTextarea className="input" style={{ ...inputStyle, minHeight: 120 }} value={data.privacy_policy} onChange={(v) => setData({ ...data, privacy_policy: v })} />
         </div>
 
         {/* Terms of service */}
         <div>
           <label style={labelStyle}>{t.admin_settings_tos}</label>
-          <textarea className="input" style={{ ...inputStyle, minHeight: 120 }} value={data.terms_of_service} onChange={(e) => setData({ ...data, terms_of_service: e.target.value })} />
+          <EmojiTextarea className="input" style={{ ...inputStyle, minHeight: 120 }} value={data.terms_of_service} onChange={(v) => setData({ ...data, terms_of_service: v })} />
         </div>
 
         {/* Languages */}

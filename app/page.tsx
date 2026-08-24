@@ -8,12 +8,21 @@ import { useAuth } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon, type IconName } from "@/components/Icon";
+import { RichText } from "@/components/RichText";
+
+interface InstanceSettings {
+  rules?: { id: string; text: string; html: string }[];
+  extended_description?: string;
+  privacy_policy?: string;
+  terms_of_service?: string;
+}
 
 export default function Home() {
   const { authenticated, loading } = useAuth();
   const { t } = useLocale();
   const router = useRouter();
   const [version, setVersion] = useState<string | null>(null);
+  const [settings, setSettings] = useState<InstanceSettings | null>(null);
 
   useEffect(() => {
     if (authenticated && !loading) router.replace("/home");
@@ -28,6 +37,13 @@ export default function Home() {
           setVersion(m ? m[1] : data.version);
         }
       })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/v1/instance/settings")
+      .then((res) => (res.ok ? res.json() as Promise<InstanceSettings> : null))
+      .then((data) => { if (data) setSettings(data); })
       .catch(() => {});
   }, []);
 
@@ -108,7 +124,7 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="container-wide pt-24 pb-40">
+      <section className="container-wide pt-24 pb-16">
         <h2 className="text-center mb-14" style={{ fontSize: "1.8rem" }}>
           {t.landing_features_title}
         </h2>
@@ -122,6 +138,46 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* Instance settings (only the ones that are configured) */}
+      {(settings?.rules?.length || settings?.extended_description || settings?.privacy_policy || settings?.terms_of_service) ? (
+        <section className="container-wide pb-40">
+          <div className="grid gap-6 md:grid-cols-2">
+            {settings.extended_description && (
+              <div className="card p-6 flex flex-col gap-3">
+                <div style={{ fontSize: "2rem" }}><Icon name="info-circle" size="2rem" /></div>
+                <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t.landing_extended_description}</h3>
+                <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}><RichText html={settings.extended_description} /></div>
+              </div>
+            )}
+            {settings.privacy_policy && (
+              <div className="card p-6 flex flex-col gap-3">
+                <div style={{ fontSize: "2rem" }}><Icon name="lock" size="2rem" /></div>
+                <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t.landing_privacy_policy}</h3>
+                <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}><RichText html={settings.privacy_policy} /></div>
+              </div>
+            )}
+            {settings.terms_of_service && (
+              <div className="card p-6 flex flex-col gap-3">
+                <div style={{ fontSize: "2rem" }}><Icon name="book" size="2rem" /></div>
+                <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t.landing_terms_of_service}</h3>
+                <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}><RichText html={settings.terms_of_service} /></div>
+              </div>
+            )}
+            {settings.rules && settings.rules.length > 0 && (
+              <div className="card p-6 flex flex-col gap-3">
+                <div style={{ fontSize: "2rem" }}><Icon name="list" size="2rem" /></div>
+                <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t.landing_rules}</h3>
+                <ol style={{ margin: 0, paddingLeft: "1.25rem", color: "var(--text-secondary)", fontSize: "0.9rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {settings.rules.map((r) => (
+                    <li key={r.id}><RichText html={r.html} /></li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {/* Footer */}
       <footer style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>

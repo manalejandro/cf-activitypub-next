@@ -1417,7 +1417,8 @@ export default function ProfilePage() {
                   <div key={i} className="flex gap-2" style={{ marginBottom: "0.5rem", alignItems: "center" }}>
                     <EmojiInput
                       className="input"
-                      style={{ flex: "0 0 35%", fontSize: "0.85rem" }}
+                      containerStyle={{ flex: "0 0 35%" }}
+                      style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_label}
                       maxLength={255}
                       value={f.name}
@@ -1425,7 +1426,8 @@ export default function ProfilePage() {
                     />
                     <EmojiInput
                       className="input"
-                      style={{ flex: 1, fontSize: "0.85rem" }}
+                      containerStyle={{ flex: 1 }}
+                      style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_content}
                       maxLength={255}
                       value={f.value}

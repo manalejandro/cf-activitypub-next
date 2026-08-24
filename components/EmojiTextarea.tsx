@@ -4,15 +4,16 @@ import { useRef } from "react";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 
 /**
- * Single-line text input with `:emoji:` autocomplete, for profile fields and
- * other short inputs.
+ * Multi-line textarea with `:emoji:` autocomplete, for bios, policies and
+ * other longer plain-text inputs.
  */
-export function EmojiInput({
+export function EmojiTextarea({
   value,
   onChange,
   placeholder,
   ariaLabel,
   maxLength,
+  minHeight,
   style,
   containerStyle,
   className,
@@ -23,21 +24,21 @@ export function EmojiInput({
   placeholder?: string;
   ariaLabel?: string;
   maxLength?: number;
+  minHeight?: number;
   style?: React.CSSProperties;
   containerStyle?: React.CSSProperties;
   className?: string;
-  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
   const auto = useEmojiAutocomplete(value, onChange, ref);
 
   return (
     <div style={{ position: "relative", ...containerStyle }}>
-      <input
-        type="text"
+      <textarea
         ref={ref}
         className={className}
-        style={{ width: "100%", boxSizing: "border-box", ...style }}
+        style={{ ...style, width: "100%", boxSizing: "border-box", fontFamily: "inherit", resize: "none", minHeight }}
         maxLength={maxLength}
         value={value}
         onChange={auto.onChange}
