@@ -6,7 +6,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
-import { LanguageSelector } from "@/components/LanguageSelector";
+import { LanguagePicker } from "@/components/LanguagePicker";
 
 declare global {
   interface Window {
@@ -259,7 +259,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       >
         {/* Language selector */}
         <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-          <LanguageSelector />
+          <LanguagePicker />
         </div>
 
         <div className="w-full max-w-sm">

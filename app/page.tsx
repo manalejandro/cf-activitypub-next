@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
-import { useLocale, LOCALES, type Locale } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon, type IconName } from "@/components/Icon";
 
 export default function Home() {
   const { authenticated, loading } = useAuth();
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
   const router = useRouter();
   const [version, setVersion] = useState<string | null>(null);
 
@@ -60,17 +61,7 @@ export default function Home() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as Locale)}
-              aria-label={t.a11y_menu}
-              className="input"
-              style={{ width: "auto", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
-            >
-              {LOCALES.map((l) => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
+            <LanguagePicker />
             <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
             <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
           </div>

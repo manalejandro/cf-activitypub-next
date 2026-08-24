@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
-import { LanguageSelector } from "@/components/LanguageSelector";
+import { LanguagePicker } from "@/components/LanguagePicker";
 
 export default function ResetPasswordForm() {
   const [password, setPassword] = useState("");
@@ -99,7 +99,7 @@ export default function ResetPasswordForm() {
       style={{ background: "var(--bg)" }}
     >
       <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-        <LanguageSelector />
+        <LanguagePicker />
       </div>
 
       <div className="w-full max-w-sm">

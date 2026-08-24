@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n";
-import { LanguageSelector } from "@/components/LanguageSelector";
+import { LanguagePicker } from "@/components/LanguagePicker";
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -63,7 +63,7 @@ export default function ForgotPasswordForm() {
       style={{ background: "var(--bg)" }}
     >
       <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-        <LanguageSelector />
+        <LanguagePicker />
       </div>
 
       <div className="w-full max-w-sm">

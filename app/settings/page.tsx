@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
-import { useLocale, LOCALES, type Locale } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { getToken } from "@/lib/client-api";
 
 interface Preferences {
@@ -41,7 +42,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const token = getToken();
-  const { t, locale, setLocale } = useLocale();
+  const { t, locale } = useLocale();
 
   useEffect(() => {
     async function fetchMe() {
@@ -141,14 +142,7 @@ export default function SettingsPage() {
 
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_language}</label>
-            <select className="input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)} style={{ width: "100%" }}>
-              {LOCALES.map((l) => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
-            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-              {t.settings_language_hint}
-            </p>
+            <LanguagePicker fullWidth />
           </div>
 
           <div>

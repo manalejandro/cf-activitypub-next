@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { getToken } from "@/lib/client-api";
-import { useLocale, LOCALES, type Locale } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
 
@@ -22,7 +22,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
-  const { t, locale, setLocale } = useLocale();
+  const { t } = useLocale();
   const [unreadCount, setUnreadCount] = useState(0);
   const [version, setVersion] = useState<string | null>(null);
   const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
@@ -270,19 +270,6 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
           <span>{theme === "dark" ? t.theme_dark : t.theme_light}</span>
         </button>
 
-        {/* Language selector */}
-        <select
-          value={locale}
-          onChange={(e) => setLocale(e.target.value as Locale)}
-          aria-label={t.a11y_menu}
-          className="input"
-          style={{ width: "100%", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
-        >
-          {LOCALES.map((l) => (
-            <option key={l.code} value={l.code}>{l.name}</option>
-          ))}
-        </select>
-
         {/* User info + logout */}
         {me ? (
           <div
@@ -458,21 +445,6 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
                   </Link>
                 ))}
               </nav>
-
-              {/* Language selector */}
-              <div style={{ marginTop: "0.75rem", padding: "0 0.5rem" }}>
-                <select
-                  value={locale}
-                  onChange={(e) => setLocale(e.target.value as Locale)}
-                  aria-label={t.a11y_menu}
-                  className="input"
-                  style={{ width: "100%", padding: "0.5rem 0.625rem", fontSize: "0.85rem", cursor: "pointer" }}
-                >
-                  {LOCALES.map((l) => (
-                    <option key={l.code} value={l.code}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
 
               {/* User info + logout */}
               <div style={{ padding: "0.5rem", marginTop: "0.25rem" }}>

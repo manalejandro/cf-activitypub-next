@@ -115,12 +115,6 @@ describe("Sidebar", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
-  it("renders a language selector with the supported locales", () => {
-    render(<Sidebar me={null} currentPath="/home" />);
-    expect(screen.getAllByText("English").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Español")).toBeInTheDocument();
-  });
-
   it("renders mobile top bar with theme toggle", () => {
     render(<Sidebar me={null} currentPath="/home" />);
     const mobileThemeBtn = screen.getAllByTitle("Light");
