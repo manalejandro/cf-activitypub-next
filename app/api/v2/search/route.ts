@@ -3,7 +3,7 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
-import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
+import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
 
@@ -34,6 +34,62 @@ export async function GET(request: NextRequest): Promise<Response> {
   const doStatuses = type === "all" || type === "statuses";
   const doHashtags = type === "all" || type === "hashtags";
   const doCollections = type === "all" || type === "collections";
+
+  // ── URL resolution ─────────────────────────────────────────────────────────
+  // Pasting a federated account/status URL resolves it (local match first,
+  // then fetched from the remote server) regardless of the `resolve` flag.
+  const isUrl = /^https?:\/\/.+/i.test(q);
+  if (isUrl) {
+    const localObj = await env.DB.prepare("SELECT id FROM objects WHERE id = ? OR url = ?").bind(q, q).first<{ id: string }>();
+    if (localObj) {
+      const [rows, allEmojis] = await Promise.all([
+        // `o.*` only: `SELECT o.*, a.*` would make duplicate columns (id,
+        // updated_at…) resolve to the actor's values.
+        env.DB.prepare("SELECT o.* FROM objects o JOIN actors a ON a.id = o.actor_id WHERE o.id = ?").bind(localObj.id).all<Record<string, unknown>>(),
+        getAllCustomEmojis(env.DB),
+      ]);
+      const row = rows.results[0];
+      // Only trust a cached row that actually has content; otherwise fall
+      // through to the remote fetch, which repairs content-empty copies.
+      if (row && row.content) {
+        const actor = await getActorById(env.DB, row.actor_id as string);
+        if (actor && !actor.suspended && !actor.silenced) {
+          const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
+          const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
+          results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+        }
+        return json(results);
+      }
+    }
+
+    const localActor = await env.DB.prepare("SELECT id FROM actors WHERE id = ? OR url = ?").bind(q, q).first<{ id: string }>();
+    if (localActor) {
+      const actor = await getActorById(env.DB, localActor.id);
+      if (actor && !actor.suspended && !actor.silenced) {
+        results.accounts.push(serializeAccount(actor, domain));
+      }
+      return json(results);
+    }
+
+    // Remote: try a status URL, then an actor URL.
+    const remoteStatus = await fetchAndCacheRemoteStatus(env.DB, q);
+    if (remoteStatus.object && remoteStatus.actor) {
+      const [allEmojis, attachments] = await Promise.all([
+        getAllCustomEmojis(env.DB),
+        getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
+      ]);
+      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+      return json(results);
+    }
+    const cachedActor = await fetchAndCacheRemoteActor(env.DB, q);
+    if (cachedActor) {
+      const actor = await getActorById(env.DB, cachedActor.id);
+      if (actor && !actor.suspended && !actor.silenced) {
+        results.accounts.push(serializeAccount(actor, domain));
+      }
+    }
+    return json(results);
+  }
 
   // ── Accounts ─────────────────────────────────────────────────────────────
   if (doAccounts) {
@@ -91,7 +147,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
     const rows = await env.DB
       .prepare(
-        `SELECT o.*, a.* FROM objects o
+        `SELECT o.* FROM objects o
          JOIN actors a ON a.id = o.actor_id
          WHERE o.content LIKE ? ESCAPE '\\'
            AND o.visibility IN ('public', 'unlisted')

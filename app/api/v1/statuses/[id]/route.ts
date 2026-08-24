@@ -4,6 +4,7 @@ import { getObjectById, getActorById, deleteObject, updateObject, updateActor, g
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -38,7 +39,16 @@ export async function GET(
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
-  const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
+  let obj = await getObjectById(env.DB, decodeStatusId(id, domain));
+  // Remote status not cached yet (e.g. a link shared before it was ingested):
+  // resolve the IRI and cache it on-demand, then serve it like any other status.
+  if (!obj) {
+    const iri = decodeStatusId(id, domain);
+    if (/^https?:\/\//i.test(iri) && !iri.startsWith(`https://${domain}/`)) {
+      const resolved = await fetchAndCacheRemoteStatus(env.DB, iri);
+      if (resolved.object) obj = resolved.object;
+    }
+  }
   if (!obj) return notFound("Status not found");
 
   const author = await getActorById(env.DB, obj.actorId);

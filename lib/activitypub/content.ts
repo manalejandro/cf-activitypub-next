@@ -247,6 +247,26 @@ function decodeHtmlEscapes(text: string): string {
 }
 
 /**
+ * Derive the local media type (image/gifv/video/audio) for a federated
+ * attachment. Mastodon sends every attachment as AP type "Document" and only
+ * distinguishes the media kind via `mediaType` (a MIME string), so the MIME
+ * wins when present. Falls back to the AP type lowercased, defaulting an
+ * untyped/"Document" attachment to "image".
+ */
+export function apAttachmentType(
+  apType: string | null | undefined,
+  mediaType: string | null | undefined
+): string {
+  const mt = (mediaType ?? "").toLowerCase();
+  if (mt.startsWith("image/")) return mt === "image/gif" ? "gifv" : "image";
+  if (mt.startsWith("video/")) return "video";
+  if (mt.startsWith("audio/")) return "audio";
+  const t = (apType ?? "").toLowerCase();
+  if (!t || t === "document") return "image";
+  return t;
+}
+
+/**
  * Processes plain-text status content into HTML with linked mentions/hashtags
  * and custom emoji shortcodes.
  * Returns the HTML string and an array of AP tags (Mention / Hashtag / Emoji)

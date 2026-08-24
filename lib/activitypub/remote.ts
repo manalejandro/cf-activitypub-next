@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
+import { apAttachmentType } from "@/lib/activitypub/content";
 import {
   getDomainCallsSupport,
   setDomainCallsSupport,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject } from "@/lib/activitypub/federation";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
-import type { APAttachment, APNote, LocalAttachment } from "@/lib/types";
+import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
 
 export interface RemoteActorResult {
@@ -412,27 +413,7 @@ export async function fetchAndCacheRemoteActorStatuses(
       });
 
       // Inline attachments (remote objects reference of their URLs).
-      if (Array.isArray(obj.attachment)) {
-        for (const attachment of obj.attachment as APAttachment[]) {
-          if (!attachment?.url || typeof attachment.url !== "string") continue;
-          const localAttachment: LocalAttachment = {
-            id: attachment.id || generateId(),
-            objectId: oid,
-            type: (attachment.type ?? "image").toLowerCase(),
-            url: attachment.url,
-            remoteUrl: attachment.url,
-            description: attachment.name ?? null,
-            blurhash: attachment.blurhash ?? null,
-            width: attachment.width ?? null,
-            height: attachment.height ?? null,
-            fileSize: null,
-            mimeType: attachment.mediaType ?? null,
-            sensitive: obj.sensitive === true || (attachment as { sensitive?: boolean }).sensitive === true,
-            createdAt: new Date().toISOString(),
-          };
-          try { await createAttachment(db, localAttachment); } catch { /* ignore */ }
-        }
-      }
+      await storeObjectAttachments(db, oid, obj.attachment as APAttachment[] | undefined, obj.sensitive === true);
 
       // Backfill poll rows for Question objects.
       if (objType === "Question") {
@@ -446,6 +427,109 @@ export async function fetchAndCacheRemoteActorStatuses(
   }
 
   return ingested;
+}
+
+/**
+ * Persist a remote object's inline attachments (idempotent per attachment).
+ */
+async function storeObjectAttachments(
+  db: D1Database,
+  objectId: string,
+  attachment: APAttachment[] | undefined,
+  sensitive = false
+): Promise<void> {
+  if (!Array.isArray(attachment)) return;
+  for (const att of attachment) {
+    if (!att?.url || typeof att.url !== "string") continue;
+    try {
+      await createAttachment(db, {
+        id: att.id || generateId(),
+        objectId,
+        type: apAttachmentType(att.type, att.mediaType),
+        url: att.url,
+        remoteUrl: att.url,
+        description: att.name ?? null,
+        blurhash: att.blurhash ?? null,
+        width: att.width ?? null,
+        height: att.height ?? null,
+        fileSize: null,
+        mimeType: att.mediaType ?? null,
+        sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
+        createdAt: new Date().toISOString(),
+      });
+    } catch { /* ignore duplicate/conflict */ }
+  }
+}
+
+/**
+ * Fetch a single remote status by its URL and cache it locally (actor + object
+ * + attachments). Idempotent: returns the already-stored object if present.
+ * Used by search/explore to resolve pasted federated status URLs.
+ */
+export async function fetchAndCacheRemoteStatus(
+  db: D1Database,
+  url: string
+): Promise<{ object: LocalObject | null; actor: LocalActor | null }> {
+  const val = validateOutboundUrl(url);
+  if (!val.valid) return { object: null, actor: null };
+  try {
+    const fetched = await fetchRemoteObject(url);
+    if (!fetched || typeof fetched !== "object") return { object: null, actor: null };
+
+    const obj = fetched as Record<string, unknown>;
+    const objType = String(obj.type ?? "").split("/").pop() ?? "";
+    if (!isContentObjectType(objType)) return { object: null, actor: null };
+
+    const oid = (obj.id as string) ?? url;
+    if (!oid) return { object: null, actor: null };
+
+    // Idempotency: return the already-stored copy when present.
+    const existing = await getObjectById(db, oid);
+    if (existing) return { object: existing, actor: await getActorById(db, existing.actorId) };
+
+    const sanitized = sanitizeRemoteNoteContent(
+      obj.content as string | undefined,
+      obj.summary as string | undefined,
+      obj.sensitive === true
+    );
+
+    const attributedTo = (obj.attributedTo as string) ?? (obj.actor as string);
+    if (!attributedTo) return { object: null, actor: null };
+    const cachedActor = await fetchAndCacheRemoteActor(db, attributedTo);
+    if (!cachedActor) return { object: null, actor: null };
+
+    const visibility = outboxVisibility(obj.to, obj.cc);
+    if (visibility !== "public" && visibility !== "unlisted") return { object: null, actor: null };
+
+    await createObject(db, {
+      id: oid,
+      type: objType,
+      actorId: cachedActor.id,
+      content: sanitized.content,
+      contentWarning: sanitized.contentWarning,
+      sensitive: obj.sensitive === true,
+      visibility,
+      inReplyToId: (obj.inReplyTo as string) ?? null,
+      language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
+      url: outboxObjectUrl(obj.url, oid),
+      repliesCount: 0,
+      reblogsCount: 0,
+      favouritesCount: 0,
+      published: toIso(obj.published),
+      local: false,
+      raw: JSON.stringify(obj),
+    });
+
+    await storeObjectAttachments(db, oid, obj.attachment as APAttachment[] | undefined, obj.sensitive === true);
+    if (objType === "Question") {
+      try { await ensureOutboxPollRows(db, obj as unknown as APNote); } catch { /* ignore */ }
+    }
+
+    const object = await getObjectById(db, oid);
+    return { object, actor: object ? await getActorById(db, object.actorId) : null };
+  } catch {
+    return { object: null, actor: null };
+  }
 }
 
 /**
@@ -524,7 +608,7 @@ export async function fetchAndCacheRemoteActorFeatured(
             const localAttachment: LocalAttachment = {
               id: attachment.id || generateId(),
               objectId: oid,
-              type: (attachment.type ?? "image").toLowerCase(),
+              type: apAttachmentType(attachment.type, attachment.mediaType),
               url: attachment.url,
               remoteUrl: attachment.url,
               description: attachment.name ?? null,

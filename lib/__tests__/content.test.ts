@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { processStatusContent, linkifyInline, linkifyHtmlText, statusHtmlToPlain } from "@/lib/activitypub/content";
+import { processStatusContent, linkifyInline, linkifyHtmlText, statusHtmlToPlain, apAttachmentType } from "@/lib/activitypub/content";
 
 describe("processStatusContent URL vs hashtag handling", () => {
   it("does not treat a #fragment inside a URL as a hashtag", () => {
@@ -148,5 +148,35 @@ describe("statusHtmlToPlain", () => {
   it("decodes HTML entities back to plain characters", () => {
     const html = "<p>a &amp; b &lt; c</p>";
     expect(statusHtmlToPlain(html)).toBe("a & b < c");
+  });
+});
+
+describe("apAttachmentType", () => {
+  it("maps image MIME types to image", () => {
+    expect(apAttachmentType("Document", "image/jpeg")).toBe("image");
+    expect(apAttachmentType("Document", "image/png")).toBe("image");
+  });
+
+  it("maps gif MIME types to gifv", () => {
+    expect(apAttachmentType("Document", "image/gif")).toBe("gifv");
+  });
+
+  it("maps video and audio MIME types", () => {
+    expect(apAttachmentType("Document", "video/mp4")).toBe("video");
+    expect(apAttachmentType("Document", "audio/mpeg")).toBe("audio");
+  });
+
+  it("falls back to the AP type lowercased", () => {
+    expect(apAttachmentType("Image", undefined)).toBe("image");
+    expect(apAttachmentType("Audio", null)).toBe("audio");
+  });
+
+  it("defaults untyped Document attachments to image", () => {
+    expect(apAttachmentType("Document", undefined)).toBe("image");
+    expect(apAttachmentType(undefined, undefined)).toBe("image");
+  });
+
+  it("is case-insensitive", () => {
+    expect(apAttachmentType("document", "VIDEO/MP4")).toBe("video");
   });
 });

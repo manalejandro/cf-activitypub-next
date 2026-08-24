@@ -50,6 +50,7 @@ import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
+import { apAttachmentType } from "./content";
 import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
@@ -412,7 +413,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       const localAttachment: LocalAttachment = {
         id: attachment.id || generateId(),
         objectId: obj.id,
-        type: attachment.type.toLowerCase(),
+        type: apAttachmentType(attachment.type, attachment.mediaType),
         url: attachment.url,
         remoteUrl: attachment.url,
         description: attachment.name ?? null,
@@ -1901,7 +1902,7 @@ async function saveObjectAttachments(
       await createAttachment(db, {
         id: att.id || generateId(),
         objectId,
-        type: att.type.toLowerCase(),
+        type: apAttachmentType(att.type, att.mediaType),
         url: att.url,
         remoteUrl: att.url,
         description: att.name ?? null,
