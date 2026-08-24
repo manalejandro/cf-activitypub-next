@@ -9,6 +9,7 @@ import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
+import { EditStatusModal } from "@/components/EditStatusModal";
 
 interface TagInfo {
   id: string;
@@ -27,9 +28,6 @@ export default function TagPage() {
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
-  const [editText, setEditText] = useState("");
-  const [editSpoiler, setEditSpoiler] = useState("");
-  const [editBusy, setEditBusy] = useState(false);
   const { t } = useLocale();
 
   const token = getToken();
@@ -115,31 +113,11 @@ export default function TagPage() {
   }
 
   function openEdit(s: Status) {
-    const div = typeof document !== "undefined" ? document.createElement("div") : null;
-    if (div) {
-      div.innerHTML = s.content.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
-      setEditText((div.textContent ?? div.innerText ?? "").trim());
-    } else {
-      setEditText(s.content.replace(/<[^>]*>/g, "").trim());
-    }
-    setEditSpoiler(s.spoiler_text ?? "");
     setEditingStatus(s);
   }
 
-  async function handleEditSave() {
-    if (!editText.trim() || !editingStatus || !token) return;
-    setEditBusy(true);
-    const res = await fetch(`/api/v1/statuses/${editingStatus.id}`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ status: editText, spoiler_text: editSpoiler, sensitive: !!editSpoiler }),
-    });
-    if (res.ok) {
-      const updated = await res.json() as Status;
-      setStatuses((prev) => prev.map((x) => (x.id === editingStatus.id ? updated : x)));
-      setEditingStatus(null);
-    }
-    setEditBusy(false);
+  function handleStatusSaved(updated: Status) {
+    setStatuses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
   }
 
   async function handleDelete(s: Status) {
@@ -291,50 +269,7 @@ export default function TagPage() {
     </PageLayout>
 
       {/* Edit status modal */}
-      {editingStatus && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.edit_status_title}
-          style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setEditingStatus(null); }}
-        >
-          <div style={{ background: "var(--bg)", borderRadius: "var(--radius-lg)", padding: "1.25rem", width: "min(520px, 95vw)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: "1rem" }}>{t.edit_status_title}</span>
-              <button type="button" onClick={() => setEditingStatus(null)} aria-label={t.action_close} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1.1rem", padding: "0.25rem" }}><Icon name="times" color="var(--text-muted)" /></button>
-            </div>
-            {editSpoiler !== "" || editingStatus.spoiler_text ? (
-              <input
-                type="text"
-                value={editSpoiler}
-                onChange={(e) => setEditSpoiler(e.target.value)}
-                placeholder={t.cw_placeholder}
-                className="input"
-                style={{ width: "100%" }}
-              />
-            ) : null}
-            <textarea
-              autoFocus
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              placeholder={t.edit_status_placeholder}
-              maxLength={500}
-              className="input"
-              style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/500</span>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>{t.profile_cancel}</button>
-                <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditSave()}>
-                  {editBusy ? "…" : t.profile_save}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditStatusModal status={editingStatus} onClose={() => setEditingStatus(null)} onSaved={handleStatusSaved} />
     </>
   );
 }

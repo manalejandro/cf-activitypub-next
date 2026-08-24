@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -99,13 +99,17 @@ export async function PUT(
   }
 
   const content = (body.status as string | undefined)?.trim();
-  if (!content) return json({ error: "status content is required" }, 422);
+  const pollProvided = "poll" in body;
+  const pollRaw = (body.poll ?? null) as { options?: unknown; expires_in?: number; multiple?: boolean } | null;
+  const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= 2;
+  if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
 
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
+  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, 4) : undefined;
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
   const updatedAt = new Date().toISOString();
 
   // Preserve the original mentions and cc (reply participants) so edits don't
@@ -138,6 +142,86 @@ export async function PUT(
   });
   note.attachment = (await getAttachmentsByObjectId(env.DB, obj.id)).map(toAPAttachment);
   note.updated = updatedAt;
+
+  // If media_ids was provided, replace the status attachments with the given
+  // list: existing attachments are kept (with their sensitive flag refreshed),
+  // and new ids are resolved from pending media (uploaded through
+  // /api/v1/media). Otherwise the current media is kept as-is.
+  if (mediaIds) {
+    const existing = await getAttachmentsByObjectId(env.DB, obj.id);
+    const existingById = new Map(existing.map((a) => [a.id, a]));
+    await env.DB.prepare("DELETE FROM attachments WHERE object_id = ?").bind(obj.id).run();
+    const newAttachments: import("@/lib/types").LocalAttachment[] = [];
+    for (const mediaId of mediaIds) {
+      const ex = existingById.get(mediaId);
+      if (ex) {
+        const kept = { ...ex, sensitive: sensitive || ex.sensitive };
+        await createAttachment(env.DB, kept);
+        newAttachments.push(kept);
+        continue;
+      }
+      const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
+      if (!pendingRaw) continue;
+      try {
+        const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+        const att = {
+          id: mediaId,
+          objectId: obj.id,
+          type: (pending.type as string) ?? "image",
+          url: pending.url as string,
+          remoteUrl: null,
+          description: (pending.description as string | null) ?? null,
+          blurhash: null,
+          width: null,
+          height: null,
+          fileSize: (pending.fileSize as number | null) ?? null,
+          mimeType: (pending.mimeType as string | null) ?? null,
+          sensitive: sensitive || pending.sensitive === true,
+          createdAt: new Date().toISOString(),
+        };
+        await createAttachment(env.DB, att);
+        await env.KV.delete(`pending_media:${mediaId}`);
+        newAttachments.push(att);
+      } catch { /* skip malformed */ }
+    }
+    note.attachment = newAttachments.map(toAPAttachment);
+  }
+
+  // Poll handling: when the client sends a poll field, replace the existing
+  // poll (or remove it when it has no valid options). Otherwise keep as-is.
+  const noteAny = note as Record<string, unknown>;
+  if (pollProvided) {
+    await env.DB.prepare("DELETE FROM polls WHERE object_id = ?").bind(obj.id).run();
+    delete noteAny.oneOf;
+    delete noteAny.anyOf;
+    delete noteAny.endTime;
+    delete noteAny.votersCount;
+    if (hasPoll && pollRaw) {
+      const pollId = generateId();
+      const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
+      const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+      const validOptions = (pollRaw.options as string[]).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
+      await createPoll(env.DB, {
+        id: pollId,
+        objectId: obj.id,
+        expiresAt,
+        multiple: Boolean(pollRaw.multiple),
+        options: validOptions.map((title, i) => ({ id: generateId(), title, position: i })),
+      });
+      const pollChoices = validOptions.map((title) => ({
+        type: "Note",
+        name: title,
+        replies: { type: "Collection", totalItems: 0 },
+      }));
+      noteAny.type = "Question";
+      if (pollRaw.multiple) noteAny.anyOf = pollChoices;
+      else noteAny.oneOf = pollChoices;
+      noteAny.endTime = expiresAt;
+      noteAny.votersCount = 0;
+    } else {
+      noteAny.type = "Note";
+    }
+  }
 
   await updateObject(env.DB, obj.id, {
     content: htmlContent,
