@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getActorFields, setActorFields, getLastStatusAt } from "@/lib/db";
+import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount }));
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB) }));
 }
 
 // PATCH /api/v1/accounts/update_credentials
@@ -210,5 +210,5 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields }));
+  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields, emojis: await getAllCustomEmojis(env.DB) }));
 }

@@ -11,6 +11,8 @@ import { PageLayout } from "@/components/PageLayout";
 import { useStartCallButton } from "@/components/CallOverlay";
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
+import { DisplayName } from "@/components/DisplayName";
+import type { EmojiData } from "@/lib/emoji";
 import { Lightbox } from "@/components/Lightbox";
 import type { Status as SharedStatus } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
@@ -32,6 +34,7 @@ interface Account {
   acct: string;
   display_name: string;
   note: string;
+  emojis?: EmojiData[];
   avatar: string;
   header: string;
   followers_count: number;
@@ -134,7 +137,7 @@ function AccountRow({ account }: { account: Account }) {
     <a href={href} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}>
       <AvatarImg account={account} size={46} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account.display_name || account.username}</div>
+        <div style={{ fontWeight: 600, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><DisplayName name={account.display_name || account.username} emojis={account.emojis} /></div>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{account.acct}</div>
         {account.note && (
           <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.2rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -471,7 +474,6 @@ function RemoteProfileInner() {
   }
 
   const isOwnAccount = me && me.id === account.id;
-  const displayName = account.display_name || account.username;
   const isFollowing = relationship?.following === true;
   const isRequested = relationship?.requested === true;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
@@ -742,7 +744,7 @@ function RemoteProfileInner() {
         {/* Profile info */}
         <div style={{ padding: "0.75rem 1rem 0" }}>
           <div style={{ fontWeight: 700, fontSize: "1.15rem" }}>
-            {displayName}
+            <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
             {account.roles?.some((r) => r.name.toLowerCase() === "admin") && (
               <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_admin}><Icon name="trophy" size="0.9rem" /></span>
             )}
@@ -786,7 +788,7 @@ function RemoteProfileInner() {
               {account.fields.map((f, i) => (
                 <Fragment key={i}>
                   <div style={{ padding: "0.4rem 0.75rem", background: "var(--bg-elevated)", fontWeight: 600, fontSize: "0.8rem", color: "var(--text-secondary)", borderRight: "1px solid var(--border)", borderBottom: i < (account.fields?.length ?? 0) - 1 ? "1px solid var(--border)" : "none" }}>
-                    {f.name}
+                    <DisplayName name={f.name} emojis={account.emojis} />
                     {f.verified_at && <span style={{ color: "var(--accent)", marginLeft: "0.25rem" }}>✓</span>}
                   </div>
                   <div style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem", wordBreak: "break-all", borderBottom: i < (account.fields?.length ?? 0) - 1 ? "1px solid var(--border)" : "none" }}><RichText html={f.value} /></div>

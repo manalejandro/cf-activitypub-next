@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import type { Status, Me } from "@/components/StatusCard";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 /** Decode trusted HTML to a plain-text preview without re-parsing raw markup. */
 function htmlToText(html: string): string {
@@ -93,9 +94,7 @@ export default function MessagesPage() {
             return (
               <div key={conv.id} style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", background: conv.unread ? "var(--accent-bg)" : undefined }}>
                 <Link href={`/messages/${encodeURIComponent(conv.id)}`} style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "0.75rem" }}>
-                  <div className="avatar" style={{ width: 44, height: 44, flexShrink: 0, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontWeight: 700, color: "var(--accent)", fontSize: "1.1rem" }}>
-                    {other ? (other.display_name?.[0] ?? other.username?.[0] ?? "?").toUpperCase() : "?"}
-                  </div>
+                  <Avatar avatar={other?.avatar} name={other?.display_name || other?.username || "?"} size={44} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span style={{ fontWeight: conv.unread ? 700 : 600, fontSize: "0.9rem", color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

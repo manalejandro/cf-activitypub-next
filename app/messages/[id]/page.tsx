@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 export default function ConversationDetailPage() {
   const router = useRouter();
@@ -102,9 +103,7 @@ export default function ConversationDetailPage() {
     <PageLayout sidebar={<Sidebar me={me} currentPath="/messages" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <button className="btn btn-ghost btn-sm" aria-label={t.action_close} onClick={() => router.push("/messages")}><Icon name="arrow-left" /></button>
-          <div className="avatar" style={{ width: 36, height: 36, flexShrink: 0, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
-            {other ? (other.display_name?.[0] ?? other.username?.[0] ?? "?").toUpperCase() : "?"}
-          </div>
+          <Avatar avatar={other?.avatar} name={other?.display_name || other?.username || "?"} size={36} />
           <div>
             <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{other?.display_name || other?.username || "Unknown"}</div>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{other?.acct}</div>

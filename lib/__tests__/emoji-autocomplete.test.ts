@@ -65,9 +65,9 @@ describe("getEmojiSuggestions", () => {
     expect(blobcat?.insert).toBe(":blobcat:");
   });
 
-  it("skips custom emojis hidden from the picker", () => {
+  it("includes custom emojis hidden from the picker in autocomplete", () => {
     const results = getEmojiSuggestions("hidden", custom);
-    expect(results.some((r) => r.shortcode === "hidden")).toBe(false);
+    expect(results.some((r) => r.shortcode === "hidden")).toBe(true);
   });
 
   it("ranks prefix matches above contains matches", () => {

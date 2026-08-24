@@ -14,13 +14,13 @@ import { useLocale } from "@/lib/i18n";
 const MAX_SUGGESTIONS = 8;
 
 /**
- * Wire `:name` emoji autocomplete into a status composer textarea.
- * Returns the handlers to attach to the `<textarea>` plus the dropdown state.
+ * Wire `:name` emoji autocomplete into a textarea or single-line input.
+ * Returns the handlers to attach to the field plus the dropdown state.
  */
 export function useEmojiAutocomplete(
   text: string,
   setText: (s: string) => void,
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  fieldRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement | null>
 ) {
   const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
   const [suggestions, setSuggestions] = useState<EmojiSuggestion[]>([]);
@@ -54,7 +54,7 @@ export function useEmojiAutocomplete(
     setActiveIndex(0);
   }, [text, customEmojis, close]);
 
-  const onChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const onChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     lastCursor.current = e.target.selectionStart ?? e.target.value.length;
     setText(e.target.value);
   }, [setText]);
@@ -68,15 +68,15 @@ export function useEmojiAutocomplete(
     setText(next);
     close();
     requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (ta) {
-        ta.focus();
-        ta.setSelectionRange(lastCursor.current, lastCursor.current);
+      const el = fieldRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(lastCursor.current, lastCursor.current);
       }
     });
-  }, [text, range, suggestions, setText, close, textareaRef]);
+  }, [text, range, suggestions, setText, close, fieldRef]);
 
-  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     if (!range || suggestions.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();

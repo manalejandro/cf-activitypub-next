@@ -5,6 +5,9 @@ import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { RichText } from "@/components/RichText";
+import { DisplayName } from "@/components/DisplayName";
+import { Avatar } from "@/components/Avatar";
+import type { EmojiData } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
@@ -15,6 +18,7 @@ interface Account {
   id: string;
   username: string;
   display_name: string;
+  emojis?: EmojiData[];
   avatar: string;
   acct: string;
 }
@@ -186,19 +190,9 @@ export default function NotificationsPage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="flex items-baseline gap-2" style={{ marginBottom: "0.25rem" }}>
-                        <div
-                          className="avatar"
-                          style={{
-                            width: 28, height: 28, flexShrink: 0,
-                            background: "var(--accent-bg)",
-                            display: "inline-flex", alignItems: "center", justifyContent: "center",
-                            fontSize: "0.9rem", borderRadius: "50%",
-                          }}
-                        >
-                          {account.display_name?.[0] ?? account.username?.[0] ?? "?"}
-                        </div>
+                        <Avatar avatar={account.avatar} name={account.display_name || account.username} size={28} />
                         <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-                          {account.display_name || account.username}
+                          <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
                         </span>
                         <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                           {t.notif_follow_request}
@@ -258,25 +252,10 @@ export default function NotificationsPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="flex items-baseline gap-2" style={{ marginBottom: "0.25rem" }}>
                       <Link href={accountHref} style={{ textDecoration: "none" }}>
-                        <div
-                          className="avatar"
-                          style={{
-                            width: 28,
-                            height: 28,
-                            flexShrink: 0,
-                            background: "var(--accent-bg)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "0.9rem",
-                            borderRadius: "50%",
-                          }}
-                        >
-                          {n.account.display_name?.[0] ?? n.account.username?.[0] ?? "?"}
-                        </div>
+                        <Avatar avatar={n.account.avatar} name={n.account.display_name || n.account.username} size={28} />
                       </Link>
                       <Link href={accountHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>
-                        {n.account.display_name || n.account.username}
+                        <DisplayName name={n.account.display_name || n.account.username} emojis={n.account.emojis} />
                       </Link>
                       <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                         {metaText}

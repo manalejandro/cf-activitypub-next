@@ -8,6 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 interface Account {
   id: string;
@@ -87,9 +88,7 @@ export default function MutesPage() {
           muted.map((account) => (
             <div key={account.id} className="flex items-center gap-3" style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)" }}>
               <Link href={`/users/${account.acct.includes("@") ? "remote?url=" + encodeURIComponent(account.id) : account.username}`}>
-                <div className="avatar" style={{ width: 40, height: 40, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontWeight: 700, color: "var(--accent)", fontSize: "1rem" }}>
-                  {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
-                </div>
+                <Avatar avatar={account.avatar} name={account.display_name || account.username} size={40} />
               </Link>
               <div className="flex-1 min-w-0">
                 <Link href={`/users/${account.acct.includes("@") ? "remote?url=" + encodeURIComponent(account.id) : account.username}`} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>

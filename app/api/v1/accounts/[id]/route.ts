@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt } from "@/lib/db";
+import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 
@@ -44,5 +44,5 @@ export async function GET(
     }
   }
 
-  return json(serializeAccount(actor, domain, { fields, supportsCalls, lastStatusAt, moved: movedAccount }));
+  return json(serializeAccount(actor, domain, { fields, supportsCalls, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB) }));
 }

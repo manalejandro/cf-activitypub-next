@@ -10,12 +10,16 @@ import { Lightbox } from "@/components/Lightbox";
 import { useStartCallButton } from "@/components/CallOverlay";
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
+import { DisplayName } from "@/components/DisplayName";
+import type { EmojiData } from "@/lib/emoji";
 import type { Status as SharedStatus } from "@/components/StatusCard";
 import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
+import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
+import { EmojiInput } from "@/components/EmojiInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +35,7 @@ interface Account {
   acct: string;
   display_name: string;
   note: string;
+  emojis?: EmojiData[];
   avatar: string;
   header: string;
   followers_count: number;
@@ -216,7 +221,7 @@ function AccountCard({ acct }: { acct: Account }) {
       <Link href={profileHref} style={{ flexShrink: 0 }}><AvatarBubble account={acct} size={46} /></Link>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link href={profileHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>
-          {acct.display_name || acct.username}
+          <DisplayName name={acct.display_name || acct.username} emojis={acct.emojis} />
         </Link>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>@{acct.acct}</div>
         {acct.note && (
@@ -286,6 +291,10 @@ export default function ProfilePage() {
   const [editFields, setEditFields] = useState<{ name: string; value: string }[]>([]);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
+  const bioTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bioAuto = useEmojiAutocomplete(editNote, setEditNote, bioTextareaRef);
+  const displayNameRef = useRef<HTMLInputElement>(null);
+  const displayNameAuto = useEmojiAutocomplete(editDisplayName, setEditDisplayName, displayNameRef);
 
   const token = getToken();
 
@@ -511,6 +520,7 @@ export default function ProfilePage() {
       form.append(`fields_attributes[${i}][name]`, f.name);
       form.append(`fields_attributes[${i}][value]`, f.value);
     });
+    form.append("fields", JSON.stringify(editFields.map((f) => ({ name: f.name, value: f.value }))));
 
     const res = await fetch("/api/v1/accounts/verify_credentials", {
       method: "PATCH",
@@ -940,7 +950,7 @@ export default function ProfilePage() {
             {/* Profile info */}
             <div style={{ padding: "0.75rem 1rem 0" }}>
               <div style={{ fontWeight: 700, fontSize: "1.15rem" }}>
-                {account.display_name || account.username}
+                <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
                 {account.roles?.some((r) => r.name.toLowerCase() === "admin") && (
                   <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_admin}><Icon name="trophy" size="0.9rem" /></span>
                 )}
@@ -988,7 +998,7 @@ export default function ProfilePage() {
                   {account.fields.map((f, i) => (
                     <Fragment key={i}>
                       <div style={{ padding: "0.4rem 0.75rem", background: "var(--bg-elevated)", fontWeight: 600, fontSize: "0.8rem", color: "var(--text-secondary)", borderRight: "1px solid var(--border)", borderBottom: i < account.fields.length - 1 ? "1px solid var(--border)" : "none" }}>
-                        {f.name}
+                        <DisplayName name={f.name} emojis={account.emojis} />
                       </div>
                       <div
                         style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem", wordBreak: "break-all", borderBottom: i < account.fields.length - 1 ? "1px solid var(--border)" : "none" }}
@@ -1336,15 +1346,25 @@ export default function ProfilePage() {
                 <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                   {t.profile_display_name}
                 </label>
+                <div style={{ position: "relative" }}>
                 <input
                   type="text"
                   className="input"
                   maxLength={30}
+                  ref={displayNameRef}
                   value={editDisplayName}
-                  onChange={(e) => setEditDisplayName(e.target.value)}
+                  onChange={displayNameAuto.onChange}
+                  onKeyDown={displayNameAuto.onKeyDown}
                   placeholder={t.profile_edit_placeholder_name}
+                  style={{ width: "30ch", maxWidth: "100%" }}
                 />
-                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
+                <EmojiAutocompleteDropdown
+                  suggestions={displayNameAuto.suggestions}
+                  activeIndex={displayNameAuto.activeIndex}
+                  onSelect={displayNameAuto.select}
+                />
+              </div>
+                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", width: "30ch", maxWidth: "100%", display: "block", textAlign: "left" }}>
                   {editDisplayName.length}/30
                 </span>
               </div>
@@ -1354,14 +1374,23 @@ export default function ProfilePage() {
                 <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                   {t.profile_bio}
                 </label>
+                <div style={{ position: "relative" }}>
                 <textarea
                   className="input"
                   style={{ resize: "none", minHeight: 90, fontFamily: "inherit" }}
                   maxLength={500}
                   value={editNote}
-                  onChange={(e) => setEditNote(e.target.value)}
+                  onChange={bioAuto.onChange}
+                  onKeyDown={bioAuto.onKeyDown}
+                  ref={bioTextareaRef}
                   placeholder={t.profile_edit_placeholder_bio}
                 />
+                <EmojiAutocompleteDropdown
+                  suggestions={bioAuto.suggestions}
+                  activeIndex={bioAuto.activeIndex}
+                  onSelect={bioAuto.select}
+                />
+              </div>
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
                   {editNote.length}/500
                 </span>
@@ -1386,23 +1415,21 @@ export default function ProfilePage() {
                 )}
                 {editFields.map((f, i) => (
                   <div key={i} className="flex gap-2" style={{ marginBottom: "0.5rem", alignItems: "center" }}>
-                    <input
-                      type="text"
+                    <EmojiInput
                       className="input"
                       style={{ flex: "0 0 35%", fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_label}
                       maxLength={255}
                       value={f.name}
-                      onChange={(e) => updateField(i, "name", e.target.value)}
+                      onChange={(v) => updateField(i, "name", v)}
                     />
-                    <input
-                      type="text"
+                    <EmojiInput
                       className="input"
                       style={{ flex: 1, fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_content}
                       maxLength={255}
                       value={f.value}
-                      onChange={(e) => updateField(i, "value", e.target.value)}
+                      onChange={(v) => updateField(i, "value", v)}
                     />
                     <button
                       type="button"

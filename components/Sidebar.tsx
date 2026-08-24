@@ -8,11 +8,16 @@ import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
+import { DisplayName } from "@/components/DisplayName";
+import { Avatar } from "@/components/Avatar";
+import type { EmojiData } from "@/lib/emoji";
 
 interface SidebarAccount {
   username: string;
   display_name: string;
   acct: string;
+  avatar?: string | null;
+  emojis?: EmojiData[];
   roles?: { id?: string; name: string; color?: string }[];
 }
 
@@ -282,27 +287,15 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
               background: "var(--bg-elevated)",
             }}
           >
-            <div
-              className="avatar"
-              style={{
-                width: 34,
-                height: 34,
-                flexShrink: 0,
-                background: "var(--accent-bg)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.1rem",
-              }}
-            >
-              {(me.display_name?.[0] ?? me.username?.[0] ?? "?").toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {me.display_name || me.username}
+            <Link href={`/users/${encodeURIComponent(me.username)}`} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "0.625rem", flex: 1, minWidth: 0 }}>
+              <Avatar avatar={me.avatar} name={me.display_name || me.username} size={34} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <DisplayName name={me.display_name || me.username} emojis={me.emojis} />
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
               </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
-            </div>
+            </Link>
             <button
               onClick={handleLogout}
               className="btn btn-ghost btn-sm"
@@ -459,27 +452,15 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
                       background: "var(--bg-elevated)",
                     }}
                   >
-                    <div
-                      className="avatar"
-                      style={{
-                        width: 34,
-                        height: 34,
-                        flexShrink: 0,
-                        background: "var(--accent-bg)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "1.1rem",
-                      }}
-                    >
-                      {(me.display_name?.[0] ?? me.username?.[0] ?? "?").toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {me.display_name || me.username}
+                    <Link href={`/users/${encodeURIComponent(me.username)}`} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "0.625rem", flex: 1, minWidth: 0 }}>
+                      <Avatar avatar={me.avatar} name={me.display_name || me.username} size={34} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <DisplayName name={me.display_name || me.username} emojis={me.emojis} />
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
                       </div>
-                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
-                    </div>
+                    </Link>
                     <button
                       onClick={handleLogout}
                       className="btn btn-ghost btn-sm"

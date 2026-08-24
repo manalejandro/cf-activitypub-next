@@ -8,6 +8,7 @@ import { Lightbox } from "./Lightbox";
 import { InteractionList } from "./InteractionList";
 import { RichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
+import { DisplayName } from "@/components/DisplayName";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
@@ -21,6 +22,7 @@ export interface Account {
   display_name: string;
   avatar: string;
   acct: string;
+  emojis?: EmojiData[];
 }
 
 export interface MediaAttachment {
@@ -634,7 +636,7 @@ export function StatusCard({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="flex items-baseline gap-2" style={{ marginBottom: "0.3rem", flexWrap: "wrap" }}>
           <Link href={profileHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>
-            {status.account.display_name || status.account.username}
+            <DisplayName name={status.account.display_name || status.account.username} emojis={status.account.emojis} />
           </Link>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>@{status.account.acct}</span>
           {pinned && <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginLeft: "0.25rem", display: "inline-flex" }}><Icon name="thumb-tack" size="0.7rem" /></span>}

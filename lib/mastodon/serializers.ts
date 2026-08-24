@@ -88,10 +88,11 @@ export function serializeAccount(
   const baseUrl = `https://${localDomain}`;
 
   // Local actors store plain-text notes/fields, so linkify them the same way
-  // statuses are. Remote actors already carry federated HTML.
+  // statuses are. Remote actors carry federated HTML that is walk-linkified so
+  // any :emoji: shortcodes are replaced with <img> using the cached emojis.
   const note = isLocal
     ? linkifyInline(localSummaryToPlain(actor.summary ?? ""), baseUrl, opts.emojis)
-    : sanitizeFediverseHtml(actor.summary ?? "") ?? "";
+    : linkifyHtmlText(sanitizeFediverseHtml(actor.summary ?? "") ?? "", baseUrl, opts.emojis);
 
   const account: MastodonAccount = {
     id: actor.id,
@@ -126,7 +127,7 @@ export function serializeAccount(
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: isLocal
         ? linkifyInline(f.value, baseUrl, opts.emojis)
-        : sanitizeFediverseHtml(f.value) ?? f.value,
+        : linkifyHtmlText(sanitizeFediverseHtml(f.value) ?? "", baseUrl, opts.emojis),
       verified_at: null,
     })),
   };

@@ -6,6 +6,7 @@ import { getToken } from "@/lib/client-api";
 import { RichText } from "@/components/RichText";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 interface Report {
   id: string;
@@ -253,14 +254,11 @@ function ReportCard({
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", minWidth: 0, flex: 1 }}>
-          <div
-            className="avatar"
-            style={{ width: 34, height: 34, background: "var(--bg-overlay)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", flexShrink: 0 }}
-          >
-            {report.target_account
-              ? (report.target_account.display_name?.[0] ?? report.target_account.username[0]).toUpperCase()
-              : "?"}
-          </div>
+          <Avatar
+            avatar={report.target_account?.avatar}
+            name={report.target_account?.display_name || report.target_account?.username || "?"}
+            size={34}
+          />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t.admin_reported_account}: {report.target_account?.display_name || report.target_account?.username || t.admin_reported_unknown}

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { AvatarBubble } from "./StatusCard";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
+import { DisplayName } from "@/components/DisplayName";
+import type { EmojiData } from "@/lib/emoji";
 
 interface Account {
   id: string;
@@ -12,6 +14,7 @@ interface Account {
   acct: string;
   display_name: string;
   avatar: string;
+  emojis?: EmojiData[];
 }
 
 export function InteractionList({
@@ -196,7 +199,7 @@ export function InteractionList({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {account.display_name || account.username}
+                      <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
                     </div>
                     <div
                       style={{

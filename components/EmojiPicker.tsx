@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { EMOJI_CATEGORIES } from "@/lib/emoji-data";
 import { EMOJI_NAMES } from "@/lib/emoji-names";
+import { useLocale } from "@/lib/i18n";
 
 const EMOJI_NAME_MAP = new Map<string, string>();
 for (const [char, name] of EMOJI_NAMES) {
@@ -27,6 +28,7 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "down" }: EmojiPickerProps) {
+  const { t } = useLocale();
   const [customEmojis, setCustomEmojis] = useState<CustomEmoji[]>([]);
   const [tab, setTab] = useState<"unicode" | "custom">("unicode");
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -35,7 +37,7 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
     if (!open) return;
     fetch("/api/v1/custom_emojis")
       .then((res) => res.ok ? res.json() as Promise<CustomEmoji[]> : [])
-      .then((data) => setCustomEmojis(data.filter((e) => e.visible_in_picker !== false)))
+      .then((data) => setCustomEmojis(data))
       .catch(() => {});
   }, [open]);
 
@@ -54,11 +56,12 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
 
   if (!open) return null;
 
-  // Group custom emoji by category
+  // Group custom emoji: local ones under "Personalizados", federated emoji
+  // (hidden from the local picker) under "Otros". Personalizados first.
   const grouped: { name: string; emojis: CustomEmoji[] }[] = [];
   const categoryMap = new Map<string, CustomEmoji[]>();
   for (const e of customEmojis) {
-    const cat = e.category ?? "Otros";
+    const cat = e.visible_in_picker === false ? t.emoji_picker_others : t.emoji_picker_custom;
     const list = categoryMap.get(cat) ?? [];
     list.push(e);
     categoryMap.set(cat, list);
@@ -66,8 +69,8 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
   for (const [name, emojis] of categoryMap) {
     grouped.push({ name, emojis });
   }
-  // Uncategorized last
-  const others = grouped.findIndex((g) => g.name === "Otros");
+  // Federated ("Otros") last
+  const others = grouped.findIndex((g) => g.name === t.emoji_picker_others);
   if (others > 0) {
     const [item] = grouped.splice(others, 1);
     grouped.push(item);
@@ -106,7 +109,7 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
               border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer",
             }}
           >
-            Unicode
+            {t.emoji_picker_unicode}
           </button>
           <button
             type="button"
@@ -120,7 +123,7 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
               border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer",
             }}
           >
-            Personalizados ({customEmojis.length})
+            {t.emoji_picker_custom} ({customEmojis.length})
           </button>
         </div>
       )}
@@ -186,7 +189,7 @@ export function EmojiPicker({ onInsert, open, onClose, anchorRef, direction = "d
             ))
           ) : (
             <div style={{ padding: "1rem", textAlign: "center", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-              No hay emojis personalizados
+              {t.emoji_picker_empty}
             </div>
           )
         )}

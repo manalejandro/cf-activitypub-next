@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 interface AdminAccount {
   id: string;
@@ -183,12 +184,7 @@ export default function AdminAccountsPage() {
                   >
                     <td style={{ padding: "0.625rem 0.75rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                        <div
-                          className="avatar"
-                          style={{ width: 34, height: 34, background: "var(--bg-overlay)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)" }}
-                        >
-                          {(a.account.display_name?.[0] ?? a.username[0]).toUpperCase()}
-                        </div>
+                        <Avatar avatar={a.account.avatar} name={a.account.display_name || a.username} size={34} />
                         <div>
                           <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
                           <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
@@ -209,7 +205,7 @@ export default function AdminAccountsPage() {
                         <span className="badge badge-success">{t.admin_status_active}</span>
                       )}
                     </td>
-                    <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", maxWidth: 200, overflowWrap: "anywhere" }}>
                       {a.email || <span style={{ color: "var(--text-muted)" }}>—</span>}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>

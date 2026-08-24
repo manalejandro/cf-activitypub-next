@@ -85,7 +85,7 @@ export function getEmojiSuggestions(
   }
 
   for (const emoji of customEmojis) {
-    if (!emoji.shortcode || emoji.visible_in_picker === false) continue;
+    if (!emoji.shortcode) continue;
     const score = rankSuggestion(emoji.shortcode, query);
     if (score === null) continue;
     ranked.push({

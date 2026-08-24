@@ -10,6 +10,7 @@ import {
   createAttachment,
   createPoll,
   getPollByObjectId,
+  upsertCustomEmoji,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject } from "@/lib/activitypub/federation";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
@@ -220,6 +221,29 @@ export async function fetchAndCacheRemoteActor(
       }
       await setActorFields(db, id, fields);
     } catch { /* ignore field errors */ }
+
+    // Cache the actor's own custom emoji (from the profile's `tag` list) so
+    // remote bios render :emoji: shortcodes even before any post is ingested.
+    if (Array.isArray(p.tag)) {
+      for (const tag of p.tag) {
+        const t = tag as { type?: string; name?: string; id?: string; icon?: { url?: string } };
+        if (t.type === "Emoji" && t.name && t.icon?.url) {
+          const shortcode = t.name.replace(/^:|:$/g, "");
+          if (shortcode) {
+            try {
+              await upsertCustomEmoji(db, {
+                id: t.id ?? generateId(),
+                shortcode,
+                url: t.icon.url,
+                staticUrl: t.icon.url,
+                domain,
+                visibleInPicker: false,
+              });
+            } catch { /* ignore invalid emoji */ }
+          }
+        }
+      }
+    }
 
     // Probe domain call support (fire-and-forget to avoid blocking the response)
     void probeDomainCallsSupport(db, domain);

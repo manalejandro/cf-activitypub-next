@@ -10,6 +10,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { Icon } from "@/components/Icon";
+import { Avatar } from "@/components/Avatar";
 
 interface List {
   id: string;
@@ -194,9 +195,7 @@ export default function ListDetailPage() {
               accounts.map((account) => (
                 <div key={account.id} className="flex items-center gap-3" style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)" }}>
                   <Link href={`/users/${account.acct.includes("@") ? "remote?url=" + encodeURIComponent(account.id) : account.username}`} style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0, textDecoration: "none", color: "inherit" }}>
-                    <div className="avatar" style={{ width: 36, height: 36, flexShrink: 0, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
-                      {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
-                    </div>
+                    <Avatar avatar={account.avatar} name={account.display_name || account.username} size={36} />
                     <div className="min-w-0">
                       <div style={{ fontWeight: 600, fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account.display_name || account.username}</div>
                       <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{account.acct}</div>
