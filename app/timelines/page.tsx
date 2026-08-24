@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
@@ -18,7 +17,11 @@ import { EditStatusModal } from "@/components/EditStatusModal";
 type TimelineView = "local" | "federated";
 
 export default function TimelinesPage() {
+  const token = getToken();
   const [view, setView] = useState<TimelineView>(() => {
+    // The local timeline requires auth, so anonymous visitors always land on
+    // the federated view.
+    if (!token) return "federated";
     const saved = getLastTimelineView();
     return saved === "local" || saved === "federated" ? saved : "local";
   });
@@ -26,7 +29,6 @@ export default function TimelinesPage() {
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const { t } = useLocale();
 
-  const token = getToken();
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -132,36 +134,7 @@ export default function TimelinesPage() {
 
   return (
     <>
-    <PageLayout sidebar={<Sidebar me={me} currentPath="/timelines" />} rightPanel={!token ? (
-        <div
-          style={{
-            background: "var(--bg-elevated)",
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--border)",
-            padding: "1rem",
-          }}
-        >
-          <h3 style={{ fontWeight: 700, marginBottom: "0.75rem", fontSize: "0.95rem" }}>
-            {t.explore_join}
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <Link
-              href="/register"
-              className="btn btn-primary btn-sm"
-              style={{ textAlign: "center" }}
-            >
-              {t.explore_create}
-            </Link>
-            <Link
-              href="/login"
-              className="btn btn-ghost btn-sm"
-              style={{ textAlign: "center" }}
-            >
-              {t.explore_signin}
-            </Link>
-          </div>
-        </div>
-      ) : undefined}>
+    <PageLayout sidebar={<Sidebar me={me} currentPath="/timelines" />}>
         {/* Sticky header with tabs */}
         <div
           style={{
@@ -177,7 +150,7 @@ export default function TimelinesPage() {
             {t.nav_timelines}
           </h1>
           <div style={{ display: "flex" }}>
-            {(["local", "federated"] as TimelineView[]).map((v) => (
+            {(token ? (["local", "federated"] as TimelineView[]) : (["federated"] as TimelineView[])).map((v) => (
               <button
                 key={v}
                 type="button"

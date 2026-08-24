@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -59,6 +59,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const minId = minIdRaw ? decodeStatusId(minIdRaw, domain) : undefined;
 
   const authActor = await getAuthenticatedActor(request, env.DB);
+  // The local timeline is restricted to authenticated users; the federated
+  // timeline stays public.
+  if (local && !authActor) return unauthorized();
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
