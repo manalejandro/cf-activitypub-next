@@ -79,7 +79,7 @@ export function LanguagePicker({
           border: "1px solid var(--border)",
           borderRadius: "var(--radius-sm)",
           background: "var(--bg-elevated)",
-          color: "var(--text)",
+          color: "var(--text-primary)",
           ...(fullWidth ? { width: "100%", justifyContent: "flex-start" } : {}),
         }}
       >

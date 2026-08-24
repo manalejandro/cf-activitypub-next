@@ -191,7 +191,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   if (pendingEmail) {
     return (
       <div
-        className="flex flex-col items-center justify-center min-h-screen px-4"
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
       >
         <div className="w-full max-w-sm">
@@ -254,7 +254,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       )}
 
       <div
-        className="flex flex-col items-center justify-center min-h-screen px-4"
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
       >
         {/* Language selector */}

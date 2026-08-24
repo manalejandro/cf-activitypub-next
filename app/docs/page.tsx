@@ -50,5 +50,9 @@ export default function DocsPage() {
     document.body.appendChild(bundleScript);
   }, []);
 
-  return <div id="swagger-ui" style={{ minHeight: "100vh" }} />;
+  return (
+    <div className="force-light" style={{ background: "var(--bg)", minHeight: "100vh" }}>
+      <div id="swagger-ui" style={{ minHeight: "100vh" }} />
+    </div>
+  );
 }

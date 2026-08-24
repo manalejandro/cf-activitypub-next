@@ -158,7 +158,7 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
       )}
 
       <div
-        className="flex flex-col items-center justify-center min-h-screen px-4"
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
       >
         {/* Language selector */}

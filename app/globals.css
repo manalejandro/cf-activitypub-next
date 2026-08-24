@@ -39,6 +39,26 @@
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
 }
 
+/* Pages that must always render in day mode (landing, auth flows) regardless
+   of the global night/day toggle. */
+.force-light {
+  --bg: #f4f4ff;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f0f0fa;
+  --bg-overlay: #e8e8f8;
+  --border: #d0d0e8;
+  --border-hover: #a0a0d0;
+  --text-primary: #1a1a3a;
+  --text-secondary: #4a4a7a;
+  --text-muted: #8080b0;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --accent-hover: #4f52cc;
+  --accent-bg: rgba(99, 102, 241, 0.08);
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #0f0f17;

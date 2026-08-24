@@ -71,7 +71,7 @@ export default function ResetPasswordForm() {
   if (!token) {
     return (
       <div
-        className="flex flex-col items-center justify-center min-h-screen px-4"
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
       >
         <div className="w-full max-w-sm">
@@ -95,7 +95,7 @@ export default function ResetPasswordForm() {
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-4"
+      className="force-light flex flex-col items-center justify-center min-h-screen px-4"
       style={{ background: "var(--bg)" }}
     >
       <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>

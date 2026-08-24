@@ -59,7 +59,7 @@ export default function ForgotPasswordForm() {
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen px-4"
+      className="force-light flex flex-col items-center justify-center min-h-screen px-4"
       style={{ background: "var(--bg)" }}
     >
       <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>

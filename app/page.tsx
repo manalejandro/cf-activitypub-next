@@ -66,7 +66,7 @@ export default function Home() {
   ];
 
   return (
-    <main className="flex flex-col flex-1 -mt-14 md:mt-0">
+    <main className="force-light flex flex-col flex-1 -mt-14 md:mt-0" style={{ background: "var(--bg)" }}>
       {/* Nav */}
       <nav style={{ position: "sticky", top: 0, zIndex: 40, borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-4">
