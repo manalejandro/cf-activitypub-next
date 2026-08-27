@@ -41,18 +41,28 @@ export async function enqueueDeliveries(
       await deliverDirectly(unique, activityJson, keyId, privateKeyPem);
       return;
     }
-    // Cloudflare Queues sendBatch limit: 100 messages per call
-    for (let i = 0; i < unique.length; i += 100) {
-      const batch = unique.slice(i, i + 100).map((inboxUrl) => ({
-        body: {
-          type: "delivery" as const,
-          inboxUrl,
-          activityJson,
-          actorId,
-        },
-      }));
-      await queue.sendBatch(batch);
+    // Cloudflare Queues sendBatch limits: 100 messages and ~256 KB total per
+    // call. The activity JSON is repeated on every message, so a large status
+    // plus many recipients can blow the byte budget long before 100 messages.
+    // Chunk by both message count and estimated batch size.
+    const MAX_MESSAGES = 100;
+    const MAX_BATCH_BYTES = 200 * 1024; // headroom under the 256000 byte limit
+    const encoder = new TextEncoder();
+
+    let batch: { body: APDeliveryMessage }[] = [];
+    let batchBytes = 0;
+    for (const inboxUrl of unique) {
+      const message = { body: { type: "delivery" as const, inboxUrl, activityJson, actorId } };
+      const size = encoder.encode(JSON.stringify(message)).byteLength;
+      if (batch.length > 0 && (batch.length >= MAX_MESSAGES || batchBytes + size > MAX_BATCH_BYTES)) {
+        await queue.sendBatch(batch);
+        batch = [];
+        batchBytes = 0;
+      }
+      batch.push(message);
+      batchBytes += size;
     }
+    if (batch.length > 0) await queue.sendBatch(batch);
   } catch (err) {
     console.warn("[queue] enqueueDeliveries failed, falling back to direct delivery", err);
     await deliverDirectly(unique, activityJson, keyId, privateKeyPem);
