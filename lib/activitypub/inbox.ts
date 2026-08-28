@@ -515,6 +515,28 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     }
   }
 
+  // Notify the author of a quoted LOCAL post (a remote user quoted them).
+  const quoteIdHere = extractQuoteId(obj as Record<string, unknown>);
+  if (quoteIdHere) {
+    const quoted = await getObjectById(ctx.db, quoteIdHere);
+    if (quoted && quoted.actorId.startsWith(ctx.baseUrl + "/") && quoted.actorId !== actorId && !mentionedLocalIds.has(quoted.actorId)) {
+      const quotedActor = await getActorById(ctx.db, quoted.actorId);
+      if (quotedActor?.isLocal) {
+        const notif: LocalNotification = {
+          id: generateId(),
+          type: "quote",
+          accountId: actorId,
+          targetAccountId: quoted.actorId,
+          objectId: obj.id,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+        await createNotification(ctx.db, notif);
+        await broadcastAndPush(ctx, notif);
+      }
+    }
+  }
+
   // Broadcast to timeline streaming clients (fire-and-forget)
   if (ctx.timelineStream) {
     const statusVisibility = resolveVisibility(obj.to, obj.cc);

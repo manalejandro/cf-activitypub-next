@@ -39,7 +39,7 @@ export default function TimelinesPage() {
     const res = await fetch(url);
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length > 0 };
+    return { items, hasMore: items.length >= limit };
   }, [view]);
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true });

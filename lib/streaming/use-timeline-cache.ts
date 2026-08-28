@@ -320,7 +320,10 @@ useIsomorphicLayoutEffect(() => {
     try {
       const result = await fetchPageRef.current(lastId);
       if (result.items.length === 0) {
-        setHasMore(false);
+        // Only stop paginating when the page truly has no more items. A
+        // transient fetch error (empty items + hasMore=true) must keep the
+        // feed retrying instead of permanently wedging the cached hasMore.
+        setHasMore(result.hasMore);
         return;
       }
       setStatuses((prev) => {

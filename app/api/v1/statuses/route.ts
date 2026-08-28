@@ -541,10 +541,18 @@ export async function POST(request: NextRequest): Promise<Response> {
     .filter((href) => href !== actor.id && !isLocalIRI(href, domain));
   const mentionInboxes = await collectFollowerInboxes(mentionIRIs, fetchActor);
 
+  // Quote delivery: the quoted post's author must receive the Create activity
+  // so their instance can raise a `quote` notification (Mastodon behaviour).
+  let quoteAuthorInboxes: string[] = [];
+  if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
+    quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
+  }
+
   if (visibility === "direct") {
     // Direct replies are delivered only to the addressed accounts
-    if (mentionInboxes.length > 0) {
-      await enqueueDeliveries(env.DELIVERY_QUEUE, mentionInboxes, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+    const targets = [...mentionInboxes, ...quoteAuthorInboxes];
+    if (targets.length > 0) {
+      await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
   } else {
     // Get IDs of actors who follow the current user (actor_id = follower, target_id = followed)
@@ -555,7 +563,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const followerIds = followers.results.map((r) => r.actor_id);
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    inboxes.push(...mentionInboxes);
+    inboxes.push(...mentionInboxes, ...quoteAuthorInboxes);
     if (inboxes.length > 0) {
       // Use queue for reliable delivery with automatic retries
       await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
