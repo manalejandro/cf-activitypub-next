@@ -375,6 +375,9 @@ async function deliverOne(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    // We only need the status; cancel the body so concurrent deliveries don't
+    // stall on unread responses (Cloudflare deadlock protection).
+    await res.body?.cancel().catch(() => {});
     const permanent = PERMANENT_ERRORS.has(res.status);
     return { ok: res.ok, permanent };
   } catch {

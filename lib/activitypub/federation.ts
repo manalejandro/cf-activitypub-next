@@ -78,6 +78,10 @@ export async function deliverToInbox(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    // We only care about the status. Cancel the body so the connection is
+    // released — delivering to many inboxes in parallel without reading the
+    // responses would stall and trip Cloudflare's deadlock protection.
+    await res.body?.cancel().catch(() => {});
     return { ok: res.ok, status: res.status };
   } catch (err) {
     clearTimeout(timer);
