@@ -2161,15 +2161,25 @@ export async function setActorFields(
   actorId: string,
   fields: { name: string; value: string }[]
 ): Promise<void> {
+  const incoming = fields
+    .filter((f) => f.name.trim())
+    .map((f) => ({ name: f.name.trim(), value: f.value.trim() }));
+
+  // Only rewrite rows when the field set actually changed — otherwise a remote
+  // actor re-fetch would wipe the cached verification needlessly.
+  const existing = await getActorFields(db, actorId);
+  const unchanged =
+    existing.length === incoming.length &&
+    existing.every((e, i) => e.name === incoming[i].name && e.value === incoming[i].value);
+  if (unchanged) return;
+
   await db.prepare("DELETE FROM actor_fields WHERE actor_id = ?").bind(actorId).run();
-  for (let i = 0; i < fields.length; i++) {
-    const f = fields[i];
-    if (!f.name.trim()) continue;
+  for (let i = 0; i < incoming.length; i++) {
     await db
       .prepare(
         "INSERT INTO actor_fields (id, actor_id, name, value, position, verified_at) VALUES (?,?,?,?,?,NULL)"
       )
-      .bind(crypto.randomUUID(), actorId, f.name.trim(), f.value.trim(), i)
+      .bind(crypto.randomUUID(), actorId, incoming[i].name, incoming[i].value, i)
       .run();
   }
   // Fields changed → the cached account-level flag must be re-evaluated.

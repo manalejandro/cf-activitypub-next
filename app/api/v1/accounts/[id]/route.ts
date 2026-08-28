@@ -3,6 +3,7 @@ import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
+import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 
 // GET /api/v1/accounts/:id
 export async function GET(
@@ -30,6 +31,12 @@ export async function GET(
   }
 
   if (!actor) return notFound("Account not found");
+
+  // Remote accounts are verified on demand (cached in KV) so the badge shows
+  // without depending on the cron.
+  if (!actor.isLocal) {
+    await maybeVerifyRemoteAccount(env.DB, env.KV, actor.id, domain);
+  }
 
   const fields = await getActorFields(env.DB, actor.id);
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);

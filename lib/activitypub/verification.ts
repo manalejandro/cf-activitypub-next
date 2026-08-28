@@ -13,6 +13,12 @@ import { validateOutboundUrl } from "@/lib/activitypub/federation";
 
 const FETCH_TIMEOUT_MS = 8000;
 
+/** Minimal KV surface used for the on-demand verification marker. */
+interface VerificationKV {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+
 /** Lowercase scheme/host, drop hash, strip a trailing slash. */
 function normalizeUrl(url: string): string {
   try {
@@ -28,9 +34,16 @@ function normalizeUrl(url: string): string {
   }
 }
 
-/** A field only counts as a link when its value is a bare http(s) URL. */
-function isUrlValue(value: string): boolean {
-  return /^https?:\/\//i.test(value.trim());
+/**
+ * Extract the link a field points to. Handles both a bare URL and HTML values
+ * (remote actors federate fields as HTML, e.g. `<a href="https://…">…</a>`).
+ */
+function fieldUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const href = trimmed.match(/\bhref=(["'])(.*?)\1/i)?.[2];
+  if (href && /^https?:\/\//i.test(href)) return href;
+  return null;
 }
 
 /** Collect hrefs of rel="me" links (both <a> and <link>) in an HTML document. */
@@ -49,8 +62,10 @@ function extractMeLinks(html: string): string[] {
 }
 
 /**
- * Re-check every profile field of a local actor. Clears (or sets) the cached
- * verification per field based on the rel="me" backlink check.
+ * Re-check every profile field of an actor (local or remote). Clears (or sets)
+ * the cached verification per field based on the rel="me" backlink check.
+ * Remote actors are verified like Mastodon does — each instance runs its own
+ * check against the field URL.
  */
 export async function verifyAccountFields(
   db: D1Database,
@@ -58,21 +73,25 @@ export async function verifyAccountFields(
   domain: string
 ): Promise<{ verifiedFields: number }> {
   const actor = await getActorById(db, actorId);
-  if (!actor || !actor.isLocal) return { verifiedFields: 0 };
+  if (!actor) return { verifiedFields: 0 };
 
   const fields = await getActorFields(db, actorId);
   if (fields.length === 0) return { verifiedFields: 0 };
 
-  // The external page must link back to one of these profile URLs.
+  // The external page must link back to one of these profile URLs. The actor's
+  // home domain (`actor.domain`) is used so remote accounts are matched against
+  // their own canonical profile (e.g. https://cf-ap.com/@username); the passed
+  // `domain` covers local actors / the requesting instance.
   const profileUrls = [
+    normalizeUrl(`https://${actor.domain}/@${actor.username}`),
     normalizeUrl(`https://${domain}/@${actor.username}`),
     normalizeUrl(actor.id),
   ].filter(Boolean);
 
   let verified = 0;
   for (const field of fields) {
-    const value = field.value.trim();
-    if (!isUrlValue(value) || !validateOutboundUrl(value).valid) {
+    const url = fieldUrl(field.value);
+    if (!url || !validateOutboundUrl(url).valid) {
       await setActorFieldVerified(db, field.id, null);
       continue;
     }
@@ -82,7 +101,7 @@ export async function verifyAccountFields(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
       try {
-        const res = await fetch(value, {
+        const res = await fetch(url, {
           headers: { Accept: "text/html, application/xhtml+xml" },
           redirect: "follow",
           signal: controller.signal,
@@ -110,4 +129,36 @@ export async function verifyAccountFields(
     .run();
 
   return { verifiedFields: verified };
+}
+/**
+ * Verify a REMOTE account on demand when it is served, guarded by a KV marker
+ * so the external fetch happens at most once per hour per actor. This makes
+ * the badge appear without waiting for the periodic cron.
+ */
+export async function maybeVerifyRemoteAccount(
+  db: D1Database,
+  kv: VerificationKV,
+  actorId: string,
+  domain: string
+): Promise<void> {
+  try {
+    const marker = `verify:${actorId}`;
+    if (await kv.get(marker)) return;
+
+    const actor = await getActorById(db, actorId);
+    if (!actor || actor.isLocal) return;
+
+    const fields = await getActorFields(db, actorId);
+    const linkFields = fields.filter((f) => fieldUrl(f.value) != null);
+    // Already verified (or nothing to verify) → remember and skip.
+    if (linkFields.length === 0 || linkFields.every((f) => f.verifiedAt != null)) {
+      await kv.put(marker, "1", { expirationTtl: 3600 });
+      return;
+    }
+
+    await verifyAccountFields(db, actorId, domain);
+    await kv.put(marker, "1", { expirationTtl: 3600 });
+  } catch {
+    /* verification is best-effort */
+  }
 }

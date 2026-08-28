@@ -560,32 +560,60 @@ async function executeScheduled(env: Env): Promise<void> {
   // AI Guardian patrol — reviews recent posts and suspicious accounts, blocks
   // spam domains. Runs after the routine tasks; each run is idempotent via KV
   // markers so overlapping cron invocations stay cheap.
-  await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
+  try {
+    await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
+  } catch (err) {
+    console.error("[cron] runModerationCycle failed", err);
+  }
 
   // Account verification — periodically re-check rel="me" backlinks so the
   // verified badge stays accurate when an external site changes its markup.
-  await verifyLocalAccountFields(env);
+  try {
+    await verifyAccountFieldsCron(env);
+  } catch (err) {
+    console.error("[cron] verifyAccountFieldsCron failed", err);
+  }
 }
 
 /**
- * Re-run Mastodon-style verification for every local account that has a
+ * Re-run Mastodon-style verification for local and remote accounts that have a
  * link-valued profile field. The external fetch is SSRF-guarded and each field
  * check is cached in actor_fields.verified_at.
  */
-async function verifyLocalAccountFields(env: Env): Promise<void> {
+async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
-    const rows = await env.DB
+    // Local accounts — always fresh. Field values may be bare URLs or HTML.
+    const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
          JOIN actors a ON a.id = af.actor_id
-         WHERE a.is_local = 1 AND af.value LIKE 'http%'`
+         WHERE a.is_local = 1 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')`
       )
       .all<{ actor_id: string }>();
-    for (const row of rows.results) {
+    for (const row of localRows.results) {
       const actor = await getActorById(env.DB, row.actor_id);
       if (!actor) continue;
-      const domain = new URL(actor.id).hostname;
-      await verifyAccountFields(env.DB, actor.id, domain);
+      await verifyAccountFields(env.DB, actor.id, actor.domain);
+    }
+
+    // Remote accounts — verify those with unverified link fields (or never
+    // checked), bounded per run so the cron stays cheap.
+    const remoteRows = await env.DB
+      .prepare(
+        `SELECT DISTINCT af.actor_id FROM actor_fields af
+         JOIN actors a ON a.id = af.actor_id
+         WHERE a.is_local = 0 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')
+           AND NOT EXISTS (
+             SELECT 1 FROM actor_fields f2
+             WHERE f2.actor_id = af.actor_id AND f2.verified_at IS NOT NULL
+           )
+         LIMIT 25`
+      )
+      .all<{ actor_id: string }>();
+    for (const row of remoteRows.results) {
+      const actor = await getActorById(env.DB, row.actor_id);
+      if (!actor) continue;
+      await verifyAccountFields(env.DB, actor.id, actor.domain);
     }
   } catch (err) {
     console.error("[cron] verifyAccountFields failed", err);
