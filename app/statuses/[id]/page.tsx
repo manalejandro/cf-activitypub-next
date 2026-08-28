@@ -664,6 +664,7 @@ export default function ThreadPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
+      purgeStatusFromCache(s.id);
       if (focal?.id === s.id) {
         router.back();
       } else {

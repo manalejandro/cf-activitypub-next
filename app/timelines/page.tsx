@@ -104,6 +104,7 @@ export default function TimelinesPage() {
     });
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      purgeStatusFromCache(s.id);
     }
   }
 

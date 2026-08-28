@@ -273,6 +273,7 @@ export default function HomePage() {
     });
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      purgeStatusFromCache(s.id);
     }
   }
 

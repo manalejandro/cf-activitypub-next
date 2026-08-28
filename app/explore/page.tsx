@@ -13,6 +13,7 @@ import { getToken } from "@/lib/client-api";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export default function ExplorePage() {
     if (res.ok) {
       setTrendingStatuses((prev) => prev.filter((x) => x.id !== s.id));
       setResults((prev) => ({ ...prev, statuses: prev.statuses.filter((x) => x.id !== s.id) }));
+      purgeStatusFromCache(s.id);
     }
   }
 

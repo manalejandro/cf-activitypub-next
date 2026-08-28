@@ -7,6 +7,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
@@ -129,6 +130,7 @@ export default function TagPage() {
     });
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      purgeStatusFromCache(s.id);
     }
   }
 

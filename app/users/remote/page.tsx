@@ -19,6 +19,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -446,6 +447,7 @@ function RemoteProfileInner() {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
       setReplies((prev) => prev.filter((x) => x.id !== s.id));
       setPinnedStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      purgeStatusFromCache(s.id);
     }
   }
 

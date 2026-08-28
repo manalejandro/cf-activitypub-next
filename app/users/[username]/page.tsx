@@ -20,6 +20,7 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { EmojiInput } from "@/components/EmojiInput";
+import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -593,6 +594,7 @@ export default function ProfilePage() {
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
       setReplies((prev) => prev.filter((x) => x.id !== s.id));
+      purgeStatusFromCache(s.id);
     }
   }
 
