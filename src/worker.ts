@@ -480,7 +480,7 @@ async function executeScheduled(env: Env): Promise<void> {
     console.warn("[cron] skipping overlapping run");
     return;
   }
-  await env.KV.put("cron:lock", "1", { expirationTtl: 55 });
+  await env.KV.put("cron:lock", "1", { expirationTtl: 60 });
 
   try {
     try {
