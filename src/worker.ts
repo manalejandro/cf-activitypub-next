@@ -601,7 +601,8 @@ async function executeScheduled(env: Env): Promise<void> {
  */
 async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
-    // Local accounts — always fresh. Field values may be bare URLs or HTML.
+    // Local accounts — re-check occasionally (30 min) so slow sites don't stall
+    // every cron run.
     const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
@@ -612,11 +613,15 @@ async function verifyAccountFieldsCron(env: Env): Promise<void> {
     for (const row of localRows.results) {
       const actor = await getActorById(env.DB, row.actor_id);
       if (!actor) continue;
+      const marker = `verify:local:${actor.id}`;
+      if (await env.KV.get(marker)) continue;
       await verifyAccountFields(env.DB, actor.id, actor.domain);
+      await env.KV.put(marker, "1", { expirationTtl: 1800 });
     }
 
     // Remote accounts — verify those with unverified link fields (or never
-    // checked), bounded per run so the cron stays cheap.
+    // checked), bounded to a few per run so the cron stays under the memory
+    // and time budget (each check fetches an external page).
     const remoteRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
@@ -626,7 +631,7 @@ async function verifyAccountFieldsCron(env: Env): Promise<void> {
              SELECT 1 FROM actor_fields f2
              WHERE f2.actor_id = af.actor_id AND f2.verified_at IS NOT NULL
            )
-         LIMIT 25`
+         LIMIT 5`
       )
       .all<{ actor_id: string }>();
     for (const row of remoteRows.results) {
