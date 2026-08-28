@@ -871,6 +871,7 @@ function RemoteProfileInner() {
                   onFav={handleStatusUpdate}
                   onReblog={handleStatusUpdate}
                   onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
+                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
                   me={me}
                   onEdit={openEdit}
                   onDelete={handleDelete}
@@ -894,6 +895,7 @@ function RemoteProfileInner() {
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
                 onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
+                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
                 me={me}
                 onEdit={openEdit}
                 onDelete={handleDelete}
@@ -913,6 +915,7 @@ function RemoteProfileInner() {
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
                 onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
+                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
                 me={me}
                 onEdit={openEdit}
                 onDelete={handleDelete}

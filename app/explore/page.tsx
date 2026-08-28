@@ -247,7 +247,7 @@ export default function ExplorePage() {
                 {t.explore_trending_statuses}
               </div>
             )}
-            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
+            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
           </>
         )}
 
@@ -269,7 +269,7 @@ export default function ExplorePage() {
         )}
         {tab === "statuses" && isSearching && (
           results.statuses.length === 0 && !loading ? <EmptyState icon="pencil" text={t.explore_no_posts} /> :
-          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
+          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
         )}
         {tab === "collections" && isSearching && (
           results.collections.length === 0 && !loading ? <EmptyState icon="users" text={t.explore_no_collections} /> :

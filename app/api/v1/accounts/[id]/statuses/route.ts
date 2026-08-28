@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
@@ -75,13 +76,15 @@ export async function GET(
     allObjects = rowObjs.results.map(rowToObject);
   }
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     me ? getAnnouncedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, allObjects),
+    getObjectQuotesCounts(env.DB, allObjects.map((o) => o.id)),
+    getQuotesByIds(env.DB, allObjects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
   ]);
 
   const statuses = allObjects.map((obj) => {
@@ -95,6 +98,8 @@ export async function GET(
       emojis: allEmojis,
       pinned: pinnedOnly || pinnedSet.has(obj.id),
       inReplyToAccountId: replyToMap.get(obj.id) ?? null,
+      quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
+      quotesCount: quotesCountMap.get(obj.id) ?? 0,
     });
   });
 

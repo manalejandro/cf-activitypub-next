@@ -763,5 +763,6 @@
   "admin_hide_posts": "{count} に添付した投稿を非表示",
   "admin_status_resolved": "解決する",
   "settings_verification_step2_alt": "または、ページの<head>に<link>タグを追加します（JavaScriptでレンダリングされるサイトに便利です）：",
-  "action_quote": "引用"
+  "action_quote": "引用",
+  "notif_quoted": "あなたの投稿を引用しました"
 }

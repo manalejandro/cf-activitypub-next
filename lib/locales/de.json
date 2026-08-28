@@ -763,5 +763,6 @@
   "admin_hide_posts": "Versteckte Post(s)",
   "admin_status_resolved": "Gelöst",
   "settings_verification_step2_alt": "Alternativ eine <link>-Tag im <head> Ihrer Seite einfügen (nützlich für JavaScript-gerenderte Websites):",
-  "action_quote": "Zitieren"
+  "action_quote": "Zitieren",
+  "notif_quoted": "hat deinen Beitrag zitiert"
 }

@@ -232,6 +232,7 @@ export default function ListDetailPage() {
                     onFav={() => {}}
                     onReblog={() => {}}
                     onReply={() => {}}
+                    onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)}
                     me={me}
                   />
                 </div>

@@ -763,5 +763,6 @@
   "admin_hide_posts": "Hide {count} 첨부된 게시물(s)",
   "admin_status_resolved": "해결 된",
   "settings_verification_step2_alt": "또는 페이지의 <head>에 <link> 태그를 추가하세요(JavaScript로 렌더링되는 사이트에 유용):",
-  "action_quote": "인용"
+  "action_quote": "인용",
+  "notif_quoted": "회원님의 게시물을 인용했습니다"
 }

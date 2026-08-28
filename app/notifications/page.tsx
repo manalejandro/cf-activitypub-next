@@ -26,7 +26,7 @@ interface Account {
 
 interface Notification {
   id: string;
-  type: "follow" | "follow_request" | "mention" | "reblog" | "favourite" | "poll" | "update" | "direct" | "encrypted";
+  type: "follow" | "follow_request" | "mention" | "reblog" | "favourite" | "poll" | "update" | "direct" | "encrypted" | "quote";
   created_at: string;
   account: Account;
   status?: {
@@ -45,6 +45,7 @@ const NOTIF_LABELS: Record<string, { icon: IconName; key: string }> = {
   update:         { icon: "pencil", key: "notif_edited" },
   direct:         { icon: "envelope", key: "notif_dm" },
   encrypted:      { icon: "lock", key: "notif_encrypted" },
+  quote:          { icon: "quote-left", key: "notif_quoted" },
 };
 
 export default function NotificationsPage() {

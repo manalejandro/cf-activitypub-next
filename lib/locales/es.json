@@ -763,5 +763,6 @@
   "admin_hide_posts": "Ocultar {count} post(s) adjunto(s)",
   "admin_status_resolved": "Resuelto",
   "settings_verification_step2_alt": "Alternativamente, añade una etiqueta <link> en el <head> de tu página (útil para sitios renderizados con JavaScript):",
-  "action_quote": "Citar"
+  "action_quote": "Citar",
+  "notif_quoted": "citó tu publicación"
 }

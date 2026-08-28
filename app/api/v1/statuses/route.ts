@@ -20,6 +20,7 @@ import {
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import {
   buildNote,
@@ -166,6 +167,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // ── Quote post (Mastodon 4.5 / FEP-044f) ─────────────────────────────────
   const quotedStatusIdRaw = (body.quoted_status_id as string | undefined) ?? (body.quote_id as string | undefined);
   let quoteId: string | null = null;
+  let quotedAuthor: import("@/lib/types").LocalActor | null = null;
   if (quotedStatusIdRaw) {
     const quotedIri = decodeStatusId(quotedStatusIdRaw, domain);
     let quoted = await getObjectById(env.DB, quotedIri);
@@ -181,10 +183,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (quoted.visibility === "followers" && visibility !== "private" && visibility !== "direct") {
       return json({ error: "Validation failed: Private posts can only be quoted privately" }, 422);
     }
-    const quotedAuthor = await getActorById(env.DB, quoted.actorId);
-    if (quotedAuthor) {
-      const policy = (await getActorPreference(env.DB, quotedAuthor.id, "posting:default:quote_policy")) ?? "followers";
-      if (!(await quoteAllowed(env.DB, actor, quotedAuthor, policy))) {
+    const qAuthor = await getActorById(env.DB, quoted.actorId);
+    if (qAuthor) {
+      quotedAuthor = qAuthor;
+      const policy = (await getActorPreference(env.DB, qAuthor.id, "posting:default:quote_policy")) ?? "followers";
+      if (!(await quoteAllowed(env.DB, actor, qAuthor, policy))) {
         return json({ error: "This account does not allow quoting their posts" }, 422);
       }
     }
@@ -493,6 +496,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
+  // Notify the author of the quoted status (Mastodon sends a `quote` notification).
+  if (quoteId && quotedAuthor?.isLocal && quotedAuthor.id !== actor.id && !notified.has(quotedAuthor.id)) {
+    notified.add(quotedAuthor.id);
+    await notify(env, {
+      id: generateId(),
+      type: "quote",
+      accountId: actor.id,
+      targetAccountId: quotedAuthor.id,
+      objectId: note.id,
+      read: false,
+      createdAt: published,
+    });
+  }
+
   // Attach media to AP Note now that linkedAttachments is populated
   if (linkedAttachments.length > 0) note.attachment = linkedAttachments.map(toAPAttachment);
 
@@ -545,11 +562,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
+  const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain) : null;
   const serializedStatus = serializeStatus(
     { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
     actor,
     domain,
-    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null }
+    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0 }
   );
 
   // Broadcast to streaming clients — collect tasks and await all together

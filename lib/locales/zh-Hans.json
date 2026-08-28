@@ -763,5 +763,6 @@
   "admin_hide_posts": "隐藏 {count} 附加的邮箱",
   "admin_status_resolved": "决定",
   "settings_verification_step2_alt": "或者，在页面的 <head> 中添加一个 <link> 标签（适用于 JavaScript 渲染的网站）：",
-  "action_quote": "引用"
+  "action_quote": "引用",
+  "notif_quoted": "引用了您的帖子"
 }

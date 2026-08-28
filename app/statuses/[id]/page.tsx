@@ -310,6 +310,8 @@ function ReplyBox({
         descRefs.current = {};
         setShowCw(false); setCwText(""); setPollMode(false); setPollOptions(["", ""]); setPollMultiple(false);
         onPosted(newStatus);
+        // A quote is a one-shot action: close its composer after posting.
+        if (quote && !replyTo) onCancel();
       }
     } catch {
       setError("Network error");
@@ -502,6 +504,7 @@ export default function ThreadPage() {
   const [replyTarget, setReplyTarget] = useState<Status | null>(null);
   const [quoteTarget, setQuoteTarget] = useState<Status | null>(null);
   const [autoReply, setAutoReply] = useState(false);
+  const [autoQuote, setAutoQuote] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const [history, setHistory] = useState<StatusEdit[]>([]);
   const [historyTab, setHistoryTab] = useState(false);
@@ -514,6 +517,9 @@ export default function ThreadPage() {
       if (searchParams.get("reply") === "1") {
         setAutoReply(true);
         router.replace(`/statuses/${encodeURIComponent(statusId)}`, { scroll: false });
+      } else if (searchParams.get("quote") === "1") {
+        setAutoQuote(true);
+        router.replace(`/statuses/${encodeURIComponent(statusId)}`, { scroll: false });
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,9 +530,12 @@ export default function ThreadPage() {
       if (autoReply && focal) {
         setReplyTarget(focal);
         setAutoReply(false);
+      } else if (autoQuote && focal) {
+        setQuoteTarget(focal);
+        setAutoQuote(false);
       }
     });
-  }, [autoReply, focal]);
+  }, [autoReply, autoQuote, focal]);
 
   useEffect(() => {
     Promise.resolve().then(() => {

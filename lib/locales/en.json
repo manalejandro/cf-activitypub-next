@@ -763,5 +763,6 @@
   "admin_hide_posts": "Hide {count} attached post(s)",
   "admin_status_resolved": "Resolved",
   "settings_verification_step2_alt": "Alternatively, add a <link> tag in the <head> of your page (useful for JavaScript-rendered sites):",
-  "action_quote": "Quote"
+  "action_quote": "Quote",
+  "notif_quoted": "quoted your post"
 }

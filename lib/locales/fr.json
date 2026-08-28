@@ -763,5 +763,6 @@
   "admin_hide_posts": "Cacher {compte} poste(s) attaché(s)",
   "admin_status_resolved": "Résolue",
   "settings_verification_step2_alt": "Sinon, ajoutez une balise <link> dans le <head> de votre page (utile pour les sites rendus en JavaScript) :",
-  "action_quote": "Citer"
+  "action_quote": "Citer",
+  "notif_quoted": "a cité votre publication"
 }

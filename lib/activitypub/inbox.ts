@@ -49,6 +49,7 @@ import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus,
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
+import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
@@ -531,19 +532,23 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           poll = serializePoll(pollDb, await getPollOptions(ctx.db, pollDb.id), false, []);
         }
       }
+      const quoteIdHere = extractQuoteId(obj as Record<string, unknown>);
+      const serializedQuoteHere = quoteIdHere
+        ? await getObjectById(ctx.db, quoteIdHere).then((q) => (q ? serializeQuote(ctx.db, q, domain) : null)).catch(() => null)
+        : null;
       const serializedStatus = serializeStatus(
         {
           id: obj.id, type: objType, actorId, content,
           contentWarning, sensitive: obj.sensitive ?? false, visibility: statusVisibility,
           inReplyToId: obj.inReplyTo ?? null,
-          quoteId: extractQuoteId(obj as Record<string, unknown>),
+          quoteId: quoteIdHere,
           language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
           url: resolveObjectUrl(obj.url, obj.id), repliesCount: 0, reblogsCount: 0, favouritesCount: 0,
           published, updatedAt: published, local: false, raw: JSON.stringify(obj),
         },
         author,
         domain,
-        { attachments: storedAttachments, emojis: allEmojis, poll }
+        { attachments: storedAttachments, emojis: allEmojis, poll, quote: serializedQuoteHere, quotesCount: 0 }
       );
       const broadcastTasks: Promise<void>[] = [];
       if (authorVisibleOnPublic) {

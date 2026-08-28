@@ -222,6 +222,7 @@ export default function TimelinesPage() {
                   onFav={handleFav}
                   onReblog={handleReblog}
                   onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}
+                  onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)}
                   me={me ?? undefined}
                   onEdit={openEdit}
                   onDelete={handleDelete}

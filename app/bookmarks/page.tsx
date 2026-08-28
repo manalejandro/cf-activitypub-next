@@ -81,6 +81,7 @@ export default function BookmarksPage() {
                   onFav={() => {}}
                   onReblog={() => {}}
                   onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}`)}
+                  onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
                   onDelete={() => {}}
                   onEdit={() => {}}
                 />

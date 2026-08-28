@@ -763,5 +763,6 @@
   "admin_hide_posts": "Hide {count} attached post(s)",
   "admin_status_resolved": "Решенный",
   "settings_verification_step2_alt": "Либо добавьте тег <link> в <head> вашей страницы (удобно для сайтов с рендерингом через JavaScript):",
-  "action_quote": "Цитировать"
+  "action_quote": "Цитировать",
+  "notif_quoted": "процитировал(а) ваш пост"
 }
