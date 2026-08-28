@@ -473,7 +473,21 @@ async function executeScheduled(env: Env): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, Math.ceil((60 - secondsIntoMinute) * 1000)));
   }
 
-  await publishDueScheduled(env);
+  // Guard against overlapping cron invocations (slow runs or clock drift): only
+  // one patrol runs at a time. The lock expires by itself (55s < 1min).
+  const lock = await env.KV.get("cron:lock");
+  if (lock) {
+    console.warn("[cron] skipping overlapping run");
+    return;
+  }
+  await env.KV.put("cron:lock", "1", { expirationTtl: 55 });
+
+  try {
+    try {
+      await publishDueScheduled(env);
+    } catch (err) {
+      console.error("[cron] publishDueScheduled failed", err);
+    }
 
   const actors = await env.DB
     .prepare(
@@ -572,6 +586,11 @@ async function executeScheduled(env: Env): Promise<void> {
     await verifyAccountFieldsCron(env);
   } catch (err) {
     console.error("[cron] verifyAccountFieldsCron failed", err);
+  }
+  } catch (err) {
+    console.error("[cron] executeScheduled failed", err);
+  } finally {
+    await env.KV.delete("cron:lock").catch(() => {});
   }
 }
 

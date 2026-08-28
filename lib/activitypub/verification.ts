@@ -12,6 +12,36 @@ import { getActorById, getActorFields, setActorFieldVerified } from "@/lib/db";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 
 const FETCH_TIMEOUT_MS = 8000;
+// Only the first bytes of the linked page matter for finding rel="me" links.
+// Reading the whole body of a huge page can blow the Worker memory limit.
+const MAX_BODY_BYTES = 512 * 1024;
+
+/** Read at most `limit` bytes of a response body (streaming, bounded memory). */
+async function readBoundedText(res: Response, limit = MAX_BODY_BYTES): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  try {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (total < limit) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+    const combined = new Uint8Array(Math.min(total, limit));
+    let offset = 0;
+    for (const c of chunks) {
+      const piece = c.length > combined.length - offset ? c.subarray(0, combined.length - offset) : c;
+      combined.set(piece, offset);
+      offset += piece.byteLength;
+      if (offset >= combined.length) break;
+    }
+    return new TextDecoder().decode(combined);
+  } finally {
+    try { await reader.cancel(); } catch { /* ignore */ }
+  }
+}
 
 /** Minimal KV surface used for the on-demand verification marker. */
 interface VerificationKV {
@@ -107,7 +137,7 @@ export async function verifyAccountFields(
           signal: controller.signal,
         });
         if (res.ok) {
-          const html = await res.text();
+          const html = await readBoundedText(res);
           ok = extractMeLinks(html).map(normalizeUrl).some((href) => profileUrls.includes(href));
         }
       } finally {
