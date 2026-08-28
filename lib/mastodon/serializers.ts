@@ -132,7 +132,7 @@ export function serializeAccount(
     })),
   };
 
-  account.verified = (opts.fields ?? []).some((f) => f.verifiedAt != null);
+  account.verified = actor.verified === true || (opts.fields ?? []).some((f) => f.verifiedAt != null);
   account.supports_calls = opts.supportsCalls ?? isLocal;
 
   // Moderation state — Mastodon clients use these to render silence/suspension.

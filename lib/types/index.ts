@@ -198,6 +198,8 @@ export interface LocalActor {
   suspended?: boolean;
   silenced?: boolean;
   reserved?: boolean;
+  // 1 when a profile field's rel="me" link verifies
+  verified?: boolean;
   // account migration
   alsoKnownAs?: string[] | null;
   movedTo?: string | null;

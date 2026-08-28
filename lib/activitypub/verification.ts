@@ -102,5 +102,12 @@ export async function verifyAccountFields(
     if (ok) verified++;
   }
 
+  // Cache the account-level flag so statuses can expose the badge without
+  // re-reading every field.
+  await db
+    .prepare("UPDATE actors SET verified = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(verified > 0 ? 1 : 0, actorId)
+    .run();
+
   return { verifiedFields: verified };
 }

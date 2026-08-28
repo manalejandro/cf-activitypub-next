@@ -84,6 +84,7 @@ function rowToActor(r: Row): LocalActor {
     suspended: r.suspended === undefined ? undefined : Boolean(r.suspended),
     silenced: r.silenced === undefined ? undefined : Boolean(r.silenced),
     reserved: r.reserved === undefined ? undefined : Boolean(r.reserved),
+    verified: r.verified === undefined ? undefined : Boolean(r.verified),
     alsoKnownAs: r.also_known_as ? safeJsonParseArray(r.also_known_as) : null,
     movedTo: r.moved_to ?? null,
     createdAt: r.created_at,
@@ -2171,6 +2172,8 @@ export async function setActorFields(
       .bind(crypto.randomUUID(), actorId, f.name.trim(), f.value.trim(), i)
       .run();
   }
+  // Fields changed → the cached account-level flag must be re-evaluated.
+  await db.prepare("UPDATE actors SET verified = 0 WHERE id = ?").bind(actorId).run();
 }
 
 /**

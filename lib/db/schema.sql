@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS actors (
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   last_active_at     TEXT,
+  verified           INTEGER NOT NULL DEFAULT 0,     -- 1 when a profile field's rel="me" link verifies
   UNIQUE (username, domain)
 );
 
