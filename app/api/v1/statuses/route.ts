@@ -33,6 +33,7 @@ import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/fed
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
+import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
@@ -103,6 +104,46 @@ async function quoteAllowed(
     default:
       return false; // nobody
   }
+}
+
+/**
+ * Resolve a REMOTE author's federated quote policy (Mastodon 4.5 / FEP-044f
+ * `interactionPolicy.canQuote`) and decide whether `actorId` may quote one of
+ * their posts. Falls back to the conservative "followers" when no policy is
+ * present or it cannot be parsed.
+ */
+async function remoteQuoteAllowed(
+  db: D1Database,
+  actorId: string,
+  author: { id: string; domain: string; username: string },
+  raw: string | undefined
+): Promise<boolean> {
+  if (actorId === author.id) return true;
+  if (await isActorBlockedBy(db, author.id, actorId)) return false;
+
+  let canQuote: { automaticApproval?: unknown[] } | null = null;
+  try {
+    const ap = raw ? JSON.parse(raw) : null;
+    canQuote = ap?.interactionPolicy?.canQuote ?? null;
+  } catch { /* ignore malformed */ }
+
+  if (!canQuote || !Array.isArray(canQuote.automaticApproval)) {
+    return !!(await getFollow(db, actorId, author.id)); // conservative: followers
+  }
+
+  const auto = canQuote.automaticApproval.map((v) => String(v));
+  if (auto.some((v) => /public/i.test(v))) return true;
+
+  const followersIri = `https://${author.domain}/users/${author.username}/followers`;
+  const followingIri = `https://${author.domain}/users/${author.username}/following`;
+  if (auto.includes(followersIri) || auto.some((v) => /followers/i.test(v))) {
+    return !!(await getFollow(db, actorId, author.id));
+  }
+  if (auto.includes(followingIri) || auto.some((v) => /following/i.test(v))) {
+    return !!(await getFollow(db, author.id, actorId));
+  }
+  if (auto.includes(actorId)) return true;
+  return false;
 }
 
 // POST /api/v1/statuses — Publish a new status
@@ -186,8 +227,16 @@ export async function POST(request: NextRequest): Promise<Response> {
     const qAuthor = await getActorById(env.DB, quoted.actorId);
     if (qAuthor) {
       quotedAuthor = qAuthor;
-      const policy = (await getActorPreference(env.DB, qAuthor.id, "posting:default:quote_policy")) ?? "followers";
-      if (!(await quoteAllowed(env.DB, actor, qAuthor, policy))) {
+      let allowed: boolean;
+      if (qAuthor.isLocal) {
+        const policy = (await getActorPreference(env.DB, qAuthor.id, "posting:default:quote_policy")) ?? "followers";
+        allowed = await quoteAllowed(env.DB, actor, qAuthor, policy);
+      } else {
+        // Honor the remote author's federated quote policy (FEP-044f
+        // interactionPolicy.canQuote) instead of assuming "followers".
+        allowed = await remoteQuoteAllowed(env.DB, actor.id, qAuthor, quoted.raw);
+      }
+      if (!allowed) {
         return json({ error: "This account does not allow quoting their posts" }, 422);
       }
     }
@@ -543,9 +592,23 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Quote delivery: the quoted post's author must receive the Create activity
   // so their instance can raise a `quote` notification (Mastodon behaviour).
+  // Mastodon only accepts/notifies remote quotes after a FEP-044f QuoteRequest,
+  // so send one alongside the Create when quoting a remote post.
   let quoteAuthorInboxes: string[] = [];
   if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
     quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
+    if (quoteAuthorInboxes.length > 0) {
+      const quoteRequest = {
+        "@context": DEFAULT_CONTEXT,
+        id: `${baseUrl}/quote_requests/${generateId()}`,
+        type: "QuoteRequest",
+        actor: actor.id,
+        to: [quotedAuthor.id],
+        object: quoteId,
+        instrument: note.id,
+      };
+      await enqueueDeliveries(env.DELIVERY_QUEUE, quoteAuthorInboxes, JSON.stringify(quoteRequest), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+    }
   }
 
   if (visibility === "direct") {

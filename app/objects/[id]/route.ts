@@ -74,5 +74,11 @@ export async function GET(
     cc,
   });
 
+  // FEP-044f: expose the quoted post so remote instances can verify the quote
+  // (Mastodon fetches this object as the QuoteRequest `instrument`).
+  if (obj.quoteId) {
+    (note as Record<string, unknown>).quote = obj.quoteId;
+  }
+
   return activityJson(note);
 }
