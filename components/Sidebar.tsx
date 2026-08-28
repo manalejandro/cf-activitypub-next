@@ -18,6 +18,7 @@ interface SidebarAccount {
   acct: string;
   avatar?: string | null;
   emojis?: EmojiData[];
+  verified?: boolean;
   roles?: { id?: string; name: string; color?: string }[];
 }
 
@@ -292,6 +293,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   <DisplayName name={me.display_name || me.username} emojis={me.emojis} />
+                  {me.verified && <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.75rem" /></span>}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
               </div>
@@ -457,6 +459,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           <DisplayName name={me.display_name || me.username} emojis={me.emojis} />
+                          {me.verified && <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.75rem" /></span>}
                         </div>
                         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{me.acct}</div>
                       </div>

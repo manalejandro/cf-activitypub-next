@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getMlsKeyPackagesByActor, countMlsMessagesByRecipient, getAllCustomEmojis } from "@/lib/db";
 import { buildActor } from "@/lib/activitypub/utils";
-import { processStatusContent, localSummaryToPlain, linkifyInline } from "@/lib/activitypub/content";
+import { processStatusContent, localSummaryToPlain } from "@/lib/activitypub/content";
 
 // GET /users/:username
 export async function GET(
@@ -32,9 +32,12 @@ export async function GET(
   const note = actor.summary
     ? processStatusContent(localSummaryToPlain(actor.summary), baseUrl, emojis)
     : { html: "", tags: [] };
-  const linkifiedFields = fields.map((f) => ({
+  // Profile field VALUES are federated as bare text (not linkified HTML): a
+  // remote Mastodon instance only verifies a field when its value matches a
+  // plain URL (VerifyLinkService + Account::Field#value_for_verification).
+  const apFields = fields.map((f) => ({
     name: f.name,
-    value: linkifyInline(f.value, baseUrl, emojis),
+    value: f.value,
   }));
 
   const keyPackageCount = (await getMlsKeyPackagesByActor(env.DB, actor.id)).length;
@@ -49,7 +52,7 @@ export async function GET(
     discoverable: actor.discoverable,
     isBot: actor.isBot,
     published: actor.createdAt,
-    fields: linkifiedFields,
+    fields: apFields,
     tags: note.tags,
     alsoKnownAs: actor.alsoKnownAs ?? undefined,
     movedTo: actor.movedTo ?? undefined,

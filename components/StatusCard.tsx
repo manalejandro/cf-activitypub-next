@@ -87,6 +87,7 @@ export interface Me {
   acct: string;
   display_name: string;
   avatar: string;
+  verified?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

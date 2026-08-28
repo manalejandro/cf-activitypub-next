@@ -62,7 +62,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       }
     }
 
-    const localActor = await env.DB.prepare("SELECT id FROM actors WHERE id = ? OR url = ?").bind(q, q).first<{ id: string }>();
+    // `actors` has no `url` column — its `id` is already the actor IRI.
+    const localActor = await env.DB.prepare("SELECT id FROM actors WHERE id = ?").bind(q).first<{ id: string }>();
     if (localActor) {
       const actor = await getActorById(env.DB, localActor.id);
       if (actor && !actor.suspended && !actor.silenced) {
