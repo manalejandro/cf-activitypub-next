@@ -19,6 +19,7 @@ interface Account {
   username: string;
   display_name: string;
   emojis?: EmojiData[];
+  verified?: boolean;
   avatar: string;
   acct: string;
 }
@@ -193,6 +194,7 @@ export default function NotificationsPage() {
                         <Avatar avatar={account.avatar} name={account.display_name || account.username} size={28} />
                         <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
                           <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
+                          {account.verified && <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.8rem" /></span>}
                         </span>
                         <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                           {t.notif_follow_request}
@@ -256,6 +258,7 @@ export default function NotificationsPage() {
                       </Link>
                       <Link href={accountHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>
                         <DisplayName name={n.account.display_name || n.account.username} emojis={n.account.emojis} />
+                        {n.account.verified && <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.8rem" /></span>}
                       </Link>
                       <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
                         {metaText}

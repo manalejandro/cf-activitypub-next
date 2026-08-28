@@ -7,6 +7,7 @@ import { useLocale } from "@/lib/i18n";
 const TABS = [
   { href: "/settings", key: "settings_title" as const },
   { href: "/settings/push", key: "settings_tab_push" as const },
+  { href: "/settings/verification", key: "settings_tab_verification" as const },
   { href: "/settings/featured-tags", key: "settings_tab_tags" as const },
   { href: "/settings/import-export", key: "settings_tab_import" as const },
   { href: "/settings/migration", key: "settings_tab_migration" as const },

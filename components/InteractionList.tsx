@@ -15,6 +15,7 @@ interface Account {
   display_name: string;
   avatar: string;
   emojis?: EmojiData[];
+  verified?: boolean;
 }
 
 export function InteractionList({
@@ -200,6 +201,9 @@ export function InteractionList({
                       }}
                     >
                       <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
+                      {account.verified && (
+                        <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle", flexShrink: 0 }}><Icon name="check" color="var(--success)" size="0.8rem" /></span>
+                      )}
                     </div>
                     <div
                       style={{

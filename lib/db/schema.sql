@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS actor_fields (
   name        TEXT NOT NULL,
   value       TEXT NOT NULL DEFAULT '',
   position    INTEGER NOT NULL DEFAULT 0,
+  verified_at TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id, position)
 );

@@ -36,6 +36,7 @@ interface Account {
   display_name: string;
   note: string;
   emojis?: EmojiData[];
+  verified?: boolean;
   avatar: string;
   header: string;
   followers_count: number;
@@ -212,6 +213,7 @@ function ProfileMediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
 
 // Account card for followers/following lists
 function AccountCard({ acct }: { acct: Account }) {
+  const { t } = useLocale();
   const isRemote = acct.acct.includes("@");
   const profileHref = isRemote
     ? `/users/remote?url=${encodeURIComponent(acct.id)}`
@@ -222,6 +224,9 @@ function AccountCard({ acct }: { acct: Account }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <Link href={profileHref} style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text)", textDecoration: "none" }}>
           <DisplayName name={acct.display_name || acct.username} emojis={acct.emojis} />
+          {acct.verified && (
+            <span title={t.verified_badge} style={{ marginLeft: "0.25rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.8rem" /></span>
+          )}
         </Link>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>@{acct.acct}</div>
         {acct.note && (
@@ -951,6 +956,9 @@ export default function ProfilePage() {
             <div style={{ padding: "0.75rem 1rem 0" }}>
               <div style={{ fontWeight: 700, fontSize: "1.15rem" }}>
                 <DisplayName name={account.display_name || account.username} emojis={account.emojis} />
+                {account.verified && (
+                  <span title={t.verified_badge} style={{ marginLeft: "0.4rem", verticalAlign: "middle" }}><Icon name="check" color="var(--success)" size="0.9rem" /></span>
+                )}
                 {account.roles?.some((r) => r.name.toLowerCase() === "admin") && (
                   <span style={{ marginLeft: "0.4rem", verticalAlign: "middle" }} title={t.admin_role_admin}><Icon name="trophy" size="0.9rem" /></span>
                 )}
@@ -1004,6 +1012,7 @@ export default function ProfilePage() {
                         style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem", wordBreak: "break-all", borderBottom: i < account.fields.length - 1 ? "1px solid var(--border)" : "none" }}
                       >
                         <RichText html={f.value} />
+                        {f.verified_at && <span title={t.verified_badge} style={{ color: "var(--success)", marginLeft: "0.25rem" }}><Icon name="check" size="0.75rem" /></span>}
                       </div>
                     </Fragment>
                   ))}

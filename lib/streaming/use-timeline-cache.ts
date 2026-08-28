@@ -55,21 +55,42 @@ function scrollToStatusAnchor(anchorId: string | null, fallbackY: number) {
 }
 
 /**
- * Force the window to a scroll position immediately and keep re-applying it
- * across the route transition (Next.js may scroll the window during
- * navigation) until it sticks. Uses requestAnimationFrame — no timers.
+ * Force the window to a scroll position immediately. If the browser/Next.js
+ * resets the scroll during navigation, a temporary scroll guard re-applies it
+ * once the wrong position is observed. No timers: the guard is cancelled by a
+ * newer restore (token) or removed after a few animation frames.
  */
+let scrollToken = 0;
+
 function forceScroll(y: number) {
-  let attempts = 0;
+  const token = ++scrollToken;
   const apply = () => {
-    if (attempts >= 12) return;
-    attempts++;
-    if (Math.abs(window.scrollY - y) > 1) {
-      window.scrollTo(0, y);
-      requestAnimationFrame(apply);
+    if (token !== scrollToken) return;
+    window.scrollTo(0, y);
+  };
+
+  apply();
+
+  const onScroll = () => {
+    if (token !== scrollToken) return;
+    const wrong = y === 0 ? window.scrollY !== 0 : window.scrollY === 0;
+    if (wrong) {
+      apply();
+      window.removeEventListener("scroll", onScroll);
     }
   };
-  apply();
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  let frames = 0;
+  const stop = () => {
+    frames++;
+    if (token !== scrollToken || frames >= 12) {
+      window.removeEventListener("scroll", onScroll);
+    } else {
+      requestAnimationFrame(stop);
+    }
+  };
+  requestAnimationFrame(stop);
 }
 
 // Restore a remembered scroll offset, defended against a browser/Next.js

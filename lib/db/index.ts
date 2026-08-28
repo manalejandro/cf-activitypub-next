@@ -100,6 +100,7 @@ function rowToField(r: Row): ActorField {
     name: r.name,
     value: r.value,
     position: r.position ?? 0,
+    verifiedAt: r.verified_at ?? null,
     createdAt: r.created_at,
   };
 }
@@ -2165,11 +2166,36 @@ export async function setActorFields(
     if (!f.name.trim()) continue;
     await db
       .prepare(
-        "INSERT INTO actor_fields (id, actor_id, name, value, position) VALUES (?,?,?,?,?)"
+        "INSERT INTO actor_fields (id, actor_id, name, value, position, verified_at) VALUES (?,?,?,?,?,NULL)"
       )
       .bind(crypto.randomUUID(), actorId, f.name.trim(), f.value.trim(), i)
       .run();
   }
+}
+
+/**
+ * Store the outcome of a rel="me" verification for one profile field.
+ * `verifiedAt` is null when the link no longer verifies.
+ */
+export async function setActorFieldVerified(
+  db: D1Database,
+  fieldId: string,
+  verifiedAt: string | null
+): Promise<void> {
+  await db
+    .prepare("UPDATE actor_fields SET verified_at = ? WHERE id = ?")
+    .bind(verifiedAt, fieldId)
+    .run();
+}
+
+/**
+ * Clear every cached verification for an actor (used before re-checking).
+ */
+export async function resetActorFieldVerifications(db: D1Database, actorId: string): Promise<void> {
+  await db
+    .prepare("UPDATE actor_fields SET verified_at = NULL WHERE actor_id = ?")
+    .bind(actorId)
+    .run();
 }
 
 export async function getActorStatuses_withReplies(

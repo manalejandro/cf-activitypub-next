@@ -347,13 +347,13 @@ describe("serializeAccount local linkification", () => {
   });
 
   it("linkifies local field values but not remote ones", () => {
-    const fields: ActorField[] = [{ id: "f1", actorId: localAuthor.id, name: "Web", value: "https://example.com", position: 0, createdAt: "2026-01-01T00:00:00.000Z" }];
+    const fields: ActorField[] = [{ id: "f1", actorId: localAuthor.id, name: "Web", value: "https://example.com", position: 0, verifiedAt: null, createdAt: "2026-01-01T00:00:00.000Z" }];
     const acct = serializeAccount(localAuthor, "local.example", { fields });
     expect(acct.fields[0].value).toContain('<a href="https://example.com"');
 
     const remoteAuthor = { ...author };
     const remoteAcct = serializeAccount(remoteAuthor, "local.example", {
-      fields: [{ id: "f2", actorId: remoteAuthor.id, name: "Web", value: '<a href="https://example.com">web</a>', position: 0, createdAt: "2026-01-01T00:00:00.000Z" }],
+      fields: [{ id: "f2", actorId: remoteAuthor.id, name: "Web", value: '<a href="https://example.com">web</a>', position: 0, verifiedAt: null, createdAt: "2026-01-01T00:00:00.000Z" }],
     });
     expect(remoteAcct.fields[0].value).toContain('href="https://example.com"');
     expect(remoteAcct.fields[0].value).toContain(">web</a>");

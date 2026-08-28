@@ -27,6 +27,7 @@ import { broadcastDelete, broadcastHomeDelete } from "../lib/streaming/broadcast
 import type { DONamespace } from "../lib/streaming/broadcast";
 import { encodeStatusId } from "../lib/mastodon/statusId";
 import { getActorById } from "../lib/db";
+import { verifyAccountFields } from "../lib/activitypub/verification";
 import { runModerationCycle } from "../lib/moderation/cycle";
 import type { APActor } from "../lib/types";
 
@@ -560,6 +561,35 @@ async function executeScheduled(env: Env): Promise<void> {
   // spam domains. Runs after the routine tasks; each run is idempotent via KV
   // markers so overlapping cron invocations stay cheap.
   await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
+
+  // Account verification — periodically re-check rel="me" backlinks so the
+  // verified badge stays accurate when an external site changes its markup.
+  await verifyLocalAccountFields(env);
+}
+
+/**
+ * Re-run Mastodon-style verification for every local account that has a
+ * link-valued profile field. The external fetch is SSRF-guarded and each field
+ * check is cached in actor_fields.verified_at.
+ */
+async function verifyLocalAccountFields(env: Env): Promise<void> {
+  try {
+    const rows = await env.DB
+      .prepare(
+        `SELECT DISTINCT af.actor_id FROM actor_fields af
+         JOIN actors a ON a.id = af.actor_id
+         WHERE a.is_local = 1 AND af.value LIKE 'http%'`
+      )
+      .all<{ actor_id: string }>();
+    for (const row of rows.results) {
+      const actor = await getActorById(env.DB, row.actor_id);
+      if (!actor) continue;
+      const domain = new URL(actor.id).hostname;
+      await verifyAccountFields(env.DB, actor.id, domain);
+    }
+  } catch (err) {
+    console.error("[cron] verifyAccountFields failed", err);
+  }
 }
 
 const worker = {

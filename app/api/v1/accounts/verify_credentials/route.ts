@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
+import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
@@ -169,6 +170,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   // Save fields if provided
   if (fieldsRaw !== undefined) {
     await setActorFields(env.DB, actor.id, fieldsRaw.filter((f) => f.name.trim()));
+    // Re-check rel="me" verification in the background so the badge reflects
+    // the updated fields without blocking the response.
+    void verifyAccountFields(env.DB, actor.id, domain).catch(() => {});
   }
 
   // Re-read using proper mapper

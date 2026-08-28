@@ -128,10 +128,11 @@ export function serializeAccount(
       value: isLocal
         ? linkifyInline(f.value, baseUrl, opts.emojis)
         : linkifyHtmlText(sanitizeFediverseHtml(f.value) ?? "", baseUrl, opts.emojis),
-      verified_at: null,
+      verified_at: f.verifiedAt ?? null,
     })),
   };
 
+  account.verified = (opts.fields ?? []).some((f) => f.verifiedAt != null);
   account.supports_calls = opts.supportsCalls ?? isLocal;
 
   // Moderation state — Mastodon clients use these to render silence/suspension.
@@ -146,7 +147,7 @@ export function serializeAccount(
       fields: (opts.fields ?? []).map((f) => ({
         name: f.name,
         value: f.value,
-        verified_at: null,
+        verified_at: f.verifiedAt ?? null,
       })),
       privacy: "public",
       sensitive: false,

@@ -215,6 +215,7 @@ export interface ActorField {
   name: string;
   value: string;
   position: number;
+  verifiedAt: string | null;
   createdAt: string;
 }
 
@@ -436,6 +437,7 @@ export interface MastodonAccount {
   emojis: MastodonEmoji[];
   fields: MastodonField[];
   roles: MastodonRole[];
+  verified?: boolean;
   moved?: MastodonAccount | null;
   suspended?: boolean;
   limited?: boolean;
