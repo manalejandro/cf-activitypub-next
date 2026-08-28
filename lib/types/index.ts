@@ -240,6 +240,7 @@ export interface LocalObject {
   sensitive: boolean;
   visibility: "public" | "unlisted" | "followers" | "direct";
   inReplyToId: string | null;
+  quoteId: string | null;
   language: string | null;
   url: string;
   repliesCount: number;
@@ -579,10 +580,7 @@ export interface MastodonFilterResult {
   status_matches: string[] | null;
 }
 
-export interface MastodonQuote {
-  quoted_status_id: string | null;
-  state: string;
-}
+export type MastodonQuote = MastodonStatus;
 
 export interface MastodonMention {
   id: string;
@@ -685,6 +683,7 @@ export interface MastodonSource {
   privacy: string;
   sensitive: boolean;
   language: string | null;
+  quote_policy?: string;
   bot: boolean;
   follow_requests_count: number;
   auto_delete_after: number | null;

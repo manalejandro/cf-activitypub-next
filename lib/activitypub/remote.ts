@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
+import { extractQuoteId } from "@/lib/activitypub/utils";
 import {
   getDomainCallsSupport,
   setDomainCallsSupport,
@@ -402,6 +403,7 @@ export async function fetchAndCacheRemoteActorStatuses(
         sensitive: obj.sensitive === true,
         visibility,
         inReplyToId: (obj.inReplyTo as string) ?? null,
+        quoteId: extractQuoteId(obj as Record<string, unknown>),
         language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
         url: outboxObjectUrl(obj.url, oid),
         repliesCount: 0,
@@ -510,6 +512,7 @@ export async function fetchAndCacheRemoteStatus(
       sensitive: obj.sensitive === true,
       visibility,
       inReplyToId: (obj.inReplyTo as string) ?? null,
+      quoteId: extractQuoteId(obj as Record<string, unknown>),
       language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
       url: outboxObjectUrl(obj.url, oid),
       repliesCount: 0,
@@ -591,6 +594,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           sensitive: item.sensitive === true,
           visibility,
           inReplyToId: (item.inReplyTo as string) ?? null,
+          quoteId: extractQuoteId(item as Record<string, unknown>),
           language: item.contentMap ? Object.keys(item.contentMap)[0] : null,
           url: outboxObjectUrl(item.url, oid),
           repliesCount: 0,

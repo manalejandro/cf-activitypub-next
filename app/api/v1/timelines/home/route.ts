@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap } from "@/lib/db";
+import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 
@@ -23,13 +24,15 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId, minId);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     getLikedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getAnnouncedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
+    getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
+    getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
   ]);
 
   const statuses = await Promise.all(
@@ -57,6 +60,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         reblogged: announcedIds.has(obj.id),
         emojis: allEmojis,
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
+        quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
+        quotesCount: quotesCountMap.get(obj.id) ?? 0,
       });
     })
   );

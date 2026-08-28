@@ -3,6 +3,8 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeQuote } from "@/lib/mastodon/quote";
+import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activitypub/utils";
@@ -70,6 +72,12 @@ export async function GET(
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
+  const [quotesCount, quote] = await Promise.all([
+    getObjectQuotesCount(env.DB, obj.id),
+    obj.quoteId
+      ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
+      : Promise.resolve(null),
+  ]);
   return json(serializeStatus(obj, author, domain, {
     attachments,
     poll,
@@ -77,6 +85,8 @@ export async function GET(
     reblogged: announcedIds.has(obj.id),
     emojis: allEmojis,
     inReplyToAccountId,
+    quote,
+    quotesCount,
   }));
 }
 

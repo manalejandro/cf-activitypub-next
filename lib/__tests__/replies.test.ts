@@ -28,6 +28,7 @@ function makeObject(overrides: Partial<LocalObject> = {}): LocalObject {
     sensitive: false,
     visibility: "public",
     inReplyToId: null,
+    quoteId: null,
     language: null,
     url: "https://remote.example/objects/1",
     repliesCount: 0,

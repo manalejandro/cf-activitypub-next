@@ -81,6 +81,7 @@ export async function storePublicMlsEnvelope(
     sensitive: false,
     visibility: "public",
     inReplyToId: obj.conversation ?? null,
+    quoteId: null,
     language: null,
     url: obj.id,
     repliesCount: 0,

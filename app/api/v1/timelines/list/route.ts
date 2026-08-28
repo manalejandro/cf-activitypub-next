@@ -52,6 +52,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     sensitive: Boolean(r.sensitive),
     visibility: r.visibility as "public" | "unlisted" | "followers" | "direct",
     inReplyToId: r.in_reply_to_id as string | null,
+    quoteId: (r.quote_id as string | null) ?? null,
     language: r.language as string | null,
     url: r.url as string,
     repliesCount: Number(r.replies_count ?? 0),

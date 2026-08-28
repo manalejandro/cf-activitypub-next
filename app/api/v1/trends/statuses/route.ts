@@ -25,6 +25,7 @@ function rowToObject(r: Row): LocalObject {
     sensitive: Boolean(r.sensitive),
     visibility: r.visibility,
     inReplyToId: r.in_reply_to_id ?? null,
+    quoteId: r.quote_id ?? null,
     language: r.language ?? null,
     url: r.url ?? "",
     repliesCount: r.replies_count ?? 0,

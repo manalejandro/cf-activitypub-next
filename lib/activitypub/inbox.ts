@@ -51,6 +51,7 @@ import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
+import { extractQuoteId } from "./utils";
 import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
@@ -372,6 +373,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     sensitive: obj.sensitive ?? false,
     visibility,
     inReplyToId: obj.inReplyTo ?? null,
+    quoteId: extractQuoteId(obj as Record<string, unknown>),
     language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
     url: resolveObjectUrl(obj.url, obj.id),
     repliesCount: 0,
@@ -534,6 +536,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           id: obj.id, type: objType, actorId, content,
           contentWarning, sensitive: obj.sensitive ?? false, visibility: statusVisibility,
           inReplyToId: obj.inReplyTo ?? null,
+          quoteId: extractQuoteId(obj as Record<string, unknown>),
           language: obj.contentMap ? Object.keys(obj.contentMap)[0] : null,
           url: resolveObjectUrl(obj.url, obj.id), repliesCount: 0, reblogsCount: 0, favouritesCount: 0,
           published, updatedAt: published, local: false, raw: JSON.stringify(obj),
@@ -871,6 +874,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
             sensitive: fetched.sensitive ?? false,
             visibility: resolveVisibility(fetched.to, fetched.cc),
             inReplyToId: fetched.inReplyTo ?? null,
+            quoteId: extractQuoteId(fetched as Record<string, unknown>),
             language: fetched.contentMap ? Object.keys(fetched.contentMap)[0] : null,
             url: resolveObjectUrl(fetched.url, fetched.id),
             repliesCount: 0,
@@ -968,6 +972,7 @@ async function persistRemoteNote(
     sensitive: note.sensitive ?? false,
     visibility: resolveVisibility(note.to, note.cc),
     inReplyToId: note.inReplyTo ?? null,
+    quoteId: extractQuoteId(note as Record<string, unknown>),
     language: note.contentMap ? Object.keys(note.contentMap)[0] : null,
     url: resolveObjectUrl(note.url, note.id),
     repliesCount: 0,
@@ -1188,6 +1193,7 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
           sensitive: fetched.sensitive ?? false,
           visibility,
           inReplyToId: fetched.inReplyTo ?? null,
+          quoteId: extractQuoteId(fetched as Record<string, unknown>),
           language: fetched.contentMap ? Object.keys(fetched.contentMap)[0] : null,
           url: resolveObjectUrl(fetched.url, fetched.id),
           repliesCount: 0,
@@ -1303,6 +1309,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
           sensitive: note.sensitive ?? false,
           visibility: resolveVisibility(note.to, note.cc),
           inReplyToId: note.inReplyTo ?? null,
+          quoteId: extractQuoteId(note as Record<string, unknown>),
           language: note.contentMap ? Object.keys(note.contentMap)[0] : null,
           url: resolveObjectUrl(note.url, note.id),
           repliesCount: 0,

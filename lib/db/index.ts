@@ -116,6 +116,7 @@ function rowToObject(r: Row): LocalObject {
     sensitive: Boolean(r.sensitive),
     visibility: r.visibility,
     inReplyToId: r.in_reply_to_id ?? null,
+    quoteId: r.quote_id ?? null,
     language: r.language ?? null,
     url: r.url,
     repliesCount: r.replies_count ?? 0,
@@ -1380,10 +1381,10 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
     .prepare(
       `INSERT INTO objects (
         id, type, actor_id, content, content_warning, sensitive,
-        visibility, in_reply_to_id, language, url,
+        visibility, in_reply_to_id, quote_id, language, url,
         replies_count, reblogs_count, favourites_count,
         published, is_local, raw, updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       obj.id,
@@ -1394,6 +1395,7 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
       obj.sensitive ? 1 : 0,
       obj.visibility,
       obj.inReplyToId ?? null,
+      obj.quoteId ?? null,
       obj.language ?? null,
       obj.url,
       obj.repliesCount,
@@ -1405,6 +1407,63 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
       obj.published   // pin updated_at = published so new posts never appear as edited
     )
     .run();
+}
+
+/**
+ * Statuses that quote the given object (accepted quotes), newest first.
+ */
+export async function getObjectsQuoting(
+  db: D1Database,
+  objectId: string,
+  viewerId?: string | null,
+  limit = 20,
+  maxId?: string
+): Promise<LocalObject[]> {
+  let where = "o.quote_id = ?";
+  const params: unknown[] = [objectId];
+  if (maxId) {
+    where += " AND o.published < ?";
+    params.push(maxId);
+  }
+  const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
+  const blockFilter = viewerId
+    ? "AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)"
+    : "";
+  if (viewerId) params.push(viewerId);
+  const rows = await db
+    .prepare(
+      `SELECT o.* FROM objects o
+       WHERE ${where} ${stateFilter} ${blockFilter}
+       ORDER BY o.published DESC LIMIT ?`
+    )
+    .bind(...params, limit)
+    .all<Row>();
+  return rows.results.map(rowToObject);
+}
+
+/** Count of accepted quotes on an object. */
+export async function getObjectQuotesCount(db: D1Database, objectId: string): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS c FROM objects WHERE quote_id = ?")
+    .bind(objectId)
+    .first<{ c: number }>();
+  return Number(row?.c ?? 0);
+}
+
+/** Batch quotes count for a set of objects. */
+export async function getObjectQuotesCounts(
+  db: D1Database,
+  objectIds: string[]
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (objectIds.length === 0) return map;
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT quote_id, COUNT(*) AS c FROM objects WHERE quote_id IN (${placeholders}) GROUP BY quote_id`)
+    .bind(...objectIds)
+    .all<{ quote_id: string; c: number }>();
+  for (const r of rows.results) map.set(r.quote_id, Number(r.c));
+  return map;
 }
 
 export async function getPublicTimeline(
@@ -2435,6 +2494,15 @@ export async function getInstanceSetting(db: D1Database, key: string): Promise<s
   const row = await db
     .prepare("SELECT value FROM instance_settings WHERE key = ?")
     .bind(key)
+    .first<{ value: string }>();
+  return row?.value ?? null;
+}
+
+/** Read a single actor preference (e.g. `posting:default:quote_policy`). */
+export async function getActorPreference(db: D1Database, actorId: string, key: string): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT value FROM preferences WHERE actor_id = ? AND key = ?")
+    .bind(actorId, key)
     .first<{ value: string }>();
   return row?.value ?? null;
 }

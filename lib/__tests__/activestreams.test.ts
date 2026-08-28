@@ -14,6 +14,7 @@ function makeObject(type: string, extra: Record<string, unknown> = {}): LocalObj
     sensitive: false,
     visibility: "public",
     inReplyToId: null,
+    quoteId: null,
     language: "en",
     url: "https://remote.example/objects/1",
     repliesCount: 0,

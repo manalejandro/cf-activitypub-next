@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap } from "@/lib/db";
+import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalActor } from "@/lib/types";
@@ -64,13 +65,15 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (local && !authActor) return unauthorized();
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
+    getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
+    getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
   ]);
 
   const statuses = await Promise.all(
@@ -103,6 +106,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         reblogged: announcedIds.has(obj.id),
         emojis: allEmojis,
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
+        quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
+        quotesCount: quotesCountMap.get(obj.id) ?? 0,
       });
     })
   );

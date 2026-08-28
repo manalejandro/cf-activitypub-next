@@ -14,6 +14,9 @@ import {
   getAllCustomEmojis,
   createScheduledStatus,
   upsertDirectConversation,
+  getActorPreference,
+  isActorBlockedBy,
+  getFollow,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -28,6 +31,7 @@ import {
 import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
+import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
@@ -73,6 +77,30 @@ async function fetchReplyParent(actor: LocalActor, iri: string): Promise<ThreadN
     };
   } catch {
     return null;
+  }
+}
+
+// Whether `actor` is allowed to quote `author`'s status given the author's
+// quote policy (Mastodon: public → anyone, followers → followers+author,
+// followed → accounts the author follows, nobody → only the author).
+async function quoteAllowed(
+  db: D1Database,
+  actor: { id: string },
+  author: { id: string },
+  policy: string
+): Promise<boolean> {
+  if (actor.id === author.id) return true;
+  // Blocked users are never allowed to quote.
+  if (await isActorBlockedBy(db, author.id, actor.id)) return false;
+  switch (policy) {
+    case "public":
+      return true;
+    case "followers":
+      return !!(await getFollow(db, actor.id, author.id));
+    case "followed":
+      return !!(await getFollow(db, author.id, actor.id));
+    default:
+      return false; // nobody
   }
 }
 
@@ -134,6 +162,34 @@ export async function POST(request: NextRequest): Promise<Response> {
   let spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
   const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+
+  // ── Quote post (Mastodon 4.5 / FEP-044f) ─────────────────────────────────
+  const quotedStatusIdRaw = (body.quoted_status_id as string | undefined) ?? (body.quote_id as string | undefined);
+  let quoteId: string | null = null;
+  if (quotedStatusIdRaw) {
+    const quotedIri = decodeStatusId(quotedStatusIdRaw, domain);
+    let quoted = await getObjectById(env.DB, quotedIri);
+    if (!quoted && /^https?:\/\//i.test(quotedIri) && !quotedIri.startsWith(`https://${domain}/`)) {
+      const resolved = await fetchAndCacheRemoteStatus(env.DB, quotedIri);
+      if (resolved.object) quoted = resolved.object;
+    }
+    if (!quoted) return json({ error: "Validation failed: Quoted status not found" }, 422);
+    if (quoted.visibility === "direct") {
+      return json({ error: "Validation failed: Cannot quote a direct message" }, 422);
+    }
+    // A followers-only post may only be quoted privately (Mastodon behaviour).
+    if (quoted.visibility === "followers" && visibility !== "private" && visibility !== "direct") {
+      return json({ error: "Validation failed: Private posts can only be quoted privately" }, 422);
+    }
+    const quotedAuthor = await getActorById(env.DB, quoted.actorId);
+    if (quotedAuthor) {
+      const policy = (await getActorPreference(env.DB, quotedAuthor.id, "posting:default:quote_policy")) ?? "followers";
+      if (!(await quoteAllowed(env.DB, actor, quotedAuthor, policy))) {
+        return json({ error: "This account does not allow quoting their posts" }, 422);
+      }
+    }
+    quoteId = quoted.id;
+  }
 
   // If any pending media is marked sensitive, the whole status is sensitive
   // (matches Mastodon): remote instances then blur the media even without a CW.
@@ -287,6 +343,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   });
   // note.attachment will be set after linkedAttachments is populated below
 
+  // FEP-044f: federate the quoted post so remote instances can render it.
+  if (quoteId) {
+    (note as Record<string, unknown>).quote = quoteId;
+  }
+
   await createObject(env.DB, {
     id: note.id,
     type: "Note",
@@ -296,6 +357,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     sensitive,
     visibility: visibility as "public" | "unlisted" | "followers" | "direct",
     inReplyToId: inReplyToId ?? null,
+    quoteId,
     language: language ?? null,
     url: note.url ?? note.id,
     repliesCount: 0,
@@ -484,7 +546,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const serializedStatus = serializeStatus(
-    { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
+    { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
     actor,
     domain,
     { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null }

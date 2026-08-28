@@ -78,7 +78,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Local
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -152,6 +152,7 @@ export function serializeAccount(
       privacy: "public",
       sensitive: false,
       language: null,
+      quote_policy: opts.quotePolicy ?? "followers",
       bot: actor.isBot,
       follow_requests_count: 0,
       auto_delete_after: actor.autoDeleteAfter ?? null,
@@ -241,7 +242,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -281,8 +282,8 @@ export function serializeStatus(
     card: null,
     poll: opts.poll ?? null,
     filtered: [],
-    quotes_count: 0,
-    quote: null,
+    quotes_count: opts.quotesCount ?? 0,
+    quote: opts.quote ?? null,
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
     muted: false,

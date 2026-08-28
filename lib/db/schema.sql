@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS objects (
   sensitive       INTEGER NOT NULL DEFAULT 0,
   visibility      TEXT NOT NULL DEFAULT 'public',  -- public|unlisted|followers|direct
   in_reply_to_id  TEXT,
+  quote_id        TEXT,
   language        TEXT,
   url             TEXT,
   replies_count   INTEGER NOT NULL DEFAULT 0,
@@ -73,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
 CREATE INDEX IF NOT EXISTS idx_objects_published   ON objects(published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_visibility  ON objects(visibility);
 CREATE INDEX IF NOT EXISTS idx_objects_reply       ON objects(in_reply_to_id);
+CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
 
 -- Composite indexes for the hot timeline queries (applied on fresh installs).
 CREATE INDEX IF NOT EXISTS idx_objects_vis_published     ON objects(visibility, published DESC);

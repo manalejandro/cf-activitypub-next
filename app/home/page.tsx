@@ -17,6 +17,9 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
+import { DisplayName } from "@/components/DisplayName";
+import { MemoRichText } from "@/components/RichText";
+import { renderEmojiInHtml } from "@/lib/emoji";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
@@ -34,6 +37,7 @@ export default function HomePage() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">("public");
+  const [quoteStatus, setQuoteStatus] = useState<Status | null>(null);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +142,9 @@ export default function HomePage() {
       spoiler_text: showCw ? cwText : "",
       language: locale,
     };
+    if (quoteStatus) {
+      body.quoted_status_id = quoteStatus.id;
+    }
     if (scheduling && scheduledAt) {
       body.scheduled_at = new Date(scheduledAt).toISOString();
     }
@@ -183,6 +190,7 @@ export default function HomePage() {
       setPollMode(false);
       setPollOptions(["", ""]);
       setPollMultiple(false);
+      setQuoteStatus(null);
       await refresh();
     }
     setPosting(false);
@@ -299,6 +307,24 @@ export default function HomePage() {
               />
             )}
             {/* Textarea */}
+            {quoteStatus && (
+              <div style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--bg-elevated)", padding: "0.5rem 0.625rem" }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: "0.8rem", color: "var(--text-secondary)", overflow: "hidden" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.15rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <DisplayName name={quoteStatus.account.display_name || quoteStatus.account.username} emojis={quoteStatus.account.emojis} /> @{quoteStatus.account.acct}
+                  </div>
+                  <MemoRichText html={renderEmojiInHtml(quoteStatus.content, quoteStatus.emojis ?? [])} />
+                </div>
+                <button
+                  type="button"
+                  aria-label={t.action_close}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", flexShrink: 0, padding: "0.2rem" }}
+                  onClick={() => setQuoteStatus(null)}
+                >
+                  <Icon name="times" />
+                </button>
+              </div>
+            )}
             <div style={{ position: "relative" }}>
               <textarea
                 ref={textareaRef}
@@ -541,6 +567,7 @@ export default function HomePage() {
                   onFav={handleFav}
                   onReblog={handleReblog}
                   onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}
+                  onQuote={(status) => setQuoteStatus(status)}
                   me={me}
                   onEdit={openEdit}
                   onDelete={handleDelete}

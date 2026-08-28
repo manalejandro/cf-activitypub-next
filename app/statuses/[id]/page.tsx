@@ -10,6 +10,9 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
 import { Icon } from "@/components/Icon";
+import { DisplayName } from "@/components/DisplayName";
+import { MemoRichText } from "@/components/RichText";
+import { renderEmojiInHtml } from "@/lib/emoji";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import type { APMeta } from "@/components/APTypeBlock";
@@ -38,6 +41,8 @@ interface Account {
   acct: string;
   display_name: string;
   avatar: string;
+  emojis?: EmojiData[];
+  verified?: boolean;
 }
 
 interface Mention {
@@ -83,6 +88,8 @@ interface Status {
   poll: Poll | null;
   emojis?: EmojiData[];
   mentions?: Mention[];
+  quote?: Status | null;
+  quotes_count?: number;
   ap_type?: string | null;
   ap_meta?: APMeta | null;
 }
@@ -109,11 +116,13 @@ interface StatusEdit {
 
 function ReplyBox({
   replyTo,
+  quote,
   me,
   onCancel,
   onPosted,
 }: {
-  replyTo: Status;
+  replyTo?: Status | null;
+  quote?: Status | null;
   me: Me | null;
   onCancel: () => void;
   onPosted: (newStatus: Status) => void;
@@ -122,7 +131,7 @@ function ReplyBox({
   const { t, locale } = useLocale();
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(
-    (["public", "unlisted", "followers", "direct"].includes(replyTo.visibility ?? "public") ? replyTo.visibility ?? "public" : "public") as "public" | "unlisted" | "followers" | "direct"
+    (["public", "unlisted", "followers", "direct"].includes(replyTo?.visibility ?? "public") ? replyTo?.visibility ?? "public" : "public") as "public" | "unlisted" | "followers" | "direct"
   );
   const [mediaFiles, setMediaFiles] = useState<MediaAttachment[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -158,12 +167,12 @@ function ReplyBox({
       seen.add(key);
       parts.push(`@${acct}`);
     };
-    if (replyTo.account && replyTo.account.id !== me?.id) {
+    if (replyTo?.account && replyTo.account.id !== me?.id) {
       add(replyTo.account.acct);
     }
-    for (const m of replyTo.mentions ?? []) {
+    for (const m of replyTo?.mentions ?? []) {
       if (m.id === me?.id) continue;
-      if (m.acct === replyTo.account?.acct) continue;
+      if (m.acct === replyTo?.account?.acct) continue;
       add(m.acct);
     }
     return parts.join(" ");
@@ -260,10 +269,11 @@ function ReplyBox({
       const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
       const body: Record<string, unknown> = {
         status: text.trim(),
-        in_reply_to_id: replyTo.id,
         visibility,
         media_ids: mediaFiles.map((f) => f.id),
       };
+      if (replyTo) body.in_reply_to_id = replyTo.id;
+      if (quote) body.quoted_status_id = quote.id;
       if (showCw && cwText.trim()) { body.sensitive = true; body.spoiler_text = cwText.trim(); }
       if (hasPoll) {
         body.poll = {
@@ -311,8 +321,19 @@ function ReplyBox({
   return (
     <div style={{ borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", background: "var(--bg-elevated)" }}>
       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-        {t.reply_to} <strong>@{replyTo.account.acct}</strong>
+        {quote ? t.action_quote : t.reply_to}{replyTo ? <> <strong>@{replyTo.account.acct}</strong></> : null}
       </div>
+      {quote && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--bg)", padding: "0.5rem 0.625rem", marginBottom: "0.5rem" }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: "0.8rem", color: "var(--text-muted)", overflow: "hidden" }}>
+            <div style={{ fontWeight: 600, marginBottom: "0.15rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <DisplayName name={quote.account.display_name || quote.account.username} emojis={quote.account.emojis} /> @{quote.account.acct}
+            </div>
+            <MemoRichText html={renderEmojiInHtml(quote.content, quote.emojis ?? [])} />
+          </div>
+          <button type="button" aria-label={t.action_close} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", flexShrink: 0, padding: "0.2rem" }} onClick={onCancel}><Icon name="times" /></button>
+        </div>
+      )}
       <div style={{ display: "flex", gap: "0.75rem" }}>
         {me && (
           <div style={{ width: 36, height: 36, position: "relative", flexShrink: 0, borderRadius: "50%", overflow: "hidden", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
@@ -479,6 +500,7 @@ export default function ThreadPage() {
   const [descendants, setDescendants] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyTarget, setReplyTarget] = useState<Status | null>(null);
+  const [quoteTarget, setQuoteTarget] = useState<Status | null>(null);
   const [autoReply, setAutoReply] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const [history, setHistory] = useState<StatusEdit[]>([]);
@@ -608,6 +630,10 @@ export default function ThreadPage() {
 
   function handleReply(s: Status) {
     setReplyTarget((prev) => (prev?.id === s.id ? null : s));
+  }
+
+  function handleQuote(s: Status) {
+    setQuoteTarget((prev) => (prev?.id === s.id ? null : s));
   }
 
   function handlePosted(newStatus: Status) {
@@ -744,7 +770,7 @@ export default function ThreadPage() {
             {/* Ancestors */}
             {ancestors.map((s) => (
               <Fragment key={s.id}>
-                <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
+                <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
                 {replyTarget?.id === s.id && (
                   <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
                 )}
@@ -752,10 +778,17 @@ export default function ThreadPage() {
             ))}
 
             {/* Focal status (highlighted) */}
-            <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
+            <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
                 <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+              </div>
+            )}
+
+            {/* Quote composer (opens when the user quotes a status) */}
+            {quoteTarget && (
+              <div ref={replyRef}>
+                <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />
               </div>
             )}
 

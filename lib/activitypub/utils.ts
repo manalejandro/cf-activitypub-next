@@ -9,6 +9,34 @@ export function generateId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Extract the quoted object's IRI from an AP note. Supports FEP-044f (`quote`,
+ * possibly an inlined object), plus the legacy `quoteUrl` / `quoteUri` and
+ * Misskey's `_misskey_quote`. Mirrors Mastodon's StatusParser#quote_uri.
+ */
+export function extractQuoteId(obj: Record<string, unknown>): string | null {
+  const asId = (v: unknown): string | null => {
+    if (typeof v === "string" && v.startsWith("http")) return v;
+    if (v && typeof v === "object" && typeof (v as { id?: unknown }).id === "string") {
+      return (v as { id: string }).id;
+    }
+    return null;
+  };
+  const candidates = ["quote", "_misskey_quote", "quoteUrl", "quoteUri"];
+  for (const key of candidates) {
+    const v = obj[key];
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) {
+      const first = asId(v[0]);
+      if (first) return first;
+    } else {
+      const first = asId(v);
+      if (first) return first;
+    }
+  }
+  return null;
+}
+
 export function actorIRI(baseUrl: string, username: string): string {
   return `${baseUrl}/users/${username.toLowerCase()}`;
 }

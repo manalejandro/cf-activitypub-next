@@ -762,5 +762,6 @@
   "admin_show_posts": "Mostrar a( s) publicação( s) {conta} anexada( s)",
   "admin_hide_posts": "Ocultar {conta} posts anexados",
   "admin_status_resolved": "Resolvido",
-  "settings_verification_step2_alt": "Alternativamente, adicione uma tag <link> no <head> da sua página (útil para sites renderizados em JavaScript):"
+  "settings_verification_step2_alt": "Alternativamente, adicione uma tag <link> no <head> da sua página (útil para sites renderizados em JavaScript):",
+  "action_quote": "Citar"
 }

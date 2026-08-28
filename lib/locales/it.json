@@ -762,5 +762,6 @@
   "admin_show_posts": "Mostra {conto} allegato post(i)",
   "admin_hide_posts": "Nascondi {conto} allegato post(i)",
   "admin_status_resolved": "Risolto",
-  "settings_verification_step2_alt": "In alternativa, aggiungi un tag <link> nel <head> della tua pagina (utile per i siti renderizzati in JavaScript):"
+  "settings_verification_step2_alt": "In alternativa, aggiungi un tag <link> nel <head> della tua pagina (utile per i siti renderizzati in JavaScript):",
+  "action_quote": "Cita"
 }

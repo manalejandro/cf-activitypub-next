@@ -54,7 +54,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       if (row && row.content) {
         const actor = await getActorById(env.DB, row.actor_id as string);
         if (actor && !actor.suspended && !actor.silenced) {
-          const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
+          const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
           const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
           results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
         }
@@ -177,6 +177,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         sensitive: Boolean(row.sensitive),
         visibility: row.visibility as "public" | "unlisted" | "followers" | "direct",
         inReplyToId: row.in_reply_to_id as string | null,
+        quoteId: (row.quote_id as string | null) ?? null,
         language: row.language as string | null,
         url: row.url as string,
         repliesCount: Number(row.replies_count ?? 0),

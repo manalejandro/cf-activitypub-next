@@ -9,6 +9,7 @@ import { InteractionList } from "./InteractionList";
 import { MemoRichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { DisplayName } from "@/components/DisplayName";
+import { Avatar } from "@/components/Avatar";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
@@ -78,6 +79,8 @@ export interface Status {
   poll: Poll | null;
   emojis?: EmojiData[];
   ap_type?: string | null;
+  quote?: Status | null;
+  quotes_count?: number;
   ap_meta?: APMeta | null;
 }
 
@@ -390,6 +393,57 @@ export function PollView({ poll: initialPoll }: { poll: Poll }) {
   );
 }
 
+// ─── QuoteInline ────────────────────────────────────────────────────────────
+// Compact rendering of a quoted post, shown inline inside the quoting status.
+
+export function QuoteInline({ quote }: { quote: Status }) {
+  const { t } = useLocale();
+  const href = `/statuses/${encodeURIComponent(quote.id)}`;
+  const quotedContent = renderEmojiInHtml(quote.content ?? "", quote.emojis ?? []);
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "0.625rem 0.75rem",
+        marginTop: "0.6rem",
+        background: "var(--bg-elevated)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.25rem" }}>
+        <Avatar avatar={quote.account.avatar} name={quote.account.display_name || quote.account.username} size={20} />
+        <span style={{ fontWeight: 600, fontSize: "0.82rem" }}>
+          <DisplayName name={quote.account.display_name || quote.account.username} emojis={quote.account.emojis} />
+          {quote.account.verified && <Icon name="check" color="var(--success)" size="0.7rem" />}
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>@{quote.account.acct}</span>
+      </div>
+      <div
+        className="status-content"
+        style={{
+          fontSize: "0.8rem",
+          lineHeight: 1.5,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 4,
+          WebkitBoxOrient: "vertical",
+          color: "var(--text-secondary)",
+        }}
+      >
+        {quote.spoiler_text ? (
+          <span>{t.cw_show}: {quote.spoiler_text}</span>
+        ) : (
+          <MemoRichText html={quotedContent} />
+        )}
+      </div>
+    </Link>
+  );
+}
+
 // ─── StatusCard ───────────────────────────────────────────────────────────────
 
 export function StatusCard({
@@ -398,6 +452,7 @@ export function StatusCard({
   onFav,
   onReblog,
   onReply,
+  onQuote,
   me,
   onDelete,
   onEdit,
@@ -410,6 +465,7 @@ export function StatusCard({
   onFav: (s: Status) => void;
   onReblog: (s: Status) => void;
   onReply: (s: Status) => void;
+  onQuote?: (s: Status) => void;
   me?: Me | null;
   onDelete?: (s: Status) => void;
   onEdit?: (s: Status) => void;
@@ -696,6 +752,7 @@ export function StatusCard({
           </div>
         )}
         {showContent && <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />}
+        {showContent && status.quote && <QuoteInline quote={status.quote} />}
         {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
         {status.edited_at && (
@@ -761,6 +818,18 @@ export function StatusCard({
           >
             {bookmarked ? <Icon name="bookmark" /> : <Icon name="bookmark-o" />}
           </button>
+          {onQuote && status.visibility !== "direct" && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "0.2rem 0.4rem", gap: "0.35rem" }}
+              onClick={() => onQuote(status)}
+              disabled={!token}
+              title={t.action_quote}
+              aria-label={t.action_quote}
+            >
+              <Icon name="quote-left" />
+            </button>
+          )}
           {status.language && !(me && me.id === status.account.id) && status.language.slice(0, 2) !== locale.slice(0, 2) && (
             <button
               className="btn btn-ghost btn-sm"

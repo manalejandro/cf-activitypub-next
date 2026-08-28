@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
+import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
@@ -19,6 +19,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const fields = await getActorFields(env.DB, actor.id);
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
+  const quotePolicy = (await getActorPreference(env.DB, actor.id, "posting:default:quote_policy")) ?? "followers";
 
   let role = "user";
   try {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB) }));
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy }));
 }
 
 // PATCH /api/v1/accounts/update_credentials
@@ -59,6 +60,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let headerUrl: string | undefined;
   let fieldsRaw: { name: string; value: string }[] | undefined;
   let autoDeleteAfter: number | null | undefined;
+  let sourceQuotePolicy: string | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -75,6 +77,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (autoDeleteVal !== null) {
       autoDeleteAfter = autoDeleteVal === "" || autoDeleteVal === "0" ? null : Number(autoDeleteVal) || null;
     }
+    const quotePolicyVal = form.get("source[quote_policy]") as string | null;
+    if (quotePolicyVal !== null) sourceQuotePolicy = quotePolicyVal;
 
     // Handle avatar upload
     const avatarFile = form.get("avatar") as File | null;
@@ -135,6 +139,10 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       const v = body.auto_delete_after;
       autoDeleteAfter = v === "" || v === 0 || v === "0" ? null : Number(v) || null;
     }
+    if (typeof body.source === "object" && body.source !== null) {
+      const qp = (body.source as { quote_policy?: string }).quote_policy;
+      if (qp !== undefined) sourceQuotePolicy = qp;
+    }
   }
 
   // Build SET clauses dynamically
@@ -173,6 +181,20 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     // Re-check rel="me" verification in the background so the badge reflects
     // the updated fields without blocking the response.
     void verifyAccountFields(env.DB, actor.id, domain).catch(() => {});
+  }
+
+  // Quote policy — `source[quote_policy]` (Mastodon API v7).
+  if (sourceQuotePolicy !== undefined) {
+    if (!["public", "followers", "followed", "nobody"].includes(sourceQuotePolicy)) {
+      return json({ error: "Validation failed: quote_policy must be public, followers, followed or nobody" }, 422);
+    }
+    await env.DB
+      .prepare(
+        `INSERT INTO preferences (actor_id, key, value, updated_at) VALUES (?, 'posting:default:quote_policy', ?, datetime('now'))
+         ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      )
+      .bind(actor.id, sourceQuotePolicy)
+      .run();
   }
 
   // Re-read using proper mapper
