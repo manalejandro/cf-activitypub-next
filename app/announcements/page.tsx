@@ -135,14 +135,19 @@ export default function AnnouncementsPage() {
               className="input"
               style={{ resize: "vertical" }}
             />
-            <button
-              type="submit"
-              className="btn btn-primary btn-sm"
-              disabled={creating || !draft.trim()}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {creating ? "…" : t.announcements_create_submit}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+              <span style={{ fontSize: "0.75rem", color: draft.length > limits.maxAnnouncementChars - 500 ? "var(--danger)" : "var(--text-muted)" }}>
+                {draft.length}/{limits.maxAnnouncementChars}
+              </span>
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={creating || !draft.trim()}
+                style={{ alignSelf: "flex-start" }}
+              >
+                {creating ? "…" : t.announcements_create_submit}
+              </button>
+            </div>
           </form>
         )}
         {loading ? (

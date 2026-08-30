@@ -348,15 +348,20 @@ function ReplyBox({
         )}
         <form onSubmit={handleSubmit} style={{ flex: 1 }}>
           {showCw && (
-            <input
-              type="text"
-              value={cwText}
-              onChange={(e) => setCwText(e.target.value)}
-              placeholder={`${t.cw_placeholder}…`}
-              aria-label={t.cw_placeholder}
-              maxLength={limits.maxStatusChars}
-              style={{ width: "100%", marginBottom: "0.4rem", padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
+              <input
+                type="text"
+                value={cwText}
+                onChange={(e) => setCwText(e.target.value)}
+                placeholder={`${t.cw_placeholder}…`}
+                aria-label={t.cw_placeholder}
+                maxLength={limits.maxCwChars}
+                style={{ flex: 1, padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
+              />
+              <span style={{ fontSize: "0.75rem", color: cwText.length > limits.maxCwChars - 20 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+                {cwText.length}/{limits.maxCwChars}
+              </span>
+            </div>
           )}
           <div style={{ position: "relative" }}>
             <textarea
@@ -366,6 +371,7 @@ function ReplyBox({
               onKeyDown={emojiAuto.onKeyDown}
               placeholder={t.reply_placeholder}
               aria-label={t.reply_placeholder}
+              maxLength={limits.maxStatusChars}
               rows={3}
               style={{ width: "100%", resize: "vertical", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.95rem", fontFamily: "inherit" }}
             />
@@ -473,7 +479,10 @@ function ReplyBox({
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
               <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />
             </div>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <span style={{ fontSize: "0.8rem", color: text.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>
+                {text.length}/{limits.maxStatusChars}
+              </span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} disabled={submitting}>
                 {t.profile_cancel}
               </button>

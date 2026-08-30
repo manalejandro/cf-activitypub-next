@@ -151,15 +151,21 @@ export function EditStatusModal({
         </div>
 
         {showCw && (
-          <input
-            type="text"
-            value={spoiler}
-            onChange={(e) => setSpoiler(e.target.value)}
-            placeholder={t.cw_placeholder}
-            aria-label={t.cw_placeholder}
-            className="input"
-            style={{ width: "100%" }}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+            <input
+              type="text"
+              value={spoiler}
+              onChange={(e) => setSpoiler(e.target.value)}
+              placeholder={t.cw_placeholder}
+              aria-label={t.cw_placeholder}
+              maxLength={limits.maxCwChars}
+              className="input"
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: "0.75rem", color: spoiler.length > limits.maxCwChars - 20 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+              {spoiler.length}/{limits.maxCwChars}
+            </span>
+          </div>
         )}
 
         <div style={{ position: "relative" }}>

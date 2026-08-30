@@ -290,16 +290,21 @@ export default function HomePage() {
           <form onSubmit={handlePost} className="flex flex-col gap-3">
             {/* CW input */}
             {showCw && (
-              <input
-                type="text"
-                className="input"
-                placeholder={`${t.cw_placeholder}…`}
-                aria-label={t.cw_placeholder}
-                value={cwText}
-                onChange={(e) => setCwText(e.target.value)}
-                maxLength={limits.maxCwChars}
-                style={{ fontSize: "0.9rem" }}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`${t.cw_placeholder}…`}
+                  aria-label={t.cw_placeholder}
+                  value={cwText}
+                  onChange={(e) => setCwText(e.target.value)}
+                  maxLength={limits.maxCwChars}
+                  style={{ fontSize: "0.9rem", flex: 1 }}
+                />
+                <span style={{ fontSize: "0.75rem", color: cwText.length > limits.maxCwChars - 20 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+                  {cwText.length}/{limits.maxCwChars}
+                </span>
+              </div>
             )}
             {/* Textarea */}
             <div style={{ position: "relative" }}>
@@ -498,7 +503,7 @@ export default function HomePage() {
                 <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <span style={{ fontSize: "0.8rem", color: composing.length > 450 ? "var(--danger)" : "var(--text-muted)" }}>
+                <span style={{ fontSize: "0.8rem", color: composing.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>
                   {composing.length}/{limits.maxStatusChars}
                 </span>
                 <button
