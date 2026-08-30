@@ -30,7 +30,7 @@ export default function BookmarksPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, limits.defaultTimelinePage]);
 
-  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage);
+  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage, { refetchOnMount: true });
 
   useEffect(() => {
     async function fetchMe() {

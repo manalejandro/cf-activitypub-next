@@ -13,6 +13,7 @@ import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
+import { useLimits } from "@/lib/limits-client";
 
 type TimelineView = "local" | "federated";
 
@@ -28,21 +29,22 @@ export default function TimelinesPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const { t } = useLocale();
+  const limits = useLimits();
 
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
     const local = view === "local";
-    const limit = maxId ? 20 : 40;
+    const limit = maxId ? limits.defaultTimelinePage : limits.pageSize;
     const url = `/api/v1/timelines/public?limit=${limit}${local ? "&local=true" : ""}${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ""}`;
     const res = await fetch(url);
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limit };
-  }, [view]);
+  }, [view, limits.defaultTimelinePage, limits.pageSize]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true });
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";

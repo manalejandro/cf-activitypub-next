@@ -30,7 +30,7 @@ export default function FavouritesPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, limits.defaultTimelinePage]);
 
-  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage);
+  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage, { refetchOnMount: true });
 
   useEffect(() => {
     async function fetchMe() {

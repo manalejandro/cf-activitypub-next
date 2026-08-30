@@ -47,7 +47,7 @@ export default function TagPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [tagName, limits.defaultTimelinePage]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(`tag:${tagName}`, fetchPage);
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(`tag:${tagName}`, fetchPage, { refetchOnMount: true });
 
   const totalAccounts = tagInfo?.history?.reduce((sum, h) => sum + parseInt(h.accounts || "0"), 0) ?? 0;
 
