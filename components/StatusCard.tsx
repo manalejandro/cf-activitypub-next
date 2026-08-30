@@ -10,6 +10,7 @@ import { MemoRichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { DisplayName } from "@/components/DisplayName";
 import { Avatar } from "@/components/Avatar";
+import { usePreferences } from "@/lib/preferences-client";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
@@ -144,9 +145,9 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 
 // ─── MediaGrid ────────────────────────────────────────────────────────────────
 
-export function MediaGrid({ attachments, sensitive }: { attachments: MediaAttachment[]; sensitive?: boolean }) {
+export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: { attachments: MediaAttachment[]; sensitive?: boolean; defaultRevealed?: boolean }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(defaultRevealed);
   const closeLb = useCallback(() => setLbIdx(null), []);
   const { t } = useLocale();
   if (!attachments.length) return null;
@@ -473,7 +474,8 @@ export function StatusCard({
   forceDelete?: boolean;
   hideActions?: boolean;
 }) {
-  const [cwExpanded, setCwExpanded] = useState(false);
+  const prefs = usePreferences();
+  const [cwExpanded, setCwExpanded] = useState(prefs["reading:expand:spoilers"] === true);
   const renderedContent = useMemo(
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
     [status.content, status.emojis]
@@ -753,7 +755,7 @@ export function StatusCard({
         )}
         {showContent && <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />}
         {showContent && status.quote && <QuoteInline quote={status.quote} />}
-        {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive} />}
+        {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><Icon name="pencil" size="0.7rem" /> {t.status_edited}</div>

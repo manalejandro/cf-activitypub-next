@@ -78,7 +78,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Local
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -149,12 +149,12 @@ export function serializeAccount(
         value: f.value,
         verified_at: f.verifiedAt ?? null,
       })),
-      privacy: "public",
-      sensitive: false,
-      language: null,
+      privacy: opts.privacy ?? "public",
+      sensitive: opts.sensitive ?? false,
+      language: opts.language ?? "en",
       quote_policy: opts.quotePolicy ?? "followers",
       bot: actor.isBot,
-      follow_requests_count: 0,
+      follow_requests_count: opts.followRequestsCount ?? 0,
       auto_delete_after: actor.autoDeleteAfter ?? null,
     };
   }
