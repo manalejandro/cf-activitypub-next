@@ -2,12 +2,13 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
+import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/instance (legacy Mastodon v1)
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   const [userRow, postRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   let rules: { id: string; text: string }[] = [];
   try { rules = rulesRaw ? JSON.parse(rulesRaw) : []; } catch { /* ignore */ }
-  let languages: string[] = SUPPORTED_LANGUAGE_CODES;
+  let languages: string[] = INSTANCE_LANGUAGES;
   try {
     const langs = languagesRaw ? JSON.parse(languagesRaw) as { code: string }[] : [];
     if (langs.length > 0) languages = langs.map((l) => l.code);
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     description,
     short_description: description,
     email: `admin@${domain}`,
-    version: `4.7.0 (compatible; ${appVersion})`,
+    version: `${MASTODON_COMPAT_VERSION} (compatible; ${appVersion})`,
     urls: { streaming_api: `wss://${domain}/api/v1/streaming` },
     stats: { user_count: userCount, status_count: statusCount, domain_count: 1 },
     thumbnail: `https://${domain}/logo.svg`,
@@ -50,25 +51,26 @@ export async function GET(request: NextRequest): Promise<Response> {
     invites_enabled: false,
     configuration: {
       statuses: {
-        max_characters: 500,
-        max_media_attachments: 4,
-        characters_reserved_per_url: 23,
+        max_characters: limits.maxStatusChars,
+        max_media_attachments: limits.maxMediaAttachments,
+        characters_reserved_per_url: limits.charactersReservedPerUrl,
       },
       media_attachments: {
-        supported_mime_types: ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "audio/mpeg"],
-        image_size_limit: 16 * 1024 * 1024,
-        image_matrix_limit: 33_177_600,
-        video_size_limit: 103_809_024,
-        video_frame_rate_limit: 120,
-        video_matrix_limit: 2_304_000,
+        supported_mime_types: SUPPORTED_MEDIA_MIME_TYPES,
+        image_size_limit: limits.maxImageSize,
+        image_matrix_limit: limits.imageMatrixLimit,
+        video_size_limit: limits.maxVideoSize,
+        video_frame_rate_limit: limits.videoFrameRateLimit,
+        video_matrix_limit: limits.videoMatrixLimit,
       },
       polls: {
-        max_options: 4,
-        max_characters_per_option: 50,
-        min_expiration: 300,
-        max_expiration: 2_629_746,
+        max_options: limits.maxPollOptions,
+        max_characters_per_option: limits.maxPollOptionChars,
+        min_expiration: limits.pollMinExpiration,
+        max_expiration: limits.pollMaxExpiration,
       },
       calls: { enabled: true },
     },
+    limits,
   });
 }

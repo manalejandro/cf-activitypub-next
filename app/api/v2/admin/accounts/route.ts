@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
   const rows = await env.DB
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest): Promise<Response> {
        LIMIT ? OFFSET ?`
     )
     .bind(
-      Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE),
+      Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize),
       parseInt(request.nextUrl.searchParams.get("offset") ?? "0")
     )
     .all<Record<string, unknown>>();

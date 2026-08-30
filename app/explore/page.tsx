@@ -14,7 +14,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
-import { MAX_STATUS_CHARS } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,11 +57,12 @@ export default function ExplorePage() {
   const token = getToken();
   const router = useRouter();
   const { t } = useLocale();
+  const limits = useLimits();
 
   async function fetchTrending() {
     const [statusesRes, tagsRes] = await Promise.all([
-      fetch("/api/v1/trends/statuses?limit=20"),
-      fetch("/api/v1/trends/tags?limit=10"),
+      fetch(`/api/v1/trends/statuses?limit=${limits.defaultTimelinePage}`),
+      fetch(`/api/v1/trends/tags?limit=${limits.trendingTagsLimit}`),
     ]);
     if (statusesRes.ok) setTrendingStatuses(await statusesRes.json() as Status[]);
     if (tagsRes.ok) setTrendingTags(await tagsRes.json() as TrendingTag[]);
@@ -318,12 +319,12 @@ export default function ExplorePage() {
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               placeholder={t.edit_status_placeholder}
-              maxLength={MAX_STATUS_CHARS}
+              maxLength={limits.maxStatusChars}
               className="input"
               style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/{MAX_STATUS_CHARS}</span>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/{limits.maxStatusChars}</span>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>{t.profile_cancel}</button>
                 <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditSave()}>

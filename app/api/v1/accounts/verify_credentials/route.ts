@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
-import { MAX_DISPLAY_NAME_CHARS, MAX_NOTE_CHARS, MAX_PROFILE_FIELDS, MAX_PROFILE_FIELD_CHARS } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
@@ -53,6 +53,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 export async function PATCH(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -113,7 +114,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
     // Handle fields — sent as fields_attributes[0][name], fields_attributes[0][value], ...
     const rawFields: { name: string; value: string }[] = [];
-    for (let i = 0; i < MAX_PROFILE_FIELDS; i++) {
+    for (let i = 0; i < limits.maxProfileFields; i++) {
       const name = form.get(`fields_attributes[${i}][name]`) as string | null;
       const value = form.get(`fields_attributes[${i}][value]`) as string | null;
       if (name !== null) rawFields.push({ name: name ?? "", value: value ?? "" });
@@ -155,18 +156,18 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   }
 
   // Enforce the same profile limits the client applies (lib/constants).
-  if (displayName !== undefined && displayName.length > MAX_DISPLAY_NAME_CHARS) {
-    return badRequest(`display_name must be ${MAX_DISPLAY_NAME_CHARS} characters or less`);
+  if (displayName !== undefined && displayName.length > limits.maxDisplayNameChars) {
+    return badRequest(`display_name must be ${limits.maxDisplayNameChars} characters or less`);
   }
-  if (note !== undefined && note.length > MAX_NOTE_CHARS) {
-    return badRequest(`note must be ${MAX_NOTE_CHARS} characters or less`);
+  if (note !== undefined && note.length > limits.maxNoteChars) {
+    return badRequest(`note must be ${limits.maxNoteChars} characters or less`);
   }
   if (fieldsRaw !== undefined) {
-    if (fieldsRaw.length > MAX_PROFILE_FIELDS) {
-      return badRequest(`You can have up to ${MAX_PROFILE_FIELDS} profile fields`);
+    if (fieldsRaw.length > limits.maxProfileFields) {
+      return badRequest(`You can have up to ${limits.maxProfileFields} profile fields`);
     }
-    if (fieldsRaw.some((f) => f.name.length > MAX_PROFILE_FIELD_CHARS || f.value.length > MAX_PROFILE_FIELD_CHARS)) {
-      return badRequest(`Profile field names and values must be ${MAX_PROFILE_FIELD_CHARS} characters or less`);
+    if (fieldsRaw.some((f) => f.name.length > limits.maxProfileFieldChars || f.value.length > limits.maxProfileFieldChars)) {
+      return badRequest(`Profile field names and values must be ${limits.maxProfileFieldChars} characters or less`);
     }
   }
 

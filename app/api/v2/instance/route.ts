@@ -3,11 +3,13 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { serializeInstanceV2, serializeAccount } from "@/lib/mastodon/serializers";
 import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v2/instance
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   const [userRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
     env.DB
@@ -42,7 +44,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       contactActor ? serializeAccount(contactActor, domain) : null,
       env.VAPID_PUBLIC_KEY,
       languages,
-      rules
+      rules,
+      limits
     )
   );
 }

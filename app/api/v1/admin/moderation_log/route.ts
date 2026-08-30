@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getModerationLog } from "@/lib/moderation/log";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveLimits } from "@/lib/constants";
 
 /**
  * GET /api/v1/admin/moderation_log — audit trail of every automated decision
@@ -12,13 +13,14 @@ import { requireAdmin } from "@/lib/admin-auth";
  */
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
   const params = request.nextUrl.searchParams;
   const entries = await getModerationLog(env.DB, {
-    limit: parseInt(params.get("limit") ?? "50", 10),
+    limit: parseInt(params.get("limit") ?? String(limits.adminLogPageSize), 10),
     offset: parseInt(params.get("offset") ?? "0", 10),
     targetType: params.get("target_type") ?? undefined,
     action: params.get("action") ?? undefined,

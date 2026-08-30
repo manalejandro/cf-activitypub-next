@@ -11,6 +11,7 @@ import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
+import { useLimits } from "@/lib/limits-client";
 
 interface TagInfo {
   id: string;
@@ -30,6 +31,7 @@ export default function TagPage() {
   const [followBusy, setFollowBusy] = useState(false);
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const { t } = useLocale();
+  const limits = useLimits();
 
   const token = getToken();
   const router = useRouter();
@@ -37,13 +39,13 @@ export default function TagPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
-    const base = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=20`;
+    const base = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url);
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length >= 20 };
-  }, [tagName]);
+    return { items, hasMore: items.length >= limits.defaultTimelinePage };
+  }, [tagName, limits.defaultTimelinePage]);
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(`tag:${tagName}`, fetchPage);
 
@@ -54,7 +56,7 @@ export default function TagPage() {
     const topId = statuses[0]?.id;
     // since_id returns only posts NEWER than the current newest one, so live
     // polling actually picks up newly published statuses (max_id is the reverse).
-    let url = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=20`;
+    let url = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=${limits.defaultTimelinePage}`;
     if (topId) url += `&since_id=${encodeURIComponent(topId)}`;
     const res = await fetch(url);
     if (res.ok) {
@@ -139,7 +141,7 @@ export default function TagPage() {
     Promise.resolve().then(() => void fetchMe());
     Promise.resolve().then(() => void fetchTagInfo());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tagName]);
+  }, [tagName, limits.defaultTimelinePage]);
 
   // Periodic polling every 30 seconds
   useEffect(() => {

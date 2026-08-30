@@ -4,10 +4,10 @@ import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByO
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalActor } from "@/lib/types";
+import { resolveLimits } from "@/lib/constants";
 
 /**
  * Minimal placeholder account for a remote status whose author could not be
@@ -46,10 +46,11 @@ function placeholderActor(actorId: string): LocalActor {
 // GET /api/v1/timelines/public
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const sinceIdRaw = searchParams.get("since_id") ?? undefined;

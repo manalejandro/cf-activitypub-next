@@ -1,14 +1,16 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/trends/tags
 // Returns trending hashtags from the last 7 days.
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? "10"),
-    20
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.trendingTagsLimit)),
+    limits.trendingTagsMax
   );
 
   // Fetch recent public objects and parse hashtags in JS

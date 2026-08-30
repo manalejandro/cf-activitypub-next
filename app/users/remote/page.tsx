@@ -20,7 +20,7 @@ import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
-import { MAX_STATUS_CHARS } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,6 +204,7 @@ function RemoteProfileInner() {
   const router = useRouter();
   const actorUrl = searchParams.get("url");
   const { t } = useLocale();
+  const limits = useLimits();
 
   const [account, setAccount] = useState<Account | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
@@ -262,17 +263,17 @@ function RemoteProfileInner() {
 
     // Load cached statuses, replies, pinned, followers, following and collections in parallel
     const [statusRes, repliesRes, pinnedRes, followersRes, followingRes, collectionsRes] = await Promise.all([
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=20`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?only_replies=true&limit=20`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?pinned=true&limit=20`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/followers?limit=40`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/following?limit=40`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/followers?limit=${limits.pageSize}`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/following?limit=${limits.pageSize}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/collections`, { headers }),
     ]);
     if (statusRes.ok) {
       const data = await statusRes.json() as Status[];
       setStatuses(data);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     if (repliesRes.ok) setReplies(await repliesRes.json() as Status[]);
     if (pinnedRes.ok) setPinnedStatuses(await pinnedRes.json() as Status[]);
@@ -399,7 +400,7 @@ function RemoteProfileInner() {
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses((prev) => [...prev, ...data]);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setLoadingMorePosts(false);
   }
@@ -1013,7 +1014,7 @@ function RemoteProfileInner() {
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={t.note_placeholder}
               aria-label={t.note_placeholder}
-              maxLength={MAX_STATUS_CHARS}
+              maxLength={limits.maxStatusChars}
               className="input"
               style={{ resize: "none", minHeight: 100, fontFamily: "inherit", width: "100%" }}
             />

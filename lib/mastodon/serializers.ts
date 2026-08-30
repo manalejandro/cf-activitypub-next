@@ -31,19 +31,11 @@ import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
 import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
 import {
-  CHARACTERS_RESERVED_PER_URL,
   INSTANCE_LANGUAGES,
   MASTODON_COMPAT_VERSION,
-  MAX_FEATURED_TAGS,
-  MAX_IMAGE_SIZE,
-  MAX_MEDIA_ATTACHMENTS,
-  MAX_POLL_OPTIONS,
-  MAX_POLL_OPTION_CHARS,
-  MAX_STATUS_CHARS,
-  MAX_VIDEO_SIZE,
-  POLL_MAX_EXPIRATION,
-  POLL_MIN_EXPIRATION,
   SUPPORTED_MEDIA_MIME_TYPES,
+  type InstanceLimits,
+  DEFAULT_LIMITS,
 } from "@/lib/constants";
 
 // ─────────────────────────────────────────
@@ -645,12 +637,14 @@ export function serializeInstanceV2(
   contactAccount: MastodonAccount | null = null,
   vapidPublicKey?: string,
   languages: string[] = INSTANCE_LANGUAGES,
-  rules: { id: string; text: string }[] = []
+  rules: { id: string; text: string }[] = [],
+  limits: InstanceLimits = DEFAULT_LIMITS
 ): MastodonInstance {
   return {
     uri: domain,
     title,
     version: `${MASTODON_COMPAT_VERSION} (compatible; ${version})`,
+    limits,
     source_url: "https://github.com/manalejandro/cf-activitypub-next",
     description,
     usage: { users: { active_month: userCount } },
@@ -659,26 +653,26 @@ export function serializeInstanceV2(
     ...(vapidPublicKey ? { vapid_public_key: vapidPublicKey } : {}),
     configuration: {
       urls: { streaming: `wss://${domain}/api/v1/streaming` },
-      accounts: { max_featured_tags: MAX_FEATURED_TAGS },
+      accounts: { max_featured_tags: limits.maxFeaturedTags },
       ...(vapidPublicKey ? { vapid: { secret_key: vapidPublicKey } } : {}),
       statuses: {
-        max_characters: MAX_STATUS_CHARS,
-        max_media_attachments: MAX_MEDIA_ATTACHMENTS,
-        characters_reserved_per_url: CHARACTERS_RESERVED_PER_URL,
+        max_characters: limits.maxStatusChars,
+        max_media_attachments: limits.maxMediaAttachments,
+        characters_reserved_per_url: limits.charactersReservedPerUrl,
       },
       media_attachments: {
         supported_mime_types: SUPPORTED_MEDIA_MIME_TYPES,
-        image_size_limit: MAX_IMAGE_SIZE,
-        image_matrix_limit: 33_177_600,
-        video_size_limit: MAX_VIDEO_SIZE,
-        video_frame_rate_limit: 120,
-        video_matrix_limit: 2_304_000,
+        image_size_limit: limits.maxImageSize,
+        image_matrix_limit: limits.imageMatrixLimit,
+        video_size_limit: limits.maxVideoSize,
+        video_frame_rate_limit: limits.videoFrameRateLimit,
+        video_matrix_limit: limits.videoMatrixLimit,
       },
       polls: {
-        max_options: MAX_POLL_OPTIONS,
-        max_characters_per_option: MAX_POLL_OPTION_CHARS,
-        min_expiration: POLL_MIN_EXPIRATION,
-        max_expiration: POLL_MAX_EXPIRATION,
+        max_options: limits.maxPollOptions,
+        max_characters_per_option: limits.maxPollOptionChars,
+        min_expiration: limits.pollMinExpiration,
+        max_expiration: limits.pollMaxExpiration,
       },
       calls: { enabled: true },
     },

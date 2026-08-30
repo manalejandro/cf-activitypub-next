@@ -2,13 +2,14 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getActorById, getAllCustomEmojis, getLastStatusAt } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const q = request.nextUrl.searchParams.get("q") ?? "";
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   if (!q.trim()) return json([]);
   const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
   const rows = await env.DB

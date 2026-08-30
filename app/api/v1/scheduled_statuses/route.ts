@@ -2,15 +2,16 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatuses } from "@/lib/db";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const statuses = await getScheduledStatuses(env.DB, actor.id, limit);
 
   const result = statuses.map((s) => ({

@@ -8,7 +8,7 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
-import { MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS, MAX_STATUS_CHARS } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 /**
  * Shared "edit status" modal: edit the text, CW, media attachments (add /
@@ -25,6 +25,7 @@ export function EditStatusModal({
   onSaved: (updated: Status) => void;
 }) {
   const { t, locale } = useLocale();
+  const limits = useLimits();
   const token = getToken();
   const [text, setText] = useState("");
   const [spoiler, setSpoiler] = useState("");
@@ -111,8 +112,8 @@ export function EditStatusModal({
   }
 
   async function addFiles(files: FileList | null) {
-    if (!files || !token || media.length >= MAX_MEDIA_ATTACHMENTS) return;
-    for (const file of Array.from(files).slice(0, MAX_MEDIA_ATTACHMENTS - media.length)) {
+    if (!files || !token || media.length >= limits.maxMediaAttachments) return;
+    for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
@@ -170,7 +171,7 @@ export function EditStatusModal({
             onKeyDown={auto.onKeyDown}
             placeholder={t.edit_status_placeholder}
             aria-label={t.edit_label}
-            maxLength={MAX_STATUS_CHARS}
+            maxLength={limits.maxStatusChars}
             className="input"
             style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
           />
@@ -201,7 +202,7 @@ export function EditStatusModal({
                 )}
               </div>
             ))}
-            {pollOptions.length < MAX_POLL_OPTIONS && (
+            {pollOptions.length < limits.maxPollOptions && (
               <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
             )}
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.25rem" }}>
@@ -305,7 +306,7 @@ export function EditStatusModal({
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{MAX_STATUS_CHARS}</span>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{limits.maxStatusChars}</span>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>{t.profile_cancel}</button>
             <button type="button" className="btn btn-primary btn-sm" disabled={!text.trim() || busy} onClick={() => void handleSave()}>

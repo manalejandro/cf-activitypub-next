@@ -2,11 +2,12 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { chargeGlobalAI, AI_UNITS_VISION } from "@/lib/moderation/budget";
-import { MAX_IMAGE_SIZE } from "@/lib/constants";
+import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 
 // POST /api/v1/media — Upload a media attachment (stored in R2)
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -27,15 +28,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "file is required" }, 422);
   }
 
-  const ALLOWED_TYPES = [
-    "image/jpeg", "image/png", "image/gif", "image/webp",
-    "video/mp4", "video/webm", "audio/mpeg", "audio/ogg",
-  ];
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) {
     return json({ error: "Unsupported file type" }, 422);
   }
 
-  const MAX_SIZE = MAX_IMAGE_SIZE; // images/uploads capped at the instance image limit
+  const MAX_SIZE = limits.maxImageSize; // images/uploads capped at the instance image limit
   if (file.size > MAX_SIZE) {
     return json({ error: "File too large (max 16 MB)" }, 422);
   }

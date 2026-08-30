@@ -3,10 +3,11 @@ import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getListById, getListAccountIds, addAccountsToList, removeAccountsFromList, getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!list) return notFound();
   if (list.actor_id !== actor.id) return notFound();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
   const accountIds = await getListAccountIds(env.DB, id);
   const sliced = accountIds.slice(0, limit);
 

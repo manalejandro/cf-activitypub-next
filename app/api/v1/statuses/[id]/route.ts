@@ -13,7 +13,7 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
-import { MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -99,6 +99,7 @@ export async function PUT(
   const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -128,7 +129,7 @@ export async function PUT(
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
-  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, MAX_MEDIA_ATTACHMENTS) : undefined;
+  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, limits.maxMediaAttachments) : undefined;
 
   const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
   const updatedAt = new Date().toISOString();
@@ -221,7 +222,7 @@ export async function PUT(
       const pollId = generateId();
       const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
       const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-      const validOptions = (pollRaw.options as string[]).map((o) => String(o).trim()).filter(Boolean).slice(0, MAX_POLL_OPTIONS);
+      const validOptions = (pollRaw.options as string[]).map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
       await createPoll(env.DB, {
         id: pollId,
         objectId: obj.id,

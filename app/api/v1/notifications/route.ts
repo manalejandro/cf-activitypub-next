@@ -4,18 +4,19 @@ import { getNotifications, getActorById, getObjectById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeNotification } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/notifications
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxId = searchParams.get("max_id") ?? undefined;
   const excludeTypes = searchParams.getAll("exclude_types[]");
   const includeTypes = searchParams.getAll("types[]");

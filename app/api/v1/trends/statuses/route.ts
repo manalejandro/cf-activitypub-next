@@ -11,7 +11,7 @@ import {
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -43,10 +43,11 @@ function rowToObject(r: Row): LocalObject {
 // Returns the most engaged public statuses from the last 7 days.
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)),
-    MAX_PAGE_SIZE
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)),
+    limits.maxPageSize
   );
 
   const rows = await env.DB

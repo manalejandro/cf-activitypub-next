@@ -11,6 +11,7 @@ import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
+import { useLimits } from "@/lib/limits-client";
 
 interface List {
   id: string;
@@ -50,17 +51,18 @@ export default function ListDetailPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("members");
   const token = getToken();
   const { t } = useLocale();
+  const limits = useLimits();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
     if (!token || !listId) return { items: [], hasMore: false };
-    const base = `/api/v1/timelines/list?list_id=${encodeURIComponent(listId)}&limit=20`;
+    const base = `/api/v1/timelines/list?list_id=${encodeURIComponent(listId)}&limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length >= 20 };
-  }, [token, listId]);
+    return { items, hasMore: items.length >= limits.defaultTimelinePage };
+  }, [token, listId, limits.defaultTimelinePage]);
 
   const { statuses, loading: timelineLoading, loadingMore, hasMore, loadMore } = useTimelineCache(`list:${listId}`, fetchPage);
 

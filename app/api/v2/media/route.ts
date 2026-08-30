@@ -2,17 +2,18 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
+import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   if (!file) return json({ error: "File is required" }, 400);
-  const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/webm", "audio/mpeg", "audio/ogg"];
-  if (!allowedTypes.includes(file.type)) return json({ error: "Unsupported media type" }, 400);
-  if (file.size > 16 * 1024 * 1024) return json({ error: "File too large" }, 413);
+  if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) return json({ error: "Unsupported media type" }, 400);
+  if (file.size > limits.maxImageSize) return json({ error: "File too large" }, 413);
   const id = crypto.randomUUID();
   const key = `media/${me.username}/${id}-${file.name}`;
   const buffer = await file.arrayBuffer();

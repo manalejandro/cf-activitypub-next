@@ -20,7 +20,7 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { EmojiInput } from "@/components/EmojiInput";
-import { MAX_DISPLAY_NAME_CHARS, MAX_NOTE_CHARS, MAX_PROFILE_FIELDS, MAX_PROFILE_FIELD_CHARS, MAX_STATUS_CHARS, PAGE_SIZE } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -334,13 +334,13 @@ export default function ProfilePage() {
 
     // Load statuses
     const statusRes = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=20`,
+      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`,
       { headers: authHeaders }
     );
     if (statusRes.ok) {
       const data = await statusRes.json() as Status[];
       setStatuses(data);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setTabLoaded((p) => ({ ...p, posts: true }));
 
@@ -385,7 +385,7 @@ export default function ProfilePage() {
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses((prev) => [...prev, ...data]);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setLoadingMorePosts(false);
   }
@@ -396,13 +396,13 @@ export default function ProfilePage() {
     setLoadingMoreFollowers(true);
     const nextPage = Math.floor(followers.length / 40);
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=40&page=${nextPage}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
     );
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowers((prev) => [...prev, ...data]);
-      setHasMoreFollowers(data.length >= PAGE_SIZE);
+      setHasMoreFollowers(data.length >= limits.pageSize);
     }
     setLoadingMoreFollowers(false);
   }
@@ -413,13 +413,13 @@ export default function ProfilePage() {
     setLoadingMoreFollowing(true);
     const nextPage = Math.floor(following.length / 40);
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=40&page=${nextPage}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
     );
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowing((prev) => [...prev, ...data]);
-      setHasMoreFollowing(data.length >= PAGE_SIZE);
+      setHasMoreFollowing(data.length >= limits.pageSize);
     }
     setLoadingMoreFollowing(false);
   }
@@ -463,23 +463,23 @@ export default function ProfilePage() {
       if (res.ok) setPinnedStatuses(await res.json() as Status[]);
     } else if (tab === "followers") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=40`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=${limits.pageSize}`,
         { headers: authHeaders }
       );
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowers(data);
-        setHasMoreFollowers(data.length >= PAGE_SIZE);
+        setHasMoreFollowers(data.length >= limits.pageSize);
       }
     } else if (tab === "following") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/following?limit=40`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/following?limit=${limits.pageSize}`,
         { headers: authHeaders }
       );
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowing(data);
-        setHasMoreFollowing(data.length >= PAGE_SIZE);
+        setHasMoreFollowing(data.length >= limits.pageSize);
       }
     } else if (tab === "collections") {
       const res = await fetch(
@@ -507,7 +507,7 @@ export default function ProfilePage() {
     setAvatarFile(null);
     setHeaderFile(null);
     setEditError(null);
-    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, MAX_PROFILE_FIELDS);
+    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, limits.maxProfileFields);
     setEditFields(currentFields.map((f) => ({ name: f.name, value: f.value })));
     setEditOpen(true);
   }
@@ -561,7 +561,7 @@ export default function ProfilePage() {
   }
 
   function addField() {
-    if (editFields.length >= MAX_PROFILE_FIELDS) return;
+    if (editFields.length >= limits.maxProfileFields) return;
     setEditFields((p) => [...p, { name: "", value: "" }]);
   }
 
@@ -680,6 +680,7 @@ export default function ProfilePage() {
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
   const { t } = useLocale();
+  const limits = useLimits();
   const { startCall: initiateCall } = useStartCallButton(token);
 
   return (
@@ -1365,7 +1366,7 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   className="input"
-                  maxLength={MAX_DISPLAY_NAME_CHARS}
+                  maxLength={limits.maxDisplayNameChars}
                   ref={displayNameRef}
                   value={editDisplayName}
                   onChange={displayNameAuto.onChange}
@@ -1393,7 +1394,7 @@ export default function ProfilePage() {
                 <textarea
                   className="input"
                   style={{ resize: "none", minHeight: 90, fontFamily: "inherit" }}
-                  maxLength={MAX_STATUS_CHARS}
+                  maxLength={limits.maxStatusChars}
                   value={editNote}
                   onChange={bioAuto.onChange}
                   onKeyDown={bioAuto.onKeyDown}
@@ -1407,7 +1408,7 @@ export default function ProfilePage() {
                 />
               </div>
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
-                  {editNote.length}/{MAX_NOTE_CHARS}
+                  {editNote.length}/{limits.maxNoteChars}
                 </span>
               </div>
 
@@ -1417,7 +1418,7 @@ export default function ProfilePage() {
                   <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                     {t.profile_edit_fields}
                   </label>
-                  {editFields.length < MAX_PROFILE_FIELDS && (
+                  {editFields.length < limits.maxProfileFields && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={addField} style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem" }}>
                       {t.profile_edit_add_field}
                     </button>
@@ -1435,7 +1436,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: "0 0 35%" }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_label}
-                      maxLength={MAX_PROFILE_FIELD_CHARS}
+                      maxLength={limits.maxProfileFieldChars}
                       value={f.name}
                       onChange={(v) => updateField(i, "name", v)}
                     />
@@ -1444,7 +1445,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: 1 }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_content}
-                      maxLength={MAX_PROFILE_FIELD_CHARS}
+                      maxLength={limits.maxProfileFieldChars}
                       value={f.value}
                       onChange={(v) => updateField(i, "value", v)}
                     />
@@ -1521,7 +1522,7 @@ export default function ProfilePage() {
               placeholder={t.note_placeholder}
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              maxLength={MAX_STATUS_CHARS}
+              maxLength={limits.maxStatusChars}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNoteOpen(false)}>{t.profile_cancel}</button>

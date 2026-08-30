@@ -6,7 +6,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
-import { MAX_FEATURED_TAG_NAME_CHARS } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 interface FeaturedTag {
   id: string;
@@ -31,6 +31,7 @@ export default function FeaturedTagsPage() {
   const token = getToken();
   const wrapperRef = useRef<HTMLFormElement>(null);
   const { t } = useLocale();
+  const limits = useLimits();
 
   useEffect(() => {
     async function fetchTags() {
@@ -125,7 +126,7 @@ export default function FeaturedTagsPage() {
                 onFocus={() => setShowSuggestions(true)}
                 placeholder={t.settings_tags_placeholder}
                 style={{ width: "100%", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit", boxSizing: "border-box" }}
-                maxLength={MAX_FEATURED_TAG_NAME_CHARS}
+                maxLength={limits.maxFeaturedTagNameChars}
               />
               {showSuggestions && filteredSuggestions.length > 0 && (
                 <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: "var(--radius)", marginTop: "2px", maxHeight: 200, overflowY: "auto", zIndex: 20 }}>

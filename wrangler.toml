@@ -28,6 +28,24 @@ AI_DAILY_BUDGET = "1000"
 #   wrangler secret put CALLS_API_TOKEN
 #   wrangler secret put ADMIN_TOKEN  (optional — if set, admin endpoints require it)
 
+# ── Instance limit overrides ──────────────────────────────────────────────
+# Every limit in lib/constants.ts can be overridden with a homonymous var
+# (e.g. `MAX_STATUS_CHARS = "1000"`). The API enforces the effective values
+# and reports them via /api/v1/instance `limits` + `configuration`, which the
+# web client reads, so limits stay consistent end-to-end.
+# Available names (see lib/constants.ts): MAX_STATUS_CHARS, MAX_CW_CHARS,
+# MAX_ALT_TEXT_CHARS, MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS,
+# MAX_POLL_OPTION_CHARS, POLL_MIN_EXPIRATION, POLL_MAX_EXPIRATION,
+# MAX_FEATURED_TAGS, CHARACTERS_RESERVED_PER_URL, MAX_PROFILE_FIELDS,
+# MAX_PROFILE_FIELD_CHARS, MAX_DISPLAY_NAME_CHARS, MAX_NOTE_CHARS,
+# MAX_EMOJI_SHORTCODE_CHARS, MAX_FEATURED_TAG_NAME_CHARS,
+# MAX_COLLECTION_NAME_CHARS, MAX_COLLECTION_DESCRIPTION_CHARS,
+# MAX_ANNOUNCEMENT_CHARS, MAX_LANG_CODE_CHARS, PAGE_SIZE,
+# DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE, MAX_COLLECTION_PAGE,
+# TRENDING_TAGS_LIMIT, TRENDING_TAGS_MAX, ADMIN_LOG_PAGE_SIZE,
+# MAX_IMAGE_SIZE, MAX_VIDEO_SIZE, IMAGE_MATRIX_LIMIT, VIDEO_FRAME_RATE_LIMIT,
+# VIDEO_MATRIX_LIMIT.
+
 # Guardian vector memory (Cloudflare Vectorize). OPTIONAL — the moderation
 # system works without it; this adds semantic spam detection + RAG precedent.
 # Enable it by creating the index and uncommenting the binding below:

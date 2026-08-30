@@ -5,7 +5,7 @@ import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmoj
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/statuses/:id/quotes — statuses quoting this one (auth required).
 export async function GET(
@@ -13,6 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
@@ -22,7 +23,7 @@ export async function GET(
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = request.nextUrl.searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
 

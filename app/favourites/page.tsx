@@ -8,6 +8,7 @@ import { StatusCard } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
+import { useLimits } from "@/lib/limits-client";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 
@@ -16,17 +17,18 @@ export default function FavouritesPage() {
   const [me, setMe] = useState<Me | null>(null);
   const token = getToken();
   const { t } = useLocale();
+  const limits = useLimits();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
     if (!token) return { items: [], hasMore: false };
-    const base = "/api/v1/favourites?limit=20";
+    const base = `/api/v1/favourites?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length >= 20 };
-  }, [token]);
+    return { items, hasMore: items.length >= limits.defaultTimelinePage };
+  }, [token, limits.defaultTimelinePage]);
 
   const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage);
 

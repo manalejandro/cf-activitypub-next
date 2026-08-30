@@ -13,7 +13,7 @@ import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
-import { PAGE_SIZE } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 interface Account {
   id: string;
@@ -55,20 +55,21 @@ export default function NotificationsPage() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
+  const limits = useLimits();
 
   const fetchPage = useCallback(async (maxId?: string) => {
-    const base = "/api/v1/notifications?limit=40";
+    const base = `/api/v1/notifications?limit=${limits.pageSize}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { credentials: "include", cache: "no-store" });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Notification[];
-    return { items, hasMore: items.length >= PAGE_SIZE };
-  }, []);
+    return { items, hasMore: items.length >= limits.pageSize };
+  }, [limits.pageSize]);
 
   const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>("notifications", fetchPage, { refetchOnMount: true });
 
   async function fetchFollowRequests() {
-    const res = await fetch("/api/v1/follow_requests?limit=40", { credentials: "include" });
+    const res = await fetch(`/api/v1/follow_requests?limit=${limits.pageSize}`, { credentials: "include" });
     if (res.ok) setPendingRequests(await res.json() as Account[]);
   }
 
@@ -116,6 +117,7 @@ export default function NotificationsPage() {
     Promise.resolve().then(() => void fetchFollowRequests());
     Promise.resolve().then(() => void fetchMe());
     void markAllRead();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Real-time: prepend new notifications as they arrive via streaming.

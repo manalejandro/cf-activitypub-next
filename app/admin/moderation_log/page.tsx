@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { useLimits } from "@/lib/limits-client";
 
 interface LogEntry {
   id: string;
@@ -54,6 +55,7 @@ const ACTION_MAP: Record<string, string> = {
 export default function AdminModerationLogPage() {
   const router = useRouter();
   const { t } = useLocale();
+  const limits = useLimits();
   const token = getToken();
 
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -65,7 +67,7 @@ export default function AdminModerationLogPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/admin/moderation_log?limit=100", {
+      const res = await fetch(`/api/v1/admin/moderation_log?limit=${limits.adminLogPageSize}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) { router.push("/login"); return; }

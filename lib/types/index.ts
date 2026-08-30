@@ -701,6 +701,8 @@ export interface MastodonInstance {
   uri: string;
   title: string;
   version: string;
+  /** Effective instance limits (lib/constants), consumed by the web client. */
+  limits?: import("@/lib/constants").InstanceLimits;
   source_url: string;
   description: string;
   usage: { users: { active_month: number } };

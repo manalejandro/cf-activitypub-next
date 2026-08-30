@@ -7,7 +7,7 @@ import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/accounts/:id/statuses
 export async function GET(
@@ -15,11 +15,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const onlyReplies = searchParams.get("only_replies") === "true";

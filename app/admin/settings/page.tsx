@@ -7,7 +7,7 @@ import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { EmojiInput } from "@/components/EmojiInput";
 import { EmojiTextarea } from "@/components/EmojiTextarea";
-import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
+import { useLimits } from "@/lib/limits-client";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -20,6 +20,7 @@ interface SettingsData {
 export default function AdminSettingsPage() {
   const router = useRouter();
   const { t } = useLocale();
+  const limits = useLimits();
   const token = getToken();
 
   const [data, setData] = useState<SettingsData | null>(null);
@@ -156,7 +157,7 @@ export default function AdminSettingsPage() {
             ))}
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={MAX_LANG_CODE_CHARS} />
+            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={limits.maxLangCodeChars} />
             <button type="button" className="btn btn-outline btn-sm" onClick={addLang} disabled={!newLang.trim()}>{t.admin_settings_add_lang}</button>
           </div>
         </div>

@@ -6,18 +6,19 @@ import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const minIdRaw = searchParams.get("min_id") ?? undefined;

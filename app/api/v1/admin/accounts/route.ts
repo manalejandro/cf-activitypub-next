@@ -3,17 +3,18 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { rowToActor } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
-import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
 
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
   const page = parseInt(request.nextUrl.searchParams.get("page") ?? "1");
   const offset = (page - 1) * limit;
   const status = request.nextUrl.searchParams.get("status") ?? "all";
