@@ -396,6 +396,76 @@ async function handleCallSignalingUpgrade(
   env: Env,
   callId: string
 ): Promise<Response> {
+  const url = new URL(request.url);
+
+  // ── Abuse protection (same hardening as the streaming upgrades) ───────────
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (await isWsIpBlocked(env.KV, ip)) {
+    return new Response(JSON.stringify({ error: "Source IP temporarily blocked" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const originError = validateWsOrigin(request, url);
+  if (originError) {
+    return new Response(JSON.stringify({ error: originError }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const rl = await enforceWsConnectRateLimit(env.KV, ip);
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({ error: rl.blocked ? "Source IP temporarily blocked" : "Too many connection attempts" }),
+      { status: rl.blocked ? 403 : 429, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // ── Auth: only the caller or callee may join the signaling relay ──────────
+  const token = extractToken(request, url);
+  if (!token) {
+    return new Response(JSON.stringify({ error: "The access token is invalid" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const row = await resolveToken(env.DB, token);
+  if (!row) {
+    return new Response(JSON.stringify({ error: "The access token is invalid" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const raw = await env.KV.get(`call:${callId}`);
+  if (!raw) {
+    return new Response(JSON.stringify({ error: "Call not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  let session: { callerId: string; calleeId: string; state: string };
+  try {
+    session = JSON.parse(raw) as { callerId: string; calleeId: string; state: string };
+  } catch {
+    return new Response(JSON.stringify({ error: "Call not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (session.callerId !== row.actor_id && session.calleeId !== row.actor_id) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (session.state === "ended" || session.state === "rejected") {
+    return new Response(JSON.stringify({ error: "Call has ended" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const doId = env.CALL_SIGNALING.idFromName(callId);
   const stub = env.CALL_SIGNALING.get(doId);
   return stub.fetch("https://call-do/connect", { method: request.method, headers: request.headers }) as Promise<Response>;
