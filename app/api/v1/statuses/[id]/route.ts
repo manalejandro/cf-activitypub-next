@@ -289,6 +289,9 @@ export async function PUT(
     await Promise.allSettled(broadcastTasks);
   }
 
+  // Invalidate the cached AP object so remote instances refetch the edit.
+  await env.KV.delete(`ap:obj:${id}`).catch(() => {});
+
   return json(serializedUpdated);
 }
 
@@ -337,6 +340,7 @@ export async function DELETE(
   if (env.TIMELINE_STREAM) {
     await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, obj);
   }
+  await env.KV.delete(`ap:obj:${id}`).catch(() => {});
 
   const allEmojis = await getAllCustomEmojis(env.DB);
   return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis }));

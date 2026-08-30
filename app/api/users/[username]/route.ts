@@ -19,6 +19,14 @@ export async function GET(
     return Response.redirect(`https://${domain}/@${username}`, 302);
   }
 
+  // Cache the federated actor briefly so repeated fetches (bursts from peers)
+  // don't hammer D1.
+  const cacheKey = `ap:actor:${username.toLowerCase()}`;
+  const cached = await env.KV.get(cacheKey);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
+  }
+
   const actor = await getActorByUsername(env.DB, username, domain);
   if (!actor || !actor.isLocal) return notFound("Actor not found");
 
@@ -71,5 +79,8 @@ export async function GET(
       totalItems: messageCount,
       id: `${baseUrl}/users/${actor.username}/messages`,
     },
+  }).text().then(async (body) => {
+    await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});
+    return new Response(body, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
   });
 }

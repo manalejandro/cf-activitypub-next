@@ -181,6 +181,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     // Re-check rel="me" verification in the background so the badge reflects
     // the updated fields without blocking the response.
     void verifyAccountFields(env.DB, actor.id, domain).catch(() => {});
+    // Invalidate the cached federated actor so remote instances refetch the new profile.
+    await env.KV.delete(`ap:actor:${actor.username.toLowerCase()}`).catch(() => {});
   }
 
   // Quote policy — `source[quote_policy]` (Mastodon API v7).
