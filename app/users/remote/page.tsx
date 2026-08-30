@@ -235,7 +235,7 @@ function RemoteProfileInner() {
   const [avatarLb, setAvatarLb] = useState(false);
 
   const token = getToken();
-  const { startCall: initiateCall } = useStartCallButton(token);
+  const { startCall: initiateCall, pending: callPending } = useStartCallButton(token);
 
   async function load(url: string) {
     setLoading(true);
@@ -627,6 +627,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_voice}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "audio")}
                   >
                     <Icon name="phone" />
@@ -635,6 +636,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_video}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "video")}
                   >
                     <Icon name="video-camera" />
@@ -643,6 +645,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_screen}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "screen")}
                   >
                     <Icon name="desktop" />
@@ -720,6 +723,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "audio"); }}
                         >
                           <Icon name="phone" /> {t.profile_call_voice}
@@ -727,6 +731,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "video"); }}
                         >
                           <Icon name="video-camera" /> {t.profile_call_video}
@@ -734,6 +739,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "screen"); }}
                         >
                           <Icon name="desktop" /> {t.profile_call_screen}

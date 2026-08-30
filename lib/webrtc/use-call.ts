@@ -84,6 +84,8 @@ export function useCall(accessToken?: string | null): UseCallReturn {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  /** Guards state transitions so rapid clicks can't start/accept/end twice. */
+  const busyRef = useRef(false);
   /** Acquired mic stream (getUserMedia audio). Null until user unmutes. */
   const micStreamRef = useRef<MediaStream | null>(null);
   /** Acquired camera stream (getUserMedia video). Null until user enables camera. */
@@ -409,7 +411,11 @@ export function useCall(accessToken?: string | null): UseCallReturn {
     targetAcct: string,
     callType: "audio" | "video" | "screen"
   ): Promise<string | null> => {
-    if (callState.phase !== "idle") return null;
+    // Reject overlapping start attempts (double-clicks, second tab) while the
+    // previous call is still being set up — the phase only flips to "calling"
+    // after the REST request resolves, so the phase check alone races.
+    if (busyRef.current || callState.phase !== "idle") return null;
+    busyRef.current = true;
     try {
       const pc = await createPeerConnection(callType);
 
@@ -471,12 +477,15 @@ export function useCall(accessToken?: string | null): UseCallReturn {
       console.error("[call] startCall error:", err);
       cleanup();
       return null;
+    } finally {
+      busyRef.current = false;
     }
   }, [callState.phase, createPeerConnection, acquireAndAttachInitialMedia, accessToken, connectSignalingWs, cleanup]);
 
   // ── Accept incoming call (callee side) ───────────────────────────────────
   const acceptCall = useCallback(async (): Promise<void> => {
-    if (callState.phase !== "incoming") return;
+    if (busyRef.current || callState.phase !== "incoming") return;
+    busyRef.current = true;
     const { event } = callState;
 
     try {
@@ -518,26 +527,34 @@ export function useCall(accessToken?: string | null): UseCallReturn {
       console.error("[call] acceptCall error:", err);
       cleanup();
       setCallState({ phase: "idle" });
+    } finally {
+      busyRef.current = false;
     }
   }, [callState, createPeerConnection, acquireAndAttachInitialMedia, accessToken, connectSignalingWs, cleanup]);
 
   // ── End / decline call ───────────────────────────────────────────────────
   const endCall = useCallback(async (): Promise<void> => {
-    const id = callIdRef.current;
-    if (id) {
-      const signalType =
-        callState.phase === "incoming" ? "reject" : "hangup";
-      await fetch(`${API_BASE}/${id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ type: signalType }),
-      }).catch(() => {});
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const id = callIdRef.current;
+      if (id) {
+        const signalType =
+          callState.phase === "incoming" ? "reject" : "hangup";
+        await fetch(`${API_BASE}/${id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({ type: signalType }),
+        }).catch(() => {});
+      }
+      cleanup();
+      setCallState({ phase: "idle" });
+    } finally {
+      busyRef.current = false;
     }
-    cleanup();
-    setCallState({ phase: "idle" });
   }, [callState.phase, accessToken, cleanup]);
 
   // ── Handle streaming "call" events ───────────────────────────────────────

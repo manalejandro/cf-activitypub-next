@@ -337,10 +337,12 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
  */
 export function useStartCallButton(accessToken: string | null | undefined) {
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
 
   const startCall = useCallback(
     async (targetAcct: string, callType: "audio" | "video" | "screen") => {
-      if (!accessToken) return;
+      if (!accessToken || pendingRef.current) return;
+      pendingRef.current = true;
       setPending(true);
       try {
         // The actual call setup is handled by the global CallOverlay hook.
@@ -349,6 +351,7 @@ export function useStartCallButton(accessToken: string | null | undefined) {
           new CustomEvent("cf-ap:start-call", { detail: { targetAcct, callType } })
         );
       } finally {
+        pendingRef.current = false;
         setPending(false);
       }
     },
