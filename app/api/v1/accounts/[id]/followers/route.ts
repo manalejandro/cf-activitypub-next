@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, getFollowers, getLastStatusAt } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // GET /api/v1/accounts/:id/followers
 export async function GET(
@@ -16,9 +17,9 @@ export async function GET(
   const actor = await getActorById(env.DB, rawId);
   if (!actor) return notFound("Account not found");
 
-  const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "40");
+  const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE));
   const page = parseInt(request.nextUrl.searchParams.get("page") ?? "0");
-  const followers = await getFollowers(env.DB, actor.id, Math.min(limit, 80), page * limit);
+  const followers = await getFollowers(env.DB, actor.id, Math.min(limit, MAX_PAGE_SIZE), page * limit);
 
   const result = await Promise.all(
     followers.map(async (f) => {

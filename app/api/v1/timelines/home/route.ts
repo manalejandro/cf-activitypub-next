@@ -6,6 +6,7 @@ import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const minIdRaw = searchParams.get("min_id") ?? undefined;

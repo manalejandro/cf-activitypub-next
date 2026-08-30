@@ -14,6 +14,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { MAX_STATUS_CHARS } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -317,12 +318,12 @@ export default function ExplorePage() {
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               placeholder={t.edit_status_placeholder}
-              maxLength={500}
+              maxLength={MAX_STATUS_CHARS}
               className="input"
               style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/500</span>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{editText.length}/{MAX_STATUS_CHARS}</span>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingStatus(null)}>{t.profile_cancel}</button>
                 <button type="button" className="btn btn-primary btn-sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditSave()}>

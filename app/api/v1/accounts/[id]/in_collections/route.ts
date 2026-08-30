@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, listCollectionsFeaturedIn } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 // GET /api/v1/accounts/:account_id/in_collections — all Collections the account
 // is featured in.
@@ -17,7 +18,7 @@ export async function GET(
   const actor = await getActorById(env.DB, accountId);
   if (!actor) return notFound("Account not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "40"), 80);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
   const offset = Math.max(parseInt(request.nextUrl.searchParams.get("offset") ?? "0"), 0);
 
   const collections = await listCollectionsFeaturedIn(env.DB, actor.id, { limit, offset });

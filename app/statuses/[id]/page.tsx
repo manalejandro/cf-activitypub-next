@@ -20,6 +20,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { MAX_ALT_TEXT_CHARS, MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS, MAX_POLL_OPTION_CHARS, MAX_STATUS_CHARS } from "@/lib/constants";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -205,7 +206,7 @@ function ReplyBox({
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!token || !e.target.files?.length) return;
-    const files = Array.from(e.target.files).slice(0, 4 - mediaFiles.length);
+    const files = Array.from(e.target.files).slice(0, MAX_MEDIA_ATTACHMENTS - mediaFiles.length);
     e.target.value = "";
     setUploadingMedia(true);
     for (const file of files) {
@@ -352,7 +353,7 @@ function ReplyBox({
               onChange={(e) => setCwText(e.target.value)}
               placeholder={`${t.cw_placeholder}…`}
               aria-label={t.cw_placeholder}
-              maxLength={500}
+              maxLength={MAX_STATUS_CHARS}
               style={{ width: "100%", marginBottom: "0.4rem", padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
             />
           )}
@@ -384,7 +385,7 @@ function ReplyBox({
                     onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
                     placeholder={t.composer_poll_option.replace("{number}", String(i + 1))}
                     aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
-                    maxLength={50}
+                    maxLength={MAX_POLL_OPTION_CHARS}
                     style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.875rem" }}
                   />
                   {pollOptions.length > 2 && (
@@ -392,7 +393,7 @@ function ReplyBox({
                   )}
                 </div>
               ))}
-              {pollOptions.length < 4 && (
+              {pollOptions.length < MAX_POLL_OPTIONS && (
                 <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>+ Agregar opción</button>
               )}
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.25rem" }}>
@@ -433,7 +434,7 @@ function ReplyBox({
                       placeholder={`${t.media_alt_text}…`}
                       aria-label={t.media_alt_text}
                     defaultValue={f.description ?? ""}
-                    maxLength={420}
+                    maxLength={MAX_ALT_TEXT_CHARS}
                     onChange={(e) => { descRefs.current[f.id] = e.target.value; }}
                     onBlur={async (e) => {
                       if (!token) return;
@@ -465,7 +466,7 @@ function ReplyBox({
                   direction="up"
                 />
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= 4 || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= MAX_MEDIA_ATTACHMENTS || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>

@@ -7,6 +7,7 @@ import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { EmojiInput } from "@/components/EmojiInput";
 import { EmojiTextarea } from "@/components/EmojiTextarea";
+import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -155,7 +156,7 @@ export default function AdminSettingsPage() {
             ))}
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={2} />
+            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={MAX_LANG_CODE_CHARS} />
             <button type="button" className="btn btn-outline btn-sm" onClick={addLang} disabled={!newLang.trim()}>{t.admin_settings_add_lang}</button>
           </div>
         </div>

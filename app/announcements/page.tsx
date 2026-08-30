@@ -8,6 +8,7 @@ import { RichText } from "@/components/RichText";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { MAX_ANNOUNCEMENT_CHARS } from "@/lib/constants";
 
 interface Announcement {
   id: string;
@@ -129,7 +130,7 @@ export default function AnnouncementsPage() {
               placeholder={t.announcements_create_placeholder}
               aria-label={t.announcements_create_placeholder}
               rows={2}
-              maxLength={10000}
+              maxLength={MAX_ANNOUNCEMENT_CHARS}
               className="input"
               style={{ resize: "vertical" }}
             />

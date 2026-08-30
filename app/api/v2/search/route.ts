@@ -6,6 +6,7 @@ import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/ma
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // GET /api/v2/search?q=...&type=accounts|statuses|hashtags&limit=20&offset=0
 export async function GET(request: NextRequest): Promise<Response> {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const q = (sp.get("q") ?? "").trim();
   const type = sp.get("type") ?? "all";
-  const limit = Math.min(parseInt(sp.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(sp.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
   const offset = parseInt(sp.get("offset") ?? "0");
   const resolve = sp.get("resolve") === "true";
 

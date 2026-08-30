@@ -8,6 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { MAX_COLLECTION_NAME_CHARS, MAX_COLLECTION_DESCRIPTION_CHARS } from "@/lib/constants";
 
 interface Collection {
   id: string;
@@ -132,11 +133,11 @@ export default function CollectionsPage() {
         <form onSubmit={(e) => void handleCreate(e)} style={{ padding: "1rem", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
             {t.collections_name}
-            <input className="input" placeholder={t.collections_name_ph} aria-label={t.collections_name_ph} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={40} />
+            <input className="input" placeholder={t.collections_name_ph} aria-label={t.collections_name_ph} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={MAX_COLLECTION_NAME_CHARS} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
             {t.collections_description}
-            <input className="input" placeholder={t.collections_description_ph} aria-label={t.collections_description_ph} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={100} />
+            <input className="input" placeholder={t.collections_description_ph} aria-label={t.collections_description_ph} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={MAX_COLLECTION_DESCRIPTION_CHARS} />
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
             <input type="checkbox" checked={discoverable} onChange={(e) => setDiscoverable(e.target.checked)} />
@@ -164,11 +165,11 @@ export default function CollectionsPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
                   {t.collections_name}
-                  <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t.collections_name_ph} autoFocus maxLength={40} />
+                  <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t.collections_name_ph} autoFocus maxLength={MAX_COLLECTION_NAME_CHARS} />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
                   {t.collections_description}
-                  <input className="input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} aria-label={t.collections_description_ph} maxLength={100} />
+                  <input className="input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} aria-label={t.collections_description_ph} maxLength={MAX_COLLECTION_DESCRIPTION_CHARS} />
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
                   <input type="checkbox" checked={editDiscoverable} onChange={(e) => setEditDiscoverable(e.target.checked)} />

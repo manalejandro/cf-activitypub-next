@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAllCustomEmojis, upsertCustomEmoji } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { MAX_EMOJI_SHORTCODE_CHARS } from "@/lib/constants";
 
 // GET /api/admin/emojis — List all custom emoji (including disabled)
 export async function GET(request: NextRequest): Promise<Response> {
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
   if (!shortcode || !/^[a-zA-Z0-9_]+$/.test(shortcode)) {
     return json({ error: "shortcode must contain only letters, numbers, and underscores" }, 422);
+  }
+  if (shortcode.length > MAX_EMOJI_SHORTCODE_CHARS) {
+    return json({ error: `shortcode must be ${MAX_EMOJI_SHORTCODE_CHARS} characters or less` }, 422);
   }
 
   const ALLOWED_TYPES = ["image/png", "image/gif", "image/webp"];

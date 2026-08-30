@@ -5,6 +5,7 @@ import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmoj
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // GET /api/v1/statuses/:id/quotes — statuses quoting this one (auth required).
 export async function GET(
@@ -21,7 +22,7 @@ export async function GET(
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
   const maxIdRaw = request.nextUrl.searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
 

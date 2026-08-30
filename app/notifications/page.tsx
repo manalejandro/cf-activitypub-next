@@ -13,6 +13,7 @@ import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
+import { PAGE_SIZE } from "@/lib/constants";
 
 interface Account {
   id: string;
@@ -61,7 +62,7 @@ export default function NotificationsPage() {
     const res = await fetch(url, { credentials: "include", cache: "no-store" });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Notification[];
-    return { items, hasMore: items.length >= 40 };
+    return { items, hasMore: items.length >= PAGE_SIZE };
   }, []);
 
   const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>("notifications", fetchPage, { refetchOnMount: true });

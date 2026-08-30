@@ -11,6 +11,7 @@ import {
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -44,8 +45,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? "20"),
-    40
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)),
+    MAX_PAGE_SIZE
   );
 
   const rows = await env.DB

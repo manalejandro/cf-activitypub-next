@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getBlockedActors } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 // GET /api/v1/blocks
 export async function GET(request: NextRequest): Promise<Response> {
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
 
   const url = new URL(request.url);
-  const limit = Math.min(Number(url.searchParams.get("limit") ?? 40), 80);
+  const limit = Math.min(Number(url.searchParams.get("limit") ?? PAGE_SIZE), MAX_COLLECTION_PAGE);
   const offset = Number(url.searchParams.get("offset") ?? 0);
 
   const blocked = await getBlockedActors(env.DB, actor.id, limit, offset);

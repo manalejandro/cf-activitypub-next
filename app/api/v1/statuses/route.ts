@@ -36,6 +36,7 @@ import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
+import { MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS, MAX_POLL_OPTION_CHARS, MAX_STATUS_CHARS, POLL_MIN_EXPIRATION } from "@/lib/constants";
 import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
@@ -191,12 +192,26 @@ export async function POST(request: NextRequest): Promise<Response> {
   const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= 2;
   if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
 
+  // Enforce the instance limits reported by /api/v1/instance (lib/constants).
+  if ((content ?? "").length > MAX_STATUS_CHARS) {
+    return json({ error: `Validation failed: Text must be ${MAX_STATUS_CHARS} characters or less` }, 422);
+  }
+  if (hasPoll && pollRaw.options) {
+    const pollOptions = pollRaw.options.filter((o) => String(o).trim());
+    if (pollOptions.length > MAX_POLL_OPTIONS) {
+      return json({ error: `Validation failed: Poll must have ${MAX_POLL_OPTIONS} options or less` }, 422);
+    }
+    if (pollOptions.some((o) => o.length > MAX_POLL_OPTION_CHARS)) {
+      return json({ error: `Validation failed: Poll options must be ${MAX_POLL_OPTION_CHARS} characters or less` }, 422);
+    }
+  }
+
   const visibility = (body.visibility as string) ?? "public";
   if (!["public", "unlisted", "private", "direct"].includes(visibility)) {
     return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
   }
-  if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < 300)) {
-    return json({ error: "Validation failed: expires_in must be at least 300 seconds" }, 422);
+  if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < POLL_MIN_EXPIRATION)) {
+    return json({ error: `Validation failed: expires_in must be at least ${POLL_MIN_EXPIRATION} seconds` }, 422);
   }
   const inReplyToIdRaw = body.in_reply_to_id as string | undefined;
   const inReplyToId = inReplyToIdRaw ? decodeStatusId(inReplyToIdRaw, domain) : undefined;
@@ -245,7 +260,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // If any pending media is marked sensitive, the whole status is sensitive
   // (matches Mastodon): remote instances then blur the media even without a CW.
-  for (const mediaId of mediaIds.slice(0, 4)) {
+  for (const mediaId of mediaIds.slice(0, MAX_MEDIA_ATTACHMENTS)) {
     if (sensitive) break;
     const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
     if (!pendingRaw) continue;
@@ -444,7 +459,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Link any pending media attachments
   const linkedAttachments = [];
-  for (const mediaId of mediaIds.slice(0, 4)) {
+  for (const mediaId of mediaIds.slice(0, MAX_MEDIA_ATTACHMENTS)) {
     const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
     if (!pendingRaw) continue;
     try {
@@ -481,7 +496,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const pollId = generateId();
     const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    const validOptions = (pollRaw.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
+    const validOptions = (pollRaw.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, MAX_POLL_OPTIONS);
     await createPoll(env.DB, {
       id: pollId,
       objectId: note.id,

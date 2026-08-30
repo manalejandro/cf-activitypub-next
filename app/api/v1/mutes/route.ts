@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getMutedActorIds, getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "40"), 80);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
   const mutedIds = await getMutedActorIds(env.DB, actor.id);
   const sliced = mutedIds.slice(0, limit);
 

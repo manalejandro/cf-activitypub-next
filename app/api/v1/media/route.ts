@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { chargeGlobalAI, AI_UNITS_VISION } from "@/lib/moderation/budget";
+import { MAX_IMAGE_SIZE } from "@/lib/constants";
 
 // POST /api/v1/media — Upload a media attachment (stored in R2)
 export async function POST(request: NextRequest): Promise<Response> {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Unsupported file type" }, 422);
   }
 
-  const MAX_SIZE = 16 * 1024 * 1024; // 16 MB
+  const MAX_SIZE = MAX_IMAGE_SIZE; // images/uploads capped at the instance image limit
   if (file.size > MAX_SIZE) {
     return json({ error: "File too large (max 16 MB)" }, 422);
   }

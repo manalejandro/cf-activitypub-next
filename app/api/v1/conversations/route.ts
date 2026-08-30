@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getConversations, getObjectById, getActorById, getActorByUri } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // IRIs of the other participants of a direct object: everyone addressed in
 // to/cc/mentions except the viewer. Public/collection recipients are skipped.
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
 
   const conversations = await getConversations(env.DB, actor.id, limit);
 

@@ -2,13 +2,14 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getActorById, getLastStatusAt } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const offset = parseInt(request.nextUrl.searchParams.get("offset") ?? "0");
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "40"), 80);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
   const localOnly = request.nextUrl.searchParams.get("local") === "true";
   const order = request.nextUrl.searchParams.get("order") ?? "active";
 

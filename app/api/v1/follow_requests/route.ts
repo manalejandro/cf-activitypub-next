@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 // GET /api/v1/follow_requests
 // Returns accounts that have requested to follow the authenticated user.
@@ -14,8 +15,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
 
   const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? "40"),
-    80
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)),
+    MAX_COLLECTION_PAGE
   );
 
   // Query pending follows targeting the authenticated actor

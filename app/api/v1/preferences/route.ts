@@ -5,7 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:visibility": "public",
   "posting:default:sensitive": "false",
-  "posting:default:language": null,
+  "posting:default:language": "en",
   "posting:default:quote_policy": "followers",
   "reading:expand:media": "default",
   "reading:expand:spoilers": "false",

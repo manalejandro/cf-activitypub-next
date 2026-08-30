@@ -8,6 +8,7 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
+import { MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS, MAX_STATUS_CHARS } from "@/lib/constants";
 
 /**
  * Shared "edit status" modal: edit the text, CW, media attachments (add /
@@ -110,8 +111,8 @@ export function EditStatusModal({
   }
 
   async function addFiles(files: FileList | null) {
-    if (!files || !token || media.length >= 4) return;
-    for (const file of Array.from(files).slice(0, 4 - media.length)) {
+    if (!files || !token || media.length >= MAX_MEDIA_ATTACHMENTS) return;
+    for (const file of Array.from(files).slice(0, MAX_MEDIA_ATTACHMENTS - media.length)) {
       const form = new FormData();
       form.append("file", file);
       form.append("locale", locale);
@@ -169,7 +170,7 @@ export function EditStatusModal({
             onKeyDown={auto.onKeyDown}
             placeholder={t.edit_status_placeholder}
             aria-label={t.edit_label}
-            maxLength={500}
+            maxLength={MAX_STATUS_CHARS}
             className="input"
             style={{ resize: "none", minHeight: 120, fontFamily: "inherit", width: "100%" }}
           />
@@ -200,7 +201,7 @@ export function EditStatusModal({
                 )}
               </div>
             ))}
-            {pollOptions.length < 4 && (
+            {pollOptions.length < MAX_POLL_OPTIONS && (
               <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
             )}
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap", marginTop: "0.25rem" }}>
@@ -304,7 +305,7 @@ export function EditStatusModal({
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/500</span>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{MAX_STATUS_CHARS}</span>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>{t.profile_cancel}</button>
             <button type="button" className="btn btn-primary btn-sm" disabled={!text.trim() || busy} onClick={() => void handleSave()}>

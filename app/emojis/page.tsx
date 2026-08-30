@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
+import { MAX_EMOJI_SHORTCODE_CHARS } from "@/lib/constants";
 
 interface Emoji {
   id: string;
@@ -138,7 +139,7 @@ export default function EmojisPage() {
               onChange={(e) => setShortcode(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
               className="input"
               style={{ flex: 1, minWidth: 150, fontSize: "0.9rem" }}
-              maxLength={32}
+              maxLength={MAX_EMOJI_SHORTCODE_CHARS}
             />
             <input
               type="text"
@@ -147,7 +148,7 @@ export default function EmojisPage() {
               onChange={(e) => setCategory(e.target.value)}
               className="input"
               style={{ flex: 1, minWidth: 120, fontSize: "0.9rem" }}
-              maxLength={32}
+              maxLength={MAX_EMOJI_SHORTCODE_CHARS}
             />
             <input
               type="file"

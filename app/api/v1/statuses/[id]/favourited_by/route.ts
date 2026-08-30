@@ -3,6 +3,7 @@ import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getObjectById, getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { PAGE_SIZE, MAX_COLLECTION_PAGE } from "@/lib/constants";
 
 // GET /api/v1/statuses/:id/favourited_by
 // Returns accounts that liked the given status.
@@ -17,7 +18,7 @@ export async function GET(
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "40"), 80);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(PAGE_SIZE)), MAX_COLLECTION_PAGE);
 
   const rows = await env.DB
     .prepare(

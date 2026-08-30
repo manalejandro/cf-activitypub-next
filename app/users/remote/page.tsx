@@ -20,6 +20,7 @@ import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { MAX_STATUS_CHARS } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1012,7 +1013,7 @@ function RemoteProfileInner() {
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={t.note_placeholder}
               aria-label={t.note_placeholder}
-              maxLength={500}
+              maxLength={MAX_STATUS_CHARS}
               className="input"
               style={{ resize: "none", minHeight: 100, fontFamily: "inherit", width: "100%" }}
             />

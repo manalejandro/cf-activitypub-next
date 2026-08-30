@@ -7,6 +7,7 @@ import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
+import { DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE } from "@/lib/constants";
 
 // GET /api/v1/accounts/:id/statuses
 export async function GET(
@@ -18,7 +19,7 @@ export async function GET(
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_TIMELINE_PAGE)), MAX_PAGE_SIZE);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const onlyReplies = searchParams.get("only_replies") === "true";

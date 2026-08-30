@@ -20,6 +20,7 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { EmojiInput } from "@/components/EmojiInput";
+import { MAX_DISPLAY_NAME_CHARS, MAX_NOTE_CHARS, MAX_PROFILE_FIELDS, MAX_PROFILE_FIELD_CHARS, MAX_STATUS_CHARS, PAGE_SIZE } from "@/lib/constants";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -401,7 +402,7 @@ export default function ProfilePage() {
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowers((prev) => [...prev, ...data]);
-      setHasMoreFollowers(data.length >= 40);
+      setHasMoreFollowers(data.length >= PAGE_SIZE);
     }
     setLoadingMoreFollowers(false);
   }
@@ -418,7 +419,7 @@ export default function ProfilePage() {
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowing((prev) => [...prev, ...data]);
-      setHasMoreFollowing(data.length >= 40);
+      setHasMoreFollowing(data.length >= PAGE_SIZE);
     }
     setLoadingMoreFollowing(false);
   }
@@ -468,7 +469,7 @@ export default function ProfilePage() {
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowers(data);
-        setHasMoreFollowers(data.length >= 40);
+        setHasMoreFollowers(data.length >= PAGE_SIZE);
       }
     } else if (tab === "following") {
       const res = await fetch(
@@ -478,7 +479,7 @@ export default function ProfilePage() {
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowing(data);
-        setHasMoreFollowing(data.length >= 40);
+        setHasMoreFollowing(data.length >= PAGE_SIZE);
       }
     } else if (tab === "collections") {
       const res = await fetch(
@@ -506,7 +507,7 @@ export default function ProfilePage() {
     setAvatarFile(null);
     setHeaderFile(null);
     setEditError(null);
-    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, 4);
+    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, MAX_PROFILE_FIELDS);
     setEditFields(currentFields.map((f) => ({ name: f.name, value: f.value })));
     setEditOpen(true);
   }
@@ -560,7 +561,7 @@ export default function ProfilePage() {
   }
 
   function addField() {
-    if (editFields.length >= 4) return;
+    if (editFields.length >= MAX_PROFILE_FIELDS) return;
     setEditFields((p) => [...p, { name: "", value: "" }]);
   }
 
@@ -1364,7 +1365,7 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   className="input"
-                  maxLength={30}
+                  maxLength={MAX_DISPLAY_NAME_CHARS}
                   ref={displayNameRef}
                   value={editDisplayName}
                   onChange={displayNameAuto.onChange}
@@ -1392,7 +1393,7 @@ export default function ProfilePage() {
                 <textarea
                   className="input"
                   style={{ resize: "none", minHeight: 90, fontFamily: "inherit" }}
-                  maxLength={500}
+                  maxLength={MAX_STATUS_CHARS}
                   value={editNote}
                   onChange={bioAuto.onChange}
                   onKeyDown={bioAuto.onKeyDown}
@@ -1406,7 +1407,7 @@ export default function ProfilePage() {
                 />
               </div>
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
-                  {editNote.length}/500
+                  {editNote.length}/{MAX_NOTE_CHARS}
                 </span>
               </div>
 
@@ -1416,7 +1417,7 @@ export default function ProfilePage() {
                   <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                     {t.profile_edit_fields}
                   </label>
-                  {editFields.length < 4 && (
+                  {editFields.length < MAX_PROFILE_FIELDS && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={addField} style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem" }}>
                       {t.profile_edit_add_field}
                     </button>
@@ -1434,7 +1435,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: "0 0 35%" }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_label}
-                      maxLength={255}
+                      maxLength={MAX_PROFILE_FIELD_CHARS}
                       value={f.name}
                       onChange={(v) => updateField(i, "name", v)}
                     />
@@ -1443,7 +1444,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: 1 }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_content}
-                      maxLength={255}
+                      maxLength={MAX_PROFILE_FIELD_CHARS}
                       value={f.value}
                       onChange={(v) => updateField(i, "value", v)}
                     />
@@ -1520,7 +1521,7 @@ export default function ProfilePage() {
               placeholder={t.note_placeholder}
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              maxLength={500}
+              maxLength={MAX_STATUS_CHARS}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNoteOpen(false)}>{t.profile_cancel}</button>

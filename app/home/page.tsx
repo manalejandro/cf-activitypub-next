@@ -17,6 +17,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
+import { MAX_ALT_TEXT_CHARS, MAX_CW_CHARS, MAX_MEDIA_ATTACHMENTS, MAX_POLL_OPTIONS, MAX_POLL_OPTION_CHARS, MAX_STATUS_CHARS } from "@/lib/constants";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
@@ -200,7 +201,7 @@ export default function HomePage() {
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.length) return;
-    const files = Array.from(e.target.files).slice(0, 4 - mediaFiles.length);
+    const files = Array.from(e.target.files).slice(0, MAX_MEDIA_ATTACHMENTS - mediaFiles.length);
     e.target.value = "";
     setUploadingMedia(true);
     for (const file of files) {
@@ -295,7 +296,7 @@ export default function HomePage() {
                 aria-label={t.cw_placeholder}
                 value={cwText}
                 onChange={(e) => setCwText(e.target.value)}
-                maxLength={200}
+                maxLength={MAX_CW_CHARS}
                 style={{ fontSize: "0.9rem" }}
               />
             )}
@@ -310,7 +311,7 @@ export default function HomePage() {
                 value={composing}
                 onChange={emojiAuto.onChange}
                 onKeyDown={emojiAuto.onKeyDown}
-                maxLength={500}
+                maxLength={MAX_STATUS_CHARS}
               />
               <EmojiAutocompleteDropdown
                 suggestions={emojiAuto.suggestions}
@@ -332,7 +333,7 @@ export default function HomePage() {
                       aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
                       value={opt}
                       onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
-                      maxLength={50}
+                      maxLength={MAX_POLL_OPTION_CHARS}
                       style={{ flex: 1, fontSize: "0.875rem" }}
                     />
                     {pollOptions.length > 2 && (
@@ -340,7 +341,7 @@ export default function HomePage() {
                     )}
                   </div>
                 ))}
-                {pollOptions.length < 4 && (
+                {pollOptions.length < MAX_POLL_OPTIONS && (
                   <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
                 )}
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
@@ -399,7 +400,7 @@ export default function HomePage() {
                       placeholder={`${t.media_alt_text}…`}
                       aria-label={t.media_alt_text}
                       defaultValue={f.description ?? ""}
-                      maxLength={420}
+                      maxLength={MAX_ALT_TEXT_CHARS}
                       onChange={(e) => { mediaDescRefs.current[f.id] = e.target.value; }}
                       onBlur={(e) => void updateMediaDesc(f.id, e.target.value, setMediaFiles)}
                       style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.82rem", fontFamily: "inherit" }}
@@ -441,7 +442,7 @@ export default function HomePage() {
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: "1.15rem", padding: "0.3rem 0.5rem" }}
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={mediaFiles.length >= 4 || uploadingMedia}
+                  disabled={mediaFiles.length >= MAX_MEDIA_ATTACHMENTS || uploadingMedia}
                   title={t.compose_attach}
                   aria-label={t.compose_attach}
                 >
@@ -497,7 +498,7 @@ export default function HomePage() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "0.8rem", color: composing.length > 450 ? "var(--danger)" : "var(--text-muted)" }}>
-                  {composing.length}/500
+                  {composing.length}/{MAX_STATUS_CHARS}
                 </span>
                 <button
                   type="submit"
