@@ -802,5 +802,6 @@
   "filter_delete_confirm": "Apagar este filtro?",
   "filter_empty": "Ainda não tens filtros. Crie um para filtrar posts que você não quer ver.",
   "filtered_by": "Filtrado por",
-  "filtered_show": "Mostrar a publicação"
+  "filtered_show": "Mostrar a publicação",
+  "filter_delete": "Apagar o filtro"
 }

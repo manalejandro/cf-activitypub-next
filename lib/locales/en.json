@@ -802,5 +802,6 @@
   "filter_delete_confirm": "Delete this filter?",
   "filter_empty": "You have no filters yet. Create one to filter out posts you don't want to see.",
   "filtered_by": "Filtered by",
-  "filtered_show": "Show post"
+  "filtered_show": "Show post",
+  "filter_delete": "Delete filter"
 }

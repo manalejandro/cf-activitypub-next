@@ -802,5 +802,6 @@
   "filter_delete_confirm": "このフィルターを削除しますか?",
   "filter_empty": "フィルタはありません。 あなたが見たくない投稿をフィルタアウトするために1を作成します.",
   "filtered_by": "フィルタリング",
-  "filtered_show": "投稿を表示"
+  "filtered_show": "投稿を表示",
+  "filter_delete": "フィルターの削除"
 }

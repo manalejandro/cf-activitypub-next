@@ -6172,6 +6172,7 @@
     "/api/v1/filters/{id}": {
       "get": {
         "summary": "Get /api/v1/filters/{id}",
+        "description": "Legacy Mastodon v1 filters API — single keyword operations.",
         "operationId": "get_api_v1_filters_Byid",
         "tags": [
           "Filters"
@@ -6209,6 +6210,7 @@
       },
       "put": {
         "summary": "Update /api/v1/filters/{id}",
+        "description": "Legacy Mastodon v1 filters API — single keyword operations.",
         "operationId": "put_api_v1_filters_Byid",
         "tags": [
           "Filters"
@@ -6271,6 +6273,7 @@
       },
       "delete": {
         "summary": "Delete /api/v1/filters/{id}",
+        "description": "Legacy Mastodon v1 filters API — single keyword operations.",
         "operationId": "delete_api_v1_filters_Byid",
         "tags": [
           "Filters"
@@ -6307,38 +6310,10 @@
         }
       }
     },
-    "/api/v1/filters/reorder": {
-      "put": {
-        "summary": "Update /api/v1/filters/reorder",
-        "operationId": "put_api_v1_filters_reorder",
-        "tags": [
-          "Filters"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/filters": {
       "get": {
         "summary": "Get /api/v1/filters",
+        "description": "Legacy Mastodon v1 filters API (compatibility). One V1::Filter per keyword.",
         "operationId": "get_api_v1_filters",
         "tags": [
           "Filters"
@@ -6366,6 +6341,7 @@
       },
       "post": {
         "summary": "Post /api/v1/filters",
+        "description": "Legacy Mastodon v1 filters API (compatibility). One V1::Filter per keyword.",
         "operationId": "post_api_v1_filters",
         "tags": [
           "Filters"
@@ -10212,135 +10188,6 @@
         }
       }
     },
-    "/api/v2/filters/{id}/keywords": {
-      "get": {
-        "summary": "Get /api/v2/filters/{id}/keywords",
-        "operationId": "get_api_v2_filters_Byid_keywords",
-        "tags": [
-          "Filters"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "keyword",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "whole_word",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Post /api/v2/filters/{id}/keywords",
-        "operationId": "post_api_v2_filters_Byid_keywords",
-        "tags": [
-          "Filters"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "keyword",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "whole_word",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v2/filters/{id}": {
       "get": {
         "summary": "Get /api/v2/filters/{id}",
@@ -10353,27 +10200,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filter_action",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10411,27 +10237,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filter_action",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10497,27 +10302,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filter_action",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "security": [
@@ -10542,121 +10326,6 @@
         }
       }
     },
-    "/api/v2/filters/{id}/statuses": {
-      "get": {
-        "summary": "Get /api/v2/filters/{id}/statuses",
-        "operationId": "get_api_v2_filters_Byid_statuses",
-        "tags": [
-          "Filters"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Post /api/v2/filters/{id}/statuses",
-        "operationId": "post_api_v2_filters_Byid_statuses",
-        "tags": [
-          "Filters"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v2/filters/keywords/{id}": {
       "get": {
         "summary": "Get /api/v2/filters/keywords/{id}",
@@ -10669,20 +10338,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "keyword",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "whole_word",
-            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10720,20 +10375,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "keyword",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "whole_word",
-            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -10799,20 +10440,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "keyword",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "whole_word",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "security": [
@@ -10844,29 +10471,6 @@
         "tags": [
           "Filters"
         ],
-        "parameters": [
-          {
-            "name": "title",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filter_action",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "security": [
           {
             "bearerAuth": []
@@ -10893,29 +10497,6 @@
         "operationId": "post_api_v2_filters",
         "tags": [
           "Filters"
-        ],
-        "parameters": [
-          {
-            "name": "title",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filter_action",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "expires_in",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
         ],
         "security": [
           {

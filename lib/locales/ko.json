@@ -802,5 +802,6 @@
   "filter_delete_confirm": "이 필터를 삭제?",
   "filter_empty": "아직 필터가 없습니다. 당신이보고 싶지 않은 게시물을 필터링하는 것.",
   "filtered_by": "필터링",
-  "filtered_show": "게시물 보기"
+  "filtered_show": "게시물 보기",
+  "filter_delete": "필터 삭제"
 }

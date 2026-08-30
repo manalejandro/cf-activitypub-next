@@ -802,5 +802,6 @@
   "filter_delete_confirm": "Löschen Sie diesen Filter?",
   "filter_empty": "Sie haben noch keine Filter. Erstellen Sie einen, um Posts herauszufiltern, die Sie nicht sehen möchten.",
   "filtered_by": "Gefiltert von",
-  "filtered_show": "Beitrag anzeigen"
+  "filtered_show": "Beitrag anzeigen",
+  "filter_delete": "Filter löschen"
 }

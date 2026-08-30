@@ -802,5 +802,6 @@
   "filter_delete_confirm": "删除此过滤器吗 ?",
   "filter_empty": "你还没有过滤器。 创建一个来过滤您不想看到的文章 .",
   "filtered_by": "过滤由",
-  "filtered_show": "显示帖子"
+  "filtered_show": "显示帖子",
+  "filter_delete": "删除过滤器"
 }

@@ -802,5 +802,6 @@
   "filter_delete_confirm": "Eliminare questo filtro?",
   "filter_empty": "Non hai ancora filtri. Crea uno per filtrare i messaggi che non vuoi vedere.",
   "filtered_by": "Filtrato da",
-  "filtered_show": "Mostra post"
+  "filtered_show": "Mostra post",
+  "filter_delete": "Cancella filtro"
 }

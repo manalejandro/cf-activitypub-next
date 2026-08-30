@@ -106,66 +106,81 @@ export default function FiltersSettingsPage() {
   const actionColor = (a: FilterAction): string =>
     a === "hide" ? "var(--danger)" : a === "blur" ? "var(--warning)" : "var(--text-muted)";
 
-  return (
-    <PageLayout sidebar={<Sidebar me={null} currentPath="/settings/filters" />}>
-      <SettingsHeader />
-      <div style={{ padding: "1rem", maxWidth: 720, display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-          <h2 style={{ fontWeight: 700, fontSize: "1.05rem" }}>{t.settings_tab_filters}</h2>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => {
-              setError(null);
-              setIsNew(true);
-              setEditing({ id: "", title: "", context: ["home"], filter_action: "warn", expires_at: null, keywords: [], statuses: [] });
-            }}
-          >
-            <Icon name="plus" /> {t.filter_create}
-          </button>
-        </div>
-        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{t.filter_intro}</p>
+  const contextIcon = (c: FilterContext): string =>
+    c === "home" ? "home" : c === "notifications" ? "bell" : c === "public" ? "globe" : c === "thread" ? "comments" : "user";
 
-        {loading ? (
-          <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>{t.loading}</div>
-        ) : filters.length === 0 ? (
-          <div style={{ padding: "2rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.filter_empty}</div>
-        ) : (
-          filters.map((f) => (
-            <div key={f.id} style={{ padding: "0.875rem 1rem", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text)" }}>{f.title}</span>
+  const actionIcon = (a: FilterAction): string =>
+    a === "hide" ? "ban" : a === "blur" ? "image" : "eye-slash";
+
+  return (
+    <PageLayout sidebar={<Sidebar currentPath="/settings/filters" />}>
+      <SettingsHeader />
+
+      {/* Header row: intro + create */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "1rem", borderBottom: "1px solid var(--border)" }}>
+        <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", margin: 0 }}>{t.filter_intro}</p>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          style={{ flexShrink: 0 }}
+          onClick={() => {
+            setError(null);
+            setIsNew(true);
+            setEditing({ id: "", title: "", context: ["home"], filter_action: "warn", expires_at: null, keywords: [], statuses: [] });
+          }}
+        >
+          <Icon name="plus" color="#fff" /> {t.filter_create}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+      ) : filters.length === 0 ? (
+        <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.filter_empty}</div>
+      ) : (
+        filters.map((f) => (
+          <div key={f.id} style={{ display: "flex", alignItems: "flex-start", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: "var(--radius)", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
+              <Icon name="filter" size="1.1rem" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>{f.title}</span>
                 {f.expires_at && new Date(f.expires_at).getTime() < now && (
                   <span className="badge" style={{ fontSize: "0.7rem" }}>{t.filter_expired}</span>
                 )}
-                <span style={{ marginLeft: "auto", display: "flex", gap: "0.35rem" }}>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(null); setIsNew(false); setEditing(JSON.parse(JSON.stringify(f))); }}>
-                    <Icon name="pencil" />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-sm" disabled={deletingId === f.id} onClick={() => void handleDelete(f)}>
-                    <Icon name="times" color="var(--danger)" />
-                  </button>
+              </div>
+              <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.4rem", alignItems: "center" }}>
+                {f.context.map((c) => (
+                  <span key={c} className="badge badge-accent" style={{ fontSize: "0.72rem" }}>
+                    <Icon name={contextIcon(c)} size="0.75rem" /> {contextLabel(c)}
+                  </span>
+                ))}
+                <span className="badge" style={{ fontSize: "0.72rem", color: actionColor(f.filter_action) }}>
+                  <Icon name={actionIcon(f.filter_action)} size="0.75rem" color={actionColor(f.filter_action)} /> {actionLabel(f.filter_action)}
                 </span>
               </div>
-              <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                {f.context.map((c) => (
-                  <span key={c} className="badge badge-accent" style={{ fontSize: "0.7rem" }}>{contextLabel(c)}</span>
-                ))}
-                <span className="badge" style={{ fontSize: "0.7rem", color: actionColor(f.filter_action) }}>{actionLabel(f.filter_action)}</span>
-              </div>
               {f.keywords.length > 0 && (
-                <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
                   {f.keywords.map((k) => (
                     <span key={k.id ?? k.keyword} title={k.whole_word ? t.filter_whole_word : undefined} style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-secondary)" }}>
-                      {k.keyword}{k.whole_word ? " ⃞" : ""}
+                      {k.keyword}
                     </span>
                   ))}
                 </div>
               )}
             </div>
-          ))
-        )}
-      </div>
+            <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(null); setIsNew(false); setEditing(JSON.parse(JSON.stringify(f))); }} aria-label={t.filter_edit}>
+                <Icon name="pencil" />
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={deletingId === f.id} onClick={() => void handleDelete(f)} aria-label={t.filter_delete}>
+                <Icon name="times" color="var(--danger)" />
+              </button>
+            </div>
+          </div>
+        ))
+      )}
 
       {editing && (
         <FilterFormModal
