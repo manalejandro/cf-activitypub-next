@@ -249,7 +249,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[] } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -288,7 +288,7 @@ export function serializeStatus(
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
     card: null,
     poll: opts.poll ?? null,
-    filtered: [],
+    filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,
     quote: opts.quote ?? null,
     favourited: opts.favourited ?? false,
@@ -610,7 +610,8 @@ export function serializeNotification(
   account: LocalActor,
   localDomain: string,
   status?: LocalObject,
-  statusAuthor?: LocalActor
+  statusAuthor?: LocalActor,
+  filtered?: import("@/lib/mastodon/filters").FilterResult[]
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -619,7 +620,7 @@ export function serializeNotification(
     account: serializeAccount(account, localDomain),
   };
   if (status && statusAuthor) {
-    result.status = serializeStatus(status, statusAuthor, localDomain);
+    result.status = serializeStatus(status, statusAuthor, localDomain, { filtered: filtered ?? [] });
   }
   return result;
 }

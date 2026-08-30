@@ -876,7 +876,7 @@ function RemoteProfileInner() {
             <>
               {statuses.map((s) => (
                 <StatusCard
-                  key={s.id}
+                filterContext="account"key={s.id}
                   status={s}
                   onFav={handleStatusUpdate}
                   onReblog={handleStatusUpdate}
@@ -900,7 +900,7 @@ function RemoteProfileInner() {
           ) : (
             replies.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
@@ -920,7 +920,7 @@ function RemoteProfileInner() {
           ) : (
             pinnedStatuses.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}

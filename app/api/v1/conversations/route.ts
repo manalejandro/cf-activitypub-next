@@ -4,6 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getConversations, getObjectById, getActorById, getActorByUri } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // IRIs of the other participants of a direct object: everyone addressed in
 // to/cc/mentions except the viewer. Public/collection recipients are skipped.
@@ -48,13 +49,15 @@ export async function GET(request: NextRequest): Promise<Response> {
     conversations.map(async (c) => {
       let lastStatus = null;
       let accounts: unknown[] = [];
+      let lastStatusFiltered: import("@/lib/mastodon/filters").FilterResult[] | undefined;
 
       if (c.last_status_id) {
         const obj = await getObjectById(env.DB, c.last_status_id);
+        if (obj) lastStatusFiltered = (await getFilterResultsForStatuses(env.DB, actor.id, [obj])).get(obj.id);
         if (obj) {
           const author = await getActorById(env.DB, obj.actorId);
           if (author) {
-            lastStatus = serializeStatus(obj, author, domain);
+            lastStatus = serializeStatus(obj, author, domain, { filtered: lastStatusFiltered });
             if (obj.visibility === "direct") {
               // The conversation is "with" everyone addressed except the viewer;
               // fall back to the last author when no other participant resolves.

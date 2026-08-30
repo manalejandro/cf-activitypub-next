@@ -83,6 +83,7 @@ export interface Status {
   quote?: Status | null;
   quotes_count?: number;
   ap_meta?: APMeta | null;
+  filtered?: { filter: { id: string; title: string; filter_action: "warn" | "hide" | "blur"; context?: string[] }; keyword_matches?: string[]; status_matches?: string[] }[];
 }
 
 export interface Me {
@@ -460,6 +461,7 @@ export function StatusCard({
   onPin,
   forceDelete = false,
   hideActions = false,
+  filterContext = "public",
 }: {
   status: Status;
   isFocal?: boolean;
@@ -473,9 +475,20 @@ export function StatusCard({
   onPin?: (s: Status) => void;
   forceDelete?: boolean;
   hideActions?: boolean;
+  filterContext?: "home" | "notifications" | "public" | "thread" | "account";
 }) {
   const prefs = usePreferences();
   const [cwExpanded, setCwExpanded] = useState(prefs["reading:expand:spoilers"] === true);
+  // ── Server-side filter results (Mastodon v2 filters) ────────────────────
+  // Only results whose filter applies to the current view context count.
+  const matchedFilters = (status.filtered ?? []).filter((fr) =>
+    (fr.filter.context ?? []).includes(filterContext)
+  );
+  const hideByFilter = matchedFilters.some((fr) => fr.filter.filter_action === "hide");
+  const warnByFilter = matchedFilters.some((fr) => fr.filter.filter_action === "warn");
+  const blurByFilter = matchedFilters.some((fr) => fr.filter.filter_action === "blur");
+  const filterTitles = matchedFilters.map((fr) => fr.filter.title);
+  const [filterRevealed, setFilterRevealed] = useState(false);
   const renderedContent = useMemo(
     () => renderEmojiInHtml(status.content, status.emojis ?? []),
     [status.content, status.emojis]
@@ -680,6 +693,32 @@ export function StatusCard({
     if (!res.ok) setMuted(wasMuted);
   }
 
+  // ── Filters: hide entirely, or replace with a reveal banner ─────────────
+  if (hideByFilter) return null;
+  if (warnByFilter && !filterRevealed) {
+    return (
+      <div
+        className="flex items-center justify-between gap-3"
+        style={{
+          padding: "0.875rem 1rem",
+          borderBottom: "1px solid var(--border)",
+          fontSize: "0.85rem",
+          color: "var(--text-secondary)",
+        }}
+      >
+        <span className="flex items-center gap-2" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Icon name="eye-slash" size="1rem" />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+            {t.filtered_by}: {filterTitles.join(", ")}
+          </span>
+        </span>
+        <button type="button" className="btn btn-ghost btn-sm" style={{ flexShrink: 0, fontSize: "0.78rem" }} onClick={() => setFilterRevealed(true)}>
+          {t.filtered_show}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <article
       style={{
@@ -755,7 +794,15 @@ export function StatusCard({
         )}
         {showContent && <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />}
         {showContent && status.quote && <QuoteInline quote={status.quote} />}
-        {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
+        {blurByFilter && !filterRevealed && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>
+            <Icon name="eye-slash" size="0.85rem" /> {t.filtered_by}: {filterTitles.join(", ")}
+            <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "0.72rem", padding: "0.1rem 0.4rem", marginLeft: "auto" }} onClick={() => setFilterRevealed(true)}>
+              {t.filtered_show}
+            </button>
+          </div>
+        )}
+        {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><Icon name="pencil" size="0.7rem" /> {t.status_edited}</div>

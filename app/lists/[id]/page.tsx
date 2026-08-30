@@ -230,7 +230,8 @@ export default function ListDetailPage() {
               {statuses.map((s) => (
                 <div key={s.id} data-status-id={s.id}>
                   <StatusCard
-                    status={s}
+                  filterContext="home"
+                  status={s}
                     onFav={() => {}}
                     onReblog={() => {}}
                     onReply={() => {}}

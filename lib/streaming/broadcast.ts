@@ -129,6 +129,14 @@ export async function broadcastCallEvent(
 }
 
 /**
+ * Notify a user that their filters changed so clients can refetch them.
+ * Mirrors Mastodon's `filters_changed` event on the home timeline channel.
+ */
+export async function broadcastFiltersChanged(ns: DONamespace, targetUsername: string): Promise<void> {
+  await broadcastToChannel(ns, `home:${targetUsername}`, "filters_changed", "{}");
+}
+
+/**
  * Broadcast a status deletion to all relevant channels.
  */
 export async function broadcastDelete(

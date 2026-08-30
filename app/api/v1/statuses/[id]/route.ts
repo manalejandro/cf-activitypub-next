@@ -14,6 +14,7 @@ import { processStatusContent } from "@/lib/activitypub/content";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -73,11 +74,14 @@ export async function GET(
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-  const [quotesCount, quote] = await Promise.all([
+  const [quotesCount, quote, filtered] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),
     obj.quoteId
       ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
       : Promise.resolve(null),
+    authActor
+      ? getFilterResultsForStatuses(env.DB, authActor.id, [obj]).then((m) => m.get(obj.id) ?? [])
+      : Promise.resolve([]),
   ]);
   return json(serializeStatus(obj, author, domain, {
     attachments,
@@ -88,6 +92,7 @@ export async function GET(
     inReplyToAccountId,
     quote,
     quotesCount,
+    filtered,
   }));
 }
 

@@ -1018,107 +1018,6 @@ export async function upsertDirectConversation(
 // Filters v2
 // ─────────────────────────────────────────
 
-export async function getFilters(db: D1Database, actorId: string): Promise<{ id: string; title: string; context: string; filter_action: string; expires_at: string | null }[]> {
-  const rows = await db
-    .prepare("SELECT id, title, context, filter_action, expires_at FROM filters WHERE actor_id = ? ORDER BY title ASC")
-    .bind(actorId)
-    .all<{ id: string; title: string; context: string; filter_action: string; expires_at: string | null }>();
-  return rows.results;
-}
-
-export async function getFilterById(db: D1Database, id: string): Promise<{ id: string; actor_id: string; title: string; context: string; filter_action: string; expires_at: string | null } | null> {
-  const row = await db
-    .prepare("SELECT id, actor_id, title, context, filter_action, expires_at FROM filters WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; actor_id: string; title: string; context: string; filter_action: string; expires_at: string | null }>();
-  return row ?? null;
-}
-
-export async function createFilter(db: D1Database, id: string, actorId: string, title: string, context: string, filterAction: string, expiresAt: string | null): Promise<void> {
-  await db
-    .prepare("INSERT INTO filters (id, actor_id, title, context, filter_action, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, actorId, title, context, filterAction, expiresAt)
-    .run();
-}
-
-export async function updateFilter(db: D1Database, id: string, title?: string, context?: string, filterAction?: string, expiresAt?: string | null): Promise<void> {
-  const sets: string[] = ["updated_at = datetime('now')"];
-  const vals: unknown[] = [];
-  if (title !== undefined) { sets.push("title = ?"); vals.push(title); }
-  if (context !== undefined) { sets.push("context = ?"); vals.push(context); }
-  if (filterAction !== undefined) { sets.push("filter_action = ?"); vals.push(filterAction); }
-  if (expiresAt !== undefined) { sets.push("expires_at = ?"); vals.push(expiresAt); }
-  if (vals.length === 0) return;
-  vals.push(id);
-  await db.prepare(`UPDATE filters SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
-}
-
-export async function deleteFilter(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filters WHERE id = ?").bind(id).run();
-}
-
-export async function getFilterKeywords(db: D1Database, filterId: string): Promise<{ id: string; keyword: string; whole_word: boolean }[]> {
-  const rows = await db
-    .prepare("SELECT id, keyword, whole_word FROM filter_keywords WHERE filter_id = ? ORDER BY created_at ASC")
-    .bind(filterId)
-    .all<{ id: string; keyword: string; whole_word: number }>();
-  return rows.results.map((r) => ({ id: r.id, keyword: r.keyword, whole_word: Boolean(r.whole_word) }));
-}
-
-export async function getFilterKeywordById(db: D1Database, id: string): Promise<{ id: string; filter_id: string; keyword: string; whole_word: boolean } | null> {
-  const row = await db
-    .prepare("SELECT id, filter_id, keyword, whole_word FROM filter_keywords WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; filter_id: string; keyword: string; whole_word: number }>();
-  if (!row) return null;
-  return { id: row.id, filter_id: row.filter_id, keyword: row.keyword, whole_word: Boolean(row.whole_word) };
-}
-
-export async function createFilterKeyword(db: D1Database, id: string, filterId: string, keyword: string, wholeWord: boolean): Promise<void> {
-  await db
-    .prepare("INSERT INTO filter_keywords (id, filter_id, keyword, whole_word) VALUES (?, ?, ?, ?)")
-    .bind(id, filterId, keyword, wholeWord ? 1 : 0)
-    .run();
-}
-
-export async function updateFilterKeyword(db: D1Database, id: string, keyword: string, wholeWord: boolean): Promise<void> {
-  await db
-    .prepare("UPDATE filter_keywords SET keyword = ?, whole_word = ? WHERE id = ?")
-    .bind(keyword, wholeWord ? 1 : 0, id)
-    .run();
-}
-
-export async function deleteFilterKeyword(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filter_keywords WHERE id = ?").bind(id).run();
-}
-
-export async function getFilterStatuses(db: D1Database, filterId: string): Promise<{ id: string; status_id: string }[]> {
-  const rows = await db
-    .prepare("SELECT id, status_id FROM filter_statuses WHERE filter_id = ? ORDER BY created_at ASC")
-    .bind(filterId)
-    .all<{ id: string; status_id: string }>();
-  return rows.results;
-}
-
-export async function getFilterStatusById(db: D1Database, id: string): Promise<{ id: string; filter_id: string; status_id: string } | null> {
-  const row = await db
-    .prepare("SELECT id, filter_id, status_id FROM filter_statuses WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; filter_id: string; status_id: string }>();
-  return row ?? null;
-}
-
-export async function createFilterStatus(db: D1Database, id: string, filterId: string, statusId: string): Promise<void> {
-  await db
-    .prepare("INSERT INTO filter_statuses (id, filter_id, status_id) VALUES (?, ?, ?)")
-    .bind(id, filterId, statusId)
-    .run();
-}
-
-export async function deleteFilterStatus(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filter_statuses WHERE id = ?").bind(id).run();
-}
-
 // ─────────────────────────────────────────
 // Scheduled statuses
 // ─────────────────────────────────────────
@@ -3300,4 +3199,254 @@ export async function getMlsConversationsByRecipient(
     .bind(recipientId)
     .all<Row>();
   return (rows.results ?? []).map((r) => ({ conversation: r.conversation, last: r.last }));
+}
+
+// ─────────────────────────────────────────
+// User filters (Mastodon-compatible, server-side v2)
+// ─────────────────────────────────────────
+
+export interface LocalFilterRow {
+  id: string;
+  accountId: string;
+  title: string;
+  action: "warn" | "hide" | "blur";
+  context: string; // JSON array
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LocalFilterKeywordRow {
+  id: string;
+  customFilterId: string;
+  keyword: string;
+  wholeWord: boolean;
+}
+
+export interface LocalFilterStatusRow {
+  id: string;
+  customFilterId: string;
+  statusId: string;
+}
+
+type FilterRow = {
+  id: string;
+  account_id: string;
+  title: string;
+  action: string;
+  context: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type KeywordRow = {
+  id: string;
+  custom_filter_id: string;
+  keyword: string;
+  whole_word: number;
+};
+
+type StatusRow = {
+  id: string;
+  custom_filter_id: string;
+  status_id: string;
+};
+
+export async function getFiltersForAccount(db: D1Database, accountId: string): Promise<LocalFilterRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filters WHERE account_id = ?
+       AND (expires_at IS NULL OR expires_at > datetime('now'))
+       ORDER BY created_at DESC`
+    )
+    .bind(accountId)
+    .all<FilterRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function getAllFiltersForAccount(db: D1Database, accountId: string): Promise<LocalFilterRow[]> {
+  const rows = await db
+    .prepare("SELECT * FROM custom_filters WHERE account_id = ? ORDER BY created_at DESC")
+    .bind(accountId)
+    .all<FilterRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function getFilterById(db: D1Database, id: string, accountId: string): Promise<LocalFilterRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filters WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<FilterRow>();
+  if (!r) return null;
+  return {
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function insertFilter(
+  db: D1Database,
+  f: { id: string; accountId: string; title: string; action: "warn" | "hide" | "blur"; context: string; expiresAt: string | null }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filters (id, account_id, title, action, context, expires_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .bind(f.id, f.accountId, f.title, f.action, f.context, f.expiresAt)
+    .run();
+}
+
+export async function updateFilter(
+  db: D1Database,
+  id: string,
+  accountId: string,
+  fields: { title?: string; action?: string; context?: string; expiresAt?: string | null }
+): Promise<boolean> {
+  const clauses: string[] = ["updated_at = datetime('now')"];
+  const values: unknown[] = [];
+  if (fields.title !== undefined) { clauses.push("title = ?"); values.push(fields.title); }
+  if (fields.action !== undefined) { clauses.push("action = ?"); values.push(fields.action); }
+  if (fields.context !== undefined) { clauses.push("context = ?"); values.push(fields.context); }
+  if (fields.expiresAt !== undefined) { clauses.push("expires_at = ?"); values.push(fields.expiresAt); }
+  if (values.length === 0) return true;
+  values.push(id, accountId);
+  const r = await db
+    .prepare(`UPDATE custom_filters SET ${clauses.join(", ")} WHERE id = ? AND account_id = ?`)
+    .bind(...values)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function deleteFilter(db: D1Database, id: string, accountId: string): Promise<boolean> {
+  const r = await db
+    .prepare("DELETE FROM custom_filters WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function getFilterKeywords(db: D1Database, filterIds: string[]): Promise<LocalFilterKeywordRow[]> {
+  if (filterIds.length === 0) return [];
+  const placeholders = filterIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filter_keywords WHERE custom_filter_id IN (${placeholders}) ORDER BY created_at ASC`
+    )
+    .bind(...filterIds)
+    .all<KeywordRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    customFilterId: r.custom_filter_id,
+    keyword: r.keyword,
+    wholeWord: r.whole_word === 1,
+  }));
+}
+
+export async function getFilterKeywordById(db: D1Database, id: string): Promise<LocalFilterKeywordRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filter_keywords WHERE id = ?")
+    .bind(id)
+    .first<KeywordRow>();
+  if (!r) return null;
+  return { id: r.id, customFilterId: r.custom_filter_id, keyword: r.keyword, wholeWord: r.whole_word === 1 };
+}
+
+export async function insertFilterKeyword(
+  db: D1Database,
+  k: { id: string; customFilterId: string; keyword: string; wholeWord: boolean }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filter_keywords (id, custom_filter_id, keyword, whole_word, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .bind(k.id, k.customFilterId, k.keyword, k.wholeWord ? 1 : 0)
+    .run();
+}
+
+export async function updateFilterKeyword(
+  db: D1Database,
+  id: string,
+  keyword: string,
+  wholeWord: boolean
+): Promise<boolean> {
+  const r = await db
+    .prepare("UPDATE custom_filter_keywords SET keyword = ?, whole_word = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(keyword, wholeWord ? 1 : 0, id)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function deleteFilterKeyword(db: D1Database, id: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM custom_filter_keywords WHERE id = ?").bind(id).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function getFilterStatuses(db: D1Database, filterIds: string[]): Promise<LocalFilterStatusRow[]> {
+  if (filterIds.length === 0) return [];
+  const placeholders = filterIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filter_statuses WHERE custom_filter_id IN (${placeholders}) ORDER BY created_at ASC`
+    )
+    .bind(...filterIds)
+    .all<StatusRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    customFilterId: r.custom_filter_id,
+    statusId: r.status_id,
+  }));
+}
+
+export async function getFilterStatusById(db: D1Database, id: string): Promise<LocalFilterStatusRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filter_statuses WHERE id = ?")
+    .bind(id)
+    .first<StatusRow>();
+  if (!r) return null;
+  return { id: r.id, customFilterId: r.custom_filter_id, statusId: r.status_id };
+}
+
+export async function insertFilterStatus(
+  db: D1Database,
+  s: { id: string; customFilterId: string; statusId: string }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filter_statuses (id, custom_filter_id, status_id, created_at)
+       VALUES (?, ?, ?, datetime('now'))`
+    )
+    .bind(s.id, s.customFilterId, s.statusId)
+    .run();
+}
+
+export async function deleteFilterStatus(db: D1Database, id: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM custom_filter_statuses WHERE id = ?").bind(id).run();
+  return (r.meta.changes ?? 0) > 0;
 }

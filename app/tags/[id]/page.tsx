@@ -255,6 +255,7 @@ export default function TagPage() {
             {statuses.map((s) => (
               <div key={s.id} data-status-id={s.id}>
                 <StatusCard
+                  filterContext="public"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}

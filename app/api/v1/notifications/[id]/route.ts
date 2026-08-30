@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getNotificationById, getActorById, getObjectById } from "@/lib/db";
 import { serializeNotification } from "@/lib/mastodon/serializers";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 export async function GET(
   _request: NextRequest,
@@ -24,5 +25,6 @@ export async function GET(
   const object = notif.objectId ? await getObjectById(env.DB, notif.objectId) : null;
   const author = object ? await getActorById(env.DB, object.actorId) : null;
 
-  return json(serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined));
+  const filtered = object ? (await getFilterResultsForStatuses(env.DB, actor.id, [object])).get(object.id) ?? [] : undefined;
+  return json(serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, filtered));
 }

@@ -78,6 +78,7 @@ export default function FavouritesPage() {
             {statuses.map((s) => (
               <div key={s.id} data-status-id={s.id}>
                 <StatusCard
+                  filterContext="home"
                   status={s}
                   me={me}
                   onFav={() => {}}

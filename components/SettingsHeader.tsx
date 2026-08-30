@@ -6,6 +6,7 @@ import { useLocale } from "@/lib/i18n";
 
 const TABS = [
   { href: "/settings", key: "settings_title" as const },
+  { href: "/settings/filters", key: "settings_tab_filters" as const },
   { href: "/settings/push", key: "settings_tab_push" as const },
   { href: "/settings/verification", key: "settings_tab_verification" as const },
   { href: "/settings/featured-tags", key: "settings_tab_tags" as const },

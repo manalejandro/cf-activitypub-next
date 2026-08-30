@@ -1089,7 +1089,7 @@ export default function ProfilePage() {
                 <>
                   {statuses.map((s) => (
                     <StatusCard
-                      key={s.id}
+                    filterContext="account"key={s.id}
                       status={s}
                       onFav={handleStatusUpdate}
                       onReblog={handleStatusUpdate}
@@ -1118,7 +1118,7 @@ export default function ProfilePage() {
               ) : (
                 replies.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
@@ -1143,7 +1143,7 @@ export default function ProfilePage() {
               ) : (
                 pinnedStatuses.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}

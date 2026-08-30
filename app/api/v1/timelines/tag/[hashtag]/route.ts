@@ -6,6 +6,7 @@ import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/timelines/tag/:hashtag
 export async function GET(
@@ -28,13 +29,14 @@ export async function GET(
 
   const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
+    authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
   ]);
 
   const statuses = await Promise.all(
@@ -61,6 +63,7 @@ export async function GET(
         reblogged: announcedIds.has(obj.id),
         emojis: allEmojis,
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
+        filtered: filteredMap.get(obj.id) ?? [],
       });
     })
   );

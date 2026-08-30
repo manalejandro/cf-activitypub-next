@@ -12,6 +12,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor
@@ -78,6 +79,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id))
       : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
+    authActor
+      ? getFilterResultsForStatuses(env.DB, authActor.id, objects)
+      : Promise.resolve(new Map()),
   ]);
 
   const statuses = await Promise.all(
@@ -111,6 +115,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         favourited: likedIds.has(obj.id),
         reblogged: announcedIds.has(obj.id),
         emojis: allEmojis,
+        filtered: filteredMap.get(obj.id) ?? [],
       });
     })
   );

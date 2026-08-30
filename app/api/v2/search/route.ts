@@ -7,6 +7,7 @@ import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activ
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v2/search?q=...&type=accounts|statuses|hashtags&limit=20&offset=0
 export async function GET(request: NextRequest): Promise<Response> {
@@ -58,7 +59,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         if (actor && !actor.suspended && !actor.silenced) {
           const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
           const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
-          results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+          const filtered = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
+          results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered }));
         }
         return json(results);
       }
@@ -81,7 +83,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         getAllCustomEmojis(env.DB),
         getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
       ]);
-      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+      const filteredRemote = me ? (await getFilterResultsForStatuses(env.DB, me.id, [remoteStatus.object])).get(remoteStatus.object.id) ?? [] : [];
+      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote }));
       return json(results);
     }
     const cachedActor = await fetchAndCacheRemoteActor(env.DB, q);
@@ -190,12 +193,14 @@ export async function GET(request: NextRequest): Promise<Response> {
         local: Boolean(row.local),
         raw: row.raw as string,
       };
+      const filteredKw = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
       results.statuses.push(
         serializeStatus(obj, actor, domain, {
           attachments: attachmentMap.get(obj.id) ?? [],
           favourited: false,
           reblogged: false,
           emojis: allEmojis,
+          filtered: filteredKw,
         })
       );
     }

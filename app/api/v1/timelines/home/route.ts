@@ -7,6 +7,7 @@ import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId, minId);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     getLikedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     getReplyToAccountIdMap(env.DB, objects),
     getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
     getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    getFilterResultsForStatuses(env.DB, actor.id, objects),
   ]);
 
   const statuses = await Promise.all(
@@ -64,6 +66,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
         quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
         quotesCount: quotesCountMap.get(obj.id) ?? 0,
+        filtered: filteredMap.get(obj.id) ?? [],
       });
     })
   );

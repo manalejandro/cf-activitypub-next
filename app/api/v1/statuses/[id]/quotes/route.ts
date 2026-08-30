@@ -6,6 +6,7 @@ import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/statuses/:id/quotes — statuses quoting this one (auth required).
 export async function GET(
@@ -29,6 +30,7 @@ export async function GET(
 
   const objects = await getObjectsQuoting(env.DB, obj.id, authActor.id, limit, maxId);
   const allEmojis = await getAllCustomEmojis(env.DB);
+  const filteredMap = await getFilterResultsForStatuses(env.DB, authActor.id, objects);
 
   const statuses = await Promise.all(
     objects.map(async (o) => {
@@ -48,6 +50,7 @@ export async function GET(
         emojis: allEmojis,
         quote,
         quotesCount,
+        filtered: filteredMap.get(o.id) ?? [],
       });
     })
   );

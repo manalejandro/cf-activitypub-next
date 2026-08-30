@@ -8,7 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -74,8 +74,20 @@ export default function HomePage() {
         const updated = JSON.parse(payload) as Status;
         setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
       } catch { /* ignore */ }
+    } else if (event === "filters_changed") {
+      // Server filters changed: cached statuses embed the old `filtered`
+      // results, so drop every cached feed and refetch with the new rules.
+      clearAllTimelineCaches();
+      void refresh();
     }
   }, { onReconnect: () => { void catchUp(); } });
+
+  // Filters edited in the settings screen (same tab): refetch with new rules.
+  useEffect(() => {
+    const handler = () => { clearAllTimelineCaches(); void refresh(); };
+    window.addEventListener("cf-ap:filters-changed", handler);
+    return () => window.removeEventListener("cf-ap:filters-changed", handler);
+  }, [refresh]);
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);
@@ -545,6 +557,7 @@ export default function HomePage() {
           statuses.map((s) => (
             <div key={s.id} data-status-id={s.id}>
               <StatusCard
+                  filterContext="home"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}

@@ -5,6 +5,7 @@ import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/statuses/:id/context
 // Returns { ancestors: Status[], descendants: Status[] }
@@ -81,10 +82,13 @@ export async function GET(
   }
 
   const serializeAll = async (objs: LocalObject[]) => {
-    const [pollMap, attachmentMap, allEmojis] = await Promise.all([
+    const [pollMap, attachmentMap, allEmojis, filteredMap] = await Promise.all([
       getPollsByObjectIds(env.DB, objs.map((o) => o.id)),
       objs.length > 0 ? getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
+      authActor
+        ? getFilterResultsForStatuses(env.DB, authActor.id, objs)
+        : Promise.resolve(new Map()),
     ]);
     return (
       await Promise.all(
@@ -95,7 +99,7 @@ export async function GET(
           const pollEntry = pollMap.get(obj.id);
           const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
           const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId });
+          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [] });
         })
       )
     ).filter(Boolean);

@@ -8,6 +8,7 @@ import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/accounts/:id/statuses
 export async function GET(
@@ -78,7 +79,7 @@ export async function GET(
     allObjects = rowObjs.results.map(rowToObject);
   }
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -87,6 +88,7 @@ export async function GET(
     getReplyToAccountIdMap(env.DB, allObjects),
     getObjectQuotesCounts(env.DB, allObjects.map((o) => o.id)),
     getQuotesByIds(env.DB, allObjects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    me ? getFilterResultsForStatuses(env.DB, me.id, allObjects) : Promise.resolve(new Map()),
   ]);
 
   const statuses = allObjects.map((obj) => {
@@ -102,6 +104,7 @@ export async function GET(
       inReplyToAccountId: replyToMap.get(obj.id) ?? null,
       quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
       quotesCount: quotesCountMap.get(obj.id) ?? 0,
+      filtered: filteredMap.get(obj.id) ?? [],
     });
   });
 

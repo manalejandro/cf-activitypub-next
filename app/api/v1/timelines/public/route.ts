@@ -8,6 +8,7 @@ import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalActor } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 /**
  * Minimal placeholder account for a remote status whose author could not be
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (local && !authActor) return unauthorized();
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     getReplyToAccountIdMap(env.DB, objects),
     getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
     getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
   ]);
 
   const statuses = await Promise.all(
@@ -110,6 +112,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
         quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
         quotesCount: quotesCountMap.get(obj.id) ?? 0,
+        filtered: filteredMap.get(obj.id) ?? [],
       });
     })
   );

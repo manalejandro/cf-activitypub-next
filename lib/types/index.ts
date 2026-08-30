@@ -571,7 +571,7 @@ export interface MastodonFilter {
   title: string;
   context: string[];
   expires_at: string | null;
-  filter_action: "warn" | "hide";
+  filter_action: "warn" | "hide" | "blur";
 }
 
 export interface MastodonFilterResult {

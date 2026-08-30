@@ -5,6 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeNotification } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 // GET /api/v1/notifications
 export async function GET(request: NextRequest): Promise<Response> {
@@ -23,6 +24,11 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const notifications = await getNotifications(env.DB, actor.id, limit, maxId);
 
+  const notifObjects = (await Promise.all(
+    notifications.map((n) => (n.objectId ? getObjectById(env.DB, n.objectId) : Promise.resolve(null)))
+  )).filter((o): o is NonNullable<typeof o> => o !== null);
+  const filteredMap = await getFilterResultsForStatuses(env.DB, actor.id, notifObjects);
+
   const serialized = await Promise.all(
     notifications
       .filter((n) => !excludeTypes.includes(n.type))
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         const object = notif.objectId ? await getObjectById(env.DB, notif.objectId) : null;
         const author = object ? await getActorById(env.DB, object.actorId) : null;
         if (!fromActor) return null;
-        return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined);
+        return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, object ? (filteredMap.get(object.id) ?? []) : undefined);
       })
   );
 

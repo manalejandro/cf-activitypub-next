@@ -33,6 +33,7 @@ interface Notification {
   status?: {
     id: string;
     content: string;
+    filtered?: { filter: { id: string; title: string; filter_action: "warn" | "hide" | "blur"; context?: string[] }; keyword_matches?: string[]; status_matches?: string[] }[];
   };
 }
 
@@ -246,6 +247,12 @@ export default function NotificationsPage() {
               const meta = NOTIF_LABELS[n.type] ?? { icon: "bell" as IconName, key: "" };
               const metaText = meta.key ? (t[meta.key as keyof typeof t] ?? n.type) : n.type;
               const accountHref = getProfileHref(n.account);
+              // Server-side filters: hide notifications whose status is filtered
+              // with a "hide" action in the notifications context.
+              const hiddenByFilter = (n.status?.filtered ?? []).some(
+                (fr) => fr.filter.context?.includes("notifications") && fr.filter.filter_action === "hide"
+              );
+              if (hiddenByFilter) return null;
               return (
                 <div
                   key={n.id}

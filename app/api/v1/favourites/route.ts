@@ -4,6 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, getActorById, getAttachmentsByObjectId, getAnnounce } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -21,10 +22,11 @@ export async function GET(request: NextRequest): Promise<Response> {
     .all<{ object_id: string }>();
   const objectIds = rows.results.map((r) => r.object_id);
 
+  const objs = (await Promise.all(objectIds.map((oid) => getObjectById(env.DB, oid)))).filter((o): o is NonNullable<typeof o> => o !== null);
+  const filteredMap = await getFilterResultsForStatuses(env.DB, actor.id, objs);
+
   const serialized = await Promise.all(
-    objectIds.map(async (oid) => {
-      const obj = await getObjectById(env.DB, oid);
-      if (!obj) return null;
+    objs.map(async (obj) => {
       const author = await getActorById(env.DB, obj.actorId);
       if (!author) return null;
       const [attachments, reblogged] = await Promise.all([
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         favourited: true,
         reblogged: reblogged !== null,
         attachments,
+        filtered: filteredMap.get(obj.id) ?? [],
       });
     })
   );
