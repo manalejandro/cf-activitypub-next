@@ -153,11 +153,11 @@ export default function FiltersSettingsPage() {
               <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.4rem", alignItems: "center" }}>
                 {f.context.map((c) => (
                   <span key={c} className="badge badge-accent" style={{ fontSize: "0.72rem" }}>
-                    <Icon name={contextIcon(c)} size="0.75rem" /> {contextLabel(c)}
+                    <Icon name={contextIcon(c)} size="0.75rem" style={{ marginRight: "0.3rem" }} /> {contextLabel(c)}
                   </span>
                 ))}
                 <span className="badge" style={{ fontSize: "0.72rem", color: actionColor(f.filter_action) }}>
-                  <Icon name={actionIcon(f.filter_action)} size="0.75rem" color={actionColor(f.filter_action)} /> {actionLabel(f.filter_action)}
+                  <Icon name={actionIcon(f.filter_action)} size="0.75rem" color={actionColor(f.filter_action)} style={{ marginRight: "0.3rem" }} /> {actionLabel(f.filter_action)}
                 </span>
               </div>
               {f.keywords.length > 0 && (
