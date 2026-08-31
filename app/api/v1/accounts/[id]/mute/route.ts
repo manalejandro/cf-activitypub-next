@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, createMute, isMuted, getFollow } from "@/lib/db";
+import { getActorById, createMute, isMuted } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -35,21 +36,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await createMute(env.DB, generateId(), actor.id, target.id, notifications, duration);
   }
 
-  const follows = await getFollow(env.DB, actor.id, target.id);
-
-  return json({
-    id: target.id,
-    following: follows?.state === "accepted" || false,
-    followed_by: null,
-    blocking: false,
-    blocked_by: null,
-    muting: true,
-    muting_notifications: notifications,
-    requested: false,
-    domain_blocking: false,
-    showing_reblogs: true,
-    endorsed: false,
-    notifying: false,
-    note: "",
-  });
+  return json(await buildRelationship(env.DB, actor.id, target.id));
 }

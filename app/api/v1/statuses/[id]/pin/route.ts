@@ -4,12 +4,14 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { resolveLimits } from "@/lib/constants";
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(_request.url).hostname;
   const rawId = (await params).id;
   const id = decodeStatusId(rawId, domain);
@@ -24,6 +26,14 @@ export async function POST(
     .bind(me.id, id)
     .first<{ id: string }>();
   if (!existing) {
+    // Enforce the pinned-statuses limit reported by the instance.
+    const pinCount = await env.DB
+      .prepare("SELECT COUNT(*) AS c FROM status_pins WHERE actor_id = ?")
+      .bind(me.id)
+      .first<{ c: number }>();
+    if (Number(pinCount?.c ?? 0) >= limits.maxPinnedStatuses) {
+      return json({ error: `Validation failed: You have already pinned the maximum number of statuses (${limits.maxPinnedStatuses})` }, 422);
+    }
     const pinId = `pin_${id}_${me.id}`;
     await env.DB
       .prepare("INSERT INTO status_pins (id, actor_id, status_id) VALUES (?, ?, ?)")

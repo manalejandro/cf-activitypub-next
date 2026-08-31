@@ -711,7 +711,15 @@ export interface MastodonInstance {
   vapid_public_key?: string;
   configuration: {
     urls: { streaming: string };
-    accounts: { max_featured_tags: number };
+    accounts: {
+      max_featured_tags: number;
+      max_display_name_length: number;
+      max_note_length: number;
+      max_pinned_statuses: number;
+      max_profile_fields: number;
+      profile_field_name_limit: number;
+      profile_field_value_limit: number;
+    };
     vapid?: { secret_key: string };
     statuses: {
       max_characters: number;
@@ -720,6 +728,7 @@ export interface MastodonInstance {
     };
     media_attachments: {
       supported_mime_types: string[];
+      description_limit: number;
       image_size_limit: number;
       image_matrix_limit: number;
       video_size_limit: number;
@@ -727,9 +736,17 @@ export interface MastodonInstance {
       video_matrix_limit: number;
     };
     polls: { max_options: number; max_characters_per_option: number; min_expiration: number; max_expiration: number };
+    translation?: { enabled: boolean };
+    timelines_access?: {
+      live_feeds: { local: string; remote: string };
+      hashtag_feeds: { local: string; remote: string };
+      trending_link_feeds: { local: string; remote: string };
+    };
+    limited_federation?: boolean;
     calls?: { enabled: boolean };
   };
-  registrations: { enabled: boolean; approval_required: boolean; message: null };
+  api_versions?: { mastodon: number };
+  registrations: { enabled: boolean; approval_required: boolean; reason_required?: boolean; message: string | null; min_age?: number | null; url?: string | null };
   contact: { email: string; account: MastodonAccount | null };
   rules: { id: string; text: string; hint?: string | null }[];
 }

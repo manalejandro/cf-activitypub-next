@@ -50,6 +50,15 @@ export async function GET(request: NextRequest): Promise<Response> {
     approval_required: false,
     invites_enabled: false,
     configuration: {
+      accounts: {
+        max_featured_tags: limits.maxFeaturedTags,
+        max_pinned_statuses: limits.maxPinnedStatuses,
+        max_display_name_length: limits.maxDisplayNameChars,
+        max_note_length: limits.maxNoteChars,
+        max_profile_fields: limits.maxProfileFields,
+        profile_field_name_limit: limits.maxProfileFieldChars,
+        profile_field_value_limit: limits.maxProfileFieldChars,
+      },
       statuses: {
         max_characters: limits.maxStatusChars,
         max_media_attachments: limits.maxMediaAttachments,
@@ -57,6 +66,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       },
       media_attachments: {
         supported_mime_types: SUPPORTED_MEDIA_MIME_TYPES,
+        description_limit: limits.maxAltTextChars,
         image_size_limit: limits.maxImageSize,
         image_matrix_limit: limits.imageMatrixLimit,
         video_size_limit: limits.maxVideoSize,

@@ -654,7 +654,15 @@ export function serializeInstanceV2(
     ...(vapidPublicKey ? { vapid_public_key: vapidPublicKey } : {}),
     configuration: {
       urls: { streaming: `wss://${domain}/api/v1/streaming` },
-      accounts: { max_featured_tags: limits.maxFeaturedTags },
+      accounts: {
+        max_featured_tags: limits.maxFeaturedTags,
+        max_display_name_length: limits.maxDisplayNameChars,
+        max_note_length: limits.maxNoteChars,
+        max_pinned_statuses: limits.maxPinnedStatuses,
+        max_profile_fields: limits.maxProfileFields,
+        profile_field_name_limit: limits.maxProfileFieldChars,
+        profile_field_value_limit: limits.maxProfileFieldChars,
+      },
       ...(vapidPublicKey ? { vapid: { secret_key: vapidPublicKey } } : {}),
       statuses: {
         max_characters: limits.maxStatusChars,
@@ -663,6 +671,7 @@ export function serializeInstanceV2(
       },
       media_attachments: {
         supported_mime_types: SUPPORTED_MEDIA_MIME_TYPES,
+        description_limit: limits.maxAltTextChars,
         image_size_limit: limits.maxImageSize,
         image_matrix_limit: limits.imageMatrixLimit,
         video_size_limit: limits.maxVideoSize,
@@ -675,9 +684,17 @@ export function serializeInstanceV2(
         min_expiration: limits.pollMinExpiration,
         max_expiration: limits.pollMaxExpiration,
       },
+      translation: { enabled: true },
+      timelines_access: {
+        live_feeds: { local: "authenticated", remote: "public" },
+        hashtag_feeds: { local: "public", remote: "public" },
+        trending_link_feeds: { local: "public", remote: "public" },
+      },
+      limited_federation: false,
       calls: { enabled: true },
     },
-    registrations: { enabled: true, approval_required: false, message: null },
+    api_versions: { mastodon: 6 },
+    registrations: { enabled: true, approval_required: false, reason_required: false, message: null, min_age: null, url: null },
     contact: { email: `admin@${domain}`, account: contactAccount },
     rules,
   };

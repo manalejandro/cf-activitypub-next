@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, deleteBlock } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // POST /api/v1/accounts/:id/unblock
 export async function POST(
@@ -19,5 +20,5 @@ export async function POST(
 
   await deleteBlock(env.DB, actor.id, target.id);
 
-  return json({ id: target.id, blocking: false });
+  return json(await buildRelationship(env.DB, actor.id, target.id));
 }

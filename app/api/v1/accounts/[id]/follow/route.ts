@@ -6,6 +6,7 @@ import { buildFollow, generateId } from "@/lib/activitypub/utils";
 import { deliverToInbox } from "@/lib/activitypub/federation";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { notify } from "@/lib/notify";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // POST /api/v1/accounts/:id/follow
 export async function POST(
@@ -45,7 +46,7 @@ export async function POST(
 
   const existing = await getFollow(env.DB, actor.id, target.id);
   if (existing) {
-    return json({ id: target.id, following: existing.state === "accepted", requested: existing.state === "pending" });
+    return json(await buildRelationship(env.DB, actor.id, target.id));
   }
 
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
@@ -101,15 +102,5 @@ export async function POST(
     }
   }
 
-  return json({
-    id: target.id,
-    following: !target.manuallyApprovesFollowers,
-    requested: target.manuallyApprovesFollowers,
-    followed_by: false,
-    blocking: false,
-    muting: false,
-    domain_blocking: false,
-    notifying: false,
-    endorsed: false,
-  });
+  return json(await buildRelationship(env.DB, actor.id, target.id));
 }

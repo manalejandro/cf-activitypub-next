@@ -24,6 +24,7 @@ export const MAX_PROFILE_FIELDS = 4;
 export const MAX_PROFILE_FIELD_CHARS = 255;
 export const MAX_DISPLAY_NAME_CHARS = 30;
 export const MAX_NOTE_CHARS = MAX_STATUS_CHARS;
+export const MAX_PINNED_STATUSES = 5;
 export const MAX_EMOJI_SHORTCODE_CHARS = 32;
 export const MAX_FEATURED_TAG_NAME_CHARS = 64;
 export const MAX_COLLECTION_NAME_CHARS = 40;
@@ -81,6 +82,7 @@ export interface InstanceLimits {
   maxProfileFields: number;
   maxProfileFieldChars: number;
   maxDisplayNameChars: number;
+  maxPinnedStatuses: number;
   maxNoteChars: number;
   maxEmojiShortcodeChars: number;
   maxFeaturedTagNameChars: number;
@@ -116,6 +118,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxProfileFields: MAX_PROFILE_FIELDS,
   maxProfileFieldChars: MAX_PROFILE_FIELD_CHARS,
   maxDisplayNameChars: MAX_DISPLAY_NAME_CHARS,
+  maxPinnedStatuses: MAX_PINNED_STATUSES,
   maxNoteChars: MAX_NOTE_CHARS,
   maxEmojiShortcodeChars: MAX_EMOJI_SHORTCODE_CHARS,
   maxFeaturedTagNameChars: MAX_FEATURED_TAG_NAME_CHARS,
@@ -166,6 +169,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     maxProfileFields: num(env, "MAX_PROFILE_FIELDS", DEFAULT_LIMITS.maxProfileFields),
     maxProfileFieldChars: num(env, "MAX_PROFILE_FIELD_CHARS", DEFAULT_LIMITS.maxProfileFieldChars),
     maxDisplayNameChars: num(env, "MAX_DISPLAY_NAME_CHARS", DEFAULT_LIMITS.maxDisplayNameChars),
+    maxPinnedStatuses: num(env, "MAX_PINNED_STATUSES", DEFAULT_LIMITS.maxPinnedStatuses),
     maxEmojiShortcodeChars: num(env, "MAX_EMOJI_SHORTCODE_CHARS", DEFAULT_LIMITS.maxEmojiShortcodeChars),
     maxFeaturedTagNameChars: num(env, "MAX_FEATURED_TAG_NAME_CHARS", DEFAULT_LIMITS.maxFeaturedTagNameChars),
     maxCollectionNameChars: num(env, "MAX_COLLECTION_NAME_CHARS", DEFAULT_LIMITS.maxCollectionNameChars),
