@@ -260,12 +260,14 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
   if (!streamParam) {
     const token = extractToken(request, url);
     let channel = "public";
+    let authed = false;
     if (token) {
       const row = await resolveToken(env.DB, token);
       if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
       channel = `home:${row.username}`;
+      authed = true;
     }
-    return forwardToTimelineDO(env, request, channel);
+    return forwardToTimelineDO(env, request, channel, authed);
   }
 
   // ── Authenticated streams ──────────────────────────────────────────────────
@@ -284,7 +286,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
       // "user" → full home stream (updates + notifications)
       channel = `home:${row.username}`;
     }
-    return forwardToTimelineDO(env, request, channel);
+    return forwardToTimelineDO(env, request, channel, true);
   }
 
   // ── List stream (requires auth) ────────────────────────────────────────────
@@ -294,7 +296,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
     const row = await resolveToken(env.DB, token);
     if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
-    return forwardToTimelineDO(env, request, `list:${listId}`);
+    return forwardToTimelineDO(env, request, `list:${listId}`, true);
   }
 
   // ── Public / hashtag streams ───────────────────────────────────────────────
