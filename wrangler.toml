@@ -7,7 +7,7 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 [vars]
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.1.7"
+INSTANCE_VERSION = "1.1.8"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "CF ActivityPub API",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation) do not require a token. Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`."
   },
   "servers": [
