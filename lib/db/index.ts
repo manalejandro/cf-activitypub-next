@@ -3262,13 +3262,17 @@ type StatusRow = {
 };
 
 export async function getFiltersForAccount(db: D1Database, accountId: string): Promise<LocalFilterRow[]> {
+  // expires_at is stored ISO-8601; compare against an ISO "now" so the expiry
+  // instant is exact (datetime('now') uses a space format and would keep a
+  // filter active for up to a day past its expiry).
+  const nowIso = new Date().toISOString();
   const rows = await db
     .prepare(
       `SELECT * FROM custom_filters WHERE account_id = ?
-       AND (expires_at IS NULL OR expires_at > datetime('now'))
+       AND (expires_at IS NULL OR expires_at > ?)
        ORDER BY created_at DESC`
     )
-    .bind(accountId)
+    .bind(accountId, nowIso)
     .all<FilterRow>();
   return (rows.results ?? []).map((r) => ({
     id: r.id,

@@ -12,6 +12,11 @@ export async function GET(): Promise<Response> {
     end.setHours(23, 59, 59, 999);
     const weekStart = start.toISOString();
     const weekEnd = end.toISOString();
+    // `actors.created_at` is stored in SQLite's space format (datetime('now')),
+    // unlike objects.published / last_active_at (ISO-8601). Compare each column
+    // against a cutoff in its own format so the boundary day is exact.
+    const weekStartSpace = weekStart.replace("T", " ").replace(/\.\d+Z$/, "");
+    const weekEndSpace = weekEnd.replace("T", " ").replace(/\.\d+Z$/, "");
     const [statusRow, actorRow] = await Promise.all([
       env.DB
         .prepare("SELECT COUNT(*) as c FROM objects WHERE is_local = 1 AND published >= ? AND published <= ?")
@@ -19,7 +24,7 @@ export async function GET(): Promise<Response> {
         .first<{ c: number }>(),
       env.DB
         .prepare("SELECT COUNT(*) as c FROM actors WHERE is_local = 1 AND created_at >= ? AND created_at <= ?")
-        .bind(weekStart, weekEnd)
+        .bind(weekStartSpace, weekEndSpace)
         .first<{ c: number }>(),
     ]);
     let logins = 0;

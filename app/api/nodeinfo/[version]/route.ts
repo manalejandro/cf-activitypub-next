@@ -15,15 +15,20 @@ export async function GET(
 
   const db = env.DB;
 
+  // `published` is stored ISO-8601; bind ISO cutoffs so the comparison is
+  // lexically correct (datetime('now', ...) would use a space format).
+  const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+
   const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
     db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
     db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-30 days')"
-    ).first<{ count: number }>(),
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(monthCutoff).first<{ count: number }>(),
     db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-180 days')"
-    ).first<{ count: number }>(),
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(halfyearCutoff).first<{ count: number }>(),
     db.prepare(
       "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
     ).first<{ count: number }>(),

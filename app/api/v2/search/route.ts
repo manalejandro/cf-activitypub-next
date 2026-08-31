@@ -276,6 +276,9 @@ async function getTagHistory(
   tagName: string
 ): Promise<{ day: string; uses: string; accounts: string }[]> {
   const like = `%#${tagName.replace(/[%_]/g, "\\$&")}%`;
+  // Bind the cutoff as ISO: `published` is stored ISO-8601, so comparing it
+  // against datetime('now', ...) (space format) breaks the lexical comparison.
+  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
   const rows = await db
     .prepare(
       `SELECT CAST(strftime('%s', published) / 86400 AS INTEGER) AS day_bucket,
@@ -283,13 +286,13 @@ async function getTagHistory(
               COUNT(DISTINCT actor_id) AS accounts
        FROM objects
        WHERE (content LIKE ? ESCAPE '\\' OR raw LIKE ? ESCAPE '\\')
-         AND published >= datetime('now', '-7 days')
+         AND published >= ?
          AND visibility IN ('public', 'unlisted')
          AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = objects.actor_id AND (a.silenced = 1 OR a.suspended = 1))
        GROUP BY day_bucket
        ORDER BY day_bucket`
     )
-    .bind(like, like)
+    .bind(like, like, weekCutoff)
     .all<{ day_bucket: number; uses: number; accounts: number }>();
 
   const byDay = new Map<number, { uses: number; accounts: number }>();

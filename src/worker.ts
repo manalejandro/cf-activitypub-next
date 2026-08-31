@@ -203,11 +203,15 @@ async function resolveToken(
   db: D1Database,
   token: string
 ): Promise<{ actor_id: string; username: string } | null> {
+  // expires_at is stored ISO-8601; compare against an ISO "now" (datetime('now')
+  // uses a space format and would keep a token valid for up to a day past
+  // its expiry).
+  const nowIso = new Date().toISOString();
   return db
     .prepare(
-      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))"
+      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)"
     )
-    .bind(token)
+    .bind(token, nowIso)
     .first<{ actor_id: string; username: string }>();
 }
 
