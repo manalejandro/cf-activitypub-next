@@ -805,5 +805,7 @@
   "filtered_show": "显示帖子",
   "filter_delete": "删除过滤器",
   "loading_more": "正在装入..",
-  "timeline_end": "不再设员额"
+  "timeline_end": "不再设员额",
+  "status_history_empty": "无编辑历史 .",
+  "status_history_edit": "编辑{日期}"
 }

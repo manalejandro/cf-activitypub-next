@@ -23,6 +23,7 @@ import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -755,19 +756,17 @@ export default function ThreadPage() {
 
         {historyTab ? (
           historyLoading ? (
-            <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-              Loading history...
-            </div>
+            <Loading />
           ) : history.length === 0 ? (
             <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
               <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="pencil" size="2rem" /></span>
-              No hay historial de ediciones.
+              {t.status_history_empty}
             </div>
           ) : (
             history.map((edit, i) => (
               <div key={i} style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                  Edición del {new Date(edit.created_at).toLocaleString()}
+                  {t.status_history_edit.replace("{date}", new Date(edit.created_at).toLocaleString())}
                 </div>
                 {edit.spoiler_text && (
                   <div style={{ padding: "0.375rem 0.625rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.4rem", color: "var(--text-secondary)" }}>
@@ -781,9 +780,7 @@ export default function ThreadPage() {
             ))
           )
         ) : loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Loading thread...
-          </div>
+          <Loading />
         ) : deleted || !focal ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             {deleted ? t.status_deleted : t.profile_not_found}

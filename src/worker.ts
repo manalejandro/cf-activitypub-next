@@ -636,12 +636,47 @@ async function executeScheduled(env: Env): Promise<void> {
       await Promise.allSettled(broadcastTasks);
     }
 
+    const ids = objects.results.map((o) => o.id);
+
+    // Delete dependents + objects in chunked batches (D1 caps batch size).
+    // status_pins and custom_filter_statuses have no FK to objects, so they
+    // must be removed explicitly; everything else cascades.
+    for (let i = 0; i < ids.length; i += 30) {
+      const chunk = ids.slice(i, i + 30);
+      await env.DB.batch([
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM objects WHERE id = ?").bind(id)),
+      ]);
+    }
+
+    // Keep the profile status counter accurate (matches the manual delete path).
     await env.DB
-      .prepare(
-        "DELETE FROM objects WHERE actor_id = ? AND published < ? AND is_local = 1 AND type = 'Note'"
-      )
-      .bind(actor.id, cutoff)
+      .prepare("UPDATE actors SET statuses_count = MAX(COALESCE(statuses_count, 0) - ?, 0) WHERE id = ?")
+      .bind(ids.length, actor.id)
       .run();
+  }
+
+  // Repair sweep (daily): purge legacy dangling rows left by older deletes.
+  // status_pins / custom_filter_statuses reference objects without a FK, so
+  // rows whose status no longer exists are dead weight (and pins count against
+  // the pin limit). Idempotent; guarded by a KV marker to run once per day.
+  try {
+    if (!(await env.KV.get("cron:cleanup:dangling"))) {
+      await env.DB
+        .prepare(
+          "DELETE FROM status_pins WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = status_pins.status_id)"
+        )
+        .run();
+      await env.DB
+        .prepare(
+          "DELETE FROM custom_filter_statuses WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = custom_filter_statuses.status_id)"
+        )
+        .run();
+      await env.KV.put("cron:cleanup:dangling", "1", { expirationTtl: 86400 });
+    }
+  } catch (err) {
+    console.error("[cron] dangling-cleanup failed", err);
   }
 
   // AI Guardian patrol — reviews recent posts and suspicious accounts, blocks

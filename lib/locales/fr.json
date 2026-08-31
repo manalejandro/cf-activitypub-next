@@ -805,5 +805,7 @@
   "filtered_show": "Afficher la publication",
   "filter_delete": "Supprimer le filtre",
   "loading_more": "Chargement en cours..",
-  "timeline_end": "Plus de postes"
+  "timeline_end": "Plus de postes",
+  "status_history_empty": "Pas d'historique de modification.",
+  "status_history_edit": "Édition de {date}"
 }

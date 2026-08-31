@@ -805,5 +805,7 @@
   "filtered_show": "Mostrar a publicação",
   "filter_delete": "Apagar o filtro",
   "loading_more": "Carregando mais..",
-  "timeline_end": "Sem mais mensagens"
+  "timeline_end": "Sem mais mensagens",
+  "status_history_empty": "Sem histórico de edição.",
+  "status_history_edit": "Edição de {data}"
 }

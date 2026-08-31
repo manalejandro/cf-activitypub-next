@@ -26,9 +26,13 @@ export async function POST(
     .bind(me.id, id)
     .first<{ id: string }>();
   if (!existing) {
-    // Enforce the pinned-statuses limit reported by the instance.
+    // Enforce the pinned-statuses limit reported by the instance. Only count
+    // pins whose status still exists — dangling pins (deleted statuses) must
+    // not consume the quota.
     const pinCount = await env.DB
-      .prepare("SELECT COUNT(*) AS c FROM status_pins WHERE actor_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS c FROM status_pins sp JOIN objects o ON o.id = sp.status_id WHERE sp.actor_id = ?"
+      )
       .bind(me.id)
       .first<{ c: number }>();
     if (Number(pinCount?.c ?? 0) >= limits.maxPinnedStatuses) {

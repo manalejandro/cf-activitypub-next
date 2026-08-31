@@ -805,5 +805,7 @@
   "filtered_show": "Beitrag anzeigen",
   "filter_delete": "Filter löschen",
   "loading_more": "Mehr laden..",
-  "timeline_end": "Keine Posts mehr"
+  "timeline_end": "Keine Posts mehr",
+  "status_history_empty": "Keine Edit History.",
+  "status_history_edit": "Edit von {date}"
 }

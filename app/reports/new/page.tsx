@@ -8,13 +8,12 @@ import { AvatarBubble } from "@/components/StatusCard";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 function LoadingFallback() {
   return (
     <PageLayout sidebar={<Sidebar me={null} currentPath="/reports" />}>
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>
-        Loading…
-      </div>
+      <Loading />
     </PageLayout>
   );
 }

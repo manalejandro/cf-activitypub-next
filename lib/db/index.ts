@@ -1660,7 +1660,15 @@ function rowToObjectEdit(r: Row): ObjectEdit {
 }
 
 export async function deleteObject(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM objects WHERE id = ?").bind(id).run();
+  // Tables that reference objects WITHOUT a FK must be cleaned explicitly:
+  // status_pins (pins of a deleted status would otherwise count against the
+  // pin limit) and custom_filter_statuses (stale filter entries). Likes,
+  // announces, bookmarks, attachments and polls cascade via their FKs.
+  await db.batch([
+    db.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id),
+    db.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id),
+    db.prepare("DELETE FROM objects WHERE id = ?").bind(id),
+  ]);
 }
 
 // ─────────────────────────────────────────

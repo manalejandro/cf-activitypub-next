@@ -805,5 +805,7 @@
   "filtered_show": "Mostrar publicación",
   "filter_delete": "Eliminar filtro",
   "loading_more": "Cargando más…",
-  "timeline_end": "No hay más estados"
+  "timeline_end": "No hay más estados",
+  "status_history_empty": "No hay historial de ediciones.",
+  "status_history_edit": "Edición del {date}"
 }

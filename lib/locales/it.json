@@ -805,5 +805,7 @@
   "filtered_show": "Mostra post",
   "filter_delete": "Cancella filtro",
   "loading_more": "Caricamento di più..",
-  "timeline_end": "Nessun post"
+  "timeline_end": "Nessun post",
+  "status_history_empty": "Nessuna cronologia delle modifiche.",
+  "status_history_edit": "Modifica di {data}"
 }

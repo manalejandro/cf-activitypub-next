@@ -805,5 +805,7 @@
   "filtered_show": "投稿を表示",
   "filter_delete": "フィルターの削除",
   "loading_more": "もっと読む..",
-  "timeline_end": "より多くの投稿"
+  "timeline_end": "より多くの投稿",
+  "status_history_empty": "編集履歴はありません.",
+  "status_history_edit": "{date} の編集"
 }
