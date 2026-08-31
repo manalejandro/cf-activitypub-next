@@ -12,6 +12,7 @@
  * list) so clients can apply the intended action per view context.
  */
 
+import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
 import type { D1Database } from "@cloudflare/workers-types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import {
@@ -259,7 +260,7 @@ export function parseKeywordsAttributes(
       const text = String(o.keyword ?? "").trim();
       if (!text) continue;
       out.push({
-        keyword: text.slice(0, 512),
+        keyword: text.slice(0, MAX_FILTER_KEYWORD_CHARS),
         whole_word: o.whole_word === true || o.whole_word === "true",
       });
     }
@@ -273,7 +274,7 @@ export function parseKeywordsAttributes(
     const text = String(keyword).trim();
     if (!text) continue;
     out.push({
-      keyword: text.slice(0, 512),
+      keyword: text.slice(0, MAX_FILTER_KEYWORD_CHARS),
       whole_word: wholeWord === "true" || wholeWord === true,
     });
   }

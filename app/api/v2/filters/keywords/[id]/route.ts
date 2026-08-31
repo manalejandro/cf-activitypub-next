@@ -7,6 +7,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterKeyword } from "@/lib/db";
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
 import { serializeFilterKeyword } from "@/lib/mastodon/filters";
+import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -52,10 +53,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
   if (!text) return badRequest("Validation failed: Keyword can't be blank");
   const wholeWord = body.whole_word === "true" || body.whole_word === true;
 
-  await updateFilterKeyword(env.DB, id, text.slice(0, 512), wholeWord);
+  await updateFilterKeyword(env.DB, id, text.slice(0, MAX_FILTER_KEYWORD_CHARS), wholeWord);
   await broadcastFiltersChanged(env.TIMELINE_STREAM, actor.username).catch(() => {});
 
-  return json(serializeFilterKeyword({ id, keyword: text.slice(0, 512), whole_word: wholeWord }));
+  return json(serializeFilterKeyword({ id, keyword: text.slice(0, MAX_FILTER_KEYWORD_CHARS), whole_word: wholeWord }));
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {

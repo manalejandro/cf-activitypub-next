@@ -8,6 +8,7 @@ import { getAllFiltersForAccount, getFilterKeywords, insertFilter, insertFilterK
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
 import { parseFilterContexts } from "@/lib/mastodon/filters";
+import { MAX_FILTER_TITLE_CHARS, MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
 
 export interface V1Filter {
   id: string;
@@ -92,19 +93,19 @@ export async function POST(request: NextRequest): Promise<Response> {
   await insertFilter(env.DB, {
     id: filterId,
     accountId: actor.id,
-    title: phrase.slice(0, 256),
+    title: phrase.slice(0, MAX_FILTER_TITLE_CHARS),
     action: irreversible ? "hide" : "warn",
     context: JSON.stringify(context),
     expiresAt,
   });
   const keywordId = generateId();
-  await insertFilterKeyword(env.DB, { id: keywordId, customFilterId: filterId, keyword: phrase.slice(0, 512), wholeWord });
+  await insertFilterKeyword(env.DB, { id: keywordId, customFilterId: filterId, keyword: phrase.slice(0, MAX_FILTER_KEYWORD_CHARS), wholeWord });
 
   await broadcastFiltersChanged(env.TIMELINE_STREAM, actor.username).catch(() => {});
 
   return json({
     id: keywordId,
-    phrase: phrase.slice(0, 512),
+    phrase: phrase.slice(0, MAX_FILTER_KEYWORD_CHARS),
     context,
     whole_word: wholeWord,
     expires_at: expiresAt,

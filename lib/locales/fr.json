@@ -803,5 +803,7 @@
   "filter_empty": "Vous n'avez pas encore de filtres. Créez un pour filtrer les messages que vous ne voulez pas voir.",
   "filtered_by": "Filtré par",
   "filtered_show": "Afficher la publication",
-  "filter_delete": "Supprimer le filtre"
+  "filter_delete": "Supprimer le filtre",
+  "loading_more": "Chargement en cours..",
+  "timeline_end": "Plus de postes"
 }

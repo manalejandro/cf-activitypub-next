@@ -14,6 +14,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 type TimelineView = "local" | "federated";
 
@@ -241,18 +242,7 @@ export default function TimelinesPage() {
               </div>
             ))}
             <div ref={bottomRef} style={{ height: 1 }} />
-            {loadingMore && (
-              <div
-                style={{
-                  padding: "1rem",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  fontSize: "0.875rem",
-                }}
-              >
-                {t.loading}
-              </div>
-            )}
+            {loadingMore && <Loading compact />}
           </div>
         )}
       </PageLayout>

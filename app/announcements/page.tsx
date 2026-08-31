@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Announcement {
   id: string;
@@ -151,7 +152,7 @@ export default function AnnouncementsPage() {
           </form>
         )}
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : announcements.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="bullhorn" size="2rem" /></div>

@@ -803,5 +803,7 @@
   "filter_empty": "Aún no tienes filtros. Crea uno para ocultar publicaciones que no quieres ver.",
   "filtered_by": "Filtrado por",
   "filtered_show": "Mostrar publicación",
-  "filter_delete": "Eliminar filtro"
+  "filter_delete": "Eliminar filtro",
+  "loading_more": "Cargando más…",
+  "timeline_end": "No hay más estados"
 }

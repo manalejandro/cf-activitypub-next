@@ -21,6 +21,8 @@ import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -145,7 +147,7 @@ function ReplyBox({
   const [cwText, setCwText] = useState("");
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -268,7 +270,7 @@ function ReplyBox({
     setSubmitting(true);
     setError(null);
     try {
-      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text.trim(),
         visibility,

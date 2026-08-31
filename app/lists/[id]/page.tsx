@@ -12,6 +12,7 @@ import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface List {
   id: string;
@@ -188,7 +189,7 @@ export default function ListDetailPage() {
             </form>
 
             {loading ? (
-              <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+              <Loading />
             ) : accounts.length === 0 ? (
               <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
                 <div style={{ fontWeight: 600 }}>{t.lists_no_accounts}</div>
@@ -219,7 +220,7 @@ export default function ListDetailPage() {
 
         {activeTab === "timeline" && (
           timelineLoading ? (
-            <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+            <Loading />
           ) : statuses.length === 0 ? (
             <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
               <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}><Icon name="inbox" size="2rem" /></div>
@@ -241,7 +242,7 @@ export default function ListDetailPage() {
                 </div>
               ))}
               <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                {loadingMore ? t.loading : ""}
+                {loadingMore && <Loading compact />}
               </div>
             </>
           )

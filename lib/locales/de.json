@@ -803,5 +803,7 @@
   "filter_empty": "Sie haben noch keine Filter. Erstellen Sie einen, um Posts herauszufiltern, die Sie nicht sehen möchten.",
   "filtered_by": "Gefiltert von",
   "filtered_show": "Beitrag anzeigen",
-  "filter_delete": "Filter löschen"
+  "filter_delete": "Filter löschen",
+  "loading_more": "Mehr laden..",
+  "timeline_end": "Keine Posts mehr"
 }

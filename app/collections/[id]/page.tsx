@@ -9,6 +9,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface Me {
   id: string;
@@ -154,7 +155,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       {loading ? (
-        <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       ) : !collection ? (
         <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
           {t.collections_empty}

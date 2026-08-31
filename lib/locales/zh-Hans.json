@@ -803,5 +803,7 @@
   "filter_empty": "你还没有过滤器。 创建一个来过滤您不想看到的文章 .",
   "filtered_by": "过滤由",
   "filtered_show": "显示帖子",
-  "filter_delete": "删除过滤器"
+  "filter_delete": "删除过滤器",
+  "loading_more": "正在装入..",
+  "timeline_end": "不再设员额"
 }

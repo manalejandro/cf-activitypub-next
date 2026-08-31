@@ -9,6 +9,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface DirectoryEntry {
   id: string;
@@ -135,7 +136,7 @@ export default function DirectoryPage() {
           </div>
         </div>
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : entries.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="users" size="2rem" /></div>

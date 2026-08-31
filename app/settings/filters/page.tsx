@@ -7,6 +7,8 @@ import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { MAX_FILTER_TITLE_CHARS, MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 type FilterAction = "warn" | "hide" | "blur";
 type FilterContext = "home" | "notifications" | "public" | "thread" | "account";
@@ -134,7 +136,7 @@ export default function FiltersSettingsPage() {
       </div>
 
       {loading ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       ) : filters.length === 0 ? (
         <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.filter_empty}</div>
       ) : (
@@ -298,7 +300,7 @@ function FilterFormModal({
         <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.3rem" }}>{t.filter_title}</label>
-            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={256} placeholder={t.filter_title_placeholder} />
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={MAX_FILTER_TITLE_CHARS} placeholder={t.filter_title_placeholder} />
           </div>
 
           <div>
@@ -342,7 +344,7 @@ function FilterFormModal({
                     style={{ flex: 1 }}
                     value={k.keyword}
                     placeholder={t.filter_keyword_placeholder}
-                    maxLength={512}
+                    maxLength={MAX_FILTER_KEYWORD_CHARS}
                     onChange={(e) => updateKeyword(i, { keyword: e.target.value })}
                   />
                   <label className="flex items-center gap-1" style={{ fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap" }} title={t.filter_whole_word_hint}>

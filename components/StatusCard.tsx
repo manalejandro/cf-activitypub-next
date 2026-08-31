@@ -15,6 +15,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
 import { Icon } from "./Icon";
+import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -531,7 +532,7 @@ export function StatusCard({
     if (!token) return;
     setTranslating(true);
     try {
-      const targetLang = navigator.language.slice(0, 2) || "en";
+      const targetLang = navigator.language.slice(0, MAX_LANG_CODE_CHARS) || "en";
       const res = await fetch(`/api/v1/statuses/${encodeURIComponent(status.id)}/translate`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -879,7 +880,7 @@ export function StatusCard({
               <Icon name="quote-left" />
             </button>
           )}
-          {status.language && !(me && me.id === status.account.id) && status.language.slice(0, 2) !== locale.slice(0, 2) && (
+          {status.language && !(me && me.id === status.account.id) && status.language.slice(0, MAX_LANG_CODE_CHARS) !== locale.slice(0, MAX_LANG_CODE_CHARS) && (
             <button
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.2rem 0.4rem", gap: "0.35rem", fontSize: "0.7rem" }}

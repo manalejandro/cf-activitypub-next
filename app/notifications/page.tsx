@@ -14,6 +14,7 @@ import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Account {
   id: string;
@@ -322,7 +323,7 @@ export default function NotificationsPage() {
               );
             })}
             <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-              {loadingMore ? t.loading : ""}
+              {loadingMore && <Loading compact />}
             </div>
           </div>
         )}

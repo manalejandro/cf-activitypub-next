@@ -803,5 +803,7 @@
   "filter_empty": "You have no filters yet. Create one to filter out posts you don't want to see.",
   "filtered_by": "Filtered by",
   "filtered_show": "Show post",
-  "filter_delete": "Delete filter"
+  "filter_delete": "Delete filter",
+  "loading_more": "Loading more…",
+  "timeline_end": "No more posts"
 }

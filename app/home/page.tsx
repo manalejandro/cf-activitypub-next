@@ -19,6 +19,9 @@ import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import { useLimits } from "@/lib/limits-client";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
 const SCHEDULE_MIN = (() => {
@@ -96,7 +99,7 @@ export default function HomePage() {
   // Poll compose state
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   // Scheduling state
   const [scheduling, setScheduling] = useState(false);
@@ -140,7 +143,7 @@ export default function HomePage() {
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     if (uploadingMedia) return;
-    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
     if (!composing.trim() && mediaFiles.length === 0 && !hasPoll) return;
     setPosting(true);
     setEmojiOpen(false);
@@ -521,7 +524,7 @@ export default function HomePage() {
                 <button
                   type="submit"
                   className="btn btn-primary btn-sm"
-                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= 2))}
+                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS))}
                 >
                   {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.compose_post}
                 </button>
@@ -573,7 +576,7 @@ export default function HomePage() {
         {/* Infinite scroll sentinel */}
         {!loading && statuses.length > 0 && (
           <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-            {loadingMore ? "Cargando más…" : hasMore ? "" : "No hay más estados"}
+            {loadingMore ? <Loading compact text={t.loading_more} /> : hasMore ? "" : t.timeline_end}
           </div>
         )}
       </PageLayout>

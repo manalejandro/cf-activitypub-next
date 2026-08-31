@@ -9,6 +9,8 @@ import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
 import { useLimits } from "@/lib/limits-client";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 
 /**
  * Shared "edit status" modal: edit the text, CW, media attachments (add /
@@ -35,7 +37,7 @@ export function EditStatusModal({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -81,7 +83,7 @@ export function EditStatusModal({
     if (!token || !text.trim() || busy) return;
     setBusy(true);
     try {
-      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text,
         spoiler_text: showCw ? spoiler : "",
@@ -279,7 +281,7 @@ export function EditStatusModal({
             className="btn btn-ghost btn-sm"
             style={{ fontSize: "1rem", padding: "0.3rem 0.5rem" }}
             onClick={() => fileRef.current?.click()}
-            disabled={media.length >= 4 || pollMode || busy}
+            disabled={media.length >= limits.maxMediaAttachments || pollMode || busy}
             title={t.compose_attach}
             aria-label={t.compose_attach}
           >

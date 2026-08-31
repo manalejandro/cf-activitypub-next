@@ -36,7 +36,7 @@ import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   let content = (body.status as string | undefined)?.trim();
   const pollRaw = body.poll as { options?: string[]; expires_in?: number; multiple?: boolean } | undefined;
-  const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= 2;
+  const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
   if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
 
   // Enforce the instance limits reported by /api/v1/instance (lib/constants).
@@ -495,7 +495,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   let serializedPoll = null;
   if (hasPoll && pollRaw) {
     const pollId = generateId();
-    const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
+    const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? POLL_DEFAULT_EXPIRATION), limits.pollMinExpiration), limits.pollMaxExpiration);
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
     const validOptions = (pollRaw.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
     await createPoll(env.DB, {

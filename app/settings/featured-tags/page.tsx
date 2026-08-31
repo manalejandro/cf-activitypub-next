@@ -7,6 +7,7 @@ import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface FeaturedTag {
   id: string;
@@ -160,7 +161,7 @@ export default function FeaturedTagsPage() {
 
         {/* Tag list */}
         {loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : tags.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             {t.settings_tags_empty}

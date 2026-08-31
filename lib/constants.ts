@@ -13,8 +13,10 @@ export const MAX_ALT_TEXT_CHARS = 420;
 export const MAX_MEDIA_ATTACHMENTS = 4;
 export const MAX_POLL_OPTIONS = 4;
 export const MAX_POLL_OPTION_CHARS = 50;
+export const MIN_POLL_OPTIONS = 2;
 export const POLL_MIN_EXPIRATION = 300; // 5 minutes
 export const POLL_MAX_EXPIRATION = 2_629_746; // ~1 month
+export const POLL_DEFAULT_EXPIRATION = 86400; // 1 day
 export const MAX_FEATURED_TAGS = 10;
 export const CHARACTERS_RESERVED_PER_URL = 23;
 
@@ -28,6 +30,15 @@ export const MAX_COLLECTION_NAME_CHARS = 40;
 export const MAX_COLLECTION_DESCRIPTION_CHARS = 100;
 export const MAX_ANNOUNCEMENT_CHARS = 10000;
 export const MAX_LANG_CODE_CHARS = 2;
+
+// Server-side user filters (Mastodon v2): title/keyword length limits.
+export const MAX_FILTER_TITLE_CHARS = 256;
+export const MAX_FILTER_KEYWORD_CHARS = 512;
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_REPORT_NOTE_CHARS = 5000;
+// Safety caps for the thread context walk (ancestors / descendants).
+export const MAX_THREAD_ANCESTORS = 20;
+export const MAX_THREAD_DESCENDANTS = 50;
 export const PAGE_SIZE = 40;
 export const DEFAULT_TIMELINE_PAGE = 20;
 export const MAX_PAGE_SIZE = 40;

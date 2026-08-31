@@ -8,6 +8,7 @@ import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { getToken } from "@/lib/client-api";
+import { Loading } from "@/components/Loading";
 
 interface Preferences {
   "posting:default:visibility": string;
@@ -115,7 +116,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <PageLayout sidebar={<Sidebar me={me} currentPath="/settings" />}>
-        <div style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       </PageLayout>
     );
   }

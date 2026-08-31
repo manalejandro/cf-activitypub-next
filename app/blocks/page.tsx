@@ -9,6 +9,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface Account {
   id: string;
@@ -179,9 +180,7 @@ export default function BlocksPage() {
         {tab === "users" && (
           <div>
             {loadingUsers ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                {t.loading}
-              </div>
+              <Loading />
             ) : blocked.length === 0 ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
                 {t.blocks_empty_users}
@@ -291,9 +290,7 @@ export default function BlocksPage() {
             </div>
 
             {loadingDomains ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                {t.loading}
-              </div>
+              <Loading />
             ) : domains.length === 0 ? (
               <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
                 {t.blocks_empty_instances}

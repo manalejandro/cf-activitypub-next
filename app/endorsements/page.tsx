@@ -10,6 +10,7 @@ import { RichText } from "@/components/RichText";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface Account {
   id: string;
@@ -81,7 +82,7 @@ export default function EndorsementsPage() {
           <h1 className="text-lg font-bold">{t.endorsements_title}</h1>
         </div>
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : endorsed.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="star" size="2rem" /></div>

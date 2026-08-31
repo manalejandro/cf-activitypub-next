@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import type { Me } from "@/components/StatusCard";
+import { Loading } from "@/components/Loading";
 
 interface Connection {
   id: string;
@@ -113,7 +114,7 @@ export default function AuthorizedAppsPage() {
         )}
 
         {connections === null ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : connections.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             {t.settings_apps_empty}

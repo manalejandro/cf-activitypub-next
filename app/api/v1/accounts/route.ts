@@ -11,6 +11,7 @@ import { rejectAccount, approveAccount, GUARDIAN_MODEL } from "@/lib/moderation/
 import { runWithTimeout } from "@/lib/moderation/util";
 import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Username must be 1-30 alphanumeric characters or underscores" }, 422);
   }
 
-  if (password.length < 8) {
+  if (password.length < MIN_PASSWORD_LENGTH) {
     return json({ error: "Password must be at least 8 characters" }, 422);
   }
 

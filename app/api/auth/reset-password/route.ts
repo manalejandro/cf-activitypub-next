@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const contentType = request.headers.get("Content-Type") ?? "";
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "token and password are required" }, 400);
   }
 
-  if (password.length < 8) {
+  if (password.length < MIN_PASSWORD_LENGTH) {
     return json({ error: "Password must be at least 8 characters" }, 422);
   }
 

@@ -1,5 +1,6 @@
 // GET /api/v2/filters — list the current user's filter groups
 // POST /api/v2/filters — create a filter group (Mastodon 4.0+ v2 API)
+import { MAX_FILTER_TITLE_CHARS } from "@/lib/constants";
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, badRequest, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   await insertFilter(env.DB, {
     id: filterId,
     accountId: actor.id,
-    title: title.slice(0, 256),
+    title: title.slice(0, MAX_FILTER_TITLE_CHARS),
     action,
     context: JSON.stringify(context),
     expiresAt,

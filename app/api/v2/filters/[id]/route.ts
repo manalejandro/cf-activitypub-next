@@ -1,6 +1,7 @@
 // GET /api/v2/filters/:id — view one filter group
 // PUT /api/v2/filters/:id — update a filter group (keywords_attributes support)
 // DELETE /api/v2/filters/:id — delete a filter group
+import { MAX_FILTER_TITLE_CHARS } from "@/lib/constants";
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -65,7 +66,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
   if (body.title !== undefined) {
     const title = String(body.title).trim();
     if (!title) return badRequest("Validation failed: Title can't be blank");
-    updates.title = title.slice(0, 256);
+    updates.title = title.slice(0, MAX_FILTER_TITLE_CHARS);
   }
 
   if (body.context !== undefined) {

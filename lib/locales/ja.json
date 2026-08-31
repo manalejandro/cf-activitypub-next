@@ -803,5 +803,7 @@
   "filter_empty": "フィルタはありません。 あなたが見たくない投稿をフィルタアウトするために1を作成します.",
   "filtered_by": "フィルタリング",
   "filtered_show": "投稿を表示",
-  "filter_delete": "フィルターの削除"
+  "filter_delete": "フィルターの削除",
+  "loading_more": "もっと読む..",
+  "timeline_end": "より多くの投稿"
 }

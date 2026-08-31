@@ -6,6 +6,7 @@ import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { MAX_THREAD_ANCESTORS, MAX_THREAD_DESCENDANTS } from "@/lib/constants";
 
 // GET /api/v1/statuses/:id/context
 // Returns { ancestors: Status[], descendants: Status[] }
@@ -36,7 +37,7 @@ export async function GET(
     if (!parent) break;
     ancestorObjs.unshift(parent); // prepend so oldest is first
     current = parent;
-    if (ancestorObjs.length >= 20) break; // safety cap
+    if (ancestorObjs.length >= MAX_THREAD_ANCESTORS) break; // safety cap
   }
 
   // ── Descendants: BFS from this status ────────────────────────────────────
@@ -44,7 +45,7 @@ export async function GET(
   const queue: string[] = [statusId];
   const seen = new Set<string>([statusId]);
 
-  while (queue.length > 0 && descendantObjs.length < 50) {
+  while (queue.length > 0 && descendantObjs.length < MAX_THREAD_DESCENDANTS) {
     const parentId = queue.shift()!;
     const rows = await env.DB
       .prepare("SELECT * FROM objects WHERE in_reply_to_id = ? ORDER BY published ASC LIMIT 20")

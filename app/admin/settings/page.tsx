@@ -8,6 +8,7 @@ import { Icon } from "@/components/Icon";
 import { EmojiInput } from "@/components/EmojiInput";
 import { EmojiTextarea } from "@/components/EmojiTextarea";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -80,7 +81,7 @@ export default function AdminSettingsPage() {
 
   function addLang() {
     if (!data || !newLang.trim()) return;
-    const code = newLang.trim().toLowerCase().slice(0, 2);
+    const code = newLang.trim().toLowerCase().slice(0, limits.maxLangCodeChars);
     if (data.languages.some((l) => l.code === code)) { setNewLang(""); return; }
     setData({ ...data, languages: [...data.languages, { code, name: code, native_name: code }] });
     setNewLang("");
@@ -92,7 +93,7 @@ export default function AdminSettingsPage() {
   }
 
   if (loading) {
-    return <div style={{ color: "var(--text-muted)", padding: "2rem" }}>{t.loading}</div>;
+    return <Loading />;
   }
   if (!data) return null;
 

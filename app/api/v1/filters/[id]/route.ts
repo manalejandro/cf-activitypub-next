@@ -9,6 +9,7 @@ import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterK
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
 import { parseFilterContexts } from "@/lib/mastodon/filters";
 import type { V1Filter } from "../route";
+import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -62,12 +63,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
   if (!phrase) return badRequest("Validation failed: Phrase can't be blank");
   const wholeWord = body.whole_word === "true" || body.whole_word === true;
 
-  await updateFilterKeyword(env.DB, id, phrase.slice(0, 512), wholeWord);
+  await updateFilterKeyword(env.DB, id, phrase.slice(0, MAX_FILTER_KEYWORD_CHARS), wholeWord);
   await broadcastFiltersChanged(env.TIMELINE_STREAM, actor.username).catch(() => {});
 
   const v1: V1Filter = {
     id,
-    phrase: phrase.slice(0, 512),
+    phrase: phrase.slice(0, MAX_FILTER_KEYWORD_CHARS),
     context: parseFilterContexts(filter.context),
     whole_word: wholeWord,
     expires_at: filter.expiresAt,

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 const navItems: { key: keyof Translations; href: string; icon: string }[] = [
   { key: "admin_dashboard", href: "/admin", icon: "bar-chart" },
@@ -51,7 +52,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading) {
     return (
       <div style={{ display: "flex", minHeight: "100vh", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
-        <div style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       </div>
     );
   }
