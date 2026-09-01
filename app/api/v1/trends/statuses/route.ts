@@ -8,6 +8,7 @@ import {
   getAnnouncedObjectIds,
   getAllCustomEmojis,
   getLastStatusAtMap,
+  getBookmarkedObjectIds,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor
@@ -86,6 +87,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       ? getFilterResultsForStatuses(env.DB, authActor.id, objects)
       : Promise.resolve(new Map()),
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
+    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
   ]);
 
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
@@ -125,6 +127,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(obj.id),
       });
     })
   );

@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectQuotesCount, getObjectsQuoting, getLastStatusAtMap } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectQuotesCount, getObjectsQuoting, getLastStatusAtMap , getBookmarkedObjectIds } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -33,6 +33,7 @@ export async function GET(
   const allEmojis = await getAllCustomEmojis(env.DB);
   const filteredMap = await getFilterResultsForStatuses(env.DB, authActor.id, objects);
   const lastStatusAtMap = await getLastStatusAtMap(env.DB, objects.map((o) => o.actorId));
+  const bookmarkedIds = await getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id));
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
 
   const statuses = await Promise.all(
@@ -57,6 +58,7 @@ export async function GET(
         authorLastStatusAt: lastStatusAtMap.get(o.actorId) ?? null,
         authorSupportsCalls: authorExtras.get(o.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(o.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(o.id),
       });
     })
   );

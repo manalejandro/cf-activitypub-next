@@ -687,6 +687,9 @@ export interface MastodonSource {
   bot: boolean;
   follow_requests_count: number;
   auto_delete_after: number | null;
+  hide_collections: boolean;
+  discoverable: boolean | null;
+  indexable: boolean;
 }
 
 export interface MastodonNotification {

@@ -656,6 +656,21 @@ export async function getBookmark(
   return row ?? null;
 }
 
+/** Batch: which of the given objects the actor has bookmarked. */
+export async function getBookmarkedObjectIds(
+  db: D1Database,
+  actorId: string,
+  objectIds: string[]
+): Promise<Set<string>> {
+  if (objectIds.length === 0) return new Set();
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT object_id FROM bookmarks WHERE actor_id = ? AND object_id IN (${placeholders})`)
+    .bind(actorId, ...objectIds)
+    .all<{ object_id: string }>();
+  return new Set(rows.results.map((r) => r.object_id));
+}
+
 export async function getBookmarkedStatusIds(
   db: D1Database,
   actorId: string

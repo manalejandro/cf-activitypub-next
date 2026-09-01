@@ -85,7 +85,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Local
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -124,7 +124,7 @@ export function serializeAccount(
     following_count: actor.followingCount,
     statuses_count: actor.statusesCount,
     last_status_at: opts.lastStatusAt ?? null,
-    hide_collections: null,
+    hide_collections: opts.hideCollections ?? null,
     emojis: filterUsedEmojis(
       [actor.displayName, actor.summary, ...(opts.fields ?? []).map((f) => f.name), ...(opts.fields ?? []).map((f) => f.value)],
       opts.emojis ?? []
@@ -163,6 +163,9 @@ export function serializeAccount(
       bot: actor.isBot,
       follow_requests_count: opts.followRequestsCount ?? 0,
       auto_delete_after: actor.autoDeleteAfter ?? null,
+      hide_collections: opts.hideCollections ?? false,
+      discoverable: actor.discoverable ? true : null,
+      indexable: actor.discoverable !== false,
     };
   }
 
@@ -249,7 +252,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null; bookmarked?: boolean } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -300,7 +303,7 @@ export function serializeStatus(
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
     muted: false,
-    bookmarked: false,
+    bookmarked: opts.bookmarked ?? false,
     pinned: opts.pinned ?? false,
     ...buildTypeMeta(obj),
   };
@@ -619,7 +622,8 @@ export function serializeNotification(
   statusAuthor?: LocalActor,
   filtered?: import("@/lib/mastodon/filters").FilterResult[],
   authorLastStatusAt?: string | null,
-  authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null }
+  authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null },
+  bookmarked?: boolean
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -633,6 +637,7 @@ export function serializeNotification(
       authorLastStatusAt,
       authorSupportsCalls: authorExtras?.supportsCalls,
       authorMoved: authorExtras?.moved ?? null,
+      bookmarked,
     });
   }
   return result;

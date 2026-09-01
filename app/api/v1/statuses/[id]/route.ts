@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap , getBookmarkedObjectIds } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -75,7 +75,7 @@ export async function GET(
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-  const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras] = await Promise.all([
+  const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras, bookmarked] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),
     obj.quoteId
       ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
@@ -85,6 +85,7 @@ export async function GET(
       : Promise.resolve([]),
     getLastStatusAtMap(env.DB, [obj.actorId]).then((m) => m.get(obj.actorId) ?? null),
     getStatusAuthorExtras(env.DB, [obj.actorId], domain).then((m) => m.get(obj.actorId)),
+    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, [obj.id]).then((s) => s.has(obj.id)) : Promise.resolve(false),
   ]);
   return json(serializeStatus(obj, author, domain, {
     attachments,
@@ -99,6 +100,7 @@ export async function GET(
     authorLastStatusAt,
     authorSupportsCalls: authorExtras?.supportsCalls,
     authorMoved: authorExtras?.moved ?? null,
+    bookmarked,
   }));
 }
 
