@@ -267,14 +267,34 @@ function rowToAttachment(r: Row): LocalAttachment {
  * own objects.
  */
 export async function getLastStatusAt(db: D1Database, actorId: string): Promise<string | null> {
-  const actor = await db
-    .prepare("SELECT is_local, last_status_at FROM actors WHERE id = ?")
-    .bind(actorId)
-    .first<{ is_local: number; last_status_at: string | null }>();
-  if (!actor) return null;
-  if (actor.is_local !== 1) {
-    return actor.last_status_at ?? null;
+  // Remote actors: the value federated in their AP actor document (stored in
+  // actors.last_status_at) is authoritative — our `objects` table only holds
+  // the subset of their statuses we have seen. Local actors: computed from
+  // their own objects.
+  //
+  // Pre-migration fallback: if the actors.last_status_at column does not exist
+  // yet (021 not applied), compute from objects for every actor so the value
+  // is never null.
+  let actor: { is_local: number; last_status_at: string | null } | null = null;
+  try {
+    actor = await db
+      .prepare("SELECT is_local, last_status_at FROM actors WHERE id = ?")
+      .bind(actorId)
+      .first<{ is_local: number; last_status_at: string | null }>();
+  } catch {
+    /* column missing pre-migration — fall back to the objects computation */
   }
+  if (!actor) {
+    return computeLastStatusAtFromObjects(db, actorId);
+  }
+  if (actor.is_local !== 1) {
+    return actor.last_status_at ?? computeLastStatusAtFromObjects(db, actorId);
+  }
+  return computeLastStatusAtFromObjects(db, actorId);
+}
+
+/** Last public post date computed from the actor's own stored objects. */
+async function computeLastStatusAtFromObjects(db: D1Database, actorId: string): Promise<string | null> {
   const row = await db
     .prepare("SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')")
     .bind(actorId)
@@ -295,17 +315,45 @@ export async function getLastStatusAtMap(
   const unique = [...new Set(actorIds)];
   if (unique.length === 0) return map;
 
-  const placeholders = unique.map(() => "?").join(",");
-  const actors = await db
-    .prepare(
-      `SELECT id, is_local, last_status_at FROM actors WHERE id IN (${placeholders})`
-    )
-    .bind(...unique)
-    .all<{ id: string; is_local: number; last_status_at: string | null }>();
+  let actors: { id: string; is_local: number; last_status_at: string | null }[] | null = null;
+  try {
+    const placeholders = unique.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT id, is_local, last_status_at FROM actors WHERE id IN (${placeholders})`
+      )
+      .bind(...unique)
+      .all<{ id: string; is_local: number; last_status_at: string | null }>();
+    actors = rows.results ?? [];
+  } catch {
+    /* column missing pre-migration — compute everything from objects */
+  }
+
+  // Pre-migration: single grouped computation from objects for every actor.
+  if (actors === null) {
+    const lp = unique.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT actor_id, MAX(published) AS p FROM objects
+         WHERE actor_id IN (${lp})
+           AND visibility IN ('public', 'unlisted')
+           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+         GROUP BY actor_id`
+      )
+      .bind(...unique)
+      .all<{ actor_id: string; p: string | null }>();
+    for (const r of rows.results ?? []) {
+      map.set(r.actor_id, normalizeLastStatusDate(r.p));
+    }
+    for (const id of unique) {
+      if (!map.has(id)) map.set(id, null);
+    }
+    return map;
+  }
 
   const remoteValues = new Map<string, string | null>();
   const localIds: string[] = [];
-  for (const a of actors.results ?? []) {
+  for (const a of actors) {
     if (a.is_local === 1) {
       localIds.push(a.id);
     } else {
@@ -327,11 +375,7 @@ export async function getLastStatusAtMap(
       .bind(...localIds)
       .all<{ actor_id: string; p: string | null }>();
     for (const r of rows.results ?? []) {
-      if (!r.p) { localMap.set(r.actor_id, null); continue; }
-      const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.p)
-        ? `${r.p.replace(" ", "T")}Z`
-        : r.p;
-      localMap.set(r.actor_id, iso.slice(0, 10));
+      localMap.set(r.actor_id, normalizeLastStatusDate(r.p));
     }
     for (const id of localIds) {
       if (!localMap.has(id)) localMap.set(id, null);
@@ -344,6 +388,14 @@ export async function getLastStatusAtMap(
     else map.set(id, null);
   }
   return map;
+}
+
+function normalizeLastStatusDate(p: string | null): string | null {
+  if (!p) return null;
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(p)
+    ? `${p.replace(" ", "T")}Z`
+    : p;
+  return iso.slice(0, 10);
 }
 
 export async function getActorById(db: D1Database, id: string): Promise<LocalActor | null> {
@@ -475,45 +527,87 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
   const lastStatusAt = (actor as unknown as Record<string, unknown>).last_status_at;
   const lastStatusAtStr = typeof lastStatusAt === "string" && lastStatusAt ? lastStatusAt.slice(0, 10) : null;
   try {
-    await db
-      .prepare(
-        `INSERT INTO actors (
-          id, username, domain, display_name, summary, avatar_url, header_url,
-          public_key_pem, private_key_pem, is_local, is_bot,
-          manually_approves_followers, discoverable,
-          followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at
-        ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
-        ON CONFLICT(id) DO UPDATE SET
-          display_name = excluded.display_name,
-          summary = excluded.summary,
-          avatar_url = excluded.avatar_url,
-          header_url = excluded.header_url,
-          public_key_pem = excluded.public_key_pem,
-          is_bot = excluded.is_bot,
-          manually_approves_followers = excluded.manually_approves_followers,
-          discoverable = excluded.discoverable,
-          inbox = excluded.inbox,
-          also_known_as = excluded.also_known_as,
-          last_status_at = excluded.last_status_at,
-          updated_at = datetime('now')`
-      )
-      .bind(
-        actor.id,
-        username,
-        domain,
-        displayName,
-        summary,
-        actor.icon?.url ?? null,
-        actor.image?.url ?? null,
-        actor.publicKey.publicKeyPem,
-        actor.type === "Service" ? 1 : 0,
-        actor.manuallyApprovesFollowers ? 1 : 0,
-        actor.discoverable !== false ? 1 : 0,
-        actor.inbox,
-        alsoKnownAs,
-        lastStatusAtStr
-      )
-      .run();
+    try {
+      await db
+        .prepare(
+          `INSERT INTO actors (
+            id, username, domain, display_name, summary, avatar_url, header_url,
+            public_key_pem, private_key_pem, is_local, is_bot,
+            manually_approves_followers, discoverable,
+            followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
+          ON CONFLICT(id) DO UPDATE SET
+            display_name = excluded.display_name,
+            summary = excluded.summary,
+            avatar_url = excluded.avatar_url,
+            header_url = excluded.header_url,
+            public_key_pem = excluded.public_key_pem,
+            is_bot = excluded.is_bot,
+            manually_approves_followers = excluded.manually_approves_followers,
+            discoverable = excluded.discoverable,
+            inbox = excluded.inbox,
+            also_known_as = excluded.also_known_as,
+            last_status_at = excluded.last_status_at,
+            updated_at = datetime('now')`
+        )
+        .bind(
+          actor.id,
+          username,
+          domain,
+          displayName,
+          summary,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
+          actor.publicKey.publicKeyPem,
+          actor.type === "Service" ? 1 : 0,
+          actor.manuallyApprovesFollowers ? 1 : 0,
+          actor.discoverable !== false ? 1 : 0,
+          actor.inbox,
+          alsoKnownAs,
+          lastStatusAtStr
+        )
+        .run();
+    } catch {
+      // Pre-migration (021 not applied): actors.last_status_at does not exist.
+      // Retry with the legacy statement so remote actors are still cached.
+      await db
+        .prepare(
+          `INSERT INTO actors (
+            id, username, domain, display_name, summary, avatar_url, header_url,
+            public_key_pem, private_key_pem, is_local, is_bot,
+            manually_approves_followers, discoverable,
+            followers_count, following_count, statuses_count, inbox, also_known_as
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?)
+          ON CONFLICT(id) DO UPDATE SET
+            display_name = excluded.display_name,
+            summary = excluded.summary,
+            avatar_url = excluded.avatar_url,
+            header_url = excluded.header_url,
+            public_key_pem = excluded.public_key_pem,
+            is_bot = excluded.is_bot,
+            manually_approves_followers = excluded.manually_approves_followers,
+            discoverable = excluded.discoverable,
+            inbox = excluded.inbox,
+            also_known_as = excluded.also_known_as,
+            updated_at = datetime('now')`
+        )
+        .bind(
+          actor.id,
+          username,
+          domain,
+          displayName,
+          summary,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
+          actor.publicKey.publicKeyPem,
+          actor.type === "Service" ? 1 : 0,
+          actor.manuallyApprovesFollowers ? 1 : 0,
+          actor.discoverable !== false ? 1 : 0,
+          actor.inbox,
+          alsoKnownAs
+        )
+        .run();
+    }
   } catch {
     // UNIQUE(username, domain) conflict — actor may have migrated to a new URL.
     // Update the existing row's id so getActorById(actor.id) works after this call.
