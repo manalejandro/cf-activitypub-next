@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds } from "@/lib/db";
+import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -43,6 +43,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   ]);
 
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
         bookmarked: bookmarkedIds.has(obj.id),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

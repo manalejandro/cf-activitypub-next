@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getPollsByObjectIds, getAttachmentsByObjectIds, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds } from "@/lib/db";
+import { getObjectById, getActorById, getPollsByObjectIds, getAttachmentsByObjectIds, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -95,6 +95,7 @@ export async function GET(
       authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objs.map((o) => o.id)) : Promise.resolve(new Set()),
     ]);
     const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
+    const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
     return (
       await Promise.all(
         objs.map(async (obj) => {
@@ -104,7 +105,7 @@ export async function GET(
           const pollEntry = pollMap.get(obj.id);
           const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
           const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, bookmarked: bookmarkedIds.has(obj.id) });
+          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, bookmarked: bookmarkedIds.has(obj.id), authorFields: authorFieldsMap.get(obj.actorId) ?? [] });
         })
       )
     ).filter(Boolean);

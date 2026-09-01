@@ -439,7 +439,7 @@ export interface MastodonAccount {
   hide_collections: boolean | null;
   emojis: MastodonEmoji[];
   fields: MastodonField[];
-  roles: MastodonRole[];
+  roles: MastodonRole[] | null;
   verified?: boolean;
   moved?: MastodonAccount | null;
   suspended?: boolean;

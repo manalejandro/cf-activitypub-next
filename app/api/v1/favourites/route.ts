@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAnnounce, getLastStatusAtMap , getBookmarkedObjectIds } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectId, getAnnounce, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -28,6 +28,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const lastStatusAtMap = await getLastStatusAtMap(env.DB, objs.map((o) => o.actorId));
   const bookmarkedIds = await getBookmarkedObjectIds(env.DB, actor.id, objs.map((o) => o.id));
   const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
 
   const serialized = await Promise.all(
     objs.map(async (obj) => {
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
         bookmarked: bookmarkedIds.has(obj.id),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

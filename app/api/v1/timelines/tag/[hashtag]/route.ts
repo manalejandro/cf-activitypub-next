@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds } from "@/lib/db";
+import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
@@ -45,6 +45,7 @@ export async function GET(
   const statuses = await Promise.all(
     objects.map(async (obj) => {
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
       let author = await getActorById(env.DB, obj.actorId);
       if (!author && obj.actorId.startsWith("https://")) {
         try {
@@ -72,6 +73,7 @@ export async function GET(
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
         bookmarked: bookmarkedIds.has(obj.id),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

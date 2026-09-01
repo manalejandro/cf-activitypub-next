@@ -353,17 +353,26 @@ export async function getLastStatusAtMap(
 
   const remoteValues = new Map<string, string | null>();
   const localIds: string[] = [];
+  const remoteFallbackIds: string[] = [];
   for (const a of actors) {
     if (a.is_local === 1) {
       localIds.push(a.id);
+    } else if (a.last_status_at) {
+      remoteValues.set(a.id, a.last_status_at);
     } else {
-      remoteValues.set(a.id, a.last_status_at ?? null);
+      // Cached before the column existed (or the remote never published the
+      // date): fall back to computing from the objects we hold.
+      remoteValues.set(a.id, null);
+      remoteFallbackIds.push(a.id);
     }
   }
 
-  const localMap = new Map<string, string | null>();
-  if (localIds.length > 0) {
-    const lp = localIds.map(() => "?").join(",");
+  // Grouped computation from objects for: local actors + remote actors whose
+  // stored federated value is null.
+  const computeIds = [...localIds, ...remoteFallbackIds];
+  const computedMap = new Map<string, string | null>();
+  if (computeIds.length > 0) {
+    const lp = computeIds.map(() => "?").join(",");
     const rows = await db
       .prepare(
         `SELECT actor_id, MAX(published) AS p FROM objects
@@ -372,20 +381,24 @@ export async function getLastStatusAtMap(
            AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
          GROUP BY actor_id`
       )
-      .bind(...localIds)
+      .bind(...computeIds)
       .all<{ actor_id: string; p: string | null }>();
     for (const r of rows.results ?? []) {
-      localMap.set(r.actor_id, normalizeLastStatusDate(r.p));
+      computedMap.set(r.actor_id, normalizeLastStatusDate(r.p));
     }
-    for (const id of localIds) {
-      if (!localMap.has(id)) localMap.set(id, null);
+    for (const id of computeIds) {
+      if (!computedMap.has(id)) computedMap.set(id, null);
     }
   }
 
   for (const id of unique) {
-    if (remoteValues.has(id)) map.set(id, remoteValues.get(id) ?? null);
-    else if (localMap.has(id)) map.set(id, localMap.get(id) ?? null);
-    else map.set(id, null);
+    if (remoteValues.has(id)) {
+      map.set(id, remoteValues.get(id) ?? computedMap.get(id) ?? null);
+    } else if (computedMap.has(id)) {
+      map.set(id, computedMap.get(id) ?? null);
+    } else {
+      map.set(id, null);
+    }
   }
   return map;
 }
@@ -2308,6 +2321,32 @@ export async function getActorFields(db: D1Database, actorId: string): Promise<A
     .bind(actorId)
     .all<Row>();
   return rows.results.map(rowToField);
+}
+
+/** Batch variant of getActorFields — one query for many actor ids. */
+export async function getActorFieldsMap(
+  db: D1Database,
+  actorIds: string[]
+): Promise<Map<string, ActorField[]>> {
+  const map = new Map<string, ActorField[]>();
+  const unique = [...new Set(actorIds)];
+  if (unique.length === 0) return map;
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM actor_fields WHERE actor_id IN (${placeholders}) ORDER BY actor_id, position ASC`
+    )
+    .bind(...unique)
+    .all<Row>();
+  for (const r of rows.results ?? []) {
+    const list = map.get(r.actor_id) ?? [];
+    list.push(rowToField(r));
+    map.set(r.actor_id, list);
+  }
+  for (const id of unique) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  return map;
 }
 
 export async function setActorFields(

@@ -129,7 +129,14 @@ export function serializeAccount(
       [actor.displayName, actor.summary, ...(opts.fields ?? []).map((f) => f.name), ...(opts.fields ?? []).map((f) => f.value)],
       opts.emojis ?? []
     ).map(serializeEmoji),
-    roles: opts.role ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }] : (actor.isLocal && (actor.role === "admin" || actor.role === "moderator")) ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }] : [],
+    // Mastodon: [] when no roles are highlighted, null for remote accounts.
+    roles: opts.role
+      ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }]
+      : actor.isLocal
+        ? (actor.role === "admin" || actor.role === "moderator")
+          ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }]
+          : []
+        : null,
     fields: (opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: isLocal
@@ -623,7 +630,8 @@ export function serializeNotification(
   filtered?: import("@/lib/mastodon/filters").FilterResult[],
   authorLastStatusAt?: string | null,
   authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null },
-  bookmarked?: boolean
+  bookmarked?: boolean,
+  authorFields?: import("@/lib/types").ActorField[]
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -638,6 +646,7 @@ export function serializeNotification(
       authorSupportsCalls: authorExtras?.supportsCalls,
       authorMoved: authorExtras?.moved ?? null,
       bookmarked,
+      authorFields,
     });
   }
   return result;
