@@ -1,11 +1,12 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getNotifications, getActorById, getObjectById } from "@/lib/db";
+import { getNotifications, getActorById, getObjectById, getLastStatusAtMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeNotification } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/notifications
 export async function GET(request: NextRequest): Promise<Response> {
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     notifications.map((n) => (n.objectId ? getObjectById(env.DB, n.objectId) : Promise.resolve(null)))
   )).filter((o): o is NonNullable<typeof o> => o !== null);
   const filteredMap = await getFilterResultsForStatuses(env.DB, actor.id, notifObjects);
+  const lastStatusAtMap = await getLastStatusAtMap(env.DB, notifObjects.map((o) => o.actorId));
+  const authorExtrasMap = await getStatusAuthorExtras(env.DB, notifObjects.map((o) => o.actorId), domain);
 
   const serialized = await Promise.all(
     notifications
@@ -38,7 +41,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         const object = notif.objectId ? await getObjectById(env.DB, notif.objectId) : null;
         const author = object ? await getActorById(env.DB, object.actorId) : null;
         if (!fromActor) return null;
-        return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, object ? (filteredMap.get(object.id) ?? []) : undefined);
+        return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, object ? (filteredMap.get(object.id) ?? []) : undefined, object ? (lastStatusAtMap.get(object.actorId) ?? null) : undefined, object ? authorExtrasMap.get(object.actorId) : undefined);
       })
   );
 

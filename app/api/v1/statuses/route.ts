@@ -654,7 +654,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
     actor,
     domain,
-    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0 }
+    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10) }
   );
 
   // Broadcast to streaming clients — collect tasks and await all together

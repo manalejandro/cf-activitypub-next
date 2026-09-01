@@ -1,12 +1,13 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap } from "@/lib/db";
+import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/timelines/tag/:hashtag
 export async function GET(
@@ -29,7 +30,7 @@ export async function GET(
 
   const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -37,10 +38,12 @@ export async function GET(
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
     authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
+    getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
   ]);
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
+  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
       let author = await getActorById(env.DB, obj.actorId);
       if (!author && obj.actorId.startsWith("https://")) {
         try {
@@ -64,6 +67,9 @@ export async function GET(
         emojis: allEmojis,
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
         filtered: filteredMap.get(obj.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
       });
     })
   );

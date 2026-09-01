@@ -249,7 +249,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[] } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -281,7 +281,13 @@ export function serializeStatus(
     content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, opts.emojis), obj.raw, localDomain),
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
-    account: serializeAccount(author, localDomain),
+    account: serializeAccount(author, localDomain, {
+      lastStatusAt: opts.authorLastStatusAt ?? null,
+      emojis: opts.authorEmojis ?? opts.emojis ?? [],
+      fields: opts.authorFields ?? [],
+      supportsCalls: opts.authorSupportsCalls,
+      moved: opts.authorMoved ?? undefined,
+    }),
     media_attachments: (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
@@ -611,7 +617,9 @@ export function serializeNotification(
   localDomain: string,
   status?: LocalObject,
   statusAuthor?: LocalActor,
-  filtered?: import("@/lib/mastodon/filters").FilterResult[]
+  filtered?: import("@/lib/mastodon/filters").FilterResult[],
+  authorLastStatusAt?: string | null,
+  authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null }
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -620,7 +628,12 @@ export function serializeNotification(
     account: serializeAccount(account, localDomain),
   };
   if (status && statusAuthor) {
-    result.status = serializeStatus(status, statusAuthor, localDomain, { filtered: filtered ?? [] });
+    result.status = serializeStatus(status, statusAuthor, localDomain, {
+      filtered: filtered ?? [],
+      authorLastStatusAt,
+      authorSupportsCalls: authorExtras?.supportsCalls,
+      authorMoved: authorExtras?.moved ?? null,
+    });
   }
   return result;
 }

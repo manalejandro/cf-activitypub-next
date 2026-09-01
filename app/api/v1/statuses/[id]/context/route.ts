@@ -1,12 +1,13 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getPollsByObjectIds, getAttachmentsByObjectIds, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId } from "@/lib/db";
+import { getObjectById, getActorById, getPollsByObjectIds, getAttachmentsByObjectIds, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, getLastStatusAtMap } from "@/lib/db";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { MAX_THREAD_ANCESTORS, MAX_THREAD_DESCENDANTS } from "@/lib/constants";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/statuses/:id/context
 // Returns { ancestors: Status[], descendants: Status[] }
@@ -83,14 +84,16 @@ export async function GET(
   }
 
   const serializeAll = async (objs: LocalObject[]) => {
-    const [pollMap, attachmentMap, allEmojis, filteredMap] = await Promise.all([
+    const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap] = await Promise.all([
       getPollsByObjectIds(env.DB, objs.map((o) => o.id)),
       objs.length > 0 ? getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
       authActor
         ? getFilterResultsForStatuses(env.DB, authActor.id, objs)
         : Promise.resolve(new Map()),
+      getLastStatusAtMap(env.DB, objs.map((o) => o.actorId)),
     ]);
+    const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
     return (
       await Promise.all(
         objs.map(async (obj) => {
@@ -100,7 +103,7 @@ export async function GET(
           const pollEntry = pollMap.get(obj.id);
           const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
           const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [] });
+          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null });
         })
       )
     ).filter(Boolean);

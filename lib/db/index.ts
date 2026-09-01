@@ -260,8 +260,21 @@ function rowToAttachment(r: Row): LocalAttachment {
 /**
  * Last public post date of an actor (YYYY-MM-DD form, like Mastodon's
  * `last_status_at`), or null when the actor has no public statuses.
+ *
+ * Remote actors: the value federated in their AP actor document (stored in
+ * actors.last_status_at) is authoritative — our `objects` table only holds the
+ * subset of their statuses we have seen. Local actors: computed from their
+ * own objects.
  */
 export async function getLastStatusAt(db: D1Database, actorId: string): Promise<string | null> {
+  const actor = await db
+    .prepare("SELECT is_local, last_status_at FROM actors WHERE id = ?")
+    .bind(actorId)
+    .first<{ is_local: number; last_status_at: string | null }>();
+  if (!actor) return null;
+  if (actor.is_local !== 1) {
+    return actor.last_status_at ?? null;
+  }
   const row = await db
     .prepare("SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')")
     .bind(actorId)
@@ -271,6 +284,66 @@ export async function getLastStatusAt(db: D1Database, actorId: string): Promise<
     ? `${row.p.replace(" ", "T")}Z`
     : row.p;
   return iso.slice(0, 10);
+}
+
+/** Batch variant of getLastStatusAt — one grouped query for many actor ids. */
+export async function getLastStatusAtMap(
+  db: D1Database,
+  actorIds: string[]
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  const unique = [...new Set(actorIds)];
+  if (unique.length === 0) return map;
+
+  const placeholders = unique.map(() => "?").join(",");
+  const actors = await db
+    .prepare(
+      `SELECT id, is_local, last_status_at FROM actors WHERE id IN (${placeholders})`
+    )
+    .bind(...unique)
+    .all<{ id: string; is_local: number; last_status_at: string | null }>();
+
+  const remoteValues = new Map<string, string | null>();
+  const localIds: string[] = [];
+  for (const a of actors.results ?? []) {
+    if (a.is_local === 1) {
+      localIds.push(a.id);
+    } else {
+      remoteValues.set(a.id, a.last_status_at ?? null);
+    }
+  }
+
+  const localMap = new Map<string, string | null>();
+  if (localIds.length > 0) {
+    const lp = localIds.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT actor_id, MAX(published) AS p FROM objects
+         WHERE actor_id IN (${lp})
+           AND visibility IN ('public', 'unlisted')
+           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+         GROUP BY actor_id`
+      )
+      .bind(...localIds)
+      .all<{ actor_id: string; p: string | null }>();
+    for (const r of rows.results ?? []) {
+      if (!r.p) { localMap.set(r.actor_id, null); continue; }
+      const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(r.p)
+        ? `${r.p.replace(" ", "T")}Z`
+        : r.p;
+      localMap.set(r.actor_id, iso.slice(0, 10));
+    }
+    for (const id of localIds) {
+      if (!localMap.has(id)) localMap.set(id, null);
+    }
+  }
+
+  for (const id of unique) {
+    if (remoteValues.has(id)) map.set(id, remoteValues.get(id) ?? null);
+    else if (localMap.has(id)) map.set(id, localMap.get(id) ?? null);
+    else map.set(id, null);
+  }
+  return map;
 }
 
 export async function getActorById(db: D1Database, id: string): Promise<LocalActor | null> {
@@ -397,6 +470,10 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
   const displayName = sanitizeFediversePlain(actor.name ?? null);
   const summary = sanitizeRemoteActorSummary(actor.summary ?? null);
   const alsoKnownAs = actor.alsoKnownAs?.length ? JSON.stringify(actor.alsoKnownAs) : null;
+  // Mastodon publishes the account's last activity date in the actor document;
+  // use it verbatim instead of computing from the (subset of) statuses we saw.
+  const lastStatusAt = (actor as unknown as Record<string, unknown>).last_status_at;
+  const lastStatusAtStr = typeof lastStatusAt === "string" && lastStatusAt ? lastStatusAt.slice(0, 10) : null;
   try {
     await db
       .prepare(
@@ -404,8 +481,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           id, username, domain, display_name, summary, avatar_url, header_url,
           public_key_pem, private_key_pem, is_local, is_bot,
           manually_approves_followers, discoverable,
-          followers_count, following_count, statuses_count, inbox, also_known_as
-        ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?)
+          followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at
+        ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           display_name = excluded.display_name,
           summary = excluded.summary,
@@ -417,6 +494,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           discoverable = excluded.discoverable,
           inbox = excluded.inbox,
           also_known_as = excluded.also_known_as,
+          last_status_at = excluded.last_status_at,
           updated_at = datetime('now')`
       )
       .bind(
@@ -432,7 +510,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
         actor.manuallyApprovesFollowers ? 1 : 0,
         actor.discoverable !== false ? 1 : 0,
         actor.inbox,
-        alsoKnownAs
+        alsoKnownAs,
+        lastStatusAtStr
       )
       .run();
   } catch {

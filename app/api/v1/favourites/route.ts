@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAnnounce } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectId, getAnnounce, getLastStatusAtMap } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -24,6 +25,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const objs = (await Promise.all(objectIds.map((oid) => getObjectById(env.DB, oid)))).filter((o): o is NonNullable<typeof o> => o !== null);
   const filteredMap = await getFilterResultsForStatuses(env.DB, actor.id, objs);
+  const lastStatusAtMap = await getLastStatusAtMap(env.DB, objs.map((o) => o.actorId));
+  const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
 
   const serialized = await Promise.all(
     objs.map(async (obj) => {
@@ -38,6 +41,9 @@ export async function GET(request: NextRequest): Promise<Response> {
         reblogged: reblogged !== null,
         attachments,
         filtered: filteredMap.get(obj.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
       });
     })
   );

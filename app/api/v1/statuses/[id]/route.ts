@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -15,6 +15,7 @@ import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -74,7 +75,7 @@ export async function GET(
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-  const [quotesCount, quote, filtered] = await Promise.all([
+  const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),
     obj.quoteId
       ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
@@ -82,6 +83,8 @@ export async function GET(
     authActor
       ? getFilterResultsForStatuses(env.DB, authActor.id, [obj]).then((m) => m.get(obj.id) ?? [])
       : Promise.resolve([]),
+    getLastStatusAtMap(env.DB, [obj.actorId]).then((m) => m.get(obj.actorId) ?? null),
+    getStatusAuthorExtras(env.DB, [obj.actorId], domain).then((m) => m.get(obj.actorId)),
   ]);
   return json(serializeStatus(obj, author, domain, {
     attachments,
@@ -93,6 +96,9 @@ export async function GET(
     quote,
     quotesCount,
     filtered,
+    authorLastStatusAt,
+    authorSupportsCalls: authorExtras?.supportsCalls,
+    authorMoved: authorExtras?.moved ?? null,
   }));
 }
 
@@ -350,5 +356,6 @@ export async function DELETE(
   await env.KV.delete(`ap:obj:${id}`).catch(() => {});
 
   const allEmojis = await getAllCustomEmojis(env.DB);
-  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis }));
+  const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis, authorLastStatusAt }));
 }

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -9,6 +9,7 @@ import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/accounts/:id/statuses
 export async function GET(
@@ -79,7 +80,7 @@ export async function GET(
     allObjects = rowObjs.results.map(rowToObject);
   }
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -89,7 +90,10 @@ export async function GET(
     getObjectQuotesCounts(env.DB, allObjects.map((o) => o.id)),
     getQuotesByIds(env.DB, allObjects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
     me ? getFilterResultsForStatuses(env.DB, me.id, allObjects) : Promise.resolve(new Map()),
+    getLastStatusAtMap(env.DB, allObjects.map((o) => o.actorId)),
   ]);
+
+  const authorExtras = await getStatusAuthorExtras(env.DB, allObjects.map((o) => o.actorId), domain);
 
   const statuses = allObjects.map((obj) => {
     const pollEntry = pollMap.get(obj.id);
@@ -105,6 +109,9 @@ export async function GET(
       quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
       quotesCount: quotesCountMap.get(obj.id) ?? 0,
       filtered: filteredMap.get(obj.id) ?? [],
+      authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+      authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+      authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
     });
   });
 

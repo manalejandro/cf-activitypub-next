@@ -1,13 +1,14 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections } from "@/lib/db";
+import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v2/search?q=...&type=accounts|statuses|hashtags&limit=20&offset=0
 export async function GET(request: NextRequest): Promise<Response> {
@@ -84,7 +85,9 @@ export async function GET(request: NextRequest): Promise<Response> {
         getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
       ]);
       const filteredRemote = me ? (await getFilterResultsForStatuses(env.DB, me.id, [remoteStatus.object])).get(remoteStatus.object.id) ?? [] : [];
-      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote }));
+      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? null;
+      const authorExtras = (await getStatusAuthorExtras(env.DB, [remoteStatus.object.actorId], domain)).get(remoteStatus.object.actorId);
+      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null }));
       return json(results);
     }
     const cachedActor = await fetchAndCacheRemoteActor(env.DB, q);
@@ -194,6 +197,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         raw: row.raw as string,
       };
       const filteredKw = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
+      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+      const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
       results.statuses.push(
         serializeStatus(obj, actor, domain, {
           attachments: attachmentMap.get(obj.id) ?? [],
@@ -201,6 +206,9 @@ export async function GET(request: NextRequest): Promise<Response> {
           reblogged: false,
           emojis: allEmojis,
           filtered: filteredKw,
+          authorLastStatusAt,
+          authorSupportsCalls: authorExtras?.supportsCalls,
+          authorMoved: authorExtras?.moved ?? null,
         })
       );
     }
