@@ -6,7 +6,9 @@ import { getToken } from "@/lib/client-api";
 declare global {
   interface Window {
     SwaggerUIBundle?: {
-      (config: Record<string, unknown>): void;
+      (config: Record<string, unknown>): {
+        preauthorizeApiKey: (name: string, value: string) => void;
+      };
       presets: { apis: unknown };
     };
     SwaggerUIStandalonePreset?: unknown;
@@ -20,18 +22,20 @@ export default function DocsPage() {
       if (!bundle) return;
       // If the user is logged into the web app, pre-authorize Swagger UI with
       // their session token so the Authorize button shows "Authorized" and Try
-      // It Out requests carry the Authorization header automatically.
+      // It Out requests carry the Authorization header automatically. For
+      // OpenAPI 3.0 http/bearer schemes Swagger UI adds the `Bearer ` prefix.
       const token = getToken();
-      bundle({
+      let ui: ReturnType<NonNullable<typeof bundle>> | null = null;
+      ui = bundle({
         url: "/api/docs/openapi.json",
         dom_id: "#swagger-ui",
         deepLinking: true,
         displayRequestDuration: true,
         persistAuthorization: true,
         tryItOutEnabled: true,
-        authorizations: token
-          ? { bearerAuth: { value: token, schema: { type: "http", scheme: "bearer" } } }
-          : undefined,
+        onComplete: () => {
+          if (token) ui?.preauthorizeApiKey("bearerAuth", token);
+        },
         presets: [bundle.presets.apis, window.SwaggerUIStandalonePreset],
         layout: "StandaloneLayout",
       });
