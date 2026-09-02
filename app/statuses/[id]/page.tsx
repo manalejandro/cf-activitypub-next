@@ -791,9 +791,7 @@ export default function ThreadPage() {
             {ancestors.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
 
@@ -801,14 +799,14 @@ export default function ThreadPage() {
             <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
-                <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
             {/* Quote composer (opens when the user quotes a status) */}
             {quoteTarget && (
               <div ref={replyRef}>
-                <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
@@ -831,9 +829,7 @@ export default function ThreadPage() {
             {descendants.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
           </>

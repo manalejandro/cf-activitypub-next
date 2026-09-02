@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
@@ -136,8 +137,11 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    const token = getToken();
+    if (!token) { router.push("/login"); return; }
     Promise.resolve().then(() => void fetchMe());
     Promise.resolve().then(() => void fetchPrefs());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handlePost(e: React.FormEvent) {
@@ -216,6 +220,7 @@ export default function HomePage() {
   }, [composing]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!getToken()) return;
     if (!e.target.files?.length) return;
     const files = Array.from(e.target.files).slice(0, limits.maxMediaAttachments - mediaFiles.length);
     e.target.value = "";
