@@ -715,13 +715,18 @@ async function executeScheduled(env: Env): Promise<void> {
  */
 async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
-    // Local accounts — re-check occasionally (30 min) so slow sites don't stall
-    // every cron run.
-    const localRows = await env.DB
+    // Local accounts — re-check occasionally (30 min via KV marker) so slow sites
+// don't stall every cron run. Bounded to a few per run (each check fetches the
+// external page) so the whole cron stays inside the 60s overlap window.
+// ORDER BY verified_at ASC: failed/never-checked fields (NULL) are retried
+// first, then the longest-verified ones get re-checked (badge revocation).
+const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
          JOIN actors a ON a.id = af.actor_id
-         WHERE a.is_local = 1 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')`
+         WHERE a.is_local = 1 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')
+         ORDER BY af.verified_at ASC
+         LIMIT 5`
       )
       .all<{ actor_id: string }>();
     for (const row of localRows.results) {
