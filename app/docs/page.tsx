@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { getToken } from "@/lib/client-api";
 
 declare global {
   interface Window {
@@ -17,6 +18,10 @@ export default function DocsPage() {
     const init = () => {
       const bundle = window.SwaggerUIBundle;
       if (!bundle) return;
+      // If the user is logged into the web app, pre-authorize Swagger UI with
+      // their session token so the Authorize button shows "Authorized" and Try
+      // It Out requests carry the Authorization header automatically.
+      const token = getToken();
       bundle({
         url: "/api/docs/openapi.json",
         dom_id: "#swagger-ui",
@@ -24,6 +29,9 @@ export default function DocsPage() {
         displayRequestDuration: true,
         persistAuthorization: true,
         tryItOutEnabled: true,
+        authorizations: token
+          ? { bearerAuth: { value: token, schema: { type: "http", scheme: "bearer" } } }
+          : undefined,
         presets: [bundle.presets.apis, window.SwaggerUIStandalonePreset],
         layout: "StandaloneLayout",
       });
