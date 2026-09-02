@@ -41,6 +41,15 @@ export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const method = request.method;
 
+  // This instance has no Server Actions ("use server" is not used anywhere).
+  // A request carrying the Next-Action header is therefore never legitimate:
+  // it is either stale client assets from an old build or automated security
+  // scanning. Reject it before the Next.js action handler runs, which would
+  // otherwise log "Server Reference ID did not match the expected format".
+  if (request.headers.has("next-action")) {
+    return new NextResponse(null, { status: 404, headers: { ...SECURITY_HEADERS } });
+  }
+
   // Handle CORS preflight for API and nodeinfo routes
   if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
     return new NextResponse(null, { status: 204, headers: { ...CORS_HEADERS, ...SECURITY_HEADERS } });
@@ -123,5 +132,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   // "/@:path*" compiles to a regex that requires a slash between @ and the username,
   // so it never matches /@ale. Use separate patterns for exact and sub-path cases.
-  matcher: ["/users/:path*", "/api/:path*", "/nodeinfo/:path*", "/@:username", "/@:username/:path*"],
+  // The catch-all (excluding static assets) ensures the Next-Action guard also
+  // covers the root and any path a scanner may probe with a forged action ID.
+  matcher: ["/", "/users/:path*", "/api/:path*", "/nodeinfo/:path*", "/@:username", "/@:username/:path*", "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$).*)"],
 };
