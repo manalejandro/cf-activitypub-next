@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n";
 import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
+import { PwaRegister } from "@/components/PwaRegister";
 import "fork-awesome/css/fork-awesome.min.css";
 import "./globals.css";
 
@@ -38,6 +39,12 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.json",
   icons: { icon: "/logo.svg", shortcut: "/logo.svg", apple: "/logo.svg" },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "CF ActivityPub",
+  },
+  formatDetection: { telephone: false, email: false, address: false },
 };
 
 export const viewport: Viewport = {
@@ -68,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <LocaleProvider>
           {children}
           <CallOverlayWrapper />
+          <PwaRegister />
         </LocaleProvider>
       </body>
     </html>
