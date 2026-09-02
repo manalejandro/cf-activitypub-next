@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n";
 import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
 import { PwaRegister } from "@/components/PwaRegister";
+import { PaletteApplier } from "@/components/PaletteApplier";
 import "fork-awesome/css/fork-awesome.min.css";
 import "./globals.css";
 
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <CallOverlayWrapper />
           <PwaRegister />
+          <PaletteApplier />
         </LocaleProvider>
       </body>
     </html>

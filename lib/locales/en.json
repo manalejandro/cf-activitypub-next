@@ -807,5 +807,11 @@
   "loading_more": "Loading more…",
   "timeline_end": "No more posts",
   "status_history_empty": "No edit history.",
-  "status_history_edit": "Edit of {date}"
+  "status_history_edit": "Edit of {date}",
+  "settings_theme_colors": "Interface colors",
+  "settings_theme_default": "Instance default",
+  "settings_theme_custom": "Custom palette",
+  "settings_theme_accent": "Accent color",
+  "settings_theme_light_bg": "Light background",
+  "settings_theme_dark_bg": "Dark background"
 }

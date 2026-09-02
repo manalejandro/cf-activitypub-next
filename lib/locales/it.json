@@ -807,5 +807,11 @@
   "loading_more": "Caricamento di più..",
   "timeline_end": "Nessun post",
   "status_history_empty": "Nessuna cronologia delle modifiche.",
-  "status_history_edit": "Modifica di {data}"
+  "status_history_edit": "Modifica di {data}",
+  "settings_theme_colors": "Colori di interfaccia",
+  "settings_theme_default": "Predefinito",
+  "settings_theme_custom": "Tavolozza personalizzata",
+  "settings_theme_accent": "Colore accento",
+  "settings_theme_light_bg": "Sfondo luminoso",
+  "settings_theme_dark_bg": "Sfondo scuro"
 }

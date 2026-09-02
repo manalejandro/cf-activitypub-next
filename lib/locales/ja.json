@@ -807,5 +807,11 @@
   "loading_more": "もっと読む..",
   "timeline_end": "より多くの投稿",
   "status_history_empty": "編集履歴はありません.",
-  "status_history_edit": "{date} の編集"
+  "status_history_edit": "{date} の編集",
+  "settings_theme_colors": "インターフェイス色",
+  "settings_theme_default": "インスタンスのデフォルト",
+  "settings_theme_custom": "カスタムパレット",
+  "settings_theme_accent": "アクセントカラー",
+  "settings_theme_light_bg": "軽い背景",
+  "settings_theme_dark_bg": "ダーク背景"
 }

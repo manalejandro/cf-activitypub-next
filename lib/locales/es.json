@@ -807,5 +807,11 @@
   "loading_more": "Cargando más…",
   "timeline_end": "No hay más estados",
   "status_history_empty": "No hay historial de ediciones.",
-  "status_history_edit": "Edición del {date}"
+  "status_history_edit": "Edición del {date}",
+  "settings_theme_colors": "Colores de la interfaz",
+  "settings_theme_default": "Predeterminado de la instancia",
+  "settings_theme_custom": "Paleta personalizada",
+  "settings_theme_accent": "Color de acento",
+  "settings_theme_light_bg": "Fondo claro",
+  "settings_theme_dark_bg": "Fondo oscuro"
 }

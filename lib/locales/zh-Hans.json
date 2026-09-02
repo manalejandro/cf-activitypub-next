@@ -807,5 +807,11 @@
   "loading_more": "正在装入..",
   "timeline_end": "不再设员额",
   "status_history_empty": "无编辑历史 .",
-  "status_history_edit": "编辑{日期}"
+  "status_history_edit": "编辑{日期}",
+  "settings_theme_colors": "界面颜色",
+  "settings_theme_default": "实例默认",
+  "settings_theme_custom": "自定义调色板",
+  "settings_theme_accent": "中间颜色",
+  "settings_theme_light_bg": "浅色背景",
+  "settings_theme_dark_bg": "黑暗背景"
 }

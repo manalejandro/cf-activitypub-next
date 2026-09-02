@@ -807,5 +807,11 @@
   "loading_more": "더 많은..",
   "timeline_end": "더 많은 게시물",
   "status_history_empty": "관련 기사.",
-  "status_history_edit": "{date}의 편집"
+  "status_history_edit": "{date}의 편집",
+  "settings_theme_colors": "공용영역 색깔",
+  "settings_theme_default": "Instance 기본",
+  "settings_theme_custom": "주문 팔레트",
+  "settings_theme_accent": "Accent 색깔",
+  "settings_theme_light_bg": "빛 배경",
+  "settings_theme_dark_bg": "어두운 배경"
 }

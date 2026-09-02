@@ -807,5 +807,11 @@
   "loading_more": "Carregando mais..",
   "timeline_end": "Sem mais mensagens",
   "status_history_empty": "Sem histórico de edição.",
-  "status_history_edit": "Edição de {data}"
+  "status_history_edit": "Edição de {data}",
+  "settings_theme_colors": "Cores da interface",
+  "settings_theme_default": "Por omissão da instância",
+  "settings_theme_custom": "Paleta personalizada",
+  "settings_theme_accent": "Cor do sotaque",
+  "settings_theme_light_bg": "Fundo claro",
+  "settings_theme_dark_bg": "Fundo escuro"
 }

@@ -807,5 +807,11 @@
   "loading_more": "Mehr laden..",
   "timeline_end": "Keine Posts mehr",
   "status_history_empty": "Keine Edit History.",
-  "status_history_edit": "Edit von {date}"
+  "status_history_edit": "Edit von {date}",
+  "settings_theme_colors": "Schnittstellenfarben",
+  "settings_theme_default": "Instance default",
+  "settings_theme_custom": "Kundenspezifische Palette",
+  "settings_theme_accent": "Akzentfarbe",
+  "settings_theme_light_bg": "Lichthintergrund",
+  "settings_theme_dark_bg": "Dunkler Hintergrund"
 }
