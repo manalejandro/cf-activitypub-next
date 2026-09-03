@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -19,6 +20,9 @@ import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import { useLimits } from "@/lib/limits-client";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
 const SCHEDULE_MIN = (() => {
@@ -74,8 +78,20 @@ export default function HomePage() {
         const updated = JSON.parse(payload) as Status;
         setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
       } catch { /* ignore */ }
+    } else if (event === "filters_changed") {
+      // Server filters changed: cached statuses embed the old `filtered`
+      // results, so drop every cached feed and refetch with the new rules.
+      clearAllTimelineCaches();
+      void refresh();
     }
   }, { onReconnect: () => { void catchUp(); } });
+
+  // Filters edited in the settings screen (same tab): refetch with new rules.
+  useEffect(() => {
+    const handler = () => { clearAllTimelineCaches(); void refresh(); };
+    window.addEventListener("cf-ap:filters-changed", handler);
+    return () => window.removeEventListener("cf-ap:filters-changed", handler);
+  }, [refresh]);
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);
@@ -84,7 +100,7 @@ export default function HomePage() {
   // Poll compose state
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   // Scheduling state
   const [scheduling, setScheduling] = useState(false);
@@ -121,14 +137,17 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    const token = getToken();
+    if (!token) { router.push("/login"); return; }
     Promise.resolve().then(() => void fetchMe());
     Promise.resolve().then(() => void fetchPrefs());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     if (uploadingMedia) return;
-    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
     if (!composing.trim() && mediaFiles.length === 0 && !hasPoll) return;
     setPosting(true);
     setEmojiOpen(false);
@@ -201,6 +220,7 @@ export default function HomePage() {
   }, [composing]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!getToken()) return;
     if (!e.target.files?.length) return;
     const files = Array.from(e.target.files).slice(0, limits.maxMediaAttachments - mediaFiles.length);
     e.target.value = "";
@@ -509,7 +529,7 @@ export default function HomePage() {
                 <button
                   type="submit"
                   className="btn btn-primary btn-sm"
-                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= 2))}
+                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS))}
                 >
                   {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.compose_post}
                 </button>
@@ -545,6 +565,7 @@ export default function HomePage() {
           statuses.map((s) => (
             <div key={s.id} data-status-id={s.id}>
               <StatusCard
+                  filterContext="home"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}
@@ -560,7 +581,7 @@ export default function HomePage() {
         {/* Infinite scroll sentinel */}
         {!loading && statuses.length > 0 && (
           <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-            {loadingMore ? "Cargando más…" : hasMore ? "" : "No hay más estados"}
+            {loadingMore ? <Loading compact text={t.loading_more} /> : hasMore ? "" : t.timeline_end}
           </div>
         )}
       </PageLayout>

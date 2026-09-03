@@ -203,11 +203,15 @@ async function resolveToken(
   db: D1Database,
   token: string
 ): Promise<{ actor_id: string; username: string } | null> {
+  // expires_at is stored ISO-8601; compare against an ISO "now" (datetime('now')
+  // uses a space format and would keep a token valid for up to a day past
+  // its expiry).
+  const nowIso = new Date().toISOString();
   return db
     .prepare(
-      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > datetime('now'))"
+      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)"
     )
-    .bind(token)
+    .bind(token, nowIso)
     .first<{ actor_id: string; username: string }>();
 }
 
@@ -256,12 +260,14 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
   if (!streamParam) {
     const token = extractToken(request, url);
     let channel = "public";
+    let authed = false;
     if (token) {
       const row = await resolveToken(env.DB, token);
       if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
       channel = `home:${row.username}`;
+      authed = true;
     }
-    return forwardToTimelineDO(env, request, channel);
+    return forwardToTimelineDO(env, request, channel, authed);
   }
 
   // ── Authenticated streams ──────────────────────────────────────────────────
@@ -280,7 +286,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
       // "user" → full home stream (updates + notifications)
       channel = `home:${row.username}`;
     }
-    return forwardToTimelineDO(env, request, channel);
+    return forwardToTimelineDO(env, request, channel, true);
   }
 
   // ── List stream (requires auth) ────────────────────────────────────────────
@@ -290,7 +296,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
     const row = await resolveToken(env.DB, token);
     if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
-    return forwardToTimelineDO(env, request, `list:${listId}`);
+    return forwardToTimelineDO(env, request, `list:${listId}`, true);
   }
 
   // ── Public / hashtag streams ───────────────────────────────────────────────
@@ -396,6 +402,76 @@ async function handleCallSignalingUpgrade(
   env: Env,
   callId: string
 ): Promise<Response> {
+  const url = new URL(request.url);
+
+  // ── Abuse protection (same hardening as the streaming upgrades) ───────────
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (await isWsIpBlocked(env.KV, ip)) {
+    return new Response(JSON.stringify({ error: "Source IP temporarily blocked" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const originError = validateWsOrigin(request, url);
+  if (originError) {
+    return new Response(JSON.stringify({ error: originError }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const rl = await enforceWsConnectRateLimit(env.KV, ip);
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({ error: rl.blocked ? "Source IP temporarily blocked" : "Too many connection attempts" }),
+      { status: rl.blocked ? 403 : 429, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // ── Auth: only the caller or callee may join the signaling relay ──────────
+  const token = extractToken(request, url);
+  if (!token) {
+    return new Response(JSON.stringify({ error: "The access token is invalid" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const row = await resolveToken(env.DB, token);
+  if (!row) {
+    return new Response(JSON.stringify({ error: "The access token is invalid" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const raw = await env.KV.get(`call:${callId}`);
+  if (!raw) {
+    return new Response(JSON.stringify({ error: "Call not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  let session: { callerId: string; calleeId: string; state: string };
+  try {
+    session = JSON.parse(raw) as { callerId: string; calleeId: string; state: string };
+  } catch {
+    return new Response(JSON.stringify({ error: "Call not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (session.callerId !== row.actor_id && session.calleeId !== row.actor_id) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (session.state === "ended" || session.state === "rejected") {
+    return new Response(JSON.stringify({ error: "Call has ended" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const doId = env.CALL_SIGNALING.idFromName(callId);
   const stub = env.CALL_SIGNALING.get(doId);
   return stub.fetch("https://call-do/connect", { method: request.method, headers: request.headers }) as Promise<Response>;
@@ -566,12 +642,47 @@ async function executeScheduled(env: Env): Promise<void> {
       await Promise.allSettled(broadcastTasks);
     }
 
+    const ids = objects.results.map((o) => o.id);
+
+    // Delete dependents + objects in chunked batches (D1 caps batch size).
+    // status_pins and custom_filter_statuses have no FK to objects, so they
+    // must be removed explicitly; everything else cascades.
+    for (let i = 0; i < ids.length; i += 30) {
+      const chunk = ids.slice(i, i + 30);
+      await env.DB.batch([
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM objects WHERE id = ?").bind(id)),
+      ]);
+    }
+
+    // Keep the profile status counter accurate (matches the manual delete path).
     await env.DB
-      .prepare(
-        "DELETE FROM objects WHERE actor_id = ? AND published < ? AND is_local = 1 AND type = 'Note'"
-      )
-      .bind(actor.id, cutoff)
+      .prepare("UPDATE actors SET statuses_count = MAX(COALESCE(statuses_count, 0) - ?, 0) WHERE id = ?")
+      .bind(ids.length, actor.id)
       .run();
+  }
+
+  // Repair sweep (daily): purge legacy dangling rows left by older deletes.
+  // status_pins / custom_filter_statuses reference objects without a FK, so
+  // rows whose status no longer exists are dead weight (and pins count against
+  // the pin limit). Idempotent; guarded by a KV marker to run once per day.
+  try {
+    if (!(await env.KV.get("cron:cleanup:dangling"))) {
+      await env.DB
+        .prepare(
+          "DELETE FROM status_pins WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = status_pins.status_id)"
+        )
+        .run();
+      await env.DB
+        .prepare(
+          "DELETE FROM custom_filter_statuses WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = custom_filter_statuses.status_id)"
+        )
+        .run();
+      await env.KV.put("cron:cleanup:dangling", "1", { expirationTtl: 86400 });
+    }
+  } catch (err) {
+    console.error("[cron] dangling-cleanup failed", err);
   }
 
   // AI Guardian patrol — reviews recent posts and suspicious accounts, blocks
@@ -604,13 +715,18 @@ async function executeScheduled(env: Env): Promise<void> {
  */
 async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
-    // Local accounts — re-check occasionally (30 min) so slow sites don't stall
-    // every cron run.
-    const localRows = await env.DB
+    // Local accounts — re-check occasionally (30 min via KV marker) so slow sites
+// don't stall every cron run. Bounded to a few per run (each check fetches the
+// external page) so the whole cron stays inside the 60s overlap window.
+// ORDER BY verified_at ASC: failed/never-checked fields (NULL) are retried
+// first, then the longest-verified ones get re-checked (badge revocation).
+const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
          JOIN actors a ON a.id = af.actor_id
-         WHERE a.is_local = 1 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')`
+         WHERE a.is_local = 1 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')
+         ORDER BY af.verified_at ASC
+         LIMIT 5`
       )
       .all<{ actor_id: string }>();
     for (const row of localRows.results) {

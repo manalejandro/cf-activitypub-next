@@ -12,6 +12,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.trendingTagsLimit)),
     limits.trendingTagsMax
   );
+  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
 
   // Fetch recent public objects and parse hashtags in JS
   const rows = await env.DB
@@ -20,14 +21,17 @@ export async function GET(request: NextRequest): Promise<Response> {
        FROM objects
        WHERE json_valid(raw)
          AND visibility IN ('public', 'unlisted')
-         AND published >= datetime('now', '-7 days')
+         AND published >= ?
          AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = objects.actor_id AND (a.silenced = 1 OR a.suspended = 1))
        ORDER BY published DESC
        LIMIT 500`
     )
+    .bind(weekCutoff)
     .all<{ id: string; actor_id: string; raw: string }>();
 
   const tagStats = new Map<string, { uses: number; actors: Set<string> }>();
+
+
   for (const r of rows.results) {
     let parsed: { tag?: unknown };
     try { parsed = JSON.parse(r.raw); } catch { continue; }

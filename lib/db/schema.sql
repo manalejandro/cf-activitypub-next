@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS actors (
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   last_active_at     TEXT,
+  last_status_at     TEXT,                          -- remote actors: federated value; local: computed
   verified           INTEGER NOT NULL DEFAULT 0,     -- 1 when a profile field's rel="me" link verifies
   UNIQUE (username, domain)
 );
@@ -541,41 +542,6 @@ CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(c
 CREATE INDEX IF NOT EXISTS idx_collection_items_account ON collection_items(account_id);
 
 -- ─────────────────────────────────────────
--- Filters (v2)
--- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS filters (
-  id              TEXT PRIMARY KEY,
-  actor_id        TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
-  title           TEXT NOT NULL,
-  context         TEXT NOT NULL DEFAULT '[]',
-  filter_action   TEXT NOT NULL DEFAULT 'warn',
-  expires_at      TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_filters_actor ON filters(actor_id);
-
-CREATE TABLE IF NOT EXISTS filter_keywords (
-  id          TEXT PRIMARY KEY,
-  filter_id   TEXT NOT NULL REFERENCES filters(id) ON DELETE CASCADE,
-  keyword     TEXT NOT NULL,
-  whole_word  INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_filter_keywords_filter ON filter_keywords(filter_id);
-
-CREATE TABLE IF NOT EXISTS filter_statuses (
-  id          TEXT PRIMARY KEY,
-  filter_id   TEXT NOT NULL REFERENCES filters(id) ON DELETE CASCADE,
-  status_id   TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_filter_statuses_filter ON filter_statuses(filter_id);
-
--- ─────────────────────────────────────────
 -- Scheduled statuses
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS scheduled_statuses (
@@ -813,3 +779,40 @@ CREATE TABLE IF NOT EXISTS preferences (
 );
 
 CREATE INDEX IF NOT EXISTS idx_preferences_actor ON preferences(actor_id);
+
+-- ─────────────────────────────────────────
+-- User filters (Mastodon-compatible, server-side v2)
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS custom_filters (
+  id            TEXT PRIMARY KEY,
+  account_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  action        TEXT NOT NULL DEFAULT 'warn',  -- warn | hide | blur
+  context       TEXT NOT NULL DEFAULT '[]',    -- JSON array: home|notifications|public|thread|account
+  expires_at    TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_filters_account ON custom_filters(account_id);
+
+CREATE TABLE IF NOT EXISTS custom_filter_keywords (
+  id               TEXT PRIMARY KEY,
+  custom_filter_id TEXT NOT NULL REFERENCES custom_filters(id) ON DELETE CASCADE,
+  keyword          TEXT NOT NULL,
+  whole_word       INTEGER NOT NULL DEFAULT 1,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_filter_keywords_filter ON custom_filter_keywords(custom_filter_id);
+
+CREATE TABLE IF NOT EXISTS custom_filter_statuses (
+  id               TEXT PRIMARY KEY,
+  custom_filter_id TEXT NOT NULL REFERENCES custom_filters(id) ON DELETE CASCADE,
+  status_id        TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_filter_statuses_filter ON custom_filter_statuses(custom_filter_id);
+CREATE INDEX IF NOT EXISTS idx_custom_filter_statuses_status ON custom_filter_statuses(status_id);

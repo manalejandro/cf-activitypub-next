@@ -8,6 +8,7 @@ import { SettingsHeader } from "@/components/SettingsHeader";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
+import { Loading } from "@/components/Loading";
 
 interface ImportResult {
   acct: string;
@@ -108,7 +109,7 @@ export default function ImportExportPage() {
             onChange={(e) => void handleImport(e)}
             style={{ fontSize: "0.85rem" }}
           />
-          {importing && <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>{t.loading}</div>}
+          {importing && <Loading compact />}
           {error && <div style={{ fontSize: "0.85rem", color: "var(--danger)", marginTop: "0.5rem" }}>{error}</div>}
           {counts && (
             <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>

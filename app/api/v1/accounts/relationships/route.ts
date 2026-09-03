@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getFollow, isBlocked } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // GET /api/v1/accounts/relationships?id[]=xxx&id[]=yyy
 // Used by Mastodon clients to display the follow/block/mute state for one or more accounts.
@@ -18,36 +18,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   ].filter(Boolean);
 
   const relationships = await Promise.all(
-    ids.map(async (id) => {
-      const rawId = decodeURIComponent(id);
-      const [outgoing, incoming] = await Promise.all([
-        getFollow(env.DB, actor.id, rawId),
-        getFollow(env.DB, rawId, actor.id),
-      ]);
-
-      const [blocking, blocked_by] = await Promise.all([
-        isBlocked(env.DB, actor.id, rawId),
-        isBlocked(env.DB, rawId, actor.id),
-      ]);
-
-      return {
-        id: rawId,
-        following: outgoing?.state === "accepted",
-        showing_reblogs: outgoing?.state === "accepted",
-        notifying: false,
-        languages: null,
-        followed_by: incoming?.state === "accepted",
-        blocking,
-        blocked_by,
-        muting: false,
-        muting_notifications: false,
-        requested: outgoing?.state === "pending",
-        requested_by: incoming?.state === "pending",
-        domain_blocking: false,
-        endorsed: false,
-        note: "",
-      };
-    })
+    ids.map(async (id) => buildRelationship(env.DB, actor.id, decodeURIComponent(id)))
   );
 
   return json(relationships);

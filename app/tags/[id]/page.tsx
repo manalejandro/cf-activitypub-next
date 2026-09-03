@@ -12,6 +12,7 @@ import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface TagInfo {
   id: string;
@@ -255,6 +256,7 @@ export default function TagPage() {
             {statuses.map((s) => (
               <div key={s.id} data-status-id={s.id}>
                 <StatusCard
+                  filterContext="public"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}
@@ -267,7 +269,7 @@ export default function TagPage() {
               </div>
             ))}
             <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-              {loadingMore ? t.loading : ""}
+              {loadingMore && <Loading compact />}
             </div>
           </div>
         )}

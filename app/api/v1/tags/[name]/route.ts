@@ -43,6 +43,7 @@ export async function GET(
   const authActor = await getAuthenticatedActor(request, env.DB);
 
   // Query 7-day history for this tag
+  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
   const rows = await env.DB
     .prepare(
       `SELECT
@@ -55,12 +56,12 @@ export async function GET(
          AND LOWER(REPLACE(json_extract(t.value, '$.name'), '#', '')) = LOWER(?)
          AND json_extract(t.value, '$.type') = 'Hashtag'
          AND o.visibility IN ('public', 'unlisted')
-         AND o.published >= datetime('now', '-7 days')
+         AND o.published >= ?
          AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
        GROUP BY day
        ORDER BY day DESC`
     )
-    .bind(tagName)
+    .bind(weekCutoff, tagName)
     .all<{ day: number; accounts: number; uses: number }>();
 
   const historyRows = (rows.results ?? []).map((r) => ({

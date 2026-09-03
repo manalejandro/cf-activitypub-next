@@ -75,5 +75,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     actorId: null,
   });
 
+  await env.KV.delete("custom_emojis:v1").catch(() => {});
   return json({ id, shortcode, url, static_url: staticUrl, category, visible_in_picker: true }, 201);
 }

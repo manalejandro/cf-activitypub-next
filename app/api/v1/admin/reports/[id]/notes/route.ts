@@ -5,6 +5,7 @@ import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { generateId } from "@/lib/activitypub/utils";
+import { MAX_REPORT_NOTE_CHARS } from "@/lib/constants";
 
 // POST /api/v1/admin/reports/:id/notes — add an internal moderation note to a
 // report ticket. Mirrors Mastodon's report_notes (internal only, not federated).
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!content) return badRequest("content is required");
 
   const noteId = generateId();
-  await createReportNote(env.DB, noteId, id, actor.id, content.slice(0, 5000));
+  await createReportNote(env.DB, noteId, id, actor.id, content.slice(0, MAX_REPORT_NOTE_CHARS));
 
   const author = await getActorById(env.DB, actor.id);
 

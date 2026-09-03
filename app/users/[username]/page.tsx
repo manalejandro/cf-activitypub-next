@@ -22,6 +22,7 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { EmojiInput } from "@/components/EmojiInput";
 import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { Loading } from "@/components/Loading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -687,7 +688,7 @@ export default function ProfilePage() {
     <>
     <PageLayout sidebar={<Sidebar me={me} currentPath={`/users/${username}`} />}>
         {loading ? (
-          <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : notFound || !account ? (
           <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem" }}><Icon name="user" size="3rem" /></div>
@@ -1089,7 +1090,7 @@ export default function ProfilePage() {
                 <>
                   {statuses.map((s) => (
                     <StatusCard
-                      key={s.id}
+                    filterContext="account"key={s.id}
                       status={s}
                       onFav={handleStatusUpdate}
                       onReblog={handleStatusUpdate}
@@ -1101,7 +1102,7 @@ export default function ProfilePage() {
                     />
                   ))}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMorePosts ? "Cargando…" : ""}
+                    {loadingMorePosts && <Loading compact />}
                   </div>
                 </>
               )
@@ -1109,7 +1110,7 @@ export default function ProfilePage() {
 
             {activeTab === "replies" && (
               !tabLoaded.replies ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : replies.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="comment" size="2rem" /></span>
@@ -1118,7 +1119,7 @@ export default function ProfilePage() {
               ) : (
                 replies.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
@@ -1134,7 +1135,7 @@ export default function ProfilePage() {
 
             {activeTab === "pinned" && (
               !tabLoaded.pinned ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : pinnedStatuses.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="thumb-tack" size="2rem" /></span>
@@ -1143,7 +1144,7 @@ export default function ProfilePage() {
               ) : (
                 pinnedStatuses.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
@@ -1167,14 +1168,14 @@ export default function ProfilePage() {
 
             {activeTab === "followers" && (
               !tabLoaded.followers ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : followers.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_followers}</div>
               ) : (
                 <>
                   {followers.map((f) => <AccountCard key={f.id} acct={f} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMoreFollowers ? "Cargando…" : ""}
+                    {loadingMoreFollowers && <Loading compact />}
                   </div>
                 </>
               )
@@ -1182,14 +1183,14 @@ export default function ProfilePage() {
 
             {activeTab === "following" && (
               !tabLoaded.following ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : following.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_following}</div>
               ) : (
                 <>
                   {following.map((f) => <AccountCard key={f.id} acct={f} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMoreFollowing ? "Cargando…" : ""}
+                    {loadingMoreFollowing && <Loading compact />}
                   </div>
                 </>
               )
@@ -1197,7 +1198,7 @@ export default function ProfilePage() {
 
             {activeTab === "collections" && (
               !tabLoaded.collections ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : collections.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="users" size="2rem" /></span>

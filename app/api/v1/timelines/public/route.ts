@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
+import { getPublicTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -8,6 +8,8 @@ import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalActor } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 /**
  * Minimal placeholder account for a remote status whose author could not be
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (local && !authActor) return unauthorized();
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -76,7 +78,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     getReplyToAccountIdMap(env.DB, objects),
     getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
     getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
+    getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
+    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
   ]);
+
+  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
@@ -110,6 +118,12 @@ export async function GET(request: NextRequest): Promise<Response> {
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
         quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
         quotesCount: quotesCountMap.get(obj.id) ?? 0,
+        filtered: filteredMap.get(obj.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(obj.id),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

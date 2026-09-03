@@ -3,16 +3,52 @@
   "short_name": "CfAP",
   "description": "A Mastodon-compatible ActivityPub server running on Cloudflare Workers",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f0f17",
   "theme_color": "#6366f1",
   "orientation": "portrait-primary",
   "icons": [
     {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Inicio",
+      "url": "/home",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Explorar",
+      "url": "/explore",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Notificaciones",
+      "url": "/notifications",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "categories": ["social", "productivity"],

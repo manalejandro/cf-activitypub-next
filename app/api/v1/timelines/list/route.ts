@@ -4,6 +4,8 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     .bind(...args)
     .all<Record<string, unknown>>();
   if (rows.results.length === 0) return json([]);
-  const { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, getReplyToAccountIdMap } = await import("@/lib/db");
+  const { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap, getActorFieldsMap } = await import("@/lib/db");
   const { serializeStatus } = await import("@/lib/mastodon/serializers");
   const objectIds = rows.results.map((r) => r.id as string);
   const objs = rows.results.map((r) => ({
@@ -65,16 +67,20 @@ export async function GET(request: NextRequest): Promise<Response> {
     local: Boolean(r.is_local),
     raw: r.raw as string,
   }));
-  const [attachmentMap, allEmojis, replyToMap] = await Promise.all([
+  const [attachmentMap, allEmojis, replyToMap, filteredMap, lastStatusAtMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objectIds),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objs),
+    getFilterResultsForStatuses(env.DB, me.id, objs),
+    getLastStatusAtMap(env.DB, objs.map((o) => o.actorId)),
   ]);
+  const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
   const statuses = await Promise.all(
     objs.map(async (obj) => {
       const author = await getActorById(env.DB, obj.actorId);
       if (!author) return null;
-      return serializeStatus(obj, author, domain, { attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId: replyToMap.get(obj.id) ?? null });
+      return serializeStatus(obj, author, domain, { attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId: replyToMap.get(obj.id) ?? null, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, authorFields: authorFieldsMap.get(obj.actorId) ?? [] });
     })
   );
   const result = statuses.filter(Boolean);

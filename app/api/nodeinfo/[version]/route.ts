@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, notFound } from "@/lib/cf";
 
 // GET /nodeinfo/:version
 export async function GET(
@@ -13,17 +13,30 @@ export async function GET(
     return notFound("Only NodeInfo 2.x is supported");
   }
 
+  // NodeInfo is probed by every instance that discovers this server; a burst
+  // of probes must not run 5 count queries against D1 each time. Cache it.
+  const cacheKey = `nodeinfo:${version}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  }
+
   const db = env.DB;
+
+  // `published` is stored ISO-8601; bind ISO cutoffs so the comparison is
+  // lexically correct (datetime('now', ...) would use a space format).
+  const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
 
   const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
     db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
     db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-30 days')"
-    ).first<{ count: number }>(),
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(monthCutoff).first<{ count: number }>(),
     db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-180 days')"
-    ).first<{ count: number }>(),
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(halfyearCutoff).first<{ count: number }>(),
     db.prepare(
       "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
     ).first<{ count: number }>(),
@@ -63,5 +76,7 @@ export async function GET(
     };
   }
 
-  return json(payload);
+  const body = JSON.stringify(payload);
+  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

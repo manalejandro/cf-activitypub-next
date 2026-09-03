@@ -29,7 +29,7 @@ async function recentLocalStatuses(db: D1Database, minutes: number) {
   const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
   return db
     .prepare(
-      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 150"
+      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 40"
     )
     .bind(cutoff)
     .all<{ id: string; actor_id: string; content: string; content_warning: string | null; sensitive: number; visibility: string; in_reply_to_id: string | null }>();

@@ -85,7 +85,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Local
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -124,12 +124,19 @@ export function serializeAccount(
     following_count: actor.followingCount,
     statuses_count: actor.statusesCount,
     last_status_at: opts.lastStatusAt ?? null,
-    hide_collections: null,
+    hide_collections: opts.hideCollections ?? null,
     emojis: filterUsedEmojis(
       [actor.displayName, actor.summary, ...(opts.fields ?? []).map((f) => f.name), ...(opts.fields ?? []).map((f) => f.value)],
       opts.emojis ?? []
     ).map(serializeEmoji),
-    roles: opts.role ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }] : (actor.isLocal && (actor.role === "admin" || actor.role === "moderator")) ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }] : [],
+    // Mastodon: [] when no roles are highlighted, null for remote accounts.
+    roles: opts.role
+      ? [{ id: opts.role === "admin" ? "1" : opts.role === "moderator" ? "2" : "3", name: opts.role.charAt(0).toUpperCase() + opts.role.slice(1), color: "" }]
+      : actor.isLocal
+        ? (actor.role === "admin" || actor.role === "moderator")
+          ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }]
+          : []
+        : null,
     fields: (opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: isLocal
@@ -163,6 +170,9 @@ export function serializeAccount(
       bot: actor.isBot,
       follow_requests_count: opts.followRequestsCount ?? 0,
       auto_delete_after: actor.autoDeleteAfter ?? null,
+      hide_collections: opts.hideCollections ?? false,
+      discoverable: actor.discoverable ? true : null,
+      indexable: actor.discoverable !== false,
     };
   }
 
@@ -249,7 +259,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null; bookmarked?: boolean } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -281,20 +291,26 @@ export function serializeStatus(
     content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, opts.emojis), obj.raw, localDomain),
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
-    account: serializeAccount(author, localDomain),
+    account: serializeAccount(author, localDomain, {
+      lastStatusAt: opts.authorLastStatusAt ?? null,
+      emojis: opts.authorEmojis ?? opts.emojis ?? [],
+      fields: opts.authorFields ?? [],
+      supportsCalls: opts.authorSupportsCalls,
+      moved: opts.authorMoved ?? undefined,
+    }),
     media_attachments: (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
     card: null,
     poll: opts.poll ?? null,
-    filtered: [],
+    filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,
     quote: opts.quote ?? null,
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
     muted: false,
-    bookmarked: false,
+    bookmarked: opts.bookmarked ?? false,
     pinned: opts.pinned ?? false,
     ...buildTypeMeta(obj),
   };
@@ -610,7 +626,12 @@ export function serializeNotification(
   account: LocalActor,
   localDomain: string,
   status?: LocalObject,
-  statusAuthor?: LocalActor
+  statusAuthor?: LocalActor,
+  filtered?: import("@/lib/mastodon/filters").FilterResult[],
+  authorLastStatusAt?: string | null,
+  authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null },
+  bookmarked?: boolean,
+  authorFields?: import("@/lib/types").ActorField[]
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -619,7 +640,14 @@ export function serializeNotification(
     account: serializeAccount(account, localDomain),
   };
   if (status && statusAuthor) {
-    result.status = serializeStatus(status, statusAuthor, localDomain);
+    result.status = serializeStatus(status, statusAuthor, localDomain, {
+      filtered: filtered ?? [],
+      authorLastStatusAt,
+      authorSupportsCalls: authorExtras?.supportsCalls,
+      authorMoved: authorExtras?.moved ?? null,
+      bookmarked,
+      authorFields,
+    });
   }
   return result;
 }
@@ -653,7 +681,15 @@ export function serializeInstanceV2(
     ...(vapidPublicKey ? { vapid_public_key: vapidPublicKey } : {}),
     configuration: {
       urls: { streaming: `wss://${domain}/api/v1/streaming` },
-      accounts: { max_featured_tags: limits.maxFeaturedTags },
+      accounts: {
+        max_featured_tags: limits.maxFeaturedTags,
+        max_display_name_length: limits.maxDisplayNameChars,
+        max_note_length: limits.maxNoteChars,
+        max_pinned_statuses: limits.maxPinnedStatuses,
+        max_profile_fields: limits.maxProfileFields,
+        profile_field_name_limit: limits.maxProfileFieldChars,
+        profile_field_value_limit: limits.maxProfileFieldChars,
+      },
       ...(vapidPublicKey ? { vapid: { secret_key: vapidPublicKey } } : {}),
       statuses: {
         max_characters: limits.maxStatusChars,
@@ -662,6 +698,7 @@ export function serializeInstanceV2(
       },
       media_attachments: {
         supported_mime_types: SUPPORTED_MEDIA_MIME_TYPES,
+        description_limit: limits.maxAltTextChars,
         image_size_limit: limits.maxImageSize,
         image_matrix_limit: limits.imageMatrixLimit,
         video_size_limit: limits.maxVideoSize,
@@ -674,9 +711,17 @@ export function serializeInstanceV2(
         min_expiration: limits.pollMinExpiration,
         max_expiration: limits.pollMaxExpiration,
       },
+      translation: { enabled: true },
+      timelines_access: {
+        live_feeds: { local: "authenticated", remote: "public" },
+        hashtag_feeds: { local: "public", remote: "public" },
+        trending_link_feeds: { local: "public", remote: "public" },
+      },
+      limited_federation: false,
       calls: { enabled: true },
     },
-    registrations: { enabled: true, approval_required: false, message: null },
+    api_versions: { mastodon: 6 },
+    registrations: { enabled: true, approval_required: false, reason_required: false, message: null, min_age: null, url: null },
     contact: { email: `admin@${domain}`, account: contactAccount },
     rules,
   };

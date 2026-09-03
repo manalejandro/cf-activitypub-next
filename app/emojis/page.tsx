@@ -7,6 +7,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Emoji {
   id: string;
@@ -119,7 +120,7 @@ export default function EmojisPage() {
   if (!isStaff) {
     return (
       <PageLayout sidebar={<Sidebar currentPath="/emojis" />}>
-        <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
+        <Loading compact />
       </PageLayout>
     );
   }
@@ -173,7 +174,7 @@ export default function EmojisPage() {
           {t.emojis_local_count.replace("{count}", String(localEmojis.length))}
         </div>
         {loading ? (
-          <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
+          <Loading compact />
         ) : localEmojis.length === 0 ? (
           <div style={{ color: "var(--text-muted)", padding: "0.5rem 0", fontSize: "0.9rem" }}>{t.emojis_empty_local}</div>
         ) : (

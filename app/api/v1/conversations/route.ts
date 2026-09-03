@@ -1,9 +1,11 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversations, getObjectById, getActorById, getActorByUri } from "@/lib/db";
+import { getConversations, getObjectById, getActorById, getActorByUri, getLastStatusAtMap } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // IRIs of the other participants of a direct object: everyone addressed in
 // to/cc/mentions except the viewer. Public/collection recipients are skipped.
@@ -48,13 +50,17 @@ export async function GET(request: NextRequest): Promise<Response> {
     conversations.map(async (c) => {
       let lastStatus = null;
       let accounts: unknown[] = [];
+      let lastStatusFiltered: import("@/lib/mastodon/filters").FilterResult[] | undefined;
 
       if (c.last_status_id) {
         const obj = await getObjectById(env.DB, c.last_status_id);
+        if (obj) lastStatusFiltered = (await getFilterResultsForStatuses(env.DB, actor.id, [obj])).get(obj.id);
         if (obj) {
           const author = await getActorById(env.DB, obj.actorId);
           if (author) {
-            lastStatus = serializeStatus(obj, author, domain);
+            const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+            const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
+            lastStatus = serializeStatus(obj, author, domain, { filtered: lastStatusFiltered, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
             if (obj.visibility === "direct") {
               // The conversation is "with" everyone addressed except the viewer;
               // fall back to the last author when no other participant resolves.

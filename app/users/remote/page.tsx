@@ -21,6 +21,7 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -876,7 +877,7 @@ function RemoteProfileInner() {
             <>
               {statuses.map((s) => (
                 <StatusCard
-                  key={s.id}
+                filterContext="account"key={s.id}
                   status={s}
                   onFav={handleStatusUpdate}
                   onReblog={handleStatusUpdate}
@@ -888,7 +889,7 @@ function RemoteProfileInner() {
                 />
               ))}
               <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                {loadingMorePosts ? t.loading : ""}
+                {loadingMorePosts && <Loading compact />}
               </div>
             </>
           )
@@ -900,7 +901,7 @@ function RemoteProfileInner() {
           ) : (
             replies.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
@@ -920,7 +921,7 @@ function RemoteProfileInner() {
           ) : (
             pinnedStatuses.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
@@ -1042,7 +1043,7 @@ function RemoteProfileInner() {
 
 export default function RemoteProfilePage() {
   return (
-    <Suspense fallback={<PageLayout><div style={{ color: "var(--text-muted)", padding: "2rem", textAlign: "center" }}>Cargando…</div></PageLayout>}>
+    <Suspense fallback={<PageLayout><Loading /></PageLayout>}>
       <RemoteProfileInner />
     </Suspense>
   );

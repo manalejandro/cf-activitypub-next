@@ -1,12 +1,14 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections } from "@/lib/db";
+import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
 import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v2/search?q=...&type=accounts|statuses|hashtags&limit=20&offset=0
 export async function GET(request: NextRequest): Promise<Response> {
@@ -58,7 +60,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         if (actor && !actor.suspended && !actor.silenced) {
           const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
           const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
-          results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+          const filtered = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
+          results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered }));
         }
         return json(results);
       }
@@ -81,7 +84,12 @@ export async function GET(request: NextRequest): Promise<Response> {
         getAllCustomEmojis(env.DB),
         getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
       ]);
-      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis }));
+      const filteredRemote = me ? (await getFilterResultsForStatuses(env.DB, me.id, [remoteStatus.object])).get(remoteStatus.object.id) ?? [] : [];
+      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? null;
+      const authorExtras = (await getStatusAuthorExtras(env.DB, [remoteStatus.object.actorId], domain)).get(remoteStatus.object.actorId);
+      const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [remoteStatus.object.id])).has(remoteStatus.object.id) : false;
+      const authorFields = (await getActorFieldsMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? [];
+      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, authorFields }));
       return json(results);
     }
     const cachedActor = await fetchAndCacheRemoteActor(env.DB, q);
@@ -190,12 +198,22 @@ export async function GET(request: NextRequest): Promise<Response> {
         local: Boolean(row.local),
         raw: row.raw as string,
       };
+      const filteredKw = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
+      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+      const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
+      const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [obj.id])).has(obj.id) : false;
       results.statuses.push(
         serializeStatus(obj, actor, domain, {
           attachments: attachmentMap.get(obj.id) ?? [],
           favourited: false,
           reblogged: false,
           emojis: allEmojis,
+          filtered: filteredKw,
+          authorLastStatusAt,
+          authorSupportsCalls: authorExtras?.supportsCalls,
+          authorMoved: authorExtras?.moved ?? null,
+          bookmarked,
+          authorFields: (await getActorFieldsMap(env.DB, [obj.actorId])).get(obj.actorId) ?? [],
         })
       );
     }
@@ -271,6 +289,9 @@ async function getTagHistory(
   tagName: string
 ): Promise<{ day: string; uses: string; accounts: string }[]> {
   const like = `%#${tagName.replace(/[%_]/g, "\\$&")}%`;
+  // Bind the cutoff as ISO: `published` is stored ISO-8601, so comparing it
+  // against datetime('now', ...) (space format) breaks the lexical comparison.
+  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
   const rows = await db
     .prepare(
       `SELECT CAST(strftime('%s', published) / 86400 AS INTEGER) AS day_bucket,
@@ -278,13 +299,13 @@ async function getTagHistory(
               COUNT(DISTINCT actor_id) AS accounts
        FROM objects
        WHERE (content LIKE ? ESCAPE '\\' OR raw LIKE ? ESCAPE '\\')
-         AND published >= datetime('now', '-7 days')
+         AND published >= ?
          AND visibility IN ('public', 'unlisted')
          AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = objects.actor_id AND (a.silenced = 1 OR a.suspended = 1))
        GROUP BY day_bucket
        ORDER BY day_bucket`
     )
-    .bind(like, like)
+    .bind(like, like, weekCutoff)
     .all<{ day_bucket: number; uses: number; accounts: number }>();
 
   const byDay = new Map<number, { uses: number; accounts: number }>();

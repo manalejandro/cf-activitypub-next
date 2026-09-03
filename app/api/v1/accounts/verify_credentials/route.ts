@@ -24,6 +24,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const postingLanguage = (await getActorPreference(env.DB, actor.id, "posting:default:language")) ?? "en";
   const postingVisibility = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
   const postingSensitive = (await getActorPreference(env.DB, actor.id, "posting:default:sensitive")) === "true";
+  const hideCollections = (await getActorPreference(env.DB, actor.id, "profile:hide_collections")) === "true";
   const followRequestsRow = await env.DB
     .prepare("SELECT COUNT(*) AS c FROM follows WHERE target_id = ? AND state = 'pending'")
     .bind(actor.id)
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: postingVisibility, sensitive: postingSensitive, followRequestsCount }));
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: postingVisibility, sensitive: postingSensitive, followRequestsCount, hideCollections }));
 }
 
 // PATCH /api/v1/accounts/update_credentials
@@ -71,6 +72,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let fieldsRaw: { name: string; value: string }[] | undefined;
   let autoDeleteAfter: number | null | undefined;
   let sourceQuotePolicy: string | undefined;
+  let sourceHideCollections: boolean | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -89,6 +91,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
     const quotePolicyVal = form.get("source[quote_policy]") as string | null;
     if (quotePolicyVal !== null) sourceQuotePolicy = quotePolicyVal;
+    const hideCollectionsVal = form.get("source[hide_collections]") as string | null;
+    if (hideCollectionsVal !== null) sourceHideCollections = hideCollectionsVal === "true";
 
     // Handle avatar upload
     const avatarFile = form.get("avatar") as File | null;
@@ -150,8 +154,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       autoDeleteAfter = v === "" || v === 0 || v === "0" ? null : Number(v) || null;
     }
     if (typeof body.source === "object" && body.source !== null) {
-      const qp = (body.source as { quote_policy?: string }).quote_policy;
-      if (qp !== undefined) sourceQuotePolicy = qp;
+      const src = body.source as { quote_policy?: string; hide_collections?: boolean };
+      if (src.quote_policy !== undefined) sourceQuotePolicy = src.quote_policy;
+      if (src.hide_collections !== undefined) sourceHideCollections = Boolean(src.hide_collections);
     }
   }
 
@@ -225,6 +230,17 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       .run();
   }
 
+  // Profile preference — `source[hide_collections]` (Mastodon API v4.3).
+  if (sourceHideCollections !== undefined) {
+    await env.DB
+      .prepare(
+        `INSERT INTO preferences (actor_id, key, value, updated_at) VALUES (?, 'profile:hide_collections', ?, datetime('now'))
+         ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      )
+      .bind(actor.id, sourceHideCollections ? "true" : "false")
+      .run();
+  }
+
   // Re-read using proper mapper
   const updated = await getActorById(env.DB, actor.id);
   if (!updated) return unauthorized();
@@ -264,5 +280,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields, emojis: await getAllCustomEmojis(env.DB) }));
+  const hideCollectionsAfter = sourceHideCollections !== undefined
+    ? sourceHideCollections
+    : (await getActorPreference(env.DB, updated.id, "profile:hide_collections")) === "true";
+
+  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields, emojis: await getAllCustomEmojis(env.DB), hideCollections: hideCollectionsAfter }));
 }

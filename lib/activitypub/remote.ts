@@ -130,46 +130,96 @@ export async function fetchAndCacheRemoteActor(
     // Upsert — update if already exists (in case profile changed).
     // Falls back to UPDATE by username+domain when the actor migrated to a new URL.
     const alsoKnownAs = Array.isArray(p.alsoKnownAs) ? JSON.stringify(p.alsoKnownAs.filter((x) => typeof x === "string")) : null;
+    // Mastodon publishes the account's last activity date; store it so the
+    // account serializers can report the federated value.
+    const lastStatusAtRaw = (p as unknown as Record<string, unknown>).last_status_at;
+    const lastStatusAt = typeof lastStatusAtRaw === "string" && lastStatusAtRaw ? lastStatusAtRaw.slice(0, 10) : null;
     try {
-      await db
-        .prepare(
-          `INSERT INTO actors
-           (id, username, domain, display_name, summary, avatar_url, header_url,
-            public_key_pem, private_key_pem, is_local, is_bot,
-            manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, also_known_as)
-           VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET
-             display_name = excluded.display_name,
-             summary = excluded.summary,
-             avatar_url = excluded.avatar_url,
-             header_url = excluded.header_url,
-             public_key_pem = excluded.public_key_pem,
-             manually_approves_followers = excluded.manually_approves_followers,
-             discoverable = excluded.discoverable,
-             followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
-             following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
-             statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
-             inbox = excluded.inbox,
-             also_known_as = excluded.also_known_as,
-             updated_at = datetime('now')`
-        )
-        .bind(
-          id, usernameNorm, domain,
-          displayName,
-          summary,
-          (p.icon as Record<string, string>)?.url ?? null,
-          (p.image as Record<string, string>)?.url ?? null,
-          pubKey,
-          (p.type as string) === "Service" ? 1 : 0,
-          (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
-          followersCount,
-          followingCount,
-          statusesCount,
-          inbox,
-          alsoKnownAs,
-        )
-        .run();
+      try {
+        await db
+          .prepare(
+            `INSERT INTO actors
+             (id, username, domain, display_name, summary, avatar_url, header_url,
+              public_key_pem, private_key_pem, is_local, is_bot,
+              manually_approves_followers, discoverable,
+              followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?)
+             ON CONFLICT(id) DO UPDATE SET
+               display_name = excluded.display_name,
+               summary = excluded.summary,
+               avatar_url = excluded.avatar_url,
+               header_url = excluded.header_url,
+               public_key_pem = excluded.public_key_pem,
+               manually_approves_followers = excluded.manually_approves_followers,
+               discoverable = excluded.discoverable,
+               followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
+               following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
+               statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
+               inbox = excluded.inbox,
+               also_known_as = excluded.also_known_as,
+               last_status_at = excluded.last_status_at,
+               updated_at = datetime('now')`
+          )
+          .bind(
+            id, usernameNorm, domain,
+            displayName,
+            summary,
+            (p.icon as Record<string, string>)?.url ?? null,
+            (p.image as Record<string, string>)?.url ?? null,
+            pubKey,
+            (p.type as string) === "Service" ? 1 : 0,
+            (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            followersCount,
+            followingCount,
+            statusesCount,
+            inbox,
+            alsoKnownAs,
+            lastStatusAt,
+          )
+          .run();
+      } catch {
+        // Pre-migration (021 not applied): actors.last_status_at does not exist
+        // yet — retry with the legacy statement so caching keeps working.
+        await db
+          .prepare(
+            `INSERT INTO actors
+             (id, username, domain, display_name, summary, avatar_url, header_url,
+              public_key_pem, private_key_pem, is_local, is_bot,
+              manually_approves_followers, discoverable,
+              followers_count, following_count, statuses_count, inbox, also_known_as)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
+             ON CONFLICT(id) DO UPDATE SET
+               display_name = excluded.display_name,
+               summary = excluded.summary,
+               avatar_url = excluded.avatar_url,
+               header_url = excluded.header_url,
+               public_key_pem = excluded.public_key_pem,
+               manually_approves_followers = excluded.manually_approves_followers,
+               discoverable = excluded.discoverable,
+               followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
+               following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
+               statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
+               inbox = excluded.inbox,
+               also_known_as = excluded.also_known_as,
+               updated_at = datetime('now')`
+          )
+          .bind(
+            id, usernameNorm, domain,
+            displayName,
+            summary,
+            (p.icon as Record<string, string>)?.url ?? null,
+            (p.image as Record<string, string>)?.url ?? null,
+            pubKey,
+            (p.type as string) === "Service" ? 1 : 0,
+            (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            followersCount,
+            followingCount,
+            statusesCount,
+            inbox,
+            alsoKnownAs,
+          )
+          .run();
+      }
     } catch {
       // UNIQUE(username, domain) conflict — update the existing row's id so
       // subsequent getActorById(id) lookups work correctly.

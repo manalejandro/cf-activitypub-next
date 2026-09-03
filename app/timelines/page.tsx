@@ -8,12 +8,13 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 type TimelineView = "local" | "federated";
 
@@ -44,7 +45,7 @@ export default function TimelinesPage() {
     return { items, hasMore: items.length >= limit };
   }, [view, limits.defaultTimelinePage, limits.pageSize]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
@@ -120,6 +121,13 @@ export default function TimelinesPage() {
   useEffect(() => {
     setLastTimelineView(view);
   }, [view]);
+
+  // Filters changed (settings screen / server): refetch with the new rules.
+  useEffect(() => {
+    const handler = () => { clearAllTimelineCaches(); void refresh(); };
+    window.addEventListener("cf-ap:filters-changed", handler);
+    return () => window.removeEventListener("cf-ap:filters-changed", handler);
+  }, [refresh]);
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -221,6 +229,7 @@ export default function TimelinesPage() {
             {statuses.map((s) => (
               <div key={s.id} data-status-id={s.id}>
                 <StatusCard
+                  filterContext="public"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}
@@ -233,18 +242,7 @@ export default function TimelinesPage() {
               </div>
             ))}
             <div ref={bottomRef} style={{ height: 1 }} />
-            {loadingMore && (
-              <div
-                style={{
-                  padding: "1rem",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  fontSize: "0.875rem",
-                }}
-              >
-                {t.loading}
-              </div>
-            )}
+            {loadingMore && <Loading compact />}
           </div>
         )}
       </PageLayout>

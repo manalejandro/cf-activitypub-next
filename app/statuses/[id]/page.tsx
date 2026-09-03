@@ -21,6 +21,9 @@ import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -145,7 +148,7 @@ function ReplyBox({
   const [cwText, setCwText] = useState("");
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -268,7 +271,7 @@ function ReplyBox({
     setSubmitting(true);
     setError(null);
     try {
-      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text.trim(),
         visibility,
@@ -753,19 +756,17 @@ export default function ThreadPage() {
 
         {historyTab ? (
           historyLoading ? (
-            <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-              Loading history...
-            </div>
+            <Loading />
           ) : history.length === 0 ? (
             <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
               <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="pencil" size="2rem" /></span>
-              No hay historial de ediciones.
+              {t.status_history_empty}
             </div>
           ) : (
             history.map((edit, i) => (
               <div key={i} style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                  Edición del {new Date(edit.created_at).toLocaleString()}
+                  {t.status_history_edit.replace("{date}", new Date(edit.created_at).toLocaleString())}
                 </div>
                 {edit.spoiler_text && (
                   <div style={{ padding: "0.375rem 0.625rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.4rem", color: "var(--text-secondary)" }}>
@@ -779,9 +780,7 @@ export default function ThreadPage() {
             ))
           )
         ) : loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Loading thread...
-          </div>
+          <Loading />
         ) : deleted || !focal ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             {deleted ? t.status_deleted : t.profile_not_found}
@@ -792,9 +791,7 @@ export default function ThreadPage() {
             {ancestors.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
 
@@ -802,14 +799,14 @@ export default function ThreadPage() {
             <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
-                <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
             {/* Quote composer (opens when the user quotes a status) */}
             {quoteTarget && (
               <div ref={replyRef}>
-                <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
@@ -832,9 +829,7 @@ export default function ThreadPage() {
             {descendants.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
           </>

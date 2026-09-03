@@ -4,6 +4,7 @@ import { getActorById, createBlock } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { generateId } from "@/lib/activitypub/utils";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // POST /api/v1/accounts/:id/block
 export async function POST(
@@ -26,5 +27,5 @@ export async function POST(
 
   await createBlock(env.DB, generateId(), actor.id, target.id);
 
-  return json({ id: target.id, blocking: true });
+  return json(await buildRelationship(env.DB, actor.id, target.id));
 }

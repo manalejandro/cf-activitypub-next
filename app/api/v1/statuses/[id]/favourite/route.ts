@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, createLike, getLike, getFollow, canViewStatus } from "@/lib/db";
+import { getObjectById, getActorById, createLike, getLike, getFollow, canViewStatus,
+  getLastStatusAtMap} from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -9,6 +10,7 @@ import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { notify } from "@/lib/notify";
 import type { APActor } from "@/lib/types";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // POST /api/v1/statuses/:id/favourite
 export async function POST(
@@ -70,5 +72,7 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
-  return json(serializeStatus(refreshed ?? obj, author, domain, { favourited: true }));
+    const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+  const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
+  return json(serializeStatus(refreshed ?? obj, author, domain, { favourited: true, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null }));
 }
