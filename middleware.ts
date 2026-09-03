@@ -50,6 +50,15 @@ export function middleware(request: NextRequest) {
     return new NextResponse(null, { status: 404, headers: { ...SECURITY_HEADERS } });
   }
 
+  // Next.js 16 treats any POST to an RSC endpoint as a Server Action
+  // invocation. RSC payloads are fetched with GET (client-side navigation);
+  // a POST to /RSC/* (often probing random .txt paths) is always invalid for
+  // this app — reject it so the framework doesn't log "Failed to find Server
+  // Action" for scanner traffic.
+  if (method === "POST" && pathname.startsWith("/RSC/")) {
+    return new NextResponse(null, { status: 404, headers: { ...SECURITY_HEADERS } });
+  }
+
   // Handle CORS preflight for API and nodeinfo routes
   if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
     return new NextResponse(null, { status: 204, headers: { ...CORS_HEADERS, ...SECURITY_HEADERS } });
