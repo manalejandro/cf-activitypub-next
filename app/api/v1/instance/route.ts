@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext } from "@/lib/cf";
 import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
@@ -9,6 +9,14 @@ export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
+
+  // Every client fetches instance info on startup; a burst of logins would run
+  // these count queries against D1 per request. Cache the serialized payload.
+  const cacheKey = "instance:v1";
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  }
 
   const [userRow, postRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
@@ -32,7 +40,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (langs.length > 0) languages = langs.map((l) => l.code);
   } catch { /* ignore */ }
 
-  return json({
+  const payload = {
     uri: domain,
     title,
     description,
@@ -82,5 +90,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       calls: { enabled: true },
     },
     limits,
-  });
+  };
+
+  const body = JSON.stringify(payload);
+  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

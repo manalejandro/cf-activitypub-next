@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, notFound } from "@/lib/cf";
 
 // GET /nodeinfo/:version
 export async function GET(
@@ -11,6 +11,14 @@ export async function GET(
 
   if (!version.startsWith("2")) {
     return notFound("Only NodeInfo 2.x is supported");
+  }
+
+  // NodeInfo is probed by every instance that discovers this server; a burst
+  // of probes must not run 5 count queries against D1 each time. Cache it.
+  const cacheKey = `nodeinfo:${version}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   }
 
   const db = env.DB;
@@ -68,5 +76,7 @@ export async function GET(
     };
   }
 
-  return json(payload);
+  const body = JSON.stringify(payload);
+  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

@@ -15,6 +15,7 @@ export async function DELETE(
 
   const { id } = await params;
   await deleteCustomEmoji(env.DB, id);
+  await env.KV.delete("custom_emojis:v1").catch(() => {});
   return json({ success: true });
 }
 
@@ -40,6 +41,8 @@ export async function PATCH(
       .bind(id)
       .run();
   }
+
+  await env.KV.delete("custom_emojis:v1").catch(() => {});
 
   return json({ success: true });
 }

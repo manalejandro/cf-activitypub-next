@@ -80,7 +80,7 @@ export async function GET(
       id: `${baseUrl}/users/${actor.username}/messages`,
     },
   }).text().then(async (body) => {
-    await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});
+    await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
     return new Response(body, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
   });
 }
