@@ -37,6 +37,18 @@ async function recentLocalStatuses(db: D1Database, minutes: number) {
 
 /** Screen recently published local statuses (covers scheduled + AI downtime). */
 async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
+  // Throttled: screening can spend seconds per status on AI calls, so running
+  // it on every cron tick would push the run past the 60s overlap window (the
+  // cron then logs "skipping overlapping run"). Process at most every 90s; the
+  // per-status KV markers still dedupe so the backlog drains across runs.
+  if (env.KV) {
+    try {
+      if (await env.KV.get("guardian:screen_run")) return;
+      await env.KV.put("guardian:screen_run", "1", { expirationTtl: 90 });
+    } catch {
+      // best-effort throttle — keep screening
+    }
+  }
   const rows = await recentLocalStatuses(env.DB, 20);
   for (const row of rows.results) {
     if (env.KV) {
@@ -241,6 +253,17 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
 
 /** Detect accounts repeatedly posting the same content (spambot signature). */
 export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
+  // The 24h window scan (up to 3000 rows with signal analysis) is the heaviest
+  // DB loop in the cron; run it at most every 5 minutes so a single tick stays
+  // inside the 60s overlap window. Per-actor markers still prevent re-actions.
+  if (env.KV) {
+    try {
+      if (await env.KV.get("guardian:spamdup_run")) return;
+      await env.KV.put("guardian:spamdup_run", "1", { expirationTtl: 300 });
+    } catch {
+      // best-effort throttle — keep scanning
+    }
+  }
   const cutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   const rows = await env.DB
     .prepare("SELECT id, actor_id, content FROM objects WHERE type = 'Note' AND content IS NOT NULL AND content != '' AND published >= ? LIMIT 3000")

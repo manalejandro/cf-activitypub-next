@@ -200,19 +200,40 @@ async function enforceWsConnectRateLimit(
 
 /** Resolve a token to a DB row, returning null for expired/missing tokens. */
 async function resolveToken(
-  db: D1Database,
+  env: Env,
   token: string
 ): Promise<{ actor_id: string; username: string } | null> {
   // expires_at is stored ISO-8601; compare against an ISO "now" (datetime('now')
   // uses a space format and would keep a token valid for up to a day past
   // its expiry).
+  //
+  // Cache in KV: every WebSocket (re)connection resolves the token, and a burst
+  // of concurrent upgrades (or a client reconnecting in a loop) would hammer
+  // D1. Short TTL so revoked/expired tokens stop working within ~2 minutes.
+  const cacheKey = `ws_token:${token}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    try {
+      return JSON.parse(cached) as { actor_id: string; username: string } | null;
+    } catch {
+      /* corrupt entry — resolve below */
+    }
+  }
+
   const nowIso = new Date().toISOString();
-  return db
+  const row = await env.DB
     .prepare(
       "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)"
     )
     .bind(token, nowIso)
     .first<{ actor_id: string; username: string }>();
+
+  if (row) {
+    await env.KV
+      .put(cacheKey, JSON.stringify({ actor_id: row.actor_id, username: row.username }), { expirationTtl: 120 })
+      .catch(() => {});
+  }
+  return row ?? null;
 }
 
 /**
@@ -262,7 +283,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     let channel = "public";
     let authed = false;
     if (token) {
-      const row = await resolveToken(env.DB, token);
+      const row = await resolveToken(env, token);
       if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
       channel = `home:${row.username}`;
       authed = true;
@@ -274,7 +295,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
   if (streamParam === "user" || streamParam === "user:notification" || streamParam === "direct") {
     const token = extractToken(request, url);
     if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
-    const row = await resolveToken(env.DB, token);
+    const row = await resolveToken(env, token);
     if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
 
     let channel: string;
@@ -294,7 +315,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     if (!listId) return new Response(JSON.stringify({ error: "Missing list parameter" }), { status: 400, headers: { "Content-Type": "application/json" } });
     const token = extractToken(request, url);
     if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
-    const row = await resolveToken(env.DB, token);
+    const row = await resolveToken(env, token);
     if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
     return forwardToTimelineDO(env, request, `list:${listId}`, true);
   }
@@ -314,7 +335,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
   const token = extractToken(request, url);
   let authed = false;
   if (token) {
-    const row = await resolveToken(env.DB, token);
+    const row = await resolveToken(env, token);
     authed = Boolean(row);
   }
   return forwardToTimelineDO(env, request, channel, authed);
@@ -435,7 +456,7 @@ async function handleCallSignalingUpgrade(
       headers: { "Content-Type": "application/json" },
     });
   }
-  const row = await resolveToken(env.DB, token);
+  const row = await resolveToken(env, token);
   if (!row) {
     return new Response(JSON.stringify({ error: "The access token is invalid" }), {
       status: 401,
@@ -553,10 +574,13 @@ async function executeScheduled(env: Env): Promise<void> {
   }
 
   // Guard against overlapping cron invocations (slow runs or clock drift): only
-  // one patrol runs at a time. The lock expires by itself (55s < 1min).
+  // one patrol runs at a time. The lock expires by itself (60s < 1min).
   const lock = await env.KV.get("cron:lock");
   if (lock) {
-    console.warn("[cron] skipping overlapping run");
+    // Info-level: the guard is working as intended; with the per-task KV
+    // throttles the previous run should finish within the window, so this is
+    // rare and not an error condition.
+    console.log("[cron] skipping overlapping run");
     return;
   }
   await env.KV.put("cron:lock", "1", { expirationTtl: 60 });
@@ -715,11 +739,18 @@ async function executeScheduled(env: Env): Promise<void> {
  */
 async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
+    // Throttled: each check fetches an external page, so running every cron
+    // tick would push the run past the 60s overlap window. Run at most every
+    // 2 minutes; the per-actor KV markers still keep the 30-min re-check
+    // cadence for verified fields.
+    if (await env.KV.get("verify:cron_run")) return;
+    await env.KV.put("verify:cron_run", "1", { expirationTtl: 120 }).catch(() => {});
+
     // Local accounts — re-check occasionally (30 min via KV marker) so slow sites
-// don't stall every cron run. Bounded to a few per run (each check fetches the
-// external page) so the whole cron stays inside the 60s overlap window.
-// ORDER BY verified_at ASC: failed/never-checked fields (NULL) are retried
-// first, then the longest-verified ones get re-checked (badge revocation).
+    // don't stall every cron run. Bounded to a few per run (each check fetches the
+    // external page) so the whole cron stays inside the 60s overlap window.
+    // ORDER BY verified_at ASC: failed/never-checked fields (NULL) are retried
+    // first, then the longest-verified ones get re-checked (badge revocation).
 const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
