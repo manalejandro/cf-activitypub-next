@@ -45,7 +45,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     description,
     short_description: description,
     email: `admin@${domain}`,
-    version: `${MASTODON_COMPAT_VERSION} (compatible; ${appVersion})`,
+    version: `${appVersion} (compatible; Mastodon ${MASTODON_COMPAT_VERSION})`,
     urls: { streaming_api: `wss://${domain}/api/v1/streaming` },
     stats: { user_count: userCount, status_count: statusCount, domain_count: 1 },
     thumbnail: `https://${domain}/logo.svg`,

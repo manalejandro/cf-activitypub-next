@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@/lib/cf";
 import { serializeInstanceV2, serializeAccount } from "@/lib/mastodon/serializers";
 import { getInstanceContactActor, getInstanceSetting, getInstanceStats } from "@/lib/db";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, MASTODON_COMPAT_VERSION } from "@/lib/constants";
 
 // GET /api/v2/instance
 export async function GET(request: NextRequest): Promise<Response> {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const title = env.INSTANCE_TITLE ?? domain;
   const description = env.INSTANCE_DESCRIPTION ?? "An ActivityPub server";
-  const version = env.INSTANCE_VERSION ?? "0.1.0";
+  const version = `${env.INSTANCE_VERSION ?? "0.1.0"} (compatible; Mastodon ${MASTODON_COMPAT_VERSION})`;
 
   let rules: { id: string; text: string }[] = [];
   try { rules = rulesRaw ? JSON.parse(rulesRaw) : []; } catch { /* ignore */ }
