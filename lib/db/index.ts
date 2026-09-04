@@ -436,6 +436,17 @@ export async function getActorByUsername(
  * that is not the Guardian bot.
  */
 export async function getInstanceContactActor(db: D1Database): Promise<LocalActor | null> {
+  // Prefer an admin/moderator with a real email so instance endpoints can
+  // report a working contact address; fall back to any admin otherwise.
+  const withEmail = await db
+    .prepare(
+      `SELECT * FROM actors
+       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND username != 'guardian' AND email IS NOT NULL
+       ORDER BY created_at ASC LIMIT 1`
+    )
+    .first<Row>();
+  if (withEmail) return rowToActor(withEmail);
+
   const row = await db
     .prepare(
       `SELECT * FROM actors

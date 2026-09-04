@@ -677,7 +677,6 @@ export function serializeInstanceV2(
     uri: domain,
     title,
     version: `${version} (compatible; Mastodon ${MASTODON_COMPAT_VERSION})`,
-    limits,
     source_url: "https://github.com/manalejandro/cf-activitypub-next",
     description,
     usage: { users: { active_month: userCount } },
@@ -729,6 +728,7 @@ export function serializeInstanceV2(
     registrations,
     contact: { email: contactEmail, account: contactAccount },
     rules,
+    limits,
   };
 }
 
