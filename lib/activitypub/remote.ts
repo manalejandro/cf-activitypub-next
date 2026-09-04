@@ -25,6 +25,37 @@ export interface RemoteActorResult {
   domain: string;
 }
 
+const UA_PRIMARY = "CFActivityPub/1.0 (+https://cf-ap.com)";
+const UA_BROWSER =
+  "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0";
+
+/**
+ * Fetch with an explicit federated User-Agent, retrying with a browser UA when
+ * the remote server blocks non-browser clients (Friendica's anti-bot guard
+ * rejects requests whose UA looks like a generic bot).
+ */
+async function remoteFetch(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 8000
+): Promise<Response | null> {
+  const uas = [UA_PRIMARY, UA_BROWSER];
+  let last: Response | null = null;
+  for (const ua of uas) {
+    try {
+      const res = await fetch(url, {
+        headers: { ...headers, "User-Agent": ua },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      last = res;
+      if (res.ok) return res;
+    } catch {
+      /* try next UA */
+    }
+  }
+  return last;
+}
+
 /**
  * Resolve the totalItems count from an AP collection field.
  * Handles three forms:
@@ -42,11 +73,10 @@ async function resolveCollectionCount(field: unknown): Promise<number> {
     const val = validateOutboundUrl(field);
     if (!val.valid) return 0;
     try {
-      const r = await fetch(field, {
-        headers: { Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"' },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (r.ok) {
+      const r = await remoteFetch(field, {
+        Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+      }, 3000);
+      if (r?.ok) {
         const col = await r.json() as Record<string, unknown>;
         if (typeof col.totalItems === "number") return col.totalItems;
       }
@@ -67,11 +97,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
     const val = validateOutboundUrl(url);
     if (!val.valid) return false;
     try {
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!res.ok) return false;
+      const res = await remoteFetch(url, { Accept: "application/json" }, 3000);
+      if (!res?.ok) return false;
       const data = await res.json() as Record<string, unknown>;
       const config = data.configuration as Record<string, unknown> | undefined;
       return config?.calls !== undefined;
@@ -100,13 +127,10 @@ export async function fetchAndCacheRemoteActor(
     return null;
   }
   try {
-    const res = await fetch(actorUrl, {
-      headers: {
-        Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
-      },
-      signal: AbortSignal.timeout(8000),
+    const res = await remoteFetch(actorUrl, {
+      Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
     });
-    if (!res.ok) return null;
+    if (!res?.ok) return null;
     const p = await res.json() as Record<string, unknown>;
     const id = (p.id as string) ?? actorUrl;
     const username = (p.preferredUsername as string) ?? "unknown";
@@ -132,16 +156,24 @@ export async function fetchAndCacheRemoteActor(
 
     // Friendica/DFRN (and a few minimal implementations) serve an AP actor
     // document without icon/summary — the profile details only exist on the
-    // HTML page. Fall back to the HTML profile (h-card / OpenGraph), once per
-    // actor per day, to fill the missing avatar and description.
+    // HTML page. Fall back to the HTML profile (h-card / OpenGraph) to fill
+    // the missing avatar and description. The KV marker stores the extracted
+    // avatar URL (reused on subsequent resolves, no re-fetch) or "0" when the
+    // HTML yielded nothing (retried after the TTL expires). Key changed from
+    // `ap:profilehtml` to unblock actors whose old marker blocked the fallback
+    // while their stored avatar was NULL.
     if ((!iconUrl || !summary) && kv) {
-      const marker = `ap:profilehtml:${id}`;
-      const tried = await kv.get(marker).catch(() => null);
-      if (!tried) {
+      const marker = `ap:profilehtml2:${id}`;
+      const cached = await kv.get(marker).catch(() => null);
+      if (cached && cached !== "0") {
+        if (!iconUrl) iconUrl = cached;
+      } else {
         const fallback = await fetchProfileHtmlFallback((p.url as string) ?? id);
         if (!iconUrl && fallback.avatar) iconUrl = fallback.avatar;
         if (!summary && fallback.summary) summary = sanitizeRemoteActorSummary(fallback.summary);
-        await kv.put(marker, "1", { expirationTtl: 86400 }).catch(() => {});
+        await kv.put(marker, iconUrl && fallback.avatar ? fallback.avatar : "0", {
+          expirationTtl: iconUrl && fallback.avatar ? 86400 : 3600,
+        }).catch(() => {});
       }
     }
 
@@ -768,14 +800,10 @@ export async function fetchProfileHtmlFallback(
   if (!val.valid) return {};
 
   try {
-    const res = await fetch(profileUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "CFActivityPub/1.0 (+https://cf-ap.com)",
-      },
-      signal: AbortSignal.timeout(8000),
+    const res = await remoteFetch(profileUrl, {
+      Accept: "text/html,application/xhtml+xml",
     });
-    if (!res.ok) return {};
+    if (!res?.ok) return {};
     const html = await res.text();
     if (html.length > 2_000_000) return {};
 
