@@ -672,7 +672,7 @@ export function serializeInstanceV2(
   return {
     uri: domain,
     title,
-    version: `${MASTODON_COMPAT_VERSION} (compatible; ${version})`,
+    version: `${version} (compatible; Mastodon ${MASTODON_COMPAT_VERSION})`,
     limits,
     source_url: "https://github.com/manalejandro/cf-activitypub-next",
     description,
