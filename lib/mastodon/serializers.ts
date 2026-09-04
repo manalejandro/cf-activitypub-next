@@ -666,7 +666,8 @@ export function serializeInstanceV2(
   vapidPublicKey?: string,
   languages: string[] = INSTANCE_LANGUAGES,
   rules: { id: string; text: string }[] = [],
-  limits: InstanceLimits = DEFAULT_LIMITS
+  limits: InstanceLimits = DEFAULT_LIMITS,
+  registrations: { enabled: boolean; approval_required: boolean; reason_required?: boolean; message: string | null; min_age?: number | null; url?: string | null } = { enabled: true, approval_required: false, message: null }
 ): MastodonInstance {
   return {
     uri: domain,
@@ -721,7 +722,7 @@ export function serializeInstanceV2(
       calls: { enabled: true },
     },
     api_versions: { mastodon: 6 },
-    registrations: { enabled: true, approval_required: false, reason_required: false, message: null, min_age: null, url: null },
+    registrations,
     contact: { email: `admin@${domain}`, account: contactAccount },
     rules,
   };

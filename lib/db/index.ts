@@ -84,6 +84,8 @@ function rowToActor(r: Row): LocalActor {
     suspended: r.suspended === undefined ? undefined : Boolean(r.suspended),
     silenced: r.silenced === undefined ? undefined : Boolean(r.silenced),
     reserved: r.reserved === undefined ? undefined : Boolean(r.reserved),
+    approved: r.approved === undefined ? undefined : Boolean(r.approved),
+    registrationReason: r.registration_reason ?? null,
     verified: r.verified === undefined ? undefined : Boolean(r.verified),
     alsoKnownAs: r.also_known_as ? safeJsonParseArray(r.also_known_as) : null,
     movedTo: r.moved_to ?? null,
@@ -2660,6 +2662,57 @@ export async function setInstanceSetting(db: D1Database, key: string, value: str
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
     )
     .bind(key, value, new Date().toISOString())
+    .run();
+}
+
+export interface RegistrationSettings {
+  enabled: boolean;
+  approvalRequired: boolean;
+  reasonRequired: boolean;
+  message: string | null;
+  minAge: number | null;
+  url: string | null;
+}
+
+const REGISTRATION_SETTING_KEYS = [
+  "registrations_enabled",
+  "registrations_approval_required",
+  "registrations_reason_required",
+  "registrations_message",
+  "registrations_min_age",
+  "registrations_url",
+] as const;
+
+/** Instance registration policy, backed by instance_settings rows (defaults match Mastodon's open registration). */
+export async function getRegistrationSettings(db: D1Database): Promise<RegistrationSettings> {
+  const rows = await db
+    .prepare(`SELECT key, value FROM instance_settings WHERE key IN (${REGISTRATION_SETTING_KEYS.map(() => "?").join(",")})`)
+    .bind(...REGISTRATION_SETTING_KEYS)
+    .all<{ key: string; value: string }>();
+  const map = new Map(rows.results?.map((r) => [r.key, r.value]) ?? []);
+  const num = (key: string): number | null => {
+    const v = Number(map.get(key));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const str = (key: string): string | null => {
+    const v = map.get(key);
+    return v && v.trim() ? v.trim() : null;
+  };
+  return {
+    enabled: map.get("registrations_enabled") !== "false",
+    approvalRequired: map.get("registrations_approval_required") === "true",
+    reasonRequired: map.get("registrations_reason_required") === "true",
+    message: str("registrations_message"),
+    minAge: num("registrations_min_age"),
+    url: str("registrations_url"),
+  };
+}
+
+/** Set a local account's registration approval state (approve or pend). */
+export async function setActorApproval(db: D1Database, actorId: string, approved: boolean): Promise<void> {
+  await db
+    .prepare("UPDATE actors SET approved = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(approved ? 1 : 0, actorId)
     .run();
 }
 

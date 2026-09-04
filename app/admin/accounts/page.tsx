@@ -19,6 +19,7 @@ interface AdminAccount {
   suspended: boolean;
   silenced: boolean;
   approved: boolean;
+  registration_reason: string | null;
   account: {
     id: string;
     username: string;
@@ -151,6 +152,7 @@ export default function AdminAccountsPage() {
           <option value="all">{t.admin_all_status}</option>
           <option value="active">{t.admin_status_active}</option>
           <option value="pending">{t.admin_status_pending}</option>
+          <option value="approval_pending">{t.admin_status_approval_pending}</option>
           <option value="silenced">{t.admin_status_silenced}</option>
           <option value="suspended">{t.admin_status_suspended}</option>
         </select>
@@ -199,6 +201,8 @@ export default function AdminAccountsPage() {
                         <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
                       ) : a.silenced ? (
                         <span className="badge" style={{ background: "rgba(251,191,36,0.12)", color: "var(--warning)" }}>{t.admin_status_silenced}</span>
+                      ) : a.approved === false ? (
+                        <span className="badge" style={{ background: "rgba(251,191,36,0.12)", color: "var(--warning)" }}>{t.admin_status_approval_pending}</span>
                       ) : !a.confirmed ? (
                         <span className="badge" style={{ background: "rgba(251,191,36,0.12)", color: "var(--warning)" }}>{t.admin_status_pending}</span>
                       ) : (
@@ -207,6 +211,11 @@ export default function AdminAccountsPage() {
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", maxWidth: 200, overflowWrap: "anywhere" }}>
                       {a.email || <span style={{ color: "var(--text-muted)" }}>—</span>}
+                      {a.registration_reason ? (
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                          {t.admin_registration_reason}: {a.registration_reason}
+                        </div>
+                      ) : null}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                       {formatLastActive(a.last_active_at)}
@@ -216,7 +225,7 @@ export default function AdminAccountsPage() {
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", textAlign: "right" }}>
                       <div style={{ display: "flex", gap: "0.375rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
-                        {!a.confirmed && (
+                        {(!a.confirmed || a.approved === false) && (
                           <button className="btn btn-primary btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "approve")}>
                             {isBusy && actionLoading === `${a.id}:approve` ? "..." : t.admin_btn_approve}
                           </button>
@@ -229,7 +238,7 @@ export default function AdminAccountsPage() {
                           <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "unsilence")}>
                             {isBusy && actionLoading === `${a.id}:unsilence` ? "..." : t.admin_btn_unsilence}
                           </button>
-                        ) : a.confirmed && (
+                        ) : a.confirmed && a.approved !== false && (
                           <>
                             <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "silence")} style={{ color: "var(--warning)", borderColor: "var(--warning)" }}>
                               {isBusy && actionLoading === `${a.id}:silence` ? "..." : t.admin_btn_silence}

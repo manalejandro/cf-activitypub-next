@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS actors (
   last_active_at     TEXT,
   last_status_at     TEXT,                          -- remote actors: federated value; local: computed
   verified           INTEGER NOT NULL DEFAULT 0,     -- 1 when a profile field's rel="me" link verifies
+  approved           INTEGER NOT NULL DEFAULT 1,     -- 0 = registration pending admin approval (can't log in)
+  registration_reason TEXT,                          -- sign-up reason when registrations.reason_required is on
   UNIQUE (username, domain)
 );
 

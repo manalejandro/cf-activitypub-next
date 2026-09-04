@@ -33,9 +33,11 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   if (status === "active") {
-    sql += " AND email_verified = 1";
+    sql += " AND email_verified = 1 AND approved = 1";
   } else if (status === "pending") {
     sql += " AND email_verified = 0";
+  } else if (status === "approval_pending") {
+    sql += " AND approved = 0";
   } else if (status === "suspended") {
     sql += " AND suspended = 1";
   } else if (status === "silenced") {
@@ -63,13 +65,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     const totalRow = await env.DB.prepare(
       "SELECT COUNT(*) as count FROM actors WHERE 1=1" +
       (local === "true" ? " AND is_local = 1" : remote === "true" ? " AND is_local = 0" : "") +
-      (status !== "all" ? (status === "active" ? " AND email_verified = 1" : status === "pending" ? " AND email_verified = 0" : status === "suspended" ? " AND suspended = 1" : " AND silenced = 1") : "") +
+      (status !== "all" ? (status === "active" ? " AND email_verified = 1 AND approved = 1" : status === "pending" ? " AND email_verified = 0" : status === "approval_pending" ? " AND approved = 0" : status === "suspended" ? " AND suspended = 1" : " AND silenced = 1") : "") +
       (role !== "all" ? " AND role = ?" : "") +
       (q ? " AND (username LIKE ? OR display_name LIKE ?)" : "")
     ).bind(...(role !== "all" ? [role] : []), ...(q ? [`%${q}%`, `%${q}%`] : [])).first<{ count: number }>();
     totalCount = totalRow?.count ?? 0;
   } catch {
-    // Missing columns (role, suspended) — run migration: npx wrangler d1 execute cf-ap --remote --file=lib/db/migrations/007-admin-columns.sql
+    // Missing columns (role, suspended, approved) — run: node scripts/upgrade-schema.mjs
   }
 
   const accounts = rows.map((r) => {
@@ -85,7 +87,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       confirmed: actor.emailVerified,
       suspended: Boolean(r.suspended),
       silenced: Boolean(r.silenced),
-      approved: true,
+      approved: r.approved !== undefined ? Boolean(r.approved) : true,
+      registration_reason: r.registration_reason ?? null,
       account: serializeAccount(actor, domain),
     };
   });

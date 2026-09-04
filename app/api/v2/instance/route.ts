@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext } from "@/lib/cf";
 import { serializeInstanceV2, serializeAccount } from "@/lib/mastodon/serializers";
-import { getInstanceContactActor, getInstanceSetting, getInstanceStats } from "@/lib/db";
+import { getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
 import { resolveLimits, MASTODON_COMPAT_VERSION } from "@/lib/constants";
 
@@ -19,11 +19,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   }
 
-  const [contactActor, rulesRaw, languagesRaw, stats] = await Promise.all([
+  const [contactActor, rulesRaw, languagesRaw, stats, regs] = await Promise.all([
     getInstanceContactActor(env.DB),
     getInstanceSetting(env.DB, "rules"),
     getInstanceSetting(env.DB, "languages"),
     getInstanceStats(env.DB, env.KV),
+    getRegistrationSettings(env.DB),
   ]);
 
   const userCount = stats.userCount;
@@ -50,7 +51,15 @@ export async function GET(request: NextRequest): Promise<Response> {
     env.VAPID_PUBLIC_KEY,
     languages,
     rules,
-    limits
+    limits,
+    {
+      enabled: regs.enabled,
+      approval_required: regs.approvalRequired,
+      reason_required: regs.reasonRequired,
+      message: regs.message,
+      min_age: regs.minAge,
+      url: regs.url,
+    }
   );
 
   const body = JSON.stringify(payload);

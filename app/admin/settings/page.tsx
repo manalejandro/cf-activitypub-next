@@ -16,6 +16,12 @@ interface SettingsData {
   terms_of_service: string;
   extended_description: string;
   languages: { code: string; name?: string; native_name?: string }[];
+  registrations_enabled: boolean;
+  registrations_approval_required: boolean;
+  registrations_reason_required: boolean;
+  registrations_message: string;
+  registrations_min_age: string;
+  registrations_url: string;
 }
 
 export default function AdminSettingsPage() {
@@ -126,6 +132,31 @@ export default function AdminSettingsPage() {
             <EmojiInput className="input" containerStyle={{ flex: 1 }} style={inputStyle} value={newRule} onChange={setNewRule} placeholder={t.admin_settings_rule_ph} onKeyDown={(e) => { if (e.key === "Enter" && !e.defaultPrevented) { e.preventDefault(); addRule(); } }} />
             <button type="button" className="btn btn-outline btn-sm" onClick={addRule} disabled={!newRule.trim()}>{t.admin_settings_add_rule}</button>
           </div>
+        </div>
+
+        {/* Registrations */}
+        <div>
+          <label style={labelStyle}>{t.admin_settings_registrations}</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_enabled} onChange={(e) => setData({ ...data, registrations_enabled: e.target.checked })} />
+              {t.admin_settings_reg_enabled}
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_approval_required} onChange={(e) => setData({ ...data, registrations_approval_required: e.target.checked })} />
+              {t.admin_settings_reg_approval}
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_reason_required} onChange={(e) => setData({ ...data, registrations_reason_required: e.target.checked })} />
+              {t.admin_settings_reg_reason}
+            </label>
+          </div>
+          <label style={labelStyle}>{t.admin_settings_reg_message}</label>
+          <input className="input" style={inputStyle} value={data.registrations_message} onChange={(e) => setData({ ...data, registrations_message: e.target.value })} placeholder={t.admin_settings_reg_message_ph} />
+          <label style={{ ...labelStyle, marginTop: "0.75rem" }}>{t.admin_settings_reg_min_age}</label>
+          <input className="input" type="number" min={0} style={inputStyle} value={data.registrations_min_age} onChange={(e) => setData({ ...data, registrations_min_age: e.target.value })} placeholder={t.admin_settings_reg_min_age_ph} />
+          <label style={{ ...labelStyle, marginTop: "0.75rem" }}>{t.admin_settings_reg_url}</label>
+          <input className="input" style={inputStyle} value={data.registrations_url} onChange={(e) => setData({ ...data, registrations_url: e.target.value })} placeholder={t.admin_settings_reg_url_ph} />
         </div>
 
         {/* Extended description */}

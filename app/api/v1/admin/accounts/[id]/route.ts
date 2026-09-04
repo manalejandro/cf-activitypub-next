@@ -1,12 +1,13 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById } from "@/lib/db";
+import { getActorById, setActorApproval } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import { sendWelcomeEmail } from "@/lib/email";
 import type { APActor } from "@/lib/types";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -40,9 +41,70 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     suspended: Boolean(row.suspended),
     silenced: false,
     disabled: false,
-    approved: true,
+    approved: row.approved !== undefined ? Boolean(row.approved) : true,
+    registration_reason: row.registration_reason ?? null,
     account: serializeAccount(actor, domain),
   });
+}
+
+/**
+ * PATCH /api/v1/admin/accounts/:id — registration approval workflow.
+ * Body: { action: "approve" | "unapprove" } (approval-required instances).
+ * Approving also notifies the user by email and logs the moderation action.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  const { env } = getCloudflareContext();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
+  const { id } = await params;
+  const actor = await getActorById(env.DB, id);
+  if (!actor) return notFound();
+
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (body.action !== "approve" && body.action !== "unapprove") {
+    return json({ error: "action must be 'approve' or 'unapprove'" }, 422);
+  }
+  const approved = body.action === "approve";
+
+  await setActorApproval(env.DB, id, approved);
+
+  let emailSent = false;
+  if (approved && env.EMAIL && actor.email && actor.emailVerified) {
+    try {
+      await sendWelcomeEmail(env.EMAIL, {
+        to: actor.email,
+        from: env.FROM_EMAIL,
+        username: actor.username,
+        instanceTitle: env.INSTANCE_TITLE ?? "CF ActivityPub",
+        instanceUrl: `https://${new URL(request.url).hostname}`,
+      });
+      emailSent = true;
+    } catch (err) {
+      console.error("[admin] approval email failed:", err);
+    }
+  }
+
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "account",
+    targetId: id,
+    action: approved ? "approved" : "unapproved",
+    reason: approved ? "Registration approved by an administrator." : "Registration approval revoked.",
+    confidence: null,
+    model: "admin",
+    details: { username: actor.username, domain: actor.domain },
+    emailSent,
+    emailTo: actor.email,
+    relatedId: null,
+  });
+
+  return json({ ok: true });
 }
 
 /**

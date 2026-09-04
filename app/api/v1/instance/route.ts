@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext } from "@/lib/cf";
-import { getInstanceContactActor, getInstanceSetting, getInstanceStats } from "@/lib/db";
+import { getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
 
@@ -18,11 +18,12 @@ export async function GET(request: NextRequest): Promise<Response> {
     return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   }
 
-  const [contactActor, rulesRaw, languagesRaw, stats] = await Promise.all([
+  const [contactActor, rulesRaw, languagesRaw, stats, regs] = await Promise.all([
     getInstanceContactActor(env.DB),
     getInstanceSetting(env.DB, "rules"),
     getInstanceSetting(env.DB, "languages"),
     getInstanceStats(env.DB, env.KV),
+    getRegistrationSettings(env.DB),
   ]);
 
   const userCount = stats.userCount;
@@ -53,8 +54,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     contact_account: contactActor ? serializeAccount(contactActor, domain) : null,
     vapid_public_key: env.VAPID_PUBLIC_KEY ?? null,
     rules,
-    registrations: true,
-    approval_required: false,
+    registrations: regs.enabled,
+    approval_required: regs.approvalRequired,
     invites_enabled: false,
     configuration: {
       accounts: {

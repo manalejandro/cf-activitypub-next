@@ -198,6 +198,9 @@ export interface LocalActor {
   suspended?: boolean;
   silenced?: boolean;
   reserved?: boolean;
+  // registration — 0 = pending admin approval; reason from the sign-up form
+  approved?: boolean;
+  registrationReason?: string | null;
   // 1 when a profile field's rel="me" link verifies
   verified?: boolean;
   // account migration
