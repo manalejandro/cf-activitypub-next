@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { getCloudflareContext } from "@/lib/cf";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
 import { extractQuoteId } from "@/lib/activitypub/utils";
@@ -25,9 +26,25 @@ export interface RemoteActorResult {
   domain: string;
 }
 
-const UA_PRIMARY = "CFActivityPub/1.0 (+https://cf-ap.com)";
 const UA_BROWSER =
   "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0";
+
+/**
+ * Federated User-Agent carrying the instance's version and domain, e.g.
+ * "CFActivityPub/1.1.9 (+https://cf-ap.com)". Falls back to the env-less
+ * defaults outside the Worker runtime (tests, local dev).
+ */
+function buildUserAgent(): string {
+  try {
+    const { env } = getCloudflareContext();
+    const e = env as unknown as Record<string, string | undefined>;
+    const version = e.INSTANCE_VERSION ?? "0.1.0";
+    const domain = new URL(e.INSTANCE_URL ?? "http://localhost:3000").hostname;
+    return `CFActivityPub/${version} (+https://${domain})`;
+  } catch {
+    return "CFActivityPub/0.1.0 (+http://localhost:3000)";
+  }
+}
 
 /**
  * Fetch with an explicit federated User-Agent, retrying with a browser UA when
@@ -39,7 +56,7 @@ async function remoteFetch(
   headers: Record<string, string>,
   timeoutMs = 8000
 ): Promise<Response | null> {
-  const uas = [UA_PRIMARY, UA_BROWSER];
+  const uas = [buildUserAgent(), UA_BROWSER];
   let last: Response | null = null;
   for (const ua of uas) {
     try {
