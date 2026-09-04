@@ -21,7 +21,7 @@ export async function GET(
   // For remote actors: always re-fetch from source to get up-to-date counts.
   // For actors not yet in DB: fetch and cache first.
   if (rawId.startsWith("https://")) {
-    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId);
+    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (refreshed) {
       actor = await getActorById(env.DB, refreshed.id) ?? actor;
       if (refreshed.domain !== domain) {

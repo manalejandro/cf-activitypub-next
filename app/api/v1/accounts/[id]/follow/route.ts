@@ -27,14 +27,14 @@ export async function POST(
 
   // If not cached locally and looks like a URL, fetch and cache the remote actor
   if (!target && rawId.startsWith("https://")) {
-    const cached = await fetchAndCacheRemoteActor(env.DB, rawId);
+    const cached = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (cached) {
       target = await getActorById(env.DB, cached.id);
       remoteInbox = cached.inbox;
     }
   } else if (target && !target.isLocal && !target.inbox) {
     // Actor is cached but inbox was never stored — refresh to get it
-    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId);
+    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (refreshed) remoteInbox = refreshed.inbox;
   }
 

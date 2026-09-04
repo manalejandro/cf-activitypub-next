@@ -91,7 +91,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
 /** Fetch a remote ActivityPub actor profile and cache it in D1. */
 export async function fetchAndCacheRemoteActor(
   db: D1Database,
-  actorUrl: string
+  actorUrl: string,
+  kv?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }
 ): Promise<RemoteActorResult | null> {
   const val = validateOutboundUrl(actorUrl);
   if (!val.valid) {
@@ -125,7 +126,24 @@ export async function fetchAndCacheRemoteActor(
     ]);
 
     const displayName = sanitizeFediversePlain((p.name as string) ?? username);
-    const summary = sanitizeRemoteActorSummary((p.summary as string) ?? null);
+    let summary = sanitizeRemoteActorSummary((p.summary as string) ?? null);
+    let iconUrl = (p.icon as Record<string, string>)?.url ?? null;
+    const imageUrl = (p.image as Record<string, string>)?.url ?? null;
+
+    // Friendica/DFRN (and a few minimal implementations) serve an AP actor
+    // document without icon/summary — the profile details only exist on the
+    // HTML page. Fall back to the HTML profile (h-card / OpenGraph), once per
+    // actor per day, to fill the missing avatar and description.
+    if ((!iconUrl || !summary) && kv) {
+      const marker = `ap:profilehtml:${id}`;
+      const tried = await kv.get(marker).catch(() => null);
+      if (!tried) {
+        const fallback = await fetchProfileHtmlFallback((p.url as string) ?? id);
+        if (!iconUrl && fallback.avatar) iconUrl = fallback.avatar;
+        if (!summary && fallback.summary) summary = sanitizeRemoteActorSummary(fallback.summary);
+        await kv.put(marker, "1", { expirationTtl: 86400 }).catch(() => {});
+      }
+    }
 
     // Upsert — update if already exists (in case profile changed).
     // Falls back to UPDATE by username+domain when the actor migrated to a new URL.
@@ -164,8 +182,8 @@ export async function fetchAndCacheRemoteActor(
             id, usernameNorm, domain,
             displayName,
             summary,
-            (p.icon as Record<string, string>)?.url ?? null,
-            (p.image as Record<string, string>)?.url ?? null,
+            iconUrl,
+            imageUrl,
             pubKey,
             (p.type as string) === "Service" ? 1 : 0,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
@@ -207,8 +225,8 @@ export async function fetchAndCacheRemoteActor(
             id, usernameNorm, domain,
             displayName,
             summary,
-            (p.icon as Record<string, string>)?.url ?? null,
-            (p.image as Record<string, string>)?.url ?? null,
+            iconUrl,
+            imageUrl,
             pubKey,
             (p.type as string) === "Service" ? 1 : 0,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
@@ -239,8 +257,8 @@ export async function fetchAndCacheRemoteActor(
             id,
             displayName,
             summary,
-            (p.icon as Record<string, string>)?.url ?? null,
-            (p.image as Record<string, string>)?.url ?? null,
+            iconUrl,
+            imageUrl,
             pubKey,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
             followersCount,
@@ -729,3 +747,59 @@ async function ensureOutboxPollRows(db: D1Database, obj: APNote): Promise<void> 
   });
 }
 
+
+/**
+ * Best-effort extraction of profile details from an actor's HTML profile page.
+ * Some implementations (Friendica/DFRN and other minimal servers) serve an AP
+ * actor document without icon/summary; the details only exist in the HTML.
+ * Parses OpenGraph meta tags and the h-card `u-photo` microformat, which cover
+ * Mastodon, Friendica and most fediverse front-ends. SSRF-guarded and bounded.
+ */
+export async function fetchProfileHtmlFallback(
+  profileUrl: string
+): Promise<{ avatar?: string; summary?: string }> {
+  const val = validateOutboundUrl(profileUrl);
+  if (!val.valid) return {};
+
+  try {
+    const res = await fetch(profileUrl, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "CFActivityPub/1.0 (+https://cf-ap.com)",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return {};
+    const html = await res.text();
+    if (html.length > 2_000_000) return {};
+
+    const out: { avatar?: string; summary?: string } = {};
+
+    // Avatar: og:image (attribute order varies) → h-card u-photo → apple icon.
+    const ogImage = html.match(
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
+    ) ?? html.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i
+    );
+    const uPhoto = html.match(
+      /class=["'][^"']*\bu-photo\b[^"']*["'][^>]*src=["']([^"']+)["']/i
+    );
+    const appleIcon = html.match(
+      /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["']/i
+    );
+    const avatar = ogImage?.[1] ?? uPhoto?.[1] ?? appleIcon?.[1];
+    if (avatar) out.avatar = avatar;
+
+    // Description: og:description or <meta name="description">.
+    const desc = html.match(
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i
+    ) ?? html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
+    );
+    if (desc?.[1]) out.summary = desc[1];
+
+    return out;
+  } catch {
+    return {};
+  }
+}

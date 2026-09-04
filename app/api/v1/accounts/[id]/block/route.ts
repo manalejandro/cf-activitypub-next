@@ -20,7 +20,7 @@ export async function POST(
   const rawId = decodeURIComponent(id);
   let target = await getActorById(env.DB, rawId);
   if (!target && rawId.startsWith("https://")) {
-    const cached = await fetchAndCacheRemoteActor(env.DB, rawId);
+    const cached = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (cached) target = await getActorById(env.DB, cached.id);
   }
   if (!target) return notFound("Account not found");

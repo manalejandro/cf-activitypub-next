@@ -134,7 +134,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         let inboxUrl = target.inbox ?? `${target.id}/inbox`;
         // Ensure the remote actor's inbox is available before delivering.
         if (!target.inbox) {
-          const refreshed = await fetchAndCacheRemoteActor(env.DB, target.id);
+          const refreshed = await fetchAndCacheRemoteActor(env.DB, target.id, env.KV);
           if (refreshed?.inbox) inboxUrl = refreshed.inbox;
         }
         try {

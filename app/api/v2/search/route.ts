@@ -92,7 +92,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, authorFields }));
       return json(results);
     }
-    const cachedActor = await fetchAndCacheRemoteActor(env.DB, q);
+    const cachedActor = await fetchAndCacheRemoteActor(env.DB, q, env.KV);
     if (cachedActor) {
       const actor = await getActorById(env.DB, cachedActor.id);
       if (actor && !actor.suspended && !actor.silenced) {
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest): Promise<Response> {
             const wf = await wfRes.json() as { links?: { rel: string; href: string }[] };
             const selfLink = wf.links?.find((l) => l.rel === "self");
             if (selfLink?.href) {
-              const cached = await fetchAndCacheRemoteActor(env.DB, selfLink.href);
+              const cached = await fetchAndCacheRemoteActor(env.DB, selfLink.href, env.KV);
               if (cached) {
                 const actor = await getActorById(env.DB, cached.id);
                 if (actor && !actor.suspended && !actor.silenced) {

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
       let target = await getActorById(env.DB, resolvedUrl);
       if (!target) {
-        const cached = await fetchAndCacheRemoteActor(env.DB, resolvedUrl);
+        const cached = await fetchAndCacheRemoteActor(env.DB, resolvedUrl, env.KV);
         if (!cached) {
           results.push({ acct: handle, status: "not_found" });
           continue;
