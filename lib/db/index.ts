@@ -628,7 +628,10 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
       await db
         .prepare(
           `UPDATE actors SET
-            id = ?, display_name = ?, summary = ?, avatar_url = ?, header_url = ?,
+            id = ?, display_name = ?,
+            summary = CASE WHEN ? IS NOT NULL THEN ? ELSE summary END,
+            avatar_url = CASE WHEN ? IS NOT NULL THEN ? ELSE avatar_url END,
+            header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
             public_key_pem = ?, is_bot = ?, manually_approves_followers = ?,
             discoverable = ?, inbox = ?, also_known_as = ?, updated_at = datetime('now')
           WHERE username = ? AND domain = ?`
@@ -637,7 +640,10 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.id,
           displayName,
           summary,
+          summary,
           actor.icon?.url ?? null,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
           actor.image?.url ?? null,
           actor.publicKey.publicKeyPem,
           actor.type === "Service" ? 1 : 0,

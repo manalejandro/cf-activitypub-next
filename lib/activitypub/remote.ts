@@ -245,7 +245,10 @@ export async function fetchAndCacheRemoteActor(
         await db
           .prepare(
             `UPDATE actors SET
-               id = ?, display_name = ?, summary = ?, avatar_url = ?, header_url = ?,
+               id = ?, display_name = ?,
+               summary = CASE WHEN ? IS NOT NULL THEN ? ELSE summary END,
+               avatar_url = CASE WHEN ? IS NOT NULL THEN ? ELSE avatar_url END,
+               header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
                public_key_pem = ?, manually_approves_followers = ?,
                followers_count = CASE WHEN ? > 0 THEN ? ELSE followers_count END,
                following_count = CASE WHEN ? > 0 THEN ? ELSE following_count END,
@@ -257,7 +260,10 @@ export async function fetchAndCacheRemoteActor(
             id,
             displayName,
             summary,
+            summary,
             iconUrl,
+            iconUrl,
+            imageUrl,
             imageUrl,
             pubKey,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
