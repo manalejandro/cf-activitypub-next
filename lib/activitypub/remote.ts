@@ -164,9 +164,9 @@ export async function fetchAndCacheRemoteActor(
              VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                display_name = excluded.display_name,
-               summary = excluded.summary,
-               avatar_url = excluded.avatar_url,
-               header_url = excluded.header_url,
+               summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+               avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+               header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
                public_key_pem = excluded.public_key_pem,
                manually_approves_followers = excluded.manually_approves_followers,
                discoverable = excluded.discoverable,
@@ -208,9 +208,9 @@ export async function fetchAndCacheRemoteActor(
              VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                display_name = excluded.display_name,
-               summary = excluded.summary,
-               avatar_url = excluded.avatar_url,
-               header_url = excluded.header_url,
+               summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+               avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+               header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
                public_key_pem = excluded.public_key_pem,
                manually_approves_followers = excluded.manually_approves_followers,
                discoverable = excluded.discoverable,
