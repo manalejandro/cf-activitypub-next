@@ -1709,6 +1709,9 @@ export async function getHashtagTimeline(
   // Search the raw AP JSON for Hashtag tag entries matching the given hashtag name.
   // LIKE is case-insensitive for ASCII in SQLite, so #test matches #Test etc.
   const likePattern = `%"name":"#${hashtag.toLowerCase()}"%`;
+  // A leading-% LIKE cannot use an index; bound the scan to recent posts so a
+  // rare tag doesn't force a full-table read (D1 overload under burst).
+  const recencyBound = new Date(Date.now() - 90 * 86400000).toISOString();
   // Silenced (limited) and suspended accounts never appear on hashtag timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
@@ -1733,11 +1736,12 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM objects o
          WHERE o.visibility IN ('public', 'unlisted')
            AND o.raw LIKE ?
+           AND o.published >= ?
            AND o.published > ?
            ${stateFilter} ${blockFilter}
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(likePattern, pivot.published, ...blockBinds, limit)
+      .bind(likePattern, recencyBound, pivot.published, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1747,11 +1751,12 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM objects o
          WHERE o.visibility IN ('public', 'unlisted')
            AND o.raw LIKE ?
+           AND o.published >= ?
            AND o.published < (SELECT published FROM objects WHERE id = ?)
            ${stateFilter} ${blockFilter}
          ORDER BY o.published DESC LIMIT ?`
       )
-      .bind(likePattern, maxId, ...blockBinds, limit)
+      .bind(likePattern, recencyBound, maxId, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
@@ -1760,10 +1765,11 @@ export async function getHashtagTimeline(
       `SELECT o.* FROM objects o
        WHERE o.visibility IN ('public', 'unlisted')
          AND o.raw LIKE ?
+         AND o.published >= ?
          ${stateFilter} ${blockFilter}
        ORDER BY o.published DESC LIMIT ?`
     )
-    .bind(likePattern, ...blockBinds, limit)
+    .bind(likePattern, recencyBound, ...blockBinds, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -3434,6 +3440,67 @@ export async function getMlsConversationsByRecipient(
     .bind(recipientId)
     .all<Row>();
   return (rows.results ?? []).map((r) => ({ conversation: r.conversation, last: r.last }));
+}
+
+// ─────────────────────────────────────────
+// Instance statistics (nodeinfo + /api/v1/instance)
+// ─────────────────────────────────────────
+
+export interface InstanceStats {
+  userCount: number;
+  statusCount: number;
+  activeMonth: number;
+  activeHalfyear: number;
+  commentCount: number;
+}
+
+/**
+ * The four instance-wide count queries (nodeinfo + instance endpoints) each
+ * scan a large share of the objects table. Compute them once and cache the
+ * result in KV for 15 minutes — the counts change slowly and no client needs
+ * second-precision numbers. The covering index (is_local, published,
+ * actor_id) keeps the recompute index-only.
+ */
+export async function getInstanceStats(
+  db: D1Database,
+  kv: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }
+): Promise<InstanceStats> {
+  const cacheKey = "instance:stats";
+  try {
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as InstanceStats;
+      if (typeof parsed.userCount === "number") return parsed;
+    }
+  } catch { /* fall through to recompute */ }
+
+  const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+
+  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
+    db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(monthCutoff).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(halfyearCutoff).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
+    ).first<{ count: number }>(),
+  ]);
+
+  const stats: InstanceStats = {
+    userCount: userRow?.count ?? 0,
+    statusCount: postRow?.count ?? 0,
+    activeMonth: activeMonthRow?.count ?? 0,
+    activeHalfyear: activeHalfyearRow?.count ?? 0,
+    commentCount: commentRow?.count ?? 0,
+  };
+
+  await kv.put(cacheKey, JSON.stringify(stats), { expirationTtl: 900 }).catch(() => {});
+  return stats;
 }
 
 // ─────────────────────────────────────────

@@ -76,6 +76,10 @@ CREATE INDEX IF NOT EXISTS idx_objects_published   ON objects(published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_visibility  ON objects(visibility);
 CREATE INDEX IF NOT EXISTS idx_objects_reply       ON objects(in_reply_to_id);
 CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
+-- Covering index for the instance-statistics COUNT(DISTINCT actor_id) /
+-- COUNT(*) queries (nodeinfo, /api/v1/instance): the published-range scans
+-- stay index-only instead of reading the whole table.
+CREATE INDEX IF NOT EXISTS idx_objects_local_pub_actor ON objects(is_local, published, actor_id);
 
 -- Composite indexes for the hot timeline queries (applied on fresh installs).
 CREATE INDEX IF NOT EXISTS idx_objects_vis_published     ON objects(visibility, published DESC);

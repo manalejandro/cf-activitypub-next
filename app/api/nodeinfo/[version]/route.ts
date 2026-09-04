@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, notFound } from "@/lib/cf";
+import { getInstanceStats } from "@/lib/db";
 
 // GET /nodeinfo/:version
 export async function GET(
@@ -22,25 +23,7 @@ export async function GET(
   }
 
   const db = env.DB;
-
-  // `published` is stored ISO-8601; bind ISO cutoffs so the comparison is
-  // lexically correct (datetime('now', ...) would use a space format).
-  const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-  const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
-
-  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
-    db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
-    db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
-    ).bind(monthCutoff).first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
-    ).bind(halfyearCutoff).first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
-    ).first<{ count: number }>(),
-  ]);
+  const stats = await getInstanceStats(db, env.KV);
 
   const domain = new URL(request.url).hostname;
 
@@ -59,12 +42,12 @@ export async function GET(
     },
     usage: {
       users: {
-        total: userRow?.count ?? 0,
-        activeMonth: activeMonthRow?.count ?? 0,
-        activeHalfyear: activeHalfyearRow?.count ?? 0,
+        total: stats.userCount,
+        activeMonth: stats.activeMonth,
+        activeHalfyear: stats.activeHalfyear,
       },
-      localPosts: postRow?.count ?? 0,
-      localComments: commentRow?.count ?? 0,
+      localPosts: stats.statusCount,
+      localComments: stats.commentCount,
     },
     openRegistrations: true,
   };
@@ -77,6 +60,6 @@ export async function GET(
   }
 
   const body = JSON.stringify(payload);
-  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+  await env.KV.put(cacheKey, body, { expirationTtl: 900 }).catch(() => {});
   return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext } from "@/lib/cf";
-import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
+import { getInstanceContactActor, getInstanceSetting, getInstanceStats } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
 
@@ -18,16 +18,15 @@ export async function GET(request: NextRequest): Promise<Response> {
     return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   }
 
-  const [userRow, postRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
-    env.DB.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
+  const [contactActor, rulesRaw, languagesRaw, stats] = await Promise.all([
     getInstanceContactActor(env.DB),
     getInstanceSetting(env.DB, "rules"),
     getInstanceSetting(env.DB, "languages"),
+    getInstanceStats(env.DB, env.KV),
   ]);
 
-  const userCount = userRow?.count ?? 0;
-  const statusCount = postRow?.count ?? 0;
+  const userCount = stats.userCount;
+  const statusCount = stats.statusCount;
   const title = env.INSTANCE_TITLE ?? domain;
   const description = env.INSTANCE_DESCRIPTION ?? "An ActivityPub server";
   const appVersion = env.INSTANCE_VERSION ?? "0.1.0";
@@ -93,6 +92,6 @@ export async function GET(request: NextRequest): Promise<Response> {
   };
 
   const body = JSON.stringify(payload);
-  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+  await env.KV.put(cacheKey, body, { expirationTtl: 900 }).catch(() => {});
   return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }
