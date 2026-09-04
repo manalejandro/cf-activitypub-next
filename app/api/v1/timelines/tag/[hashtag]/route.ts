@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
+import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
@@ -30,7 +30,7 @@ export async function GET(
 
   const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -40,6 +40,7 @@ export async function GET(
     authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
     authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
+    authActor ? getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids)) : Promise.resolve(new Set<string>()),
   ]);
 
   const statuses = await Promise.all(
@@ -73,6 +74,7 @@ export async function GET(
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
         authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
         bookmarked: bookmarkedIds.has(obj.id),
+        muted: mutedIds.has(obj.actorId),
         authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })

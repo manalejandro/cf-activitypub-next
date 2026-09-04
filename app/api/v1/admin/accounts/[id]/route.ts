@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     role: { id: row.role === "admin" ? "1" : row.role === "moderator" ? "2" : "3", name: row.role === "admin" ? "Admin" : row.role === "moderator" ? "Moderator" : "User", color: "" },
     confirmed: actor.emailVerified,
     suspended: Boolean(row.suspended),
-    silenced: false,
+    silenced: Boolean(row.silenced),
     disabled: false,
     approved: row.approved !== undefined ? Boolean(row.approved) : true,
     registration_reason: row.registration_reason ?? null,

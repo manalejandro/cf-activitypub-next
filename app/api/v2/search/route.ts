@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
+import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
@@ -88,8 +88,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? null;
       const authorExtras = (await getStatusAuthorExtras(env.DB, [remoteStatus.object.actorId], domain)).get(remoteStatus.object.actorId);
       const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [remoteStatus.object.id])).has(remoteStatus.object.id) : false;
+      const muted = me ? (await getMutedActorIds(env.DB, me.id)).includes(remoteStatus.object.actorId) : false;
       const authorFields = (await getActorFieldsMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? [];
-      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, authorFields }));
+      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, muted, authorFields }));
       return json(results);
     }
     const cachedActor = await fetchAndCacheRemoteActor(env.DB, q, env.KV);
@@ -202,6 +203,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
       const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
       const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [obj.id])).has(obj.id) : false;
+      const muted = me ? (await getMutedActorIds(env.DB, me.id)).includes(obj.actorId) : false;
       results.statuses.push(
         serializeStatus(obj, actor, domain, {
           attachments: attachmentMap.get(obj.id) ?? [],
@@ -213,6 +215,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           authorSupportsCalls: authorExtras?.supportsCalls,
           authorMoved: authorExtras?.moved ?? null,
           bookmarked,
+          muted,
           authorFields: (await getActorFieldsMap(env.DB, [obj.actorId])).get(obj.actorId) ?? [],
         })
       );

@@ -259,7 +259,7 @@ export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
   localDomain: string,
-  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null; bookmarked?: boolean } = {}
+  opts: { favourited?: boolean; reblogged?: boolean; reblogOf?: MastodonStatus; attachments?: LocalAttachment[]; poll?: MastodonPoll | null; emojis?: LocalCustomEmoji[]; pinned?: boolean; inReplyToAccountId?: string | null; quote?: MastodonStatus | null; quotesCount?: number; filtered?: import("@/lib/mastodon/filters").FilterResult[]; authorLastStatusAt?: string | null; authorEmojis?: LocalCustomEmoji[]; authorFields?: import("@/lib/types").ActorField[]; authorSupportsCalls?: boolean; authorMoved?: MastodonAccount | null; bookmarked?: boolean; muted?: boolean } = {}
 ): MastodonStatus {
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
@@ -309,7 +309,7 @@ export function serializeStatus(
     quote: opts.quote ?? null,
     favourited: opts.favourited ?? false,
     reblogged: opts.reblogged ?? false,
-    muted: false,
+    muted: opts.muted ?? false,
     bookmarked: opts.bookmarked ?? false,
     pinned: opts.pinned ?? false,
     ...buildTypeMeta(obj),
@@ -631,7 +631,8 @@ export function serializeNotification(
   authorLastStatusAt?: string | null,
   authorExtras?: { supportsCalls?: boolean; moved?: MastodonAccount | null },
   bookmarked?: boolean,
-  authorFields?: import("@/lib/types").ActorField[]
+  authorFields?: import("@/lib/types").ActorField[],
+  muted?: boolean
 ): MastodonNotification {
   const result: MastodonNotification = {
     id: notif.id,
@@ -647,6 +648,7 @@ export function serializeNotification(
       authorMoved: authorExtras?.moved ?? null,
       bookmarked,
       authorFields,
+      muted,
     });
   }
   return result;
@@ -667,7 +669,9 @@ export function serializeInstanceV2(
   languages: string[] = INSTANCE_LANGUAGES,
   rules: { id: string; text: string }[] = [],
   limits: InstanceLimits = DEFAULT_LIMITS,
-  registrations: { enabled: boolean; approval_required: boolean; reason_required?: boolean; message: string | null; min_age?: number | null; url?: string | null } = { enabled: true, approval_required: false, message: null }
+  registrations: { enabled: boolean; approval_required: boolean; reason_required?: boolean; message: string | null; min_age?: number | null; url?: string | null } = { enabled: true, approval_required: false, message: null },
+  contactEmail: string = `admin@${domain}`,
+  translationEnabled = false
 ): MastodonInstance {
   return {
     uri: domain,
@@ -712,7 +716,7 @@ export function serializeInstanceV2(
         min_expiration: limits.pollMinExpiration,
         max_expiration: limits.pollMaxExpiration,
       },
-      translation: { enabled: true },
+      translation: { enabled: translationEnabled },
       timelines_access: {
         live_feeds: { local: "authenticated", remote: "public" },
         hashtag_feeds: { local: "public", remote: "public" },
@@ -723,7 +727,7 @@ export function serializeInstanceV2(
     },
     api_versions: { mastodon: 6 },
     registrations,
-    contact: { email: `admin@${domain}`, account: contactAccount },
+    contact: { email: contactEmail, account: contactAccount },
     rules,
   };
 }

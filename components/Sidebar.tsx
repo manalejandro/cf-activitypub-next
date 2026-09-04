@@ -85,8 +85,8 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
       if (res.ok) {
         const data = await res.json() as { version?: string };
         if (data.version) {
-          const m = data.version.match(/compatible;\s*([^)]+)/);
-          setVersion(m ? m[1] : data.version);
+          const m = data.version.match(/^([^(]+?)\s*\(compatible/);
+          setVersion(m ? m[1].trim() : data.version);
         }
       }
     }).catch(() => {});

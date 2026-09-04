@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds , getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -80,7 +80,7 @@ export async function GET(
     allObjects = rowObjs.results.map(rowToObject);
   }
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, allObjects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -92,6 +92,7 @@ export async function GET(
     me ? getFilterResultsForStatuses(env.DB, me.id, allObjects) : Promise.resolve(new Map()),
     getLastStatusAtMap(env.DB, allObjects.map((o) => o.actorId)),
     me ? getBookmarkedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set()),
+    me ? getMutedActorIds(env.DB, me.id).then((ids) => new Set(ids)) : Promise.resolve(new Set()),
   ]);
 
   const authorExtras = await getStatusAuthorExtras(env.DB, allObjects.map((o) => o.actorId), domain);
@@ -115,6 +116,7 @@ export async function GET(
       authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
       authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
       bookmarked: bookmarkedIds.has(obj.id),
+      muted: mutedIds.has(obj.actorId),
       authorFields: authorFieldsMap.get(obj.actorId) ?? [],
     });
   });

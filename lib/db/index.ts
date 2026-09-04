@@ -3511,6 +3511,7 @@ export interface InstanceStats {
   activeMonth: number;
   activeHalfyear: number;
   commentCount: number;
+  domainCount: number;
 }
 
 /**
@@ -3536,7 +3537,7 @@ export async function getInstanceStats(
   const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
   const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
 
-  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
+  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow, domainRow] = await Promise.all([
     db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
     db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
     db.prepare(
@@ -3548,6 +3549,7 @@ export async function getInstanceStats(
     db.prepare(
       "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
     ).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(DISTINCT domain) as count FROM actors WHERE is_local = 0").first<{ count: number }>(),
   ]);
 
   const stats: InstanceStats = {
@@ -3556,6 +3558,7 @@ export async function getInstanceStats(
     activeMonth: activeMonthRow?.count ?? 0,
     activeHalfyear: activeHalfyearRow?.count ?? 0,
     commentCount: commentRow?.count ?? 0,
+    domainCount: domainRow?.count ?? 0,
   };
 
   await kv.put(cacheKey, JSON.stringify(stats), { expirationTtl: 900 }).catch(() => {});

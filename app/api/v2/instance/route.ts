@@ -59,7 +59,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       message: regs.message,
       min_age: regs.minAge,
       url: regs.url,
-    }
+    },
+    contactActor?.email ?? `admin@${domain}`,
+    Boolean(env.LIBRETRANSLATE_URL?.trim())
   );
 
   const body = JSON.stringify(payload);
