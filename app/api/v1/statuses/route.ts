@@ -37,7 +37,7 @@ import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
-import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
+import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
 import type { APActor, APAttachment, APTag, LocalActor, LocalAttachment } from "@/lib/types";
@@ -532,6 +532,17 @@ export async function POST(request: NextRequest): Promise<Response> {
       .prepare("UPDATE objects SET replies_count = replies_count + 1 WHERE id = ?")
       .bind(inReplyToId)
       .run();
+
+    // Live counters: refresh the parent status in subscribed timelines.
+    if (env.TIMELINE_STREAM) {
+      const parentObj = await getObjectById(env.DB, inReplyToId);
+      const parentAuthor = parentObj ? await getActorById(env.DB, parentObj.actorId) : null;
+      if (parentObj && parentAuthor) {
+        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, {});
+        await broadcastStatusInteraction(env.TIMELINE_STREAM, parentSerialized, parentAuthor);
+        await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, parentAuthor.id, parentSerialized);
+      }
+    }
   }
 
   // Create notifications for mentioned local users. The parent author is always

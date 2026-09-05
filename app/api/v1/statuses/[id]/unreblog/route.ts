@@ -7,6 +7,7 @@ import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildAnnounce, buildUndo, generateId } from "@/lib/activitypub/utils";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import { broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
 
 // POST /api/v1/statuses/:id/unreblog
@@ -42,5 +43,8 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
-  return json(serializeStatus(refreshed ?? obj, author, domain, { reblogged: false }));
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { reblogged: false });
+  if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
+  if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
+  return json(serialized);
 }

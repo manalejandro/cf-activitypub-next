@@ -9,6 +9,7 @@ import { buildLike, generateId, followersIRI } from "@/lib/activitypub/utils";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { notify } from "@/lib/notify";
+import { broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
@@ -74,5 +75,9 @@ export async function POST(
   const refreshed = await getObjectById(env.DB, obj.id);
     const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
   const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-  return json(serializeStatus(refreshed ?? obj, author, domain, { favourited: true, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null }));
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: true, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+  // Live counters: refresh the status in every subscribed timeline.
+  if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
+  if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
+  return json(serialized);
 }
