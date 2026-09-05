@@ -516,6 +516,10 @@ export async function fetchAndCacheRemoteActorStatuses(
     );
 
     const published = toIso(obj.published);
+    // A historical outbox item without a parseable date can't be placed in the
+    // federated timeline correctly — skip it rather than backdating it to the
+    // resolution time (which would surface old posts at the top of the feed).
+    if (!published) continue;
     try {
       await createObject(db, {
         id: oid,
@@ -641,7 +645,7 @@ export async function fetchAndCacheRemoteStatus(
       repliesCount: 0,
       reblogsCount: 0,
       favouritesCount: 0,
-      published: toIso(obj.published),
+      published: toIso(obj.published) ?? new Date().toISOString(),
       local: false,
       raw: JSON.stringify(obj),
     });
@@ -723,7 +727,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           repliesCount: 0,
           reblogsCount: 0,
           favouritesCount: 0,
-          published: toIso(item.published),
+          published: toIso(item.published) ?? new Date().toISOString(),
           local: false,
           raw: JSON.stringify(item),
         });
@@ -768,11 +772,11 @@ export async function fetchAndCacheRemoteActorFeatured(
   return pinned;
 }
 
-function toIso(dateStr: unknown): string {
+function toIso(dateStr: unknown): string | null {
   if (typeof dateStr === "string") {
     try { return new Date(dateStr).toISOString(); } catch { /* fallthrough */ }
   }
-  return new Date().toISOString();
+  return null;
 }
 
 function safe(dateStr: unknown): string {
