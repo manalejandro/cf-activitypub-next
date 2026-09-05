@@ -1373,37 +1373,23 @@ export async function getFeaturedTagById(db: D1Database, id: string): Promise<{ 
 }
 
 export async function getTagSuggestions(db: D1Database, actorId: string): Promise<{ name: string; statuses_count: number }[]> {
+  // Indexed via object_tags instead of scanning raw for the actor's recent posts.
   const rows = await db
-    .prepare("SELECT raw FROM objects WHERE actor_id = ? AND raw LIKE '%\"type\":\"Hashtag\"%' ORDER BY published DESC LIMIT 200")
+    .prepare(
+      `SELECT t.tag, COUNT(*) as count FROM object_tags t
+       WHERE t.object_id IN (SELECT id FROM objects WHERE actor_id = ? ORDER BY published DESC LIMIT 200)
+       GROUP BY t.tag ORDER BY count DESC LIMIT 10`
+    )
     .bind(actorId)
-    .all<{ raw: string }>();
+    .all<{ tag: string; count: number }>();
 
   const featuredNames = new Set(
     (await getFeaturedTags(db, actorId)).map((t) => t.tag_name)
   );
 
-  const tagCounts = new Map<string, number>();
-  for (const row of rows.results) {
-    try {
-      const parsed = JSON.parse(row.raw) as { tag?: { type?: string; name?: string }[] };
-      const tags = parsed.tag ?? [];
-      for (const tag of tags) {
-        if (tag.type === "Hashtag" && tag.name) {
-          const name = tag.name.replace(/^#/, "").toLowerCase();
-          if (name && !featuredNames.has(name)) {
-            tagCounts.set(name, (tagCounts.get(name) ?? 0) + 1);
-          }
-        }
-      }
-    } catch {
-      // skip malformed raw JSON
-    }
-  }
-
-  return Array.from(tagCounts.entries())
-    .map(([name, count]) => ({ name, statuses_count: count }))
-    .sort((a, b) => b.statuses_count - a.statuses_count)
-    .slice(0, 10);
+  return rows.results
+    .filter((r) => !featuredNames.has(r.tag))
+    .map((r) => ({ name: r.tag, statuses_count: r.count }));
 }
 
 export async function updateActor(
@@ -1495,37 +1481,63 @@ export async function getReplyToAccountIdMap(
   return result;
 }
 
+/** Extract hashtag names (lowercased, without "#") from a stored object's raw AP JSON. */
+function extractObjectTags(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { tag?: unknown };
+    const tags = Array.isArray(parsed.tag) ? parsed.tag : [];
+    const names: string[] = [];
+    for (const t of tags) {
+      const tag = t as { type?: string; name?: string };
+      if (tag.type === "Hashtag" && typeof tag.name === "string") {
+        const name = tag.name.trim().replace(/^#+/, "").toLowerCase();
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  } catch { /* ignore */ }
+  return [];
+}
+
 export async function createObject(db: D1Database, obj: Omit<LocalObject, "updatedAt">): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO objects (
-        id, type, actor_id, content, content_warning, sensitive,
-        visibility, in_reply_to_id, quote_id, language, url,
-        replies_count, reblogs_count, favourites_count,
-        published, is_local, raw, updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    )
-    .bind(
-      obj.id,
-      obj.type,
-      obj.actorId,
-      obj.content ?? null,
-      obj.contentWarning ?? null,
-      obj.sensitive ? 1 : 0,
-      obj.visibility,
-      obj.inReplyToId ?? null,
-      obj.quoteId ?? null,
-      obj.language ?? null,
-      obj.url,
-      obj.repliesCount,
-      obj.reblogsCount,
-      obj.favouritesCount,
-      obj.published,
-      obj.local ? 1 : 0,
-      obj.raw,
-      obj.published   // pin updated_at = published so new posts never appear as edited
-    )
-    .run();
+  const statements = [
+    db
+      .prepare(
+        `INSERT INTO objects (
+          id, type, actor_id, content, content_warning, sensitive,
+          visibility, in_reply_to_id, quote_id, language, url,
+          replies_count, reblogs_count, favourites_count,
+          published, is_local, raw, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      )
+      .bind(
+        obj.id,
+        obj.type,
+        obj.actorId,
+        obj.content ?? null,
+        obj.contentWarning ?? null,
+        obj.sensitive ? 1 : 0,
+        obj.visibility,
+        obj.inReplyToId ?? null,
+        obj.quoteId ?? null,
+        obj.language ?? null,
+        obj.url,
+        obj.repliesCount,
+        obj.reblogsCount,
+        obj.favouritesCount,
+        obj.published,
+        obj.local ? 1 : 0,
+        obj.raw,
+        obj.published   // pin updated_at = published so new posts never appear as edited
+      ),
+    ...extractObjectTags(obj.raw).map((tag) =>
+      db
+        .prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published) VALUES (?, ?, ?)")
+        .bind(obj.id, tag, obj.published)
+    ),
+  ];
+  await db.batch(statements);
 }
 
 /**
@@ -1725,11 +1737,10 @@ export async function getHashtagTimeline(
   sinceId?: string,
   viewerId?: string
 ): Promise<LocalObject[]> {
-  // Search the raw AP JSON for Hashtag tag entries matching the given hashtag name.
-  // LIKE is case-insensitive for ASCII in SQLite, so #test matches #Test etc.
-  const likePattern = `%"name":"#${hashtag.toLowerCase()}"%`;
-  // A leading-% LIKE cannot use an index; bound the scan to recent posts so a
-  // rare tag doesn't force a full-table read (D1 overload under burst).
+  // Indexed via object_tags (extracted at ingest time): the (tag, published)
+  // index resolves tag + ordering without scanning `raw`. The recency bound
+  // keeps outposts of rarely-used tags from touching the whole table.
+  const tag = hashtag.toLowerCase().replace(/^#+/, "");
   const recencyBound = new Date(Date.now() - 90 * 86400000).toISOString();
   // Silenced (limited) and suspended accounts never appear on hashtag timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
@@ -1752,43 +1763,43 @@ export async function getHashtagTimeline(
     if (!pivot) return [];
     const rows = await db
       .prepare(
-        `SELECT o.* FROM objects o
-         WHERE o.visibility IN ('public', 'unlisted')
-           AND o.raw LIKE ?
-           AND o.published >= ?
-           AND o.published > ?
+        `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+         WHERE t.tag = ?
+           AND o.visibility IN ('public', 'unlisted')
+           AND t.published >= ?
+           AND t.published > ?
            ${stateFilter} ${blockFilter}
-         ORDER BY o.published DESC LIMIT ?`
+         ORDER BY t.published DESC LIMIT ?`
       )
-      .bind(likePattern, recencyBound, pivot.published, ...blockBinds, limit)
+      .bind(tag, recencyBound, pivot.published, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   if (maxId) {
     const rows = await db
       .prepare(
-        `SELECT o.* FROM objects o
-         WHERE o.visibility IN ('public', 'unlisted')
-           AND o.raw LIKE ?
-           AND o.published >= ?
-           AND o.published < (SELECT published FROM objects WHERE id = ?)
+        `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+         WHERE t.tag = ?
+           AND o.visibility IN ('public', 'unlisted')
+           AND t.published >= ?
+           AND t.published < (SELECT published FROM objects WHERE id = ?)
            ${stateFilter} ${blockFilter}
-         ORDER BY o.published DESC LIMIT ?`
+         ORDER BY t.published DESC LIMIT ?`
       )
-      .bind(likePattern, recencyBound, maxId, ...blockBinds, limit)
+      .bind(tag, recencyBound, maxId, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
     .prepare(
-      `SELECT o.* FROM objects o
-       WHERE o.visibility IN ('public', 'unlisted')
-         AND o.raw LIKE ?
-         AND o.published >= ?
+      `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+       WHERE t.tag = ?
+         AND o.visibility IN ('public', 'unlisted')
+         AND t.published >= ?
          ${stateFilter} ${blockFilter}
-       ORDER BY o.published DESC LIMIT ?`
+       ORDER BY t.published DESC LIMIT ?`
     )
-    .bind(likePattern, recencyBound, ...blockBinds, limit)
+    .bind(tag, recencyBound, ...blockBinds, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1838,7 +1849,7 @@ export async function updateObject(
   id: string,
   fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string }
 ): Promise<void> {
-  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw FROM objects WHERE id = ?").bind(id).first<Row>();
+  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
     await db
       .prepare("INSERT INTO object_edits (id, object_id, content, content_warning, sensitive, raw, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))")
@@ -1863,6 +1874,19 @@ export async function updateObject(
     .prepare(`UPDATE objects SET ${setClauses.join(", ")} WHERE id = ?`)
     .bind(...values)
     .run();
+
+  // The raw document carries the hashtag list — keep the index in sync when it
+  // changes (edits can add/remove tags).
+  if ("raw" in fields && prev) {
+    const statements = [
+      db.prepare("DELETE FROM object_tags WHERE object_id = ?").bind(id),
+      ...extractObjectTags(fields.raw).map((tag) =>
+        db.prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published) VALUES (?, ?, ?)")
+          .bind(id, tag, prev.published)
+      ),
+    ];
+    await db.batch(statements);
+  }
 }
 
 export async function getObjectEditHistory(db: D1Database, objectId: string): Promise<ObjectEdit[]> {

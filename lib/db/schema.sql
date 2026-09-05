@@ -88,6 +88,17 @@ CREATE INDEX IF NOT EXISTS idx_objects_vis_published     ON objects(visibility, 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_vis_pub     ON objects(actor_id, visibility, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_reply_published   ON objects(in_reply_to_id, published ASC);
 
+-- Hashtag index: tags extracted from the AP `tag` array at ingest time.
+-- The (tag, published) index lets hashtag timelines resolve tag + ordering
+-- without scanning `raw` (the old `raw LIKE` scan cost seconds on large DBs).
+CREATE TABLE IF NOT EXISTS object_tags (
+  object_id TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  tag       TEXT NOT NULL,          -- lowercased, without '#'
+  published TEXT NOT NULL,          -- denormalized for index-only ordering
+  PRIMARY KEY (object_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_object_tags_tag_published ON object_tags(tag, published DESC);
+
 -- ─────────────────────────────────────────
 -- Attachments
 -- ─────────────────────────────────────────
