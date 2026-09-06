@@ -23,6 +23,12 @@ export function clearTimelineCache(key: string): void {
   entries.delete(key);
 }
 
+/** Drop every cached feed — used when user filters change so cached statuses
+ *  (which embed the old `filtered` results) are refetched from the server. */
+export function clearAllTimelineCaches(): void {
+  entries.clear();
+}
+
 /** Remove a status from every cached timeline so a restored feed never shows it. */
 export function purgeStatusFromCache(statusId: string): void {
   for (const entry of entries.values()) {

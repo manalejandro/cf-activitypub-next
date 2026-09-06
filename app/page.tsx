@@ -33,8 +33,8 @@ export default function Home() {
       .then((res) => (res.ok ? res.json() as Promise<{ version?: string }> : null))
       .then((data) => {
         if (data?.version) {
-          const m = data.version.match(/compatible;\s*([^)]+)/);
-          setVersion(m ? m[1] : data.version);
+          const m = data.version.match(/^([^(]+?)\s*\(compatible/);
+          setVersion(m ? m[1].trim() : data.version);
         }
       })
       .catch(() => {});

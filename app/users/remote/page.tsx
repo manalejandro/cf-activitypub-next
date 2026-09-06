@@ -20,6 +20,8 @@ import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -203,6 +205,7 @@ function RemoteProfileInner() {
   const router = useRouter();
   const actorUrl = searchParams.get("url");
   const { t } = useLocale();
+  const limits = useLimits();
 
   const [account, setAccount] = useState<Account | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
@@ -233,7 +236,7 @@ function RemoteProfileInner() {
   const [avatarLb, setAvatarLb] = useState(false);
 
   const token = getToken();
-  const { startCall: initiateCall } = useStartCallButton(token);
+  const { startCall: initiateCall, pending: callPending } = useStartCallButton(token);
 
   async function load(url: string) {
     setLoading(true);
@@ -261,17 +264,17 @@ function RemoteProfileInner() {
 
     // Load cached statuses, replies, pinned, followers, following and collections in parallel
     const [statusRes, repliesRes, pinnedRes, followersRes, followingRes, collectionsRes] = await Promise.all([
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=20`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?only_replies=true&limit=20`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?pinned=true&limit=20`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/followers?limit=40`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/following?limit=40`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/followers?limit=${limits.pageSize}`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/following?limit=${limits.pageSize}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/collections`, { headers }),
     ]);
     if (statusRes.ok) {
       const data = await statusRes.json() as Status[];
       setStatuses(data);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     if (repliesRes.ok) setReplies(await repliesRes.json() as Status[]);
     if (pinnedRes.ok) setPinnedStatuses(await pinnedRes.json() as Status[]);
@@ -398,7 +401,7 @@ function RemoteProfileInner() {
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses((prev) => [...prev, ...data]);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setLoadingMorePosts(false);
   }
@@ -625,6 +628,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_voice}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "audio")}
                   >
                     <Icon name="phone" />
@@ -633,6 +637,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_video}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "video")}
                   >
                     <Icon name="video-camera" />
@@ -641,6 +646,7 @@ function RemoteProfileInner() {
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
                     title={t.profile_call_screen}
+                    disabled={callPending}
                     onClick={() => void initiateCall(account.acct, "screen")}
                   >
                     <Icon name="desktop" />
@@ -718,6 +724,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "audio"); }}
                         >
                           <Icon name="phone" /> {t.profile_call_voice}
@@ -725,6 +732,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "video"); }}
                         >
                           <Icon name="video-camera" /> {t.profile_call_video}
@@ -732,6 +740,7 @@ function RemoteProfileInner() {
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                          disabled={callPending}
                           onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "screen"); }}
                         >
                           <Icon name="desktop" /> {t.profile_call_screen}
@@ -868,7 +877,7 @@ function RemoteProfileInner() {
             <>
               {statuses.map((s) => (
                 <StatusCard
-                  key={s.id}
+                filterContext="account"key={s.id}
                   status={s}
                   onFav={handleStatusUpdate}
                   onReblog={handleStatusUpdate}
@@ -880,7 +889,7 @@ function RemoteProfileInner() {
                 />
               ))}
               <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                {loadingMorePosts ? t.loading : ""}
+                {loadingMorePosts && <Loading compact />}
               </div>
             </>
           )
@@ -892,7 +901,7 @@ function RemoteProfileInner() {
           ) : (
             replies.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
@@ -912,7 +921,7 @@ function RemoteProfileInner() {
           ) : (
             pinnedStatuses.map((s) => (
               <StatusCard
-                key={s.id}
+              filterContext="account"key={s.id}
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
@@ -1012,7 +1021,7 @@ function RemoteProfileInner() {
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={t.note_placeholder}
               aria-label={t.note_placeholder}
-              maxLength={500}
+              maxLength={limits.maxStatusChars}
               className="input"
               style={{ resize: "none", minHeight: 100, fontFamily: "inherit", width: "100%" }}
             />
@@ -1034,7 +1043,7 @@ function RemoteProfileInner() {
 
 export default function RemoteProfilePage() {
   return (
-    <Suspense fallback={<PageLayout><div style={{ color: "var(--text-muted)", padding: "2rem", textAlign: "center" }}>Cargando…</div></PageLayout>}>
+    <Suspense fallback={<PageLayout><Loading /></PageLayout>}>
       <RemoteProfileInner />
     </Suspense>
   );

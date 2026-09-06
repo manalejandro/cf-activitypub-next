@@ -11,6 +11,17 @@ export async function GET(request: NextRequest): Promise<Response> {
     return json({ error: "resource parameter required" }, 400);
   }
 
+  // Remote instances resolve the same account repeatedly (follows, mentions,
+  // re-fetches). Cache the JRD in KV so a burst of resolutions doesn't hammer
+  // D1 — only the first request per window hits the database.
+  const cacheKey = `ap:webfinger:${resource}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, {
+      headers: { "Content-Type": "application/jrd+json; charset=utf-8" },
+    });
+  }
+
   // Support acct:user@domain and https://domain/users/user
   let username: string | null = null;
   const domain = new URL(request.url).hostname;
@@ -34,34 +45,37 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const baseUrl = `https://${domain}`;
 
-  return new Response(
-    JSON.stringify({
-      subject: `acct:${actor.username}@${domain}`,
-      aliases: [
-        `${baseUrl}/@${actor.username}`,
-        `${baseUrl}/users/${actor.username}`,
-      ],
-      links: [
-        {
-          rel: "http://webfinger.net/rel/profile-page",
-          type: "text/html",
-          href: `${baseUrl}/@${actor.username}`,
-        },
-        {
-          rel: "self",
-          type: "application/activity+json",
-          href: `${baseUrl}/users/${actor.username}`,
-        },
-        {
-          rel: "http://ostatus.org/schema/1.0/subscribe",
-          template: `${baseUrl}/authorize_interaction?uri={uri}`,
-        },
-      ],
-    }),
-    {
-      headers: {
-        "Content-Type": "application/jrd+json; charset=utf-8",
+  const body = JSON.stringify({
+    subject: `acct:${actor.username}@${domain}`,
+    aliases: [
+      `${baseUrl}/@${actor.username}`,
+      `${baseUrl}/users/${actor.username}`,
+    ],
+    links: [
+      {
+        rel: "http://webfinger.net/rel/profile-page",
+        type: "text/html",
+        href: `${baseUrl}/@${actor.username}`,
       },
-    }
-  );
+      {
+        rel: "self",
+        type: "application/activity+json",
+        href: `${baseUrl}/users/${actor.username}`,
+      },
+      {
+        rel: "http://ostatus.org/schema/1.0/subscribe",
+        template: `${baseUrl}/authorize_interaction?uri={uri}`,
+      },
+    ],
+  });
+
+  // Cache only successful resolutions; a fresh account must become resolvable
+  // immediately, so 404s are never cached.
+  await env.KV.put(cacheKey, body, { expirationTtl: 300 }).catch(() => {});
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/jrd+json; charset=utf-8",
+    },
+  });
 }

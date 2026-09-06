@@ -57,6 +57,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Email not verified");
   }
 
+  // Approval-required instances: pending accounts can't obtain a token.
+  if (actor.approved === false) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Your account is pending approval");
+  }
+
   // Generate auth code, store in KV for 10 minutes
   const code = generateSecureToken();
   const payload = JSON.stringify({

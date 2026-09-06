@@ -2,15 +2,22 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import {
   getActorById,
+  getActorsByIds,
   getAttachmentsByObjectIds,
   getPollsByObjectIds,
   getLikedObjectIds,
   getAnnouncedObjectIds,
   getAllCustomEmojis,
+  getLastStatusAtMap,
+  getBookmarkedObjectIds,
+  getActorFieldsMap,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
+import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -42,31 +49,45 @@ function rowToObject(r: Row): LocalObject {
 // Returns the most engaged public statuses from the last 7 days.
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? "20"),
-    40
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)),
+    limits.maxPageSize
   );
 
-  const rows = await env.DB
-    .prepare(
-      `SELECT o.* FROM objects o
-       WHERE o.visibility IN ('public', 'unlisted')
-         AND o.type = 'Note'
-         AND o.published >= datetime('now', '-7 days')
-         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
-       ORDER BY (o.favourites_count + o.reblogs_count + o.replies_count) DESC,
-                o.published DESC
-       LIMIT ?`
-    )
-    .bind(limit)
-    .all<Row>();
+  // The ranked candidate set is identical for every client; only the
+  // viewer-specific enrichments (favourited/reblogged/bookmarked/filters)
+  // differ per request. Cache the object rows in KV and re-enrich on hit.
+  let rows: Row[] | null = null;
+  try {
+    const cached = await env.KV.get("trends:statuses:v1");
+    if (cached) rows = JSON.parse(cached) as Row[];
+  } catch { /* fall through to DB */ }
+  if (!rows) {
+    const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    const dbRows = await env.DB
+      .prepare(
+        `SELECT o.* FROM objects o
+         WHERE o.visibility IN ('public', 'unlisted')
+           AND o.type = 'Note'
+           AND o.published >= ?
+           AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+         ORDER BY (o.favourites_count + o.reblogs_count + o.replies_count) DESC,
+                  o.published DESC
+         LIMIT ?`
+      )
+      .bind(weekCutoff, limit)
+      .all<Row>();
+    rows = dbRows.results ?? [];
+    await env.KV.put("trends:statuses:v1", JSON.stringify(rows), { expirationTtl: 300 }).catch(() => {});
+  }
 
-  const objects = (rows.results ?? []).map(rowToObject);
+  const objects = rows.map(rowToObject);
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor
@@ -76,11 +97,20 @@ export async function GET(request: NextRequest): Promise<Response> {
       ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id))
       : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
+    authActor
+      ? getFilterResultsForStatuses(env.DB, authActor.id, objects)
+      : Promise.resolve(new Map()),
+    getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
+    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
+    getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
+
+  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
-      let author = await getActorById(env.DB, obj.actorId);
+      let author = authorMap.get(obj.actorId) ?? null;
       if (!author && obj.actorId.startsWith("https://")) {
         try {
           const { fetchRemoteObject } = await import(
@@ -109,6 +139,12 @@ export async function GET(request: NextRequest): Promise<Response> {
         favourited: likedIds.has(obj.id),
         reblogged: announcedIds.has(obj.id),
         emojis: allEmojis,
+        filtered: filteredMap.get(obj.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(obj.id),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

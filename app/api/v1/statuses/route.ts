@@ -36,7 +36,8 @@ import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
-import { broadcastPublicStatus, broadcastHomeStatus } from "@/lib/streaming/broadcast";
+import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
 import type { APActor, APAttachment, APTag, LocalActor, LocalAttachment } from "@/lib/types";
@@ -150,6 +151,7 @@ async function remoteQuoteAllowed(
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -188,15 +190,29 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   let content = (body.status as string | undefined)?.trim();
   const pollRaw = body.poll as { options?: string[]; expires_in?: number; multiple?: boolean } | undefined;
-  const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= 2;
+  const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
   if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
+
+  // Enforce the instance limits reported by /api/v1/instance (lib/constants).
+  if ((content ?? "").length > limits.maxStatusChars) {
+    return json({ error: `Validation failed: Text must be ${limits.maxStatusChars} characters or less` }, 422);
+  }
+  if (hasPoll && pollRaw.options) {
+    const pollOptions = pollRaw.options.filter((o) => String(o).trim());
+    if (pollOptions.length > limits.maxPollOptions) {
+      return json({ error: `Validation failed: Poll must have ${limits.maxPollOptions} options or less` }, 422);
+    }
+    if (pollOptions.some((o) => o.length > limits.maxPollOptionChars)) {
+      return json({ error: `Validation failed: Poll options must be ${limits.maxPollOptionChars} characters or less` }, 422);
+    }
+  }
 
   const visibility = (body.visibility as string) ?? "public";
   if (!["public", "unlisted", "private", "direct"].includes(visibility)) {
     return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
   }
-  if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < 300)) {
-    return json({ error: "Validation failed: expires_in must be at least 300 seconds" }, 422);
+  if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < limits.pollMinExpiration)) {
+    return json({ error: `Validation failed: expires_in must be at least ${limits.pollMinExpiration} seconds` }, 422);
   }
   const inReplyToIdRaw = body.in_reply_to_id as string | undefined;
   const inReplyToId = inReplyToIdRaw ? decodeStatusId(inReplyToIdRaw, domain) : undefined;
@@ -245,7 +261,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // If any pending media is marked sensitive, the whole status is sensitive
   // (matches Mastodon): remote instances then blur the media even without a CW.
-  for (const mediaId of mediaIds.slice(0, 4)) {
+  for (const mediaId of mediaIds.slice(0, limits.maxMediaAttachments)) {
     if (sensitive) break;
     const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
     if (!pendingRaw) continue;
@@ -444,7 +460,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Link any pending media attachments
   const linkedAttachments = [];
-  for (const mediaId of mediaIds.slice(0, 4)) {
+  for (const mediaId of mediaIds.slice(0, limits.maxMediaAttachments)) {
     const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
     if (!pendingRaw) continue;
     try {
@@ -479,9 +495,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   let serializedPoll = null;
   if (hasPoll && pollRaw) {
     const pollId = generateId();
-    const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
+    const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? POLL_DEFAULT_EXPIRATION), limits.pollMinExpiration), limits.pollMaxExpiration);
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    const validOptions = (pollRaw.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
+    const validOptions = (pollRaw.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
     await createPoll(env.DB, {
       id: pollId,
       objectId: note.id,
@@ -516,6 +532,17 @@ export async function POST(request: NextRequest): Promise<Response> {
       .prepare("UPDATE objects SET replies_count = replies_count + 1 WHERE id = ?")
       .bind(inReplyToId)
       .run();
+
+    // Live counters: refresh the parent status in subscribed timelines.
+    if (env.TIMELINE_STREAM) {
+      const parentObj = await getObjectById(env.DB, inReplyToId);
+      const parentAuthor = parentObj ? await getActorById(env.DB, parentObj.actorId) : null;
+      if (parentObj && parentAuthor) {
+        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, {});
+        await broadcastStatusInteraction(env.TIMELINE_STREAM, parentSerialized, parentAuthor);
+        await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, parentAuthor.id, parentSerialized);
+      }
+    }
   }
 
   // Create notifications for mentioned local users. The parent author is always
@@ -638,7 +665,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
     actor,
     domain,
-    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0 }
+    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10) }
   );
 
   // Broadcast to streaming clients — collect tasks and await all together

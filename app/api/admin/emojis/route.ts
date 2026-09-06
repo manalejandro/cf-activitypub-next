@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAllCustomEmojis, upsertCustomEmoji } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/admin/emojis — List all custom emoji (including disabled)
 export async function GET(request: NextRequest): Promise<Response> {
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 // POST /api/admin/emojis — Upload a new custom emoji
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -36,6 +38,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
   if (!shortcode || !/^[a-zA-Z0-9_]+$/.test(shortcode)) {
     return json({ error: "shortcode must contain only letters, numbers, and underscores" }, 422);
+  }
+  if (shortcode.length > limits.maxEmojiShortcodeChars) {
+    return json({ error: `shortcode must be ${limits.maxEmojiShortcodeChars} characters or less` }, 422);
   }
 
   const ALLOWED_TYPES = ["image/png", "image/gif", "image/webp"];
@@ -70,5 +75,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     actorId: null,
   });
 
+  await env.KV.delete("custom_emojis:v1").catch(() => {});
   return json({ id, shortcode, url, static_url: staticUrl, category, visible_in_picker: true }, 201);
 }

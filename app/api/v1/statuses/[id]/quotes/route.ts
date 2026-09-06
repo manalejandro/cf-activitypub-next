@@ -1,10 +1,13 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectQuotesCount, getObjectsQuoting } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectQuotesCount, getObjectsQuoting, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/statuses/:id/quotes — statuses quoting this one (auth required).
 export async function GET(
@@ -12,6 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
@@ -21,12 +25,18 @@ export async function GET(
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = request.nextUrl.searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
 
   const objects = await getObjectsQuoting(env.DB, obj.id, authActor.id, limit, maxId);
   const allEmojis = await getAllCustomEmojis(env.DB);
+  const filteredMap = await getFilterResultsForStatuses(env.DB, authActor.id, objects);
+  const lastStatusAtMap = await getLastStatusAtMap(env.DB, objects.map((o) => o.actorId));
+  const bookmarkedIds = await getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id));
+  const mutedIds = new Set(await getMutedActorIds(env.DB, authActor.id));
+  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
     objects.map(async (o) => {
@@ -46,6 +56,13 @@ export async function GET(
         emojis: allEmojis,
         quote,
         quotesCount,
+        filtered: filteredMap.get(o.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(o.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(o.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(o.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(o.id),
+        muted: mutedIds.has(o.actorId),
+        authorFields: authorFieldsMap.get(o.actorId) ?? [],
       });
     })
   );

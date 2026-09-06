@@ -6,6 +6,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
+import { Loading } from "@/components/Loading";
 
 interface PushSubscriptionData {
   id: string;
@@ -245,7 +246,7 @@ export default function PushNotificationsPage() {
         </div>
 
         {loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : (
           <>
             {/* Subscription status & actions */}

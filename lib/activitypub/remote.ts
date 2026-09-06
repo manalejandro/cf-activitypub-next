@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { getCloudflareContext } from "@/lib/cf";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
 import { extractQuoteId } from "@/lib/activitypub/utils";
@@ -25,6 +26,53 @@ export interface RemoteActorResult {
   domain: string;
 }
 
+const UA_BROWSER =
+  "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0";
+
+/**
+ * Federated User-Agent carrying the instance's version and domain, e.g.
+ * "CFActivityPub/1.1.9 (+https://cf-ap.com)". Falls back to the env-less
+ * defaults outside the Worker runtime (tests, local dev).
+ */
+function buildUserAgent(): string {
+  try {
+    const { env } = getCloudflareContext();
+    const e = env as unknown as Record<string, string | undefined>;
+    const version = e.INSTANCE_VERSION ?? "0.1.0";
+    const domain = new URL(e.INSTANCE_URL ?? "http://localhost:3000").hostname;
+    return `CFActivityPub/${version} (+https://${domain})`;
+  } catch {
+    return "CFActivityPub/0.1.0 (+http://localhost:3000)";
+  }
+}
+
+/**
+ * Fetch with an explicit federated User-Agent, retrying with a browser UA when
+ * the remote server blocks non-browser clients (Friendica's anti-bot guard
+ * rejects requests whose UA looks like a generic bot).
+ */
+async function remoteFetch(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 8000
+): Promise<Response | null> {
+  const uas = [buildUserAgent(), UA_BROWSER];
+  let last: Response | null = null;
+  for (const ua of uas) {
+    try {
+      const res = await fetch(url, {
+        headers: { ...headers, "User-Agent": ua },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      last = res;
+      if (res.ok) return res;
+    } catch {
+      /* try next UA */
+    }
+  }
+  return last;
+}
+
 /**
  * Resolve the totalItems count from an AP collection field.
  * Handles three forms:
@@ -42,11 +90,10 @@ async function resolveCollectionCount(field: unknown): Promise<number> {
     const val = validateOutboundUrl(field);
     if (!val.valid) return 0;
     try {
-      const r = await fetch(field, {
-        headers: { Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"' },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (r.ok) {
+      const r = await remoteFetch(field, {
+        Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+      }, 3000);
+      if (r?.ok) {
         const col = await r.json() as Record<string, unknown>;
         if (typeof col.totalItems === "number") return col.totalItems;
       }
@@ -67,11 +114,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
     const val = validateOutboundUrl(url);
     if (!val.valid) return false;
     try {
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!res.ok) return false;
+      const res = await remoteFetch(url, { Accept: "application/json" }, 3000);
+      if (!res?.ok) return false;
       const data = await res.json() as Record<string, unknown>;
       const config = data.configuration as Record<string, unknown> | undefined;
       return config?.calls !== undefined;
@@ -91,7 +135,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
 /** Fetch a remote ActivityPub actor profile and cache it in D1. */
 export async function fetchAndCacheRemoteActor(
   db: D1Database,
-  actorUrl: string
+  actorUrl: string,
+  kv?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }
 ): Promise<RemoteActorResult | null> {
   const val = validateOutboundUrl(actorUrl);
   if (!val.valid) {
@@ -99,13 +144,10 @@ export async function fetchAndCacheRemoteActor(
     return null;
   }
   try {
-    const res = await fetch(actorUrl, {
-      headers: {
-        Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
-      },
-      signal: AbortSignal.timeout(8000),
+    const res = await remoteFetch(actorUrl, {
+      Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
     });
-    if (!res.ok) return null;
+    if (!res?.ok) return null;
     const p = await res.json() as Record<string, unknown>;
     const id = (p.id as string) ?? actorUrl;
     const username = (p.preferredUsername as string) ?? "unknown";
@@ -125,51 +167,126 @@ export async function fetchAndCacheRemoteActor(
     ]);
 
     const displayName = sanitizeFediversePlain((p.name as string) ?? username);
-    const summary = sanitizeRemoteActorSummary((p.summary as string) ?? null);
+    let summary = sanitizeRemoteActorSummary((p.summary as string) ?? null);
+    let iconUrl = (p.icon as Record<string, string>)?.url ?? null;
+    const imageUrl = (p.image as Record<string, string>)?.url ?? null;
+
+    // Friendica/DFRN (and a few minimal implementations) serve an AP actor
+    // document without icon/summary — the profile details only exist on the
+    // HTML page. Fall back to the HTML profile (h-card / OpenGraph) to fill
+    // the missing avatar and description. The KV marker stores the extracted
+    // avatar URL (reused on subsequent resolves, no re-fetch) or "0" when the
+    // HTML yielded nothing (retried after the TTL expires). Key changed from
+    // `ap:profilehtml` to unblock actors whose old marker blocked the fallback
+    // while their stored avatar was NULL.
+    if ((!iconUrl || !summary) && kv) {
+      const marker = `ap:profilehtml2:${id}`;
+      const cached = await kv.get(marker).catch(() => null);
+      if (cached && cached !== "0") {
+        if (!iconUrl) iconUrl = cached;
+      } else {
+        const fallback = await fetchProfileHtmlFallback((p.url as string) ?? id);
+        if (!iconUrl && fallback.avatar) iconUrl = fallback.avatar;
+        if (!summary && fallback.summary) summary = sanitizeRemoteActorSummary(fallback.summary);
+        await kv.put(marker, iconUrl && fallback.avatar ? fallback.avatar : "0", {
+          expirationTtl: iconUrl && fallback.avatar ? 86400 : 3600,
+        }).catch(() => {});
+      }
+    }
 
     // Upsert — update if already exists (in case profile changed).
     // Falls back to UPDATE by username+domain when the actor migrated to a new URL.
     const alsoKnownAs = Array.isArray(p.alsoKnownAs) ? JSON.stringify(p.alsoKnownAs.filter((x) => typeof x === "string")) : null;
+    // Mastodon publishes the account's last activity date; store it so the
+    // account serializers can report the federated value.
+    const lastStatusAtRaw = (p as unknown as Record<string, unknown>).last_status_at;
+    const lastStatusAt = typeof lastStatusAtRaw === "string" && lastStatusAtRaw ? lastStatusAtRaw.slice(0, 10) : null;
     try {
-      await db
-        .prepare(
-          `INSERT INTO actors
-           (id, username, domain, display_name, summary, avatar_url, header_url,
-            public_key_pem, private_key_pem, is_local, is_bot,
-            manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, also_known_as)
-           VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET
-             display_name = excluded.display_name,
-             summary = excluded.summary,
-             avatar_url = excluded.avatar_url,
-             header_url = excluded.header_url,
-             public_key_pem = excluded.public_key_pem,
-             manually_approves_followers = excluded.manually_approves_followers,
-             discoverable = excluded.discoverable,
-             followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
-             following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
-             statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
-             inbox = excluded.inbox,
-             also_known_as = excluded.also_known_as,
-             updated_at = datetime('now')`
-        )
-        .bind(
-          id, usernameNorm, domain,
-          displayName,
-          summary,
-          (p.icon as Record<string, string>)?.url ?? null,
-          (p.image as Record<string, string>)?.url ?? null,
-          pubKey,
-          (p.type as string) === "Service" ? 1 : 0,
-          (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
-          followersCount,
-          followingCount,
-          statusesCount,
-          inbox,
-          alsoKnownAs,
-        )
-        .run();
+      try {
+        await db
+          .prepare(
+            `INSERT INTO actors
+             (id, username, domain, display_name, summary, avatar_url, header_url,
+              public_key_pem, private_key_pem, is_local, is_bot,
+              manually_approves_followers, discoverable,
+              followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?)
+             ON CONFLICT(id) DO UPDATE SET
+               display_name = excluded.display_name,
+               summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+               avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+               header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
+               public_key_pem = excluded.public_key_pem,
+               manually_approves_followers = excluded.manually_approves_followers,
+               discoverable = excluded.discoverable,
+               followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
+               following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
+               statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
+               inbox = excluded.inbox,
+               also_known_as = excluded.also_known_as,
+               last_status_at = excluded.last_status_at,
+               updated_at = datetime('now')`
+          )
+          .bind(
+            id, usernameNorm, domain,
+            displayName,
+            summary,
+            iconUrl,
+            imageUrl,
+            pubKey,
+            (p.type as string) === "Service" ? 1 : 0,
+            (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            followersCount,
+            followingCount,
+            statusesCount,
+            inbox,
+            alsoKnownAs,
+            lastStatusAt,
+          )
+          .run();
+      } catch {
+        // Pre-migration (021 not applied): actors.last_status_at does not exist
+        // yet — retry with the legacy statement so caching keeps working.
+        await db
+          .prepare(
+            `INSERT INTO actors
+             (id, username, domain, display_name, summary, avatar_url, header_url,
+              public_key_pem, private_key_pem, is_local, is_bot,
+              manually_approves_followers, discoverable,
+              followers_count, following_count, statuses_count, inbox, also_known_as)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
+             ON CONFLICT(id) DO UPDATE SET
+               display_name = excluded.display_name,
+               summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+               avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+               header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
+               public_key_pem = excluded.public_key_pem,
+               manually_approves_followers = excluded.manually_approves_followers,
+               discoverable = excluded.discoverable,
+               followers_count = CASE WHEN excluded.followers_count > 0 THEN excluded.followers_count ELSE actors.followers_count END,
+               following_count = CASE WHEN excluded.following_count > 0 THEN excluded.following_count ELSE actors.following_count END,
+               statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
+               inbox = excluded.inbox,
+               also_known_as = excluded.also_known_as,
+               updated_at = datetime('now')`
+          )
+          .bind(
+            id, usernameNorm, domain,
+            displayName,
+            summary,
+            iconUrl,
+            imageUrl,
+            pubKey,
+            (p.type as string) === "Service" ? 1 : 0,
+            (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            followersCount,
+            followingCount,
+            statusesCount,
+            inbox,
+            alsoKnownAs,
+          )
+          .run();
+      }
     } catch {
       // UNIQUE(username, domain) conflict — update the existing row's id so
       // subsequent getActorById(id) lookups work correctly.
@@ -177,7 +294,10 @@ export async function fetchAndCacheRemoteActor(
         await db
           .prepare(
             `UPDATE actors SET
-               id = ?, display_name = ?, summary = ?, avatar_url = ?, header_url = ?,
+               id = ?, display_name = ?,
+               summary = CASE WHEN ? IS NOT NULL THEN ? ELSE summary END,
+               avatar_url = CASE WHEN ? IS NOT NULL THEN ? ELSE avatar_url END,
+               header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
                public_key_pem = ?, manually_approves_followers = ?,
                followers_count = CASE WHEN ? > 0 THEN ? ELSE followers_count END,
                following_count = CASE WHEN ? > 0 THEN ? ELSE following_count END,
@@ -189,8 +309,11 @@ export async function fetchAndCacheRemoteActor(
             id,
             displayName,
             summary,
-            (p.icon as Record<string, string>)?.url ?? null,
-            (p.image as Record<string, string>)?.url ?? null,
+            summary,
+            iconUrl,
+            iconUrl,
+            imageUrl,
+            imageUrl,
             pubKey,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
             followersCount,
@@ -393,6 +516,10 @@ export async function fetchAndCacheRemoteActorStatuses(
     );
 
     const published = toIso(obj.published);
+    // A historical outbox item without a parseable date can't be placed in the
+    // federated timeline correctly — skip it rather than backdating it to the
+    // resolution time (which would surface old posts at the top of the feed).
+    if (!published) continue;
     try {
       await createObject(db, {
         id: oid,
@@ -518,7 +645,7 @@ export async function fetchAndCacheRemoteStatus(
       repliesCount: 0,
       reblogsCount: 0,
       favouritesCount: 0,
-      published: toIso(obj.published),
+      published: toIso(obj.published) ?? new Date().toISOString(),
       local: false,
       raw: JSON.stringify(obj),
     });
@@ -600,7 +727,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           repliesCount: 0,
           reblogsCount: 0,
           favouritesCount: 0,
-          published: toIso(item.published),
+          published: toIso(item.published) ?? new Date().toISOString(),
           local: false,
           raw: JSON.stringify(item),
         });
@@ -645,11 +772,11 @@ export async function fetchAndCacheRemoteActorFeatured(
   return pinned;
 }
 
-function toIso(dateStr: unknown): string {
+function toIso(dateStr: unknown): string | null {
   if (typeof dateStr === "string") {
     try { return new Date(dateStr).toISOString(); } catch { /* fallthrough */ }
   }
-  return new Date().toISOString();
+  return null;
 }
 
 function safe(dateStr: unknown): string {
@@ -679,3 +806,55 @@ async function ensureOutboxPollRows(db: D1Database, obj: APNote): Promise<void> 
   });
 }
 
+
+/**
+ * Best-effort extraction of profile details from an actor's HTML profile page.
+ * Some implementations (Friendica/DFRN and other minimal servers) serve an AP
+ * actor document without icon/summary; the details only exist in the HTML.
+ * Parses OpenGraph meta tags and the h-card `u-photo` microformat, which cover
+ * Mastodon, Friendica and most fediverse front-ends. SSRF-guarded and bounded.
+ */
+export async function fetchProfileHtmlFallback(
+  profileUrl: string
+): Promise<{ avatar?: string; summary?: string }> {
+  const val = validateOutboundUrl(profileUrl);
+  if (!val.valid) return {};
+
+  try {
+    const res = await remoteFetch(profileUrl, {
+      Accept: "text/html,application/xhtml+xml",
+    });
+    if (!res?.ok) return {};
+    const html = await res.text();
+    if (html.length > 2_000_000) return {};
+
+    const out: { avatar?: string; summary?: string } = {};
+
+    // Avatar: og:image (attribute order varies) → h-card u-photo → apple icon.
+    const ogImage = html.match(
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
+    ) ?? html.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i
+    );
+    const uPhoto = html.match(
+      /class=["'][^"']*\bu-photo\b[^"']*["'][^>]*src=["']([^"']+)["']/i
+    );
+    const appleIcon = html.match(
+      /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["']/i
+    );
+    const avatar = ogImage?.[1] ?? uPhoto?.[1] ?? appleIcon?.[1];
+    if (avatar) out.avatar = avatar;
+
+    // Description: og:description or <meta name="description">.
+    const desc = html.match(
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i
+    ) ?? html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
+    );
+    if (desc?.[1]) out.summary = desc[1];
+
+    return out;
+  } catch {
+    return {};
+  }
+}

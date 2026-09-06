@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
+import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
@@ -20,6 +21,15 @@ export async function GET(request: NextRequest): Promise<Response> {
   const fields = await getActorFields(env.DB, actor.id);
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
   const quotePolicy = (await getActorPreference(env.DB, actor.id, "posting:default:quote_policy")) ?? "followers";
+  const postingLanguage = (await getActorPreference(env.DB, actor.id, "posting:default:language")) ?? "en";
+  const postingVisibility = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
+  const postingSensitive = (await getActorPreference(env.DB, actor.id, "posting:default:sensitive")) === "true";
+  const hideCollections = (await getActorPreference(env.DB, actor.id, "profile:hide_collections")) === "true";
+  const followRequestsRow = await env.DB
+    .prepare("SELECT COUNT(*) AS c FROM follows WHERE target_id = ? AND state = 'pending'")
+    .bind(actor.id)
+    .first<{ c: number }>();
+  const followRequestsCount = Number(followRequestsRow?.c ?? 0);
 
   let role = "user";
   try {
@@ -37,13 +47,14 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy }));
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: postingVisibility, sensitive: postingSensitive, followRequestsCount, hideCollections }));
 }
 
 // PATCH /api/v1/accounts/update_credentials
 export async function PATCH(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -61,6 +72,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let fieldsRaw: { name: string; value: string }[] | undefined;
   let autoDeleteAfter: number | null | undefined;
   let sourceQuotePolicy: string | undefined;
+  let sourceHideCollections: boolean | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -79,6 +91,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
     const quotePolicyVal = form.get("source[quote_policy]") as string | null;
     if (quotePolicyVal !== null) sourceQuotePolicy = quotePolicyVal;
+    const hideCollectionsVal = form.get("source[hide_collections]") as string | null;
+    if (hideCollectionsVal !== null) sourceHideCollections = hideCollectionsVal === "true";
 
     // Handle avatar upload
     const avatarFile = form.get("avatar") as File | null;
@@ -104,7 +118,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
 
     // Handle fields — sent as fields_attributes[0][name], fields_attributes[0][value], ...
     const rawFields: { name: string; value: string }[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < limits.maxProfileFields; i++) {
       const name = form.get(`fields_attributes[${i}][name]`) as string | null;
       const value = form.get(`fields_attributes[${i}][value]`) as string | null;
       if (name !== null) rawFields.push({ name: name ?? "", value: value ?? "" });
@@ -140,8 +154,25 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       autoDeleteAfter = v === "" || v === 0 || v === "0" ? null : Number(v) || null;
     }
     if (typeof body.source === "object" && body.source !== null) {
-      const qp = (body.source as { quote_policy?: string }).quote_policy;
-      if (qp !== undefined) sourceQuotePolicy = qp;
+      const src = body.source as { quote_policy?: string; hide_collections?: boolean };
+      if (src.quote_policy !== undefined) sourceQuotePolicy = src.quote_policy;
+      if (src.hide_collections !== undefined) sourceHideCollections = Boolean(src.hide_collections);
+    }
+  }
+
+  // Enforce the same profile limits the client applies (lib/constants).
+  if (displayName !== undefined && displayName.length > limits.maxDisplayNameChars) {
+    return badRequest(`display_name must be ${limits.maxDisplayNameChars} characters or less`);
+  }
+  if (note !== undefined && note.length > limits.maxNoteChars) {
+    return badRequest(`note must be ${limits.maxNoteChars} characters or less`);
+  }
+  if (fieldsRaw !== undefined) {
+    if (fieldsRaw.length > limits.maxProfileFields) {
+      return badRequest(`You can have up to ${limits.maxProfileFields} profile fields`);
+    }
+    if (fieldsRaw.some((f) => f.name.length > limits.maxProfileFieldChars || f.value.length > limits.maxProfileFieldChars)) {
+      return badRequest(`Profile field names and values must be ${limits.maxProfileFieldChars} characters or less`);
     }
   }
 
@@ -181,6 +212,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     // Re-check rel="me" verification in the background so the badge reflects
     // the updated fields without blocking the response.
     void verifyAccountFields(env.DB, actor.id, domain).catch(() => {});
+    // Invalidate the cached federated actor so remote instances refetch the new profile.
+    await env.KV.delete(`ap:actor:${actor.username.toLowerCase()}`).catch(() => {});
   }
 
   // Quote policy — `source[quote_policy]` (Mastodon API v7).
@@ -194,6 +227,17 @@ export async function PATCH(request: NextRequest): Promise<Response> {
          ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
       )
       .bind(actor.id, sourceQuotePolicy)
+      .run();
+  }
+
+  // Profile preference — `source[hide_collections]` (Mastodon API v4.3).
+  if (sourceHideCollections !== undefined) {
+    await env.DB
+      .prepare(
+        `INSERT INTO preferences (actor_id, key, value, updated_at) VALUES (?, 'profile:hide_collections', ?, datetime('now'))
+         ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      )
+      .bind(actor.id, sourceHideCollections ? "true" : "false")
       .run();
   }
 
@@ -236,5 +280,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields, emojis: await getAllCustomEmojis(env.DB) }));
+  const hideCollectionsAfter = sourceHideCollections !== undefined
+    ? sourceHideCollections
+    : (await getActorPreference(env.DB, updated.id, "profile:hide_collections")) === "true";
+
+  return json(serializeAccount(updated, domain, { isCurrentUser: true, fields, emojis: await getAllCustomEmojis(env.DB), hideCollections: hideCollectionsAfter }));
 }

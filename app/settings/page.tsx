@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
+import { PaletteSettings } from "@/components/PaletteSettings";
 import { useLocale } from "@/lib/i18n";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { getToken } from "@/lib/client-api";
+import { Loading } from "@/components/Loading";
 
 interface Preferences {
   "posting:default:visibility": string;
@@ -115,7 +117,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <PageLayout sidebar={<Sidebar me={me} currentPath="/settings" />}>
-        <div style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       </PageLayout>
     );
   }
@@ -144,6 +146,8 @@ export default function SettingsPage() {
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_language}</label>
             <LanguagePicker fullWidth />
           </div>
+
+          <PaletteSettings />
 
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_quote_policy}</label>

@@ -19,6 +19,15 @@ export async function GET(
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
+  // Remote peers fetch key packages when encrypting to this actor; cache in KV
+  // so a burst of encryption attempts doesn't hammer D1. Short TTL: a rotated
+  // key package should become visible quickly.
+  const cacheKey = `mls:keypackages:${username.toLowerCase()}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return activityJson(JSON.parse(cached) as Record<string, unknown>);
+  }
+
   const actor = await getActorByUsername(env.DB, username, domain);
   if (!actor || !actor.isLocal) return notFound("Actor not found");
 
@@ -26,23 +35,24 @@ export async function GET(
   const keyPackages = await getMlsKeyPackagesByActor(env.DB, actor.id);
 
   // The draft allows a full Collection here; a page view returns just the items.
-  if (request.nextUrl.searchParams.get("page")) {
-    return activityJson({
-      "@context": DEFAULT_CONTEXT,
-      id: `${collectionId}?page=true`,
-      type: "CollectionPage",
-      partOf: collectionId,
-      items: keyPackages.map((kp) => mlsKeyPackageObject(baseUrl, kp)),
-    });
-  }
+  const response = request.nextUrl.searchParams.get("page")
+    ? {
+        "@context": DEFAULT_CONTEXT,
+        id: `${collectionId}?page=true`,
+        type: "CollectionPage",
+        partOf: collectionId,
+        items: keyPackages.map((kp) => mlsKeyPackageObject(baseUrl, kp)),
+      }
+    : {
+        "@context": DEFAULT_CONTEXT,
+        id: collectionId,
+        type: "Collection",
+        totalItems: keyPackages.length,
+        first: `${collectionId}?page=true`,
+      };
 
-  return activityJson({
-    "@context": DEFAULT_CONTEXT,
-    id: collectionId,
-    type: "Collection",
-    totalItems: keyPackages.length,
-    first: `${collectionId}?page=true`,
-  });
+  await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 60 }).catch(() => {});
+  return activityJson(response);
 }
 
 function mlsKeyPackageObject(baseUrl: string, kp: LocalMlsKeyPackage): Record<string, unknown> {

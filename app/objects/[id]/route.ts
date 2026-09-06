@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { getCloudflareContext, notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
 import { buildNote } from "@/lib/activitypub/utils";
 import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
@@ -37,6 +37,14 @@ export async function GET(
   const accept = request.headers.get("accept") ?? "";
   if (!accept.includes("application/json") && !accept.includes("application/ld+json") && !accept.includes("application/activity+json")) {
     return Response.redirect(`${baseUrl}/statuses/${id}`, 302);
+  }
+
+  // Federated fetches (especially bursts from a peer) can hammer D1. Cache the
+  // AP response briefly so repeated requests don't re-run the DB queries.
+  const cacheKey = `ap:obj:${id}`;
+  const cached = await env.KV.get(cacheKey);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
   }
 
   const objectId = `${baseUrl}/objects/${id}`;
@@ -80,5 +88,7 @@ export async function GET(
     (note as Record<string, unknown>).quote = obj.quoteId;
   }
 
-  return activityJson(note);
+  const body = JSON.stringify(note);
+  await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
 }

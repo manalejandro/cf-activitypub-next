@@ -42,25 +42,23 @@ export async function GET(
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  // Query 7-day history for this tag
+  // Query 7-day history for this tag. Fully index-only via the
+  // (tag, published, actor_id) covering index — the old json_each scan of
+  // every recent object's raw document cost seconds per request.
+  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
   const rows = await env.DB
     .prepare(
       `SELECT
-         CAST(strftime('%s', date(o.published)) AS INTEGER) AS day,
-         COUNT(DISTINCT o.actor_id) AS accounts,
+         CAST(strftime('%s', published) / 86400 AS INTEGER) AS day,
+         COUNT(DISTINCT actor_id) AS accounts,
          COUNT(*) AS uses
-       FROM objects o,
-            json_each(json_extract(o.raw, '$.tag')) t
-       WHERE json_type(o.raw, '$.tag') = 'array'
-         AND LOWER(REPLACE(json_extract(t.value, '$.name'), '#', '')) = LOWER(?)
-         AND json_extract(t.value, '$.type') = 'Hashtag'
-         AND o.visibility IN ('public', 'unlisted')
-         AND o.published >= datetime('now', '-7 days')
-         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+       FROM object_tags
+       WHERE tag = ?
+         AND published >= ?
        GROUP BY day
        ORDER BY day DESC`
     )
-    .bind(tagName)
+    .bind(tagName, weekCutoff)
     .all<{ day: number; accounts: number; uses: number }>();
 
   const historyRows = (rows.results ?? []).map((r) => ({

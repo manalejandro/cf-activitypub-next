@@ -3,6 +3,7 @@ import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getObjectById, getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v1/statuses/:id/reblogged_by
 // Returns accounts that boosted the given status.
@@ -11,13 +12,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "40"), 80);
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
 
   const rows = await env.DB
     .prepare(

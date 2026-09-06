@@ -58,6 +58,12 @@ const nextConfig: NextConfig = {
       // path prevents duplicated Access-Control-Allow-Origin headers (e.g. "*, *").
       { source: "/.well-known/:path*", headers: CORS },
       { source: "/oauth/:path*", headers: CORS },
+      // The service worker must never be cached long: browsers check for
+      // updates on navigation, so a stale SW would block PWA upgrades.
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, max-age=0" }],
+      },
       {
         source: "/:path*",
         headers: [

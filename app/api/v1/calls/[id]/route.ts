@@ -15,6 +15,7 @@ import {
   badRequest,
   unauthorized,
   notFound,
+  checkRateLimit,
 } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById } from "@/lib/db";
@@ -67,6 +68,22 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     return badRequest("Invalid JSON");
   }
 
+  // ── Abuse protection ──────────────────────────────────────────────────────
+  const { allowed } = await checkRateLimit(env.KV, `call:signal:${actor.id}:${id}`, 120, 60);
+  if (!allowed) {
+    return json({ error: "rate_limited", message: "Too many signals." }, 429);
+  }
+
+  // Ended sessions only accept idempotent hangup/reject (double-click retries),
+  // everything else is rejected so stale clients can't mutate a dead call.
+  const callEnded = session.state === "ended" || session.state === "rejected";
+  if (callEnded && (body.type === "hangup" || body.type === "reject")) {
+    return json({ ok: true });
+  }
+  if (callEnded) {
+    return json({ error: "Call has ended" }, 409);
+  }
+
   const baseUrl = getBaseUrl(env);
   const localDomain = getDomain(env);
   const isCaller = session.callerId === actor.id;
@@ -75,9 +92,12 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     case "answer": {
       if (isCaller) return badRequest("Caller cannot send answer");
       if (!body.sdp) return badRequest("Missing sdp");
+      if (session.answerSdp) return badRequest("Call already answered");
       session.answerSdp = body.sdp;
       session.state = "active";
       await saveCallSession(env.KV, session);
+      // The callee is now busy — block them from starting a parallel call.
+      await env.KV.put(`call:active:${session.calleeId}`, id, { expirationTtl: CALL_TTL });
 
       // Notify caller
       await notifyPeer(env, session, session.callerId, localDomain, {
@@ -117,6 +137,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     case "reject": {
       session.state = body.type === "reject" ? "rejected" : "ended";
       await saveCallSession(env.KV, session);
+      await clearActiveMarkers(env.KV, session);
 
       const peerActorId = isCaller ? session.calleeId : session.callerId;
       const eventType = body.type === "reject" ? "call.rejected" : "call.ended";
@@ -144,6 +165,7 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
     case "renegotiate":
     case "renegotiate-answer": {
       if (!body.sdp) return badRequest("Missing sdp");
+      if (session.state !== "active") return badRequest("Call is not active");
       const peerActorId = isCaller ? session.calleeId : session.callerId;
       const eventType = body.type === "renegotiate" ? "call.renegotiate" : "call.renegotiate-answer";
       await notifyPeer(env, session, peerActorId, localDomain, {
@@ -193,8 +215,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
     return json({ error: "Forbidden" }, 403);
   }
 
+  // Idempotent: a repeated hangup (double-click) must not re-notify peers.
+  if (session.state === "ended" || session.state === "rejected") {
+    return new Response(null, { status: 204 });
+  }
+
   session.state = "ended";
   await saveCallSession(env.KV, session);
+  await clearActiveMarkers(env.KV, session);
 
   const baseUrl = getBaseUrl(env);
   const localDomain = getDomain(env);
@@ -233,7 +261,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams): Pro
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type KVNamespace = { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
+type KVNamespace = { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void> };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DONamespaceAny = { idFromName(name: string): any; get(id: any): { fetch(input: string | URL | Request, init?: RequestInit): Promise<Response> } };
 
@@ -254,6 +282,12 @@ async function getCallSession(kv: KVNamespace, id: string): Promise<CallSession 
 
 async function saveCallSession(kv: KVNamespace, session: CallSession): Promise<void> {
   await kv.put(`call:${session.id}`, JSON.stringify(session), { expirationTtl: CALL_TTL });
+}
+
+/** Drop the "active call" markers so the peers can start new calls. */
+async function clearActiveMarkers(kv: KVNamespace, session: CallSession): Promise<void> {
+  await kv.delete(`call:active:${session.callerId}`).catch(() => {});
+  await kv.delete(`call:active:${session.calleeId}`).catch(() => {});
 }
 
 async function notifyPeer(

@@ -1,24 +1,33 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext } from "@/lib/cf";
 import { serializeInstanceV2, serializeAccount } from "@/lib/mastodon/serializers";
-import { getInstanceContactActor, getInstanceSetting } from "@/lib/db";
+import { getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
+import { resolveLimits } from "@/lib/constants";
 
 // GET /api/v2/instance
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
-  const [userRow, contactActor, rulesRaw, languagesRaw] = await Promise.all([
-    env.DB
-      .prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1")
-      .first<{ count: number }>(),
+  // Every client fetches instance info on startup; a burst of logins would run
+  // count/contact queries against D1 per request. Cache the serialized payload.
+  const cacheKey = "instance:v2";
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  }
+
+  const [contactActor, rulesRaw, languagesRaw, stats, regs] = await Promise.all([
     getInstanceContactActor(env.DB),
     getInstanceSetting(env.DB, "rules"),
     getInstanceSetting(env.DB, "languages"),
+    getInstanceStats(env.DB, env.KV),
+    getRegistrationSettings(env.DB),
   ]);
 
-  const userCount = userRow?.count ?? 0;
+  const userCount = stats.userCount;
 
   const title = env.INSTANCE_TITLE ?? domain;
   const description = env.INSTANCE_DESCRIPTION ?? "An ActivityPub server";
@@ -32,17 +41,30 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (langs.length > 0) languages = langs.map((l) => l.code);
   } catch { /* ignore */ }
 
-  return json(
-    serializeInstanceV2(
-      domain,
-      title,
-      description,
-      version,
-      userCount,
-      contactActor ? serializeAccount(contactActor, domain) : null,
-      env.VAPID_PUBLIC_KEY,
-      languages,
-      rules
-    )
+  const payload = serializeInstanceV2(
+    domain,
+    title,
+    description,
+    version,
+    userCount,
+    contactActor ? serializeAccount(contactActor, domain) : null,
+    env.VAPID_PUBLIC_KEY,
+    languages,
+    rules,
+    limits,
+    {
+      enabled: regs.enabled,
+      approval_required: regs.approvalRequired,
+      reason_required: regs.reasonRequired,
+      message: regs.message,
+      min_age: regs.minAge,
+      url: regs.url,
+    },
+    contactActor?.email ?? `admin@${domain}`,
+    Boolean(env.LIBRETRANSLATE_URL?.trim())
   );
+
+  const body = JSON.stringify(payload);
+  await env.KV.put(cacheKey, body, { expirationTtl: 900 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

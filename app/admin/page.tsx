@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface AccountSummary {
   id: string;
@@ -63,7 +64,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div style={{ color: "var(--text-muted)", padding: "2rem" }}>{t.loading}</div>
+      <Loading />
     );
   }
 

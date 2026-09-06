@@ -59,63 +59,77 @@ export async function GET(
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
+  // Remote instances fetch the outbox when resolving an account; a burst of
+  // resolutions must not hammer D1. Cache the collection header and each page
+  // in KV with a short TTL (new posts appear within ~2 minutes).
+  const pageParam = request.nextUrl.searchParams.get("page");
+  const cacheKey = `ap:outbox:${username.toLowerCase()}${pageParam ? `:${pageParam.slice(0, 80)}` : ""}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return activityJson(JSON.parse(cached) as Record<string, unknown>);
+  }
+
   const actor = await getActorByUsername(env.DB, username, domain);
   if (!actor || !actor.isLocal) return notFound("Actor not found");
 
   const outboxId = `${actorIRI(baseUrl, username)}/outbox`;
-  const page = request.nextUrl.searchParams.get("page");
+  const page = pageParam;
 
+  let response: Record<string, unknown>;
   if (!page) {
-    return activityJson(buildOrderedCollection(outboxId, actor.statusesCount));
+    response = buildOrderedCollection(outboxId, actor.statusesCount);
+  } else {
+    const maxId = page !== "true" ? page : undefined;
+    const statuses = await getActorStatuses(env.DB, actor.id, 20, maxId);
+    const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
+
+    const items = statuses
+      .filter((s) => s.visibility === "public")
+      .map((s) => {
+        // s.id is the full object IRI (https://{domain}/objects/{uuid}); buildNote
+        // expects the bare uuid and wraps it with objectIRI, so passing the full
+        // IRI would produce a double-prefixed id (https://{domain}/objects/https://…)
+        // and cause the remote instance to ingest the same post twice.
+        const objectUuid = s.id.split("/").pop() ?? s.id;
+        const attachments = (attachmentMap.get(s.id) ?? []).map(toAPAttachment);
+        let tags: APTag[] | undefined;
+        let to: string[] | undefined;
+        let cc: string[] | undefined;
+        try {
+          const raw = JSON.parse(s.raw);
+          if (Array.isArray(raw.tag)) tags = raw.tag as APTag[];
+          if (Array.isArray(raw.to)) to = raw.to as string[];
+          if (Array.isArray(raw.cc)) cc = raw.cc as string[];
+        } catch { /* ignore parse errors */ }
+        const note = buildNote(baseUrl, objectUuid, {
+          actorUsername: username,
+          content: s.content ?? "",
+          published: s.published,
+          visibility: s.visibility as "public" | "unlisted" | "followers" | "direct",
+          inReplyTo: s.inReplyToId ?? undefined,
+          sensitive: s.sensitive,
+          summary: s.contentWarning ?? undefined,
+          language: s.language ?? undefined,
+          tags,
+          to,
+          cc,
+        });
+        if (attachments.length > 0) {
+          note.attachment = attachments;
+        }
+        return buildCreate(baseUrl, actorIRI(baseUrl, username), note, objectUuid + "-create");
+      });
+
+    const nextId =
+      items.length === 20
+        ? `${outboxId}?page=${statuses[statuses.length - 1]?.id}`
+        : undefined;
+
+    response = buildOrderedCollectionPage(outboxId, items, nextId);
   }
 
-  const maxId = page !== "true" ? page : undefined;
-  const statuses = await getActorStatuses(env.DB, actor.id, 20, maxId);
-  const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
-
-  const items = statuses
-    .filter((s) => s.visibility === "public")
-    .map((s) => {
-      // s.id is the full object IRI (https://{domain}/objects/{uuid}); buildNote
-      // expects the bare uuid and wraps it with objectIRI, so passing the full
-      // IRI would produce a double-prefixed id (https://{domain}/objects/https://…)
-      // and cause the remote instance to ingest the same post twice.
-      const objectUuid = s.id.split("/").pop() ?? s.id;
-      const attachments = (attachmentMap.get(s.id) ?? []).map(toAPAttachment);
-      let tags: APTag[] | undefined;
-      let to: string[] | undefined;
-      let cc: string[] | undefined;
-      try {
-        const raw = JSON.parse(s.raw);
-        if (Array.isArray(raw.tag)) tags = raw.tag as APTag[];
-        if (Array.isArray(raw.to)) to = raw.to as string[];
-        if (Array.isArray(raw.cc)) cc = raw.cc as string[];
-      } catch { /* ignore parse errors */ }
-      const note = buildNote(baseUrl, objectUuid, {
-        actorUsername: username,
-        content: s.content ?? "",
-        published: s.published,
-        visibility: s.visibility as "public" | "unlisted" | "followers" | "direct",
-        inReplyTo: s.inReplyToId ?? undefined,
-        sensitive: s.sensitive,
-        summary: s.contentWarning ?? undefined,
-        language: s.language ?? undefined,
-        tags,
-        to,
-        cc,
-      });
-      if (attachments.length > 0) {
-        note.attachment = attachments;
-      }
-      return buildCreate(baseUrl, actorIRI(baseUrl, username), note, objectUuid + "-create");
-    });
-
-  const nextId =
-    items.length === 20
-      ? `${outboxId}?page=${statuses[statuses.length - 1]?.id}`
-      : undefined;
-
-  return activityJson(buildOrderedCollectionPage(outboxId, items, nextId));
+  await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 120 }).catch(() => {});
+  return activityJson(response);
 }
 
 // ─────────────────────────────────────────

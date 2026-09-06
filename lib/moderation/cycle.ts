@@ -29,7 +29,7 @@ async function recentLocalStatuses(db: D1Database, minutes: number) {
   const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
   return db
     .prepare(
-      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 150"
+      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 40"
     )
     .bind(cutoff)
     .all<{ id: string; actor_id: string; content: string; content_warning: string | null; sensitive: number; visibility: string; in_reply_to_id: string | null }>();
@@ -37,6 +37,18 @@ async function recentLocalStatuses(db: D1Database, minutes: number) {
 
 /** Screen recently published local statuses (covers scheduled + AI downtime). */
 async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
+  // Throttled: screening can spend seconds per status on AI calls, so running
+  // it on every cron tick would push the run past the 60s overlap window (the
+  // cron then logs "skipping overlapping run"). Process at most every 90s; the
+  // per-status KV markers still dedupe so the backlog drains across runs.
+  if (env.KV) {
+    try {
+      if (await env.KV.get("guardian:screen_run")) return;
+      await env.KV.put("guardian:screen_run", "1", { expirationTtl: 90 });
+    } catch {
+      // best-effort throttle — keep screening
+    }
+  }
   const rows = await recentLocalStatuses(env.DB, 20);
   for (const row of rows.results) {
     if (env.KV) {
@@ -241,6 +253,17 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
 
 /** Detect accounts repeatedly posting the same content (spambot signature). */
 export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
+  // The 24h window scan (up to 3000 rows with signal analysis) is the heaviest
+  // DB loop in the cron; run it at most every 5 minutes so a single tick stays
+  // inside the 60s overlap window. Per-actor markers still prevent re-actions.
+  if (env.KV) {
+    try {
+      if (await env.KV.get("guardian:spamdup_run")) return;
+      await env.KV.put("guardian:spamdup_run", "1", { expirationTtl: 300 });
+    } catch {
+      // best-effort throttle — keep scanning
+    }
+  }
   const cutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   const rows = await env.DB
     .prepare("SELECT id, actor_id, content FROM objects WHERE type = 'Note' AND content IS NOT NULL AND content != '' AND published >= ? LIMIT 3000")
@@ -316,6 +339,19 @@ function stripForDetails(html: string): string {
 
 /** Block domains that are a consistent source of abuse. */
 export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
+  // The scan walks every cached remote account (index-only with the covering
+  // (is_local, domain, suspended) index, but still a full pass) — run it at
+  // most every 10 minutes instead of on every cron tick.
+  if (env.KV) {
+    try {
+      const lastScan = await env.KV.get("guardian:domain_scan_last");
+      if (lastScan && Date.now() - Number(lastScan) < 10 * 60 * 1000) return;
+      await env.KV.put("guardian:domain_scan_last", String(Date.now()), { expirationTtl: 2 * 3600 });
+    } catch {
+      // keep scanning even if the cooldown marker cannot be written
+    }
+  }
+
   const instanceDomain = (env.INSTANCE_URL ? new URL(env.INSTANCE_URL).hostname : "") || "localhost";
 
   // Only auto-block a domain when it is *overwhelmingly* spammy relative to how
@@ -323,27 +359,40 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
   // to have a few spammers. Absolute count (>= 3) plus proportion (>= 50% of the
   // domain's cached accounts) prevents the collateral mass-suspension of a whole
   // legitimate instance (e.g. mastodon.social with 3 spam accounts out of 12k).
-  const suspendedByDomain = await env.DB
+  //
+  // One index-only pass gives total + suspended counts per domain; the old
+  // correlated `HAVING c * 1.0 / COUNT(*)` subquery and the second full scan
+  // for reported domains are replaced by joining these counts in JS.
+  const totals = await env.DB
     .prepare(
-      `SELECT domain, SUM(CASE WHEN suspended = 1 THEN 1 ELSE 0 END) AS c
+      `SELECT domain, COUNT(*) AS total, SUM(CASE WHEN suspended = 1 THEN 1 ELSE 0 END) AS c
        FROM actors WHERE is_local = 0
-       GROUP BY domain
-       HAVING c >= 3 AND c * 1.0 / COUNT(*) >= 0.5`
+       GROUP BY domain`
     )
-    .all<{ domain: string; c: number }>();
+    .all<{ domain: string; total: number; c: number }>();
 
-  const reportedByDomain = await env.DB
+  const reported = await env.DB
     .prepare(
       `SELECT a.domain, COUNT(DISTINCT r.id) AS c
        FROM reports r JOIN actors a ON a.id = r.target_id
        WHERE a.is_local = 0
-       GROUP BY a.domain
-       HAVING c >= 3 AND c >= 0.5 * (SELECT COUNT(*) FROM actors WHERE domain = a.domain AND is_local = 0)`
+       GROUP BY a.domain`
     )
     .all<{ domain: string; c: number }>();
 
   const domains = new Set<string>();
-  for (const r of [...suspendedByDomain.results, ...reportedByDomain.results]) domains.add(r.domain);
+  for (const row of totals.results) {
+    if (Number(row.c) >= 3 && Number(row.c) * 1.0 / Number(row.total) >= 0.5) {
+      domains.add(row.domain);
+    }
+  }
+  const totalByDomain = new Map(totals.results.map((r) => [r.domain, Number(r.total)]));
+  for (const row of reported.results) {
+    const total = totalByDomain.get(row.domain) ?? 0;
+    if (Number(row.c) >= 3 && Number(row.c) >= 0.5 * total) {
+      domains.add(row.domain);
+    }
+  }
 
   for (const domain of domains) {
     if (!domain || domain === instanceDomain) continue;

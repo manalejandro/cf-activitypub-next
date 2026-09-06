@@ -3,7 +3,7 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import {
   getObjectById, getActorById, createAnnounce, getAnnounce,
   getFollow, canViewStatus,
-} from "@/lib/db";
+  getLastStatusAtMap} from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -11,7 +11,9 @@ import { buildAnnounce, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { notify } from "@/lib/notify";
+import { broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import type { APActor } from "@/lib/types";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // POST /api/v1/statuses/:id/reblog
 export async function POST(
@@ -91,5 +93,10 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
-  return json(serializeStatus(refreshed ?? obj, author, domain, { reblogged: true }));
+    const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+  const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { reblogged: true, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+  if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
+  if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
+  return json(serialized);
 }

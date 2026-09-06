@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
+const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_required", "registrations_reason_required", "registrations_message", "registrations_min_age", "registrations_url"] as const;
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const settings: Record<string, string | null> = {};
-  for (const key of KEYS) {
+  for (const key of [...KEYS, ...REGISTRATION_KEYS]) {
     settings[key] = await getInstanceSetting(env.DB, key);
   }
 
@@ -22,12 +23,20 @@ export async function GET(request: NextRequest): Promise<Response> {
   let languages: { code: string; name?: string; native_name?: string }[] = [];
   try { languages = settings.languages ? JSON.parse(settings.languages) : []; } catch { /* ignore */ }
 
+  const reg = (key: string, def: boolean): boolean => settings[key] === null ? def : settings[key] === "true";
+
   return json({
     rules,
     privacy_policy: settings.privacy_policy ?? "",
     terms_of_service: settings.terms_of_service ?? "",
     extended_description: settings.extended_description ?? "",
     languages,
+    registrations_enabled: reg("registrations_enabled", true),
+    registrations_approval_required: reg("registrations_approval_required", false),
+    registrations_reason_required: reg("registrations_reason_required", false),
+    registrations_message: settings.registrations_message ?? "",
+    registrations_min_age: settings.registrations_min_age ?? "",
+    registrations_url: settings.registrations_url ?? "",
   });
 }
 
@@ -55,6 +64,24 @@ export async function PUT(request: NextRequest): Promise<Response> {
   if (Array.isArray(body.languages)) {
     await setInstanceSetting(env.DB, "languages", JSON.stringify(body.languages));
   }
+
+  // Registration policy (Mastodon v2 registrations object).
+  for (const key of ["registrations_enabled", "registrations_approval_required", "registrations_reason_required"] as const) {
+    if (typeof body[key] === "boolean") {
+      await setInstanceSetting(env.DB, key, String(body[key]));
+    }
+  }
+  for (const key of ["registrations_message", "registrations_min_age", "registrations_url"] as const) {
+    if (typeof body[key] === "string") {
+      await setInstanceSetting(env.DB, key, body[key]);
+    }
+  }
+
+  // Registrations are part of the cached instance payload — invalidate it.
+  await Promise.all([
+    env.KV.delete("instance:v1").catch(() => {}),
+    env.KV.delete("instance:v2").catch(() => {}),
+  ]);
 
   return json({ ok: true });
 }

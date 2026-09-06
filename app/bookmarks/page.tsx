@@ -10,25 +10,28 @@ import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 export default function BookmarksPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const token = getToken();
   const { t } = useLocale();
+  const limits = useLimits();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
     if (!token) return { items: [], hasMore: false };
-    const base = "/api/v1/bookmarks?limit=20";
+    const base = `/api/v1/bookmarks?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length >= 20 };
-  }, [token]);
+    return { items, hasMore: items.length >= limits.defaultTimelinePage };
+  }, [token, limits.defaultTimelinePage]);
 
-  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage);
+  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage, { refetchOnMount: true });
 
   useEffect(() => {
     async function fetchMe() {
@@ -64,7 +67,7 @@ export default function BookmarksPage() {
           <h1 className="text-lg font-bold">{t.bookmarks_title}</h1>
         </div>
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : statuses.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="bookmark" size="2rem" /></div>
@@ -76,6 +79,7 @@ export default function BookmarksPage() {
             {statuses.map((s) => (
               <div key={s.id} data-status-id={s.id}>
                 <StatusCard
+                  filterContext="home"
                   status={s}
                   me={me}
                   onFav={() => {}}
@@ -88,7 +92,7 @@ export default function BookmarksPage() {
               </div>
             ))}
             <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-              {loadingMore ? t.loading : ""}
+              {loadingMore && <Loading compact />}
             </div>
           </>
         )}

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId, createEmailVerification } from "@/lib/db";
+import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId, createEmailVerification, getRegistrationSettings } from "@/lib/db";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { actorIRI } from "@/lib/activitypub/utils";
 import { hashPassword, generateSecureToken } from "@/lib/auth";
@@ -11,6 +11,7 @@ import { rejectAccount, approveAccount, GUARDIAN_MODEL } from "@/lib/moderation/
 import { runWithTimeout } from "@/lib/moderation/util";
 import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
+import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
@@ -35,6 +36,19 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { username, email, password } = body;
   const turnstileToken = body["cf-turnstile-response"];
 
+  // Registration policy from instance settings (Mastodon-compatible:
+  // registrations.enabled / approval_required / reason_required / min_age).
+  const regs = await getRegistrationSettings(env.DB);
+  if (!regs.enabled) {
+    return json({ error: "Registrations are not open on this server" }, 422);
+  }
+  if (regs.reasonRequired && !(body.reason ?? "").trim()) {
+    return json({ error: "A registration reason is required" }, 422);
+  }
+  if (regs.minAge && body.age_confirmed !== "true") {
+    return json({ error: `You must be at least ${regs.minAge} years old to register` }, 422);
+  }
+
   // Rate limit: 5 registration attempts per IP per 60s window
   const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { allowed, remaining } = await checkRateLimit(env.KV, `register:${remoteIp}`, 5, 60);
@@ -50,7 +64,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Username must be 1-30 alphanumeric characters or underscores" }, 422);
   }
 
-  if (password.length < 8) {
+  if (password.length < MIN_PASSWORD_LENGTH) {
     return json({ error: "Password must be at least 8 characters" }, 422);
   }
 
@@ -161,6 +175,15 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
+  // Registration policy: accounts stay pending admin approval when the
+  // instance requires it; the sign-up reason is stored for the admin view.
+  if (regs.approvalRequired || regs.reasonRequired) {
+    await env.DB
+      .prepare("UPDATE actors SET approved = ?, registration_reason = ? WHERE id = ?")
+      .bind(regs.approvalRequired ? 0 : 1, regs.reasonRequired ? (body.reason ?? "").trim() : null, actorId)
+      .run();
+  }
+
   if (webRegistration) {
     // Send verification email; do not issue a token yet.
     const token = generateSecureToken();
@@ -184,6 +207,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     return json({ pending_verification: true }, 200);
+  }
+  if (regs.approvalRequired) {
+    // Approval-required instances don't issue tokens at registration time;
+    // the account can log in once an admin approves it.
+    return json({ pending_approval: true }, 200);
   }
   // API registration: auto-create access token (Mastodon clients expect it on registration)
   const { client_id } = body;

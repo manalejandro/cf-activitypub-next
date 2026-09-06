@@ -129,6 +129,14 @@ export async function broadcastCallEvent(
 }
 
 /**
+ * Notify a user that their filters changed so clients can refetch them.
+ * Mirrors Mastodon's `filters_changed` event on the home timeline channel.
+ */
+export async function broadcastFiltersChanged(ns: DONamespace, targetUsername: string): Promise<void> {
+  await broadcastToChannel(ns, `home:${targetUsername}`, "filters_changed", "{}");
+}
+
+/**
  * Broadcast a status deletion to all relevant channels.
  */
 export async function broadcastDelete(
@@ -256,4 +264,47 @@ export async function broadcastHomeStatusUpdate(
   status: unknown
 ): Promise<void> {
   await broadcastToChannel(ns, `home:${actorUsername(actorId)}`, "status.update", JSON.stringify(status));
+}
+
+/**
+ * Broadcast fresh counters/content of an existing status after an interaction
+ * (favourite, reblog, reply). The payload is the full serialized status, so
+ * clients replace the cached copy and pick up new counts, edits and states.
+ * Emitted to the public/local channels (like edits) plus the author's home.
+ */
+export async function broadcastStatusInteraction(
+  ns: DONamespace,
+  status: unknown,
+  author: { id: string; isLocal: boolean }
+): Promise<void> {
+  const tasks: Promise<void>[] = [
+    broadcastStatusUpdate(ns, status, author.isLocal),
+  ];
+  if (author.isLocal) {
+    tasks.push(broadcastHomeStatusUpdate(ns, author.id, status));
+  }
+  await Promise.allSettled(tasks);
+}
+
+/**
+ * Refresh a status on the list channels that contain its author (lists are
+ * user-configured feeds; the members' counter/content updates belong there).
+ */
+export async function broadcastStatusInteractionToLists(
+  db: { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } },
+  ns: DONamespace,
+  authorId: string,
+  status: unknown
+): Promise<void> {
+  try {
+    const listRows = await db
+      .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+      .bind(authorId)
+      .all<{ list_id: string }>();
+    const payload = JSON.stringify(status);
+    const tasks = listRows.results.map((row) =>
+      broadcastToChannel(ns, `list:${row.list_id}`, "status.update", payload)
+    );
+    await Promise.allSettled(tasks);
+  } catch { /* ignore */ }
 }

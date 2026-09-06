@@ -20,6 +20,10 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { useLimits } from "@/lib/limits-client";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -129,6 +133,7 @@ function ReplyBox({
 }) {
   const token = getToken();
   const { t, locale } = useLocale();
+  const limits = useLimits();
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(
     (["public", "unlisted", "followers", "direct"].includes(replyTo?.visibility ?? "public") ? replyTo?.visibility ?? "public" : "public") as "public" | "unlisted" | "followers" | "direct"
@@ -143,7 +148,7 @@ function ReplyBox({
   const [cwText, setCwText] = useState("");
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,7 +210,7 @@ function ReplyBox({
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!token || !e.target.files?.length) return;
-    const files = Array.from(e.target.files).slice(0, 4 - mediaFiles.length);
+    const files = Array.from(e.target.files).slice(0, limits.maxMediaAttachments - mediaFiles.length);
     e.target.value = "";
     setUploadingMedia(true);
     for (const file of files) {
@@ -266,7 +271,7 @@ function ReplyBox({
     setSubmitting(true);
     setError(null);
     try {
-      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+      const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text.trim(),
         visibility,
@@ -346,15 +351,20 @@ function ReplyBox({
         )}
         <form onSubmit={handleSubmit} style={{ flex: 1 }}>
           {showCw && (
-            <input
-              type="text"
-              value={cwText}
-              onChange={(e) => setCwText(e.target.value)}
-              placeholder={`${t.cw_placeholder}…`}
-              aria-label={t.cw_placeholder}
-              maxLength={500}
-              style={{ width: "100%", marginBottom: "0.4rem", padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
+              <input
+                type="text"
+                value={cwText}
+                onChange={(e) => setCwText(e.target.value)}
+                placeholder={`${t.cw_placeholder}…`}
+                aria-label={t.cw_placeholder}
+                maxLength={limits.maxCwChars}
+                style={{ flex: 1, padding: "0.4rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit" }}
+              />
+              <span style={{ fontSize: "0.75rem", color: cwText.length > limits.maxCwChars - 20 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+                {cwText.length}/{limits.maxCwChars}
+              </span>
+            </div>
           )}
           <div style={{ position: "relative" }}>
             <textarea
@@ -364,6 +374,7 @@ function ReplyBox({
               onKeyDown={emojiAuto.onKeyDown}
               placeholder={t.reply_placeholder}
               aria-label={t.reply_placeholder}
+              maxLength={limits.maxStatusChars}
               rows={3}
               style={{ width: "100%", resize: "vertical", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.95rem", fontFamily: "inherit" }}
             />
@@ -384,7 +395,7 @@ function ReplyBox({
                     onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
                     placeholder={t.composer_poll_option.replace("{number}", String(i + 1))}
                     aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
-                    maxLength={50}
+                    maxLength={limits.maxPollOptionChars}
                     style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.875rem" }}
                   />
                   {pollOptions.length > 2 && (
@@ -392,7 +403,7 @@ function ReplyBox({
                   )}
                 </div>
               ))}
-              {pollOptions.length < 4 && (
+              {pollOptions.length < limits.maxPollOptions && (
                 <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>+ Agregar opción</button>
               )}
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.25rem" }}>
@@ -433,7 +444,7 @@ function ReplyBox({
                       placeholder={`${t.media_alt_text}…`}
                       aria-label={t.media_alt_text}
                     defaultValue={f.description ?? ""}
-                    maxLength={420}
+                    maxLength={limits.maxAltTextChars}
                     onChange={(e) => { descRefs.current[f.id] = e.target.value; }}
                     onBlur={async (e) => {
                       if (!token) return;
@@ -465,13 +476,16 @@ function ReplyBox({
                   direction="up"
                 />
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= 4 || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
               <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />
             </div>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <span style={{ fontSize: "0.8rem", color: text.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>
+                {text.length}/{limits.maxStatusChars}
+              </span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} disabled={submitting}>
                 {t.profile_cancel}
               </button>
@@ -742,19 +756,17 @@ export default function ThreadPage() {
 
         {historyTab ? (
           historyLoading ? (
-            <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-              Loading history...
-            </div>
+            <Loading />
           ) : history.length === 0 ? (
             <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
               <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="pencil" size="2rem" /></span>
-              No hay historial de ediciones.
+              {t.status_history_empty}
             </div>
           ) : (
             history.map((edit, i) => (
               <div key={i} style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                  Edición del {new Date(edit.created_at).toLocaleString()}
+                  {t.status_history_edit.replace("{date}", new Date(edit.created_at).toLocaleString())}
                 </div>
                 {edit.spoiler_text && (
                   <div style={{ padding: "0.375rem 0.625rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)", fontSize: "0.875rem", marginBottom: "0.4rem", color: "var(--text-secondary)" }}>
@@ -768,9 +780,7 @@ export default function ThreadPage() {
             ))
           )
         ) : loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Loading thread...
-          </div>
+          <Loading />
         ) : deleted || !focal ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             {deleted ? t.status_deleted : t.profile_not_found}
@@ -781,9 +791,7 @@ export default function ThreadPage() {
             {ancestors.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
 
@@ -791,14 +799,14 @@ export default function ThreadPage() {
             <StatusCard status={focal} isFocal onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me} onDelete={handleDelete} onEdit={openEdit} />
             {replyTarget?.id === focal.id && (
               <div ref={replyRef}>
-                <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox replyTo={focal} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
             {/* Quote composer (opens when the user quotes a status) */}
             {quoteTarget && (
               <div ref={replyRef}>
-                <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />
+                {token && <ReplyBox quote={quoteTarget} me={me} onCancel={() => setQuoteTarget(null)} onPosted={handlePosted} />}
               </div>
             )}
 
@@ -821,9 +829,7 @@ export default function ThreadPage() {
             {descendants.map((s) => (
               <Fragment key={s.id}>
                 <StatusCard status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} me={me} onDelete={handleDelete} onEdit={openEdit} />
-                {replyTarget?.id === s.id && (
-                  <ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />
-                )}
+                {replyTarget?.id === s.id && token && (<ReplyBox key={`reply-${s.id}`} replyTo={s} me={me} onCancel={() => setReplyTarget(null)} onPosted={handlePosted} />)}
               </Fragment>
             ))}
           </>

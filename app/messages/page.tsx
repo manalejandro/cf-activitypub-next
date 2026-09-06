@@ -10,6 +10,7 @@ import type { Status, Me } from "@/components/StatusCard";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
+import { Loading } from "@/components/Loading";
 
 /** Decode trusted HTML to a plain-text preview without re-parsing raw markup. */
 function htmlToText(html: string): string {
@@ -81,7 +82,7 @@ export default function MessagesPage() {
           <h1 className="text-lg font-bold">{t.messages_title}</h1>
         </div>
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : conversations.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="comment" size="2rem" /></div>

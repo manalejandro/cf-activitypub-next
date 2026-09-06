@@ -12,25 +12,36 @@ export async function GET(
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
+  // Remote instances fetch this collection when resolving accounts; cache in
+  // KV so a burst of resolutions doesn't hammer D1.
+  const pageParam = request.nextUrl.searchParams.get("page");
+  const cacheKey = `ap:followers:${username.toLowerCase()}${pageParam ? `:${pageParam.slice(0, 40)}` : ""}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return activityJson(JSON.parse(cached) as Record<string, unknown>);
+  }
+
   const actor = await getActorByUsername(env.DB, username, domain);
   if (!actor || !actor.isLocal) return notFound("Actor not found");
 
+  let response: Record<string, unknown>;
   const collectionId = `${actorIRI(baseUrl, username)}/followers`;
   const page = request.nextUrl.searchParams.get("page");
 
   if (!page) {
-    return activityJson(buildOrderedCollection(collectionId, actor.followersCount));
-  }
+    response = buildOrderedCollection(collectionId, actor.followersCount);
+  } else {
+    const pageNum = page === "true" ? 0 : parseInt(page) || 0;
+    const followers = await getFollowers(env.DB, actor.id, 40, pageNum * 40);
+    const items = followers.map((f) => f.id);
 
-  const pageNum = page === "true" ? 0 : parseInt(page) || 0;
-  const followers = await getFollowers(env.DB, actor.id, 40, pageNum * 40);
-  const items = followers.map((f) => f.id);
-
-  return activityJson(
-    buildOrderedCollectionPage(
+    response = buildOrderedCollectionPage(
       collectionId,
       items,
       followers.length === 40 ? `${collectionId}?page=${pageNum + 1}` : undefined
-    )
-  );
+    );
+  }
+
+  await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 120 }).catch(() => {});
+  return activityJson(response);
 }

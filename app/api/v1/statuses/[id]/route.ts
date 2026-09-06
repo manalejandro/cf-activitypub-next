@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -13,6 +13,9 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
+import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -72,11 +75,19 @@ export async function GET(
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
   const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-  const [quotesCount, quote] = await Promise.all([
+  const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras, bookmarked, muted, authorFields] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),
     obj.quoteId
       ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
       : Promise.resolve(null),
+    authActor
+      ? getFilterResultsForStatuses(env.DB, authActor.id, [obj]).then((m) => m.get(obj.id) ?? [])
+      : Promise.resolve([]),
+    getLastStatusAtMap(env.DB, [obj.actorId]).then((m) => m.get(obj.actorId) ?? null),
+    getStatusAuthorExtras(env.DB, [obj.actorId], domain).then((m) => m.get(obj.actorId)),
+    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, [obj.id]).then((s) => s.has(obj.id)) : Promise.resolve(false),
+    authActor ? getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids).has(obj.actorId)) : Promise.resolve(false),
+    getActorFieldsMap(env.DB, [obj.actorId]).then((m) => m.get(obj.actorId) ?? []),
   ]);
   return json(serializeStatus(obj, author, domain, {
     attachments,
@@ -87,6 +98,13 @@ export async function GET(
     inReplyToAccountId,
     quote,
     quotesCount,
+    filtered,
+    authorLastStatusAt,
+    authorSupportsCalls: authorExtras?.supportsCalls,
+    authorMoved: authorExtras?.moved ?? null,
+    bookmarked,
+    muted,
+    authorFields,
   }));
 }
 
@@ -98,6 +116,7 @@ export async function PUT(
   const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -121,13 +140,13 @@ export async function PUT(
   const content = (body.status as string | undefined)?.trim();
   const pollProvided = "poll" in body;
   const pollRaw = (body.poll ?? null) as { options?: unknown; expires_in?: number; multiple?: boolean } | null;
-  const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= 2;
+  const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
   if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
 
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
-  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, 4) : undefined;
+  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, limits.maxMediaAttachments) : undefined;
 
   const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
   const updatedAt = new Date().toISOString();
@@ -218,9 +237,9 @@ export async function PUT(
     delete noteAny.votersCount;
     if (hasPoll && pollRaw) {
       const pollId = generateId();
-      const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), 300), 2592000);
+      const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? POLL_DEFAULT_EXPIRATION), limits.pollMinExpiration), limits.pollMaxExpiration);
       const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-      const validOptions = (pollRaw.options as string[]).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
+      const validOptions = (pollRaw.options as string[]).map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
       await createPoll(env.DB, {
         id: pollId,
         objectId: obj.id,
@@ -289,6 +308,9 @@ export async function PUT(
     await Promise.allSettled(broadcastTasks);
   }
 
+  // Invalidate the cached AP object so remote instances refetch the edit.
+  await env.KV.delete(`ap:obj:${id}`).catch(() => {});
+
   return json(serializedUpdated);
 }
 
@@ -337,7 +359,9 @@ export async function DELETE(
   if (env.TIMELINE_STREAM) {
     await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, obj);
   }
+  await env.KV.delete(`ap:obj:${id}`).catch(() => {});
 
   const allEmojis = await getAllCustomEmojis(env.DB);
-  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis }));
+  const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
+  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis, authorLastStatusAt }));
 }

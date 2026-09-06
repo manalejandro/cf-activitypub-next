@@ -8,6 +8,8 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Collection {
   id: string;
@@ -42,6 +44,7 @@ export default function CollectionsPage() {
   const [editDiscoverable, setEditDiscoverable] = useState(true);
   const token = getToken();
   const { t } = useLocale();
+  const limits = useLimits();
 
   useEffect(() => {
     async function fetchMe() {
@@ -132,11 +135,11 @@ export default function CollectionsPage() {
         <form onSubmit={(e) => void handleCreate(e)} style={{ padding: "1rem", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
             {t.collections_name}
-            <input className="input" placeholder={t.collections_name_ph} aria-label={t.collections_name_ph} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={40} />
+            <input className="input" placeholder={t.collections_name_ph} aria-label={t.collections_name_ph} value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={limits.maxCollectionNameChars} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
             {t.collections_description}
-            <input className="input" placeholder={t.collections_description_ph} aria-label={t.collections_description_ph} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={100} />
+            <input className="input" placeholder={t.collections_description_ph} aria-label={t.collections_description_ph} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={limits.maxCollectionDescriptionChars} />
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
             <input type="checkbox" checked={discoverable} onChange={(e) => setDiscoverable(e.target.checked)} />
@@ -150,7 +153,7 @@ export default function CollectionsPage() {
       )}
 
       {loading ? (
-        <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+        <Loading />
       ) : collections.length === 0 ? (
         <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
           <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="users" size="2rem" /></div>
@@ -164,11 +167,11 @@ export default function CollectionsPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
                   {t.collections_name}
-                  <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t.collections_name_ph} autoFocus maxLength={40} />
+                  <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t.collections_name_ph} autoFocus maxLength={limits.maxCollectionNameChars} />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
                   {t.collections_description}
-                  <input className="input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} aria-label={t.collections_description_ph} maxLength={100} />
+                  <input className="input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} aria-label={t.collections_description_ph} maxLength={limits.maxCollectionDescriptionChars} />
                 </label>
                 <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
                   <input type="checkbox" checked={editDiscoverable} onChange={(e) => setEditDiscoverable(e.target.checked)} />

@@ -7,6 +7,8 @@ import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { EmojiInput } from "@/components/EmojiInput";
 import { EmojiTextarea } from "@/components/EmojiTextarea";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -14,11 +16,18 @@ interface SettingsData {
   terms_of_service: string;
   extended_description: string;
   languages: { code: string; name?: string; native_name?: string }[];
+  registrations_enabled: boolean;
+  registrations_approval_required: boolean;
+  registrations_reason_required: boolean;
+  registrations_message: string;
+  registrations_min_age: string;
+  registrations_url: string;
 }
 
 export default function AdminSettingsPage() {
   const router = useRouter();
   const { t } = useLocale();
+  const limits = useLimits();
   const token = getToken();
 
   const [data, setData] = useState<SettingsData | null>(null);
@@ -78,7 +87,7 @@ export default function AdminSettingsPage() {
 
   function addLang() {
     if (!data || !newLang.trim()) return;
-    const code = newLang.trim().toLowerCase().slice(0, 2);
+    const code = newLang.trim().toLowerCase().slice(0, limits.maxLangCodeChars);
     if (data.languages.some((l) => l.code === code)) { setNewLang(""); return; }
     setData({ ...data, languages: [...data.languages, { code, name: code, native_name: code }] });
     setNewLang("");
@@ -90,7 +99,7 @@ export default function AdminSettingsPage() {
   }
 
   if (loading) {
-    return <div style={{ color: "var(--text-muted)", padding: "2rem" }}>{t.loading}</div>;
+    return <Loading />;
   }
   if (!data) return null;
 
@@ -125,6 +134,31 @@ export default function AdminSettingsPage() {
           </div>
         </div>
 
+        {/* Registrations */}
+        <div>
+          <label style={labelStyle}>{t.admin_settings_registrations}</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_enabled} onChange={(e) => setData({ ...data, registrations_enabled: e.target.checked })} />
+              {t.admin_settings_reg_enabled}
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_approval_required} onChange={(e) => setData({ ...data, registrations_approval_required: e.target.checked })} />
+              {t.admin_settings_reg_approval}
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={data.registrations_reason_required} onChange={(e) => setData({ ...data, registrations_reason_required: e.target.checked })} />
+              {t.admin_settings_reg_reason}
+            </label>
+          </div>
+          <label style={labelStyle}>{t.admin_settings_reg_message}</label>
+          <input className="input" style={inputStyle} value={data.registrations_message} onChange={(e) => setData({ ...data, registrations_message: e.target.value })} placeholder={t.admin_settings_reg_message_ph} />
+          <label style={{ ...labelStyle, marginTop: "0.75rem" }}>{t.admin_settings_reg_min_age}</label>
+          <input className="input" type="number" min={0} style={inputStyle} value={data.registrations_min_age} onChange={(e) => setData({ ...data, registrations_min_age: e.target.value })} placeholder={t.admin_settings_reg_min_age_ph} />
+          <label style={{ ...labelStyle, marginTop: "0.75rem" }}>{t.admin_settings_reg_url}</label>
+          <input className="input" style={inputStyle} value={data.registrations_url} onChange={(e) => setData({ ...data, registrations_url: e.target.value })} placeholder={t.admin_settings_reg_url_ph} />
+        </div>
+
         {/* Extended description */}
         <div>
           <label style={labelStyle}>{t.admin_settings_ext_desc}</label>
@@ -155,7 +189,7 @@ export default function AdminSettingsPage() {
             ))}
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={2} />
+            <input className="input" style={inputStyle} value={newLang} onChange={(e) => setNewLang(e.target.value)} placeholder={t.admin_settings_lang_ph} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLang(); } }} maxLength={limits.maxLangCodeChars} />
             <button type="button" className="btn btn-outline btn-sm" onClick={addLang} disabled={!newLang.trim()}>{t.admin_settings_add_lang}</button>
           </div>
         </div>

@@ -18,6 +18,7 @@ import {
   json,
   badRequest,
   unauthorized,
+  checkRateLimit,
 } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorByUsername, isBlocked } from "@/lib/db";
@@ -32,6 +33,15 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const caller = await getAuthenticatedActor(request, env.DB);
   if (!caller) return unauthorized();
+
+  // ── Abuse protection ──────────────────────────────────────────────────────
+  const { allowed } = await checkRateLimit(env.KV, `call:create:${caller.id}`, 10, 60);
+  if (!allowed) {
+    return json({ error: "rate_limited", message: "Too many call attempts. Try again shortly." }, 429);
+  }
+  if (caller.suspended) {
+    return json({ error: "suspended", message: "Your account is suspended." }, 403);
+  }
 
   let body: { target_acct: string; call_type?: "audio" | "video" | "screen"; offer_sdp: string };
   try {
@@ -71,6 +81,21 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const calleeId = calleeActor.id;
+
+  if (calleeId === caller.id) {
+    return badRequest("You cannot call yourself");
+  }
+  if (calleeActor.suspended) {
+    return json({ error: "call_blocked", message: "This account is not available." }, 403);
+  }
+
+  // One active call per caller: prevent overlapping calls started by
+  // double-clicks or a second tab.
+  const activeMarker = await env.KV.get(`call:active:${caller.id}`);
+  if (activeMarker) {
+    return json({ error: "call_in_progress", message: "You already have an active call." }, 409);
+  }
+
   const calleeAcct = isLocalCallee
     ? calleeActor.username
     : `${calleeActor.username}@${calleeDomain}`;
@@ -106,6 +131,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   await env.KV.put(`call:${callId}`, JSON.stringify(session), {
     expirationTtl: CALL_TTL,
   });
+  await env.KV.put(`call:active:${caller.id}`, callId, { expirationTtl: CALL_TTL });
 
   // ── Notify callee ────────────────────────────────────────────────────────
   const incomingEvent: CallIncomingEvent = {

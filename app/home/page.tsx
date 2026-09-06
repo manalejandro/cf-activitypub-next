@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
+import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -17,7 +18,11 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
+import { useLimits } from "@/lib/limits-client";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
+import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import { Loading } from "@/components/Loading";
 
 // Earliest allowed schedule time: now + 5 minutes (computed once at module load)
 const SCHEDULE_MIN = (() => {
@@ -41,6 +46,7 @@ export default function HomePage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaDescRefs = useRef<Record<string, string>>({});
   const { t, locale } = useLocale();
+  const limits = useLimits();
   const emojiAuto = useEmojiAutocomplete(composing, setComposing, textareaRef);
 
   const fetchPage = useCallback(async (maxId?: string) => {
@@ -48,8 +54,8 @@ export default function HomePage() {
     const res = await fetch(url, { credentials: "include" });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Status[];
-    return { items, hasMore: items.length >= 20 };
-  }, []);
+    return { items, hasMore: items.length >= limits.defaultTimelinePage };
+  }, [limits.defaultTimelinePage]);
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache("home", fetchPage, { refetchOnMount: true });
 
@@ -72,8 +78,20 @@ export default function HomePage() {
         const updated = JSON.parse(payload) as Status;
         setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
       } catch { /* ignore */ }
+    } else if (event === "filters_changed") {
+      // Server filters changed: cached statuses embed the old `filtered`
+      // results, so drop every cached feed and refetch with the new rules.
+      clearAllTimelineCaches();
+      void refresh();
     }
   }, { onReconnect: () => { void catchUp(); } });
+
+  // Filters edited in the settings screen (same tab): refetch with new rules.
+  useEffect(() => {
+    const handler = () => { clearAllTimelineCaches(); void refresh(); };
+    window.addEventListener("cf-ap:filters-changed", handler);
+    return () => window.removeEventListener("cf-ap:filters-changed", handler);
+  }, [refresh]);
 
   // CW compose state
   const [showCw, setShowCw] = useState(false);
@@ -82,7 +100,7 @@ export default function HomePage() {
   // Poll compose state
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
-  const [pollExpiry, setPollExpiry] = useState(86400);
+  const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
   // Scheduling state
   const [scheduling, setScheduling] = useState(false);
@@ -119,14 +137,17 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    const token = getToken();
+    if (!token) { router.push("/login"); return; }
     Promise.resolve().then(() => void fetchMe());
     Promise.resolve().then(() => void fetchPrefs());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     if (uploadingMedia) return;
-    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= 2;
+    const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
     if (!composing.trim() && mediaFiles.length === 0 && !hasPoll) return;
     setPosting(true);
     setEmojiOpen(false);
@@ -199,8 +220,9 @@ export default function HomePage() {
   }, [composing]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!getToken()) return;
     if (!e.target.files?.length) return;
-    const files = Array.from(e.target.files).slice(0, 4 - mediaFiles.length);
+    const files = Array.from(e.target.files).slice(0, limits.maxMediaAttachments - mediaFiles.length);
     e.target.value = "";
     setUploadingMedia(true);
     for (const file of files) {
@@ -288,16 +310,21 @@ export default function HomePage() {
           <form onSubmit={handlePost} className="flex flex-col gap-3">
             {/* CW input */}
             {showCw && (
-              <input
-                type="text"
-                className="input"
-                placeholder={`${t.cw_placeholder}…`}
-                aria-label={t.cw_placeholder}
-                value={cwText}
-                onChange={(e) => setCwText(e.target.value)}
-                maxLength={200}
-                style={{ fontSize: "0.9rem" }}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`${t.cw_placeholder}…`}
+                  aria-label={t.cw_placeholder}
+                  value={cwText}
+                  onChange={(e) => setCwText(e.target.value)}
+                  maxLength={limits.maxCwChars}
+                  style={{ fontSize: "0.9rem", flex: 1 }}
+                />
+                <span style={{ fontSize: "0.75rem", color: cwText.length > limits.maxCwChars - 20 ? "var(--danger)" : "var(--text-muted)", flexShrink: 0 }}>
+                  {cwText.length}/{limits.maxCwChars}
+                </span>
+              </div>
             )}
             {/* Textarea */}
             <div style={{ position: "relative" }}>
@@ -310,7 +337,7 @@ export default function HomePage() {
                 value={composing}
                 onChange={emojiAuto.onChange}
                 onKeyDown={emojiAuto.onKeyDown}
-                maxLength={500}
+                maxLength={limits.maxStatusChars}
               />
               <EmojiAutocompleteDropdown
                 suggestions={emojiAuto.suggestions}
@@ -332,7 +359,7 @@ export default function HomePage() {
                       aria-label={t.composer_poll_option.replace("{number}", String(i + 1))}
                       value={opt}
                       onChange={(e) => setPollOptions((p) => p.map((o, j) => j === i ? e.target.value : o))}
-                      maxLength={50}
+                      maxLength={limits.maxPollOptionChars}
                       style={{ flex: 1, fontSize: "0.875rem" }}
                     />
                     {pollOptions.length > 2 && (
@@ -340,7 +367,7 @@ export default function HomePage() {
                     )}
                   </div>
                 ))}
-                {pollOptions.length < 4 && (
+                {pollOptions.length < limits.maxPollOptions && (
                   <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start", fontSize: "0.8rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
                 )}
                 <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
@@ -399,7 +426,7 @@ export default function HomePage() {
                       placeholder={`${t.media_alt_text}…`}
                       aria-label={t.media_alt_text}
                       defaultValue={f.description ?? ""}
-                      maxLength={420}
+                      maxLength={limits.maxAltTextChars}
                       onChange={(e) => { mediaDescRefs.current[f.id] = e.target.value; }}
                       onBlur={(e) => void updateMediaDesc(f.id, e.target.value, setMediaFiles)}
                       style={{ flex: 1, padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text)", fontSize: "0.82rem", fontFamily: "inherit" }}
@@ -441,7 +468,7 @@ export default function HomePage() {
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: "1.15rem", padding: "0.3rem 0.5rem" }}
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={mediaFiles.length >= 4 || uploadingMedia}
+                  disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia}
                   title={t.compose_attach}
                   aria-label={t.compose_attach}
                 >
@@ -496,13 +523,13 @@ export default function HomePage() {
                 <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <span style={{ fontSize: "0.8rem", color: composing.length > 450 ? "var(--danger)" : "var(--text-muted)" }}>
-                  {composing.length}/500
+                <span style={{ fontSize: "0.8rem", color: composing.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>
+                  {composing.length}/{limits.maxStatusChars}
                 </span>
                 <button
                   type="submit"
                   className="btn btn-primary btn-sm"
-                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= 2))}
+                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS))}
                 >
                   {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.compose_post}
                 </button>
@@ -538,6 +565,7 @@ export default function HomePage() {
           statuses.map((s) => (
             <div key={s.id} data-status-id={s.id}>
               <StatusCard
+                  filterContext="home"
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}
@@ -553,7 +581,7 @@ export default function HomePage() {
         {/* Infinite scroll sentinel */}
         {!loading && statuses.length > 0 && (
           <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-            {loadingMore ? "Cargando más…" : hasMore ? "" : "No hay más estados"}
+            {loadingMore ? <Loading compact text={t.loading_more} /> : hasMore ? "" : t.timeline_end}
           </div>
         )}
       </PageLayout>

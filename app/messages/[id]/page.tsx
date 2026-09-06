@@ -10,6 +10,7 @@ import { getToken } from "@/lib/client-api";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
+import { Loading } from "@/components/Loading";
 
 export default function ConversationDetailPage() {
   const router = useRouter();
@@ -112,7 +113,7 @@ export default function ConversationDetailPage() {
 
         <div className="flex-1" style={{ overflowY: "auto" }}>
           {loading ? (
-            <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+            <Loading />
           ) : messages.length === 0 ? (
             <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
               <div style={{ fontWeight: 600 }}>{t.messages_empty}</div>

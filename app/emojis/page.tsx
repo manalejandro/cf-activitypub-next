@@ -6,6 +6,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Emoji {
   id: string;
@@ -21,6 +23,7 @@ interface Emoji {
 
 export default function EmojisPage() {
   const { t } = useLocale();
+  const limits = useLimits();
   const [emojis, setEmojis] = useState<Emoji[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -117,7 +120,7 @@ export default function EmojisPage() {
   if (!isStaff) {
     return (
       <PageLayout sidebar={<Sidebar currentPath="/emojis" />}>
-        <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
+        <Loading compact />
       </PageLayout>
     );
   }
@@ -138,7 +141,7 @@ export default function EmojisPage() {
               onChange={(e) => setShortcode(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
               className="input"
               style={{ flex: 1, minWidth: 150, fontSize: "0.9rem" }}
-              maxLength={32}
+              maxLength={limits.maxEmojiShortcodeChars}
             />
             <input
               type="text"
@@ -147,7 +150,7 @@ export default function EmojisPage() {
               onChange={(e) => setCategory(e.target.value)}
               className="input"
               style={{ flex: 1, minWidth: 120, fontSize: "0.9rem" }}
-              maxLength={32}
+              maxLength={limits.maxEmojiShortcodeChars}
             />
             <input
               type="file"
@@ -171,7 +174,7 @@ export default function EmojisPage() {
           {t.emojis_local_count.replace("{count}", String(localEmojis.length))}
         </div>
         {loading ? (
-          <div style={{ color: "var(--text-muted)", padding: "1rem" }}>{t.loading}</div>
+          <Loading compact />
         ) : localEmojis.length === 0 ? (
           <div style={{ color: "var(--text-muted)", padding: "0.5rem 0", fontSize: "0.9rem" }}>{t.emojis_empty_local}</div>
         ) : (

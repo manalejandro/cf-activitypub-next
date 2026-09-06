@@ -32,17 +32,30 @@ interface Props {
   turnstileSiteKey: string;
 }
 
+interface RegSettings {
+  enabled: boolean;
+  approvalRequired: boolean;
+  reasonRequired: boolean;
+  message: string | null;
+  minAge: number | null;
+  url: string | null;
+}
+
 export default function RegisterForm({ turnstileSiteKey }: Props) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [reason, setReason] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSent, setResendSent] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [regs, setRegs] = useState<RegSettings | null>(null);
   const { t } = useLocale();
   const searchParams = useSearchParams();
 
@@ -75,6 +88,27 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
     }
   }, [resendEmail]);
 
+  // Load the instance registration policy (Mastodon v2 registrations object).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v2/instance")
+      .then((r): Promise<{ registrations?: { enabled: boolean; approval_required?: boolean; reason_required?: boolean; message: string | null; min_age?: number | null; url?: string | null } } | null> => (r.ok ? r.json() : Promise.resolve(null)))
+      .then((data) => {
+        if (!cancelled && data?.registrations) {
+          setRegs({
+            enabled: data.registrations.enabled !== false,
+            approvalRequired: data.registrations.approval_required === true,
+            reasonRequired: data.registrations.reason_required === true,
+            message: data.registrations.message ?? null,
+            minAge: data.registrations.min_age ?? null,
+            url: data.registrations.url ?? null,
+          });
+        }
+      })
+      .catch(() => { /* keep defaults (open registration) */ });
+    return () => { cancelled = true; };
+  }, []);
+
   function initTurnstile() {
     if (!window.turnstile || !turnstileRef.current || widgetIdRef.current) return;
     widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
@@ -105,6 +139,10 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       setLoading(false);
       return;
     }
+    if (regs?.minAge && !ageConfirmed) {
+      setError(t.register_age_required.replace("{age}", String(regs.minAge)));
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -117,12 +155,15 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
           username,
           email,
           password,
+          reason: reason.trim() || undefined,
+          age_confirmed: regs?.minAge ? "true" : undefined,
           "cf-turnstile-response": turnstileToken,
         }),
       });
 
       const data = await res.json() as {
         pending_verification?: boolean;
+        pending_approval?: boolean;
         access_token?: string;
         error?: string;
       };
@@ -130,6 +171,12 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       if (!res.ok) {
         resetTurnstile();
         setError(data.error ?? "Registration failed");
+        return;
+      }
+
+      if (data.pending_approval) {
+        // Approval-required instance: account created, waiting for an admin.
+        setPendingApproval(true);
         return;
       }
 
@@ -187,6 +234,39 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
     fontSize: "0.875rem",
   };
 
+  // ── "Pending approval" screen ─────────────────────────────────────────────
+  if (pendingApproval) {
+    return (
+      <div
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="w-full max-w-sm">
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Link href="/">
+              <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
+            </Link>
+            <h1 style={{ fontSize: "1.6rem", margin: 0 }}>{t.register_pending_title}</h1>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0, textAlign: "center" }}>
+              {t.register_pending_sub}
+            </p>
+          </div>
+          <div className="card p-8" style={{ textAlign: "center" }}>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: "0 0 1rem" }}>
+              {t.register_pending_body}
+            </p>
+            <Link
+              href="/login"
+              style={{ color: "var(--accent)", fontSize: "0.875rem" }}
+            >
+              {t.register_signin}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── "Check your email" screen ──────────────────────────────────────────────
   if (pendingEmail) {
     return (
@@ -242,6 +322,49 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
     );
   }
 
+  // ── Registration closed / external URL ─────────────────────────────────────
+  if (regs && (!regs.enabled || regs.url)) {
+    return (
+      <div
+        className="force-light flex flex-col items-center justify-center min-h-screen px-4"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="w-full max-w-sm">
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Link href="/">
+              <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
+            </Link>
+            <h1 style={{ fontSize: "1.6rem", margin: 0 }}>{t.register_title}</h1>
+          </div>
+          <div className="card p-8" style={{ textAlign: "center" }}>
+            {regs.enabled && regs.url ? (
+              <>
+                <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: "0 0 1rem" }}>
+                  {t.register_external}
+                </p>
+                <a className="btn btn-primary" href={regs.url} target="_blank" rel="noreferrer">
+                  {t.register_external_btn}
+                </a>
+              </>
+            ) : (
+              <>
+                <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}>
+                  {t.register_closed}
+                </p>
+              </>
+            )}
+          </div>
+          <p style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+            {t.register_have_account}{" "}
+            <Link href="/login" style={{ color: "var(--accent)" }}>
+              {t.register_signin}
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // ── Registration form ──────────────────────────────────────────────────────
   return (
     <>
@@ -276,6 +399,21 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
           <div className="card p-8">
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
               {error && <div style={inlineError}>{error}</div>}
+
+              {regs?.message && (
+                <div
+                  style={{
+                    background: "rgba(139,92,246,0.08)",
+                    border: "1px solid rgba(139,92,246,0.25)",
+                    color: "var(--text-secondary)",
+                    borderRadius: "var(--radius)",
+                    padding: "0.625rem 0.875rem",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {regs.message}
+                </div>
+              )}
 
               <div className="flex flex-col gap-2">
                 <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
@@ -344,6 +482,34 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
                 />
               </div>
 
+              {regs?.reasonRequired && (
+                <div className="flex flex-col gap-2">
+                  <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                    {t.register_reason}
+                  </label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                    placeholder={t.register_reason_ph}
+                  />
+                </div>
+              )}
+
+              {regs?.minAge ? (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={ageConfirmed}
+                    onChange={(e) => setAgeConfirmed(e.target.checked)}
+                    style={{ marginTop: "0.2rem" }}
+                  />
+                  {t.register_age_confirm.replace("{age}", String(regs.minAge))}
+                </label>
+              ) : null}
+
               {/* Cloudflare Turnstile widget */}
               {turnstileSiteKey && (
                 <div ref={turnstileRef} style={{ minHeight: "65px" }} />
@@ -356,6 +522,12 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
               >
                 {loading ? t.register_submitting : t.register_submit}
               </button>
+
+              {regs?.approvalRequired && (
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+                  {t.register_approval_note}
+                </p>
+              )}
             </form>
           </div>
 

@@ -32,6 +32,19 @@ class D1Adapter {
     this.sql.exec(schemaSql);
   }
 
+  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
+    this.sql.exec("BEGIN");
+    try {
+      const results: D1Result[] = [];
+      for (const s of statements) results.push(await s.run());
+      this.sql.exec("COMMIT");
+      return results;
+    } catch (e) {
+      this.sql.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
   prepare(query: string) {
     const stmt = this.sql.prepare(query);
     return {

@@ -9,6 +9,7 @@ import { AvatarBubble, formatTime } from "@/components/StatusCard";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Loading } from "@/components/Loading";
 
 interface TargetAccount {
   id: string;
@@ -104,9 +105,7 @@ export default function ReportsPage() {
         </div>
 
         {loading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            {t.loading}
-          </div>
+          <Loading />
         ) : reports.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="flag" size="2rem" /></div>

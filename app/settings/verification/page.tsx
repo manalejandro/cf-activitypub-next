@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import type { Me } from "@/components/StatusCard";
+import { Loading } from "@/components/Loading";
 
 interface Field {
   name: string;
@@ -164,7 +165,7 @@ const accountFields =
           </div>
 
           {!account ? (
-            <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+            <Loading />
           ) : accountFields.length === 0 ? (
             <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: 0 }}>{t.settings_verification_no_fields}</p>
           ) : (

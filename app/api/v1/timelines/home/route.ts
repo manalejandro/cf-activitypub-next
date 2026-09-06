@@ -1,22 +1,26 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts } from "@/lib/db";
+import { getHomeTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { resolveLimits } from "@/lib/constants";
+import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const minIdRaw = searchParams.get("min_id") ?? undefined;
@@ -24,7 +28,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId, minId);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     getLikedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
@@ -33,11 +37,19 @@ export async function GET(request: NextRequest): Promise<Response> {
     getReplyToAccountIdMap(env.DB, objects),
     getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
     getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    getFilterResultsForStatuses(env.DB, actor.id, objects),
+    getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
+    getBookmarkedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
+    getMutedActorIds(env.DB, actor.id).then((ids) => new Set(ids)),
+    getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
+
+  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
+  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
-      let author = await getActorById(env.DB, obj.actorId);
+      let author = authorMap.get(obj.actorId) ?? null;
       // Attempt a live fetch if the actor is not cached yet.
       if (!author && obj.actorId.startsWith("https://")) {
         try {
@@ -62,6 +74,13 @@ export async function GET(request: NextRequest): Promise<Response> {
         inReplyToAccountId: replyToMap.get(obj.id) ?? null,
         quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null,
         quotesCount: quotesCountMap.get(obj.id) ?? 0,
+        filtered: filteredMap.get(obj.id) ?? [],
+        authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+        authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
+        authorMoved: authorExtras.get(obj.actorId)?.moved ?? null,
+        bookmarked: bookmarkedIds.has(obj.id),
+        muted: mutedIds.has(obj.actorId),
+        authorFields: authorFieldsMap.get(obj.actorId) ?? [],
       });
     })
   );

@@ -8,6 +8,8 @@ import { RichText } from "@/components/RichText";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
+import { useLimits } from "@/lib/limits-client";
+import { Loading } from "@/components/Loading";
 
 interface Announcement {
   id: string;
@@ -40,6 +42,7 @@ export default function AnnouncementsPage() {
   const [draft, setDraft] = useState("");
   const token = getToken();
   const { t } = useLocale();
+  const limits = useLimits();
 
   const isMod = me?.roles?.[0]?.name?.toLowerCase() === "admin" || me?.roles?.[0]?.name?.toLowerCase() === "moderator";
 
@@ -129,22 +132,27 @@ export default function AnnouncementsPage() {
               placeholder={t.announcements_create_placeholder}
               aria-label={t.announcements_create_placeholder}
               rows={2}
-              maxLength={10000}
+              maxLength={limits.maxAnnouncementChars}
               className="input"
               style={{ resize: "vertical" }}
             />
-            <button
-              type="submit"
-              className="btn btn-primary btn-sm"
-              disabled={creating || !draft.trim()}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {creating ? "…" : t.announcements_create_submit}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+              <span style={{ fontSize: "0.75rem", color: draft.length > limits.maxAnnouncementChars - 500 ? "var(--danger)" : "var(--text-muted)" }}>
+                {draft.length}/{limits.maxAnnouncementChars}
+              </span>
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={creating || !draft.trim()}
+                style={{ alignSelf: "flex-start" }}
+              >
+                {creating ? "…" : t.announcements_create_submit}
+              </button>
+            </div>
           </form>
         )}
         {loading ? (
-          <div className="p-4" style={{ color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : announcements.length === 0 ? (
           <div className="p-4" style={{ color: "var(--text-muted)", textAlign: "center", padding: "3rem 1rem" }}>
             <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}><Icon name="bullhorn" size="2rem" /></div>

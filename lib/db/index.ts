@@ -84,6 +84,8 @@ function rowToActor(r: Row): LocalActor {
     suspended: r.suspended === undefined ? undefined : Boolean(r.suspended),
     silenced: r.silenced === undefined ? undefined : Boolean(r.silenced),
     reserved: r.reserved === undefined ? undefined : Boolean(r.reserved),
+    approved: r.approved === undefined ? undefined : Boolean(r.approved),
+    registrationReason: r.registration_reason ?? null,
     verified: r.verified === undefined ? undefined : Boolean(r.verified),
     alsoKnownAs: r.also_known_as ? safeJsonParseArray(r.also_known_as) : null,
     movedTo: r.moved_to ?? null,
@@ -260,8 +262,41 @@ function rowToAttachment(r: Row): LocalAttachment {
 /**
  * Last public post date of an actor (YYYY-MM-DD form, like Mastodon's
  * `last_status_at`), or null when the actor has no public statuses.
+ *
+ * Remote actors: the value federated in their AP actor document (stored in
+ * actors.last_status_at) is authoritative — our `objects` table only holds the
+ * subset of their statuses we have seen. Local actors: computed from their
+ * own objects.
  */
 export async function getLastStatusAt(db: D1Database, actorId: string): Promise<string | null> {
+  // Remote actors: the value federated in their AP actor document (stored in
+  // actors.last_status_at) is authoritative — our `objects` table only holds
+  // the subset of their statuses we have seen. Local actors: computed from
+  // their own objects.
+  //
+  // Pre-migration fallback: if the actors.last_status_at column does not exist
+  // yet (021 not applied), compute from objects for every actor so the value
+  // is never null.
+  let actor: { is_local: number; last_status_at: string | null } | null = null;
+  try {
+    actor = await db
+      .prepare("SELECT is_local, last_status_at FROM actors WHERE id = ?")
+      .bind(actorId)
+      .first<{ is_local: number; last_status_at: string | null }>();
+  } catch {
+    /* column missing pre-migration — fall back to the objects computation */
+  }
+  if (!actor) {
+    return computeLastStatusAtFromObjects(db, actorId);
+  }
+  if (actor.is_local !== 1) {
+    return actor.last_status_at ?? computeLastStatusAtFromObjects(db, actorId);
+  }
+  return computeLastStatusAtFromObjects(db, actorId);
+}
+
+/** Last public post date computed from the actor's own stored objects. */
+async function computeLastStatusAtFromObjects(db: D1Database, actorId: string): Promise<string | null> {
   const row = await db
     .prepare("SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')")
     .bind(actorId)
@@ -273,10 +308,137 @@ export async function getLastStatusAt(db: D1Database, actorId: string): Promise<
   return iso.slice(0, 10);
 }
 
+/** Batch variant of getLastStatusAt — one grouped query for many actor ids. */
+export async function getLastStatusAtMap(
+  db: D1Database,
+  actorIds: string[]
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  const unique = [...new Set(actorIds)];
+  if (unique.length === 0) return map;
+
+  let actors: { id: string; is_local: number; last_status_at: string | null }[] | null = null;
+  try {
+    const placeholders = unique.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT id, is_local, last_status_at FROM actors WHERE id IN (${placeholders})`
+      )
+      .bind(...unique)
+      .all<{ id: string; is_local: number; last_status_at: string | null }>();
+    actors = rows.results ?? [];
+  } catch {
+    /* column missing pre-migration — compute everything from objects */
+  }
+
+  // Pre-migration: single grouped computation from objects for every actor.
+  if (actors === null) {
+    const lp = unique.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT actor_id, MAX(published) AS p FROM objects
+         WHERE actor_id IN (${lp})
+           AND visibility IN ('public', 'unlisted')
+           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+         GROUP BY actor_id`
+      )
+      .bind(...unique)
+      .all<{ actor_id: string; p: string | null }>();
+    for (const r of rows.results ?? []) {
+      map.set(r.actor_id, normalizeLastStatusDate(r.p));
+    }
+    for (const id of unique) {
+      if (!map.has(id)) map.set(id, null);
+    }
+    return map;
+  }
+
+  const remoteValues = new Map<string, string | null>();
+  const localIds: string[] = [];
+  const remoteFallbackIds: string[] = [];
+  for (const a of actors) {
+    if (a.is_local === 1) {
+      localIds.push(a.id);
+    } else if (a.last_status_at) {
+      remoteValues.set(a.id, a.last_status_at);
+    } else {
+      // Cached before the column existed (or the remote never published the
+      // date): fall back to computing from the objects we hold.
+      remoteValues.set(a.id, null);
+      remoteFallbackIds.push(a.id);
+    }
+  }
+
+  // Grouped computation from objects for: local actors + remote actors whose
+  // stored federated value is null.
+  const computeIds = [...localIds, ...remoteFallbackIds];
+  const computedMap = new Map<string, string | null>();
+  if (computeIds.length > 0) {
+    const lp = computeIds.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT actor_id, MAX(published) AS p FROM objects
+         WHERE actor_id IN (${lp})
+           AND visibility IN ('public', 'unlisted')
+           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+         GROUP BY actor_id`
+      )
+      .bind(...computeIds)
+      .all<{ actor_id: string; p: string | null }>();
+    for (const r of rows.results ?? []) {
+      computedMap.set(r.actor_id, normalizeLastStatusDate(r.p));
+    }
+    for (const id of computeIds) {
+      if (!computedMap.has(id)) computedMap.set(id, null);
+    }
+  }
+
+  for (const id of unique) {
+    if (remoteValues.has(id)) {
+      map.set(id, remoteValues.get(id) ?? computedMap.get(id) ?? null);
+    } else if (computedMap.has(id)) {
+      map.set(id, computedMap.get(id) ?? null);
+    } else {
+      map.set(id, null);
+    }
+  }
+  return map;
+}
+
+function normalizeLastStatusDate(p: string | null): string | null {
+  if (!p) return null;
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(p)
+    ? `${p.replace(" ", "T")}Z`
+    : p;
+  return iso.slice(0, 10);
+}
+
 export async function getActorById(db: D1Database, id: string): Promise<LocalActor | null> {
 
   const row = await db.prepare("SELECT * FROM actors WHERE id = ?").bind(id).first<Row>();
   return row ? rowToActor(row) : null;
+}
+
+/**
+ * Batch variant of getActorById — one `IN` query instead of one round-trip per
+ * author. Timeline/search routes render up to ~40 statuses, and each D1 call
+ * costs an HTTP round-trip, so batching cuts both latency and D1 quota.
+ */
+export async function getActorsByIds(db: D1Database, ids: string[]): Promise<Map<string, LocalActor>> {
+  const map = new Map<string, LocalActor>();
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return map;
+  // SQLite's variable limit is 32766; chunk well below it.
+  for (let i = 0; i < unique.length; i += 900) {
+    const chunk = unique.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT * FROM actors WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<Row>();
+    for (const r of rows.results) map.set(r.id, rowToActor(r));
+  }
+  return map;
 }
 
 export async function getActorByUsername(
@@ -296,6 +458,17 @@ export async function getActorByUsername(
  * that is not the Guardian bot.
  */
 export async function getInstanceContactActor(db: D1Database): Promise<LocalActor | null> {
+  // Prefer an admin/moderator with a real email so instance endpoints can
+  // report a working contact address; fall back to any admin otherwise.
+  const withEmail = await db
+    .prepare(
+      `SELECT * FROM actors
+       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND username != 'guardian' AND email IS NOT NULL
+       ORDER BY created_at ASC LIMIT 1`
+    )
+    .first<Row>();
+  if (withEmail) return rowToActor(withEmail);
+
   const row = await db
     .prepare(
       `SELECT * FROM actors
@@ -397,44 +570,92 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
   const displayName = sanitizeFediversePlain(actor.name ?? null);
   const summary = sanitizeRemoteActorSummary(actor.summary ?? null);
   const alsoKnownAs = actor.alsoKnownAs?.length ? JSON.stringify(actor.alsoKnownAs) : null;
+  // Mastodon publishes the account's last activity date in the actor document;
+  // use it verbatim instead of computing from the (subset of) statuses we saw.
+  const lastStatusAt = (actor as unknown as Record<string, unknown>).last_status_at;
+  const lastStatusAtStr = typeof lastStatusAt === "string" && lastStatusAt ? lastStatusAt.slice(0, 10) : null;
   try {
-    await db
-      .prepare(
-        `INSERT INTO actors (
-          id, username, domain, display_name, summary, avatar_url, header_url,
-          public_key_pem, private_key_pem, is_local, is_bot,
-          manually_approves_followers, discoverable,
-          followers_count, following_count, statuses_count, inbox, also_known_as
-        ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?)
-        ON CONFLICT(id) DO UPDATE SET
-          display_name = excluded.display_name,
-          summary = excluded.summary,
-          avatar_url = excluded.avatar_url,
-          header_url = excluded.header_url,
-          public_key_pem = excluded.public_key_pem,
-          is_bot = excluded.is_bot,
-          manually_approves_followers = excluded.manually_approves_followers,
-          discoverable = excluded.discoverable,
-          inbox = excluded.inbox,
-          also_known_as = excluded.also_known_as,
-          updated_at = datetime('now')`
-      )
-      .bind(
-        actor.id,
-        username,
-        domain,
-        displayName,
-        summary,
-        actor.icon?.url ?? null,
-        actor.image?.url ?? null,
-        actor.publicKey.publicKeyPem,
-        actor.type === "Service" ? 1 : 0,
-        actor.manuallyApprovesFollowers ? 1 : 0,
-        actor.discoverable !== false ? 1 : 0,
-        actor.inbox,
-        alsoKnownAs
-      )
-      .run();
+    try {
+      await db
+        .prepare(
+          `INSERT INTO actors (
+            id, username, domain, display_name, summary, avatar_url, header_url,
+            public_key_pem, private_key_pem, is_local, is_bot,
+            manually_approves_followers, discoverable,
+            followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
+          ON CONFLICT(id) DO UPDATE SET
+            display_name = excluded.display_name,
+            summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+            avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+            header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
+            public_key_pem = excluded.public_key_pem,
+            is_bot = excluded.is_bot,
+            manually_approves_followers = excluded.manually_approves_followers,
+            discoverable = excluded.discoverable,
+            inbox = excluded.inbox,
+            also_known_as = excluded.also_known_as,
+            last_status_at = excluded.last_status_at,
+            updated_at = datetime('now')`
+        )
+        .bind(
+          actor.id,
+          username,
+          domain,
+          displayName,
+          summary,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
+          actor.publicKey.publicKeyPem,
+          actor.type === "Service" ? 1 : 0,
+          actor.manuallyApprovesFollowers ? 1 : 0,
+          actor.discoverable !== false ? 1 : 0,
+          actor.inbox,
+          alsoKnownAs,
+          lastStatusAtStr
+        )
+        .run();
+    } catch {
+      // Pre-migration (021 not applied): actors.last_status_at does not exist.
+      // Retry with the legacy statement so remote actors are still cached.
+      await db
+        .prepare(
+          `INSERT INTO actors (
+            id, username, domain, display_name, summary, avatar_url, header_url,
+            public_key_pem, private_key_pem, is_local, is_bot,
+            manually_approves_followers, discoverable,
+            followers_count, following_count, statuses_count, inbox, also_known_as
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?)
+          ON CONFLICT(id) DO UPDATE SET
+            display_name = excluded.display_name,
+            summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
+            avatar_url = CASE WHEN excluded.avatar_url IS NOT NULL THEN excluded.avatar_url ELSE actors.avatar_url END,
+            header_url = CASE WHEN excluded.header_url IS NOT NULL THEN excluded.header_url ELSE actors.header_url END,
+            public_key_pem = excluded.public_key_pem,
+            is_bot = excluded.is_bot,
+            manually_approves_followers = excluded.manually_approves_followers,
+            discoverable = excluded.discoverable,
+            inbox = excluded.inbox,
+            also_known_as = excluded.also_known_as,
+            updated_at = datetime('now')`
+        )
+        .bind(
+          actor.id,
+          username,
+          domain,
+          displayName,
+          summary,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
+          actor.publicKey.publicKeyPem,
+          actor.type === "Service" ? 1 : 0,
+          actor.manuallyApprovesFollowers ? 1 : 0,
+          actor.discoverable !== false ? 1 : 0,
+          actor.inbox,
+          alsoKnownAs
+        )
+        .run();
+    }
   } catch {
     // UNIQUE(username, domain) conflict — actor may have migrated to a new URL.
     // Update the existing row's id so getActorById(actor.id) works after this call.
@@ -442,7 +663,10 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
       await db
         .prepare(
           `UPDATE actors SET
-            id = ?, display_name = ?, summary = ?, avatar_url = ?, header_url = ?,
+            id = ?, display_name = ?,
+            summary = CASE WHEN ? IS NOT NULL THEN ? ELSE summary END,
+            avatar_url = CASE WHEN ? IS NOT NULL THEN ? ELSE avatar_url END,
+            header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
             public_key_pem = ?, is_bot = ?, manually_approves_followers = ?,
             discoverable = ?, inbox = ?, also_known_as = ?, updated_at = datetime('now')
           WHERE username = ? AND domain = ?`
@@ -451,7 +675,10 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.id,
           displayName,
           summary,
+          summary,
           actor.icon?.url ?? null,
+          actor.icon?.url ?? null,
+          actor.image?.url ?? null,
           actor.image?.url ?? null,
           actor.publicKey.publicKeyPem,
           actor.type === "Service" ? 1 : 0,
@@ -481,6 +708,21 @@ export async function getBookmark(
     .bind(actorId, objectId)
     .first<{ id: string }>();
   return row ?? null;
+}
+
+/** Batch: which of the given objects the actor has bookmarked. */
+export async function getBookmarkedObjectIds(
+  db: D1Database,
+  actorId: string,
+  objectIds: string[]
+): Promise<Set<string>> {
+  if (objectIds.length === 0) return new Set();
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT object_id FROM bookmarks WHERE actor_id = ? AND object_id IN (${placeholders})`)
+    .bind(actorId, ...objectIds)
+    .all<{ object_id: string }>();
+  return new Set(rows.results.map((r) => r.object_id));
 }
 
 export async function getBookmarkedStatusIds(
@@ -1018,107 +1260,6 @@ export async function upsertDirectConversation(
 // Filters v2
 // ─────────────────────────────────────────
 
-export async function getFilters(db: D1Database, actorId: string): Promise<{ id: string; title: string; context: string; filter_action: string; expires_at: string | null }[]> {
-  const rows = await db
-    .prepare("SELECT id, title, context, filter_action, expires_at FROM filters WHERE actor_id = ? ORDER BY title ASC")
-    .bind(actorId)
-    .all<{ id: string; title: string; context: string; filter_action: string; expires_at: string | null }>();
-  return rows.results;
-}
-
-export async function getFilterById(db: D1Database, id: string): Promise<{ id: string; actor_id: string; title: string; context: string; filter_action: string; expires_at: string | null } | null> {
-  const row = await db
-    .prepare("SELECT id, actor_id, title, context, filter_action, expires_at FROM filters WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; actor_id: string; title: string; context: string; filter_action: string; expires_at: string | null }>();
-  return row ?? null;
-}
-
-export async function createFilter(db: D1Database, id: string, actorId: string, title: string, context: string, filterAction: string, expiresAt: string | null): Promise<void> {
-  await db
-    .prepare("INSERT INTO filters (id, actor_id, title, context, filter_action, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, actorId, title, context, filterAction, expiresAt)
-    .run();
-}
-
-export async function updateFilter(db: D1Database, id: string, title?: string, context?: string, filterAction?: string, expiresAt?: string | null): Promise<void> {
-  const sets: string[] = ["updated_at = datetime('now')"];
-  const vals: unknown[] = [];
-  if (title !== undefined) { sets.push("title = ?"); vals.push(title); }
-  if (context !== undefined) { sets.push("context = ?"); vals.push(context); }
-  if (filterAction !== undefined) { sets.push("filter_action = ?"); vals.push(filterAction); }
-  if (expiresAt !== undefined) { sets.push("expires_at = ?"); vals.push(expiresAt); }
-  if (vals.length === 0) return;
-  vals.push(id);
-  await db.prepare(`UPDATE filters SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
-}
-
-export async function deleteFilter(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filters WHERE id = ?").bind(id).run();
-}
-
-export async function getFilterKeywords(db: D1Database, filterId: string): Promise<{ id: string; keyword: string; whole_word: boolean }[]> {
-  const rows = await db
-    .prepare("SELECT id, keyword, whole_word FROM filter_keywords WHERE filter_id = ? ORDER BY created_at ASC")
-    .bind(filterId)
-    .all<{ id: string; keyword: string; whole_word: number }>();
-  return rows.results.map((r) => ({ id: r.id, keyword: r.keyword, whole_word: Boolean(r.whole_word) }));
-}
-
-export async function getFilterKeywordById(db: D1Database, id: string): Promise<{ id: string; filter_id: string; keyword: string; whole_word: boolean } | null> {
-  const row = await db
-    .prepare("SELECT id, filter_id, keyword, whole_word FROM filter_keywords WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; filter_id: string; keyword: string; whole_word: number }>();
-  if (!row) return null;
-  return { id: row.id, filter_id: row.filter_id, keyword: row.keyword, whole_word: Boolean(row.whole_word) };
-}
-
-export async function createFilterKeyword(db: D1Database, id: string, filterId: string, keyword: string, wholeWord: boolean): Promise<void> {
-  await db
-    .prepare("INSERT INTO filter_keywords (id, filter_id, keyword, whole_word) VALUES (?, ?, ?, ?)")
-    .bind(id, filterId, keyword, wholeWord ? 1 : 0)
-    .run();
-}
-
-export async function updateFilterKeyword(db: D1Database, id: string, keyword: string, wholeWord: boolean): Promise<void> {
-  await db
-    .prepare("UPDATE filter_keywords SET keyword = ?, whole_word = ? WHERE id = ?")
-    .bind(keyword, wholeWord ? 1 : 0, id)
-    .run();
-}
-
-export async function deleteFilterKeyword(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filter_keywords WHERE id = ?").bind(id).run();
-}
-
-export async function getFilterStatuses(db: D1Database, filterId: string): Promise<{ id: string; status_id: string }[]> {
-  const rows = await db
-    .prepare("SELECT id, status_id FROM filter_statuses WHERE filter_id = ? ORDER BY created_at ASC")
-    .bind(filterId)
-    .all<{ id: string; status_id: string }>();
-  return rows.results;
-}
-
-export async function getFilterStatusById(db: D1Database, id: string): Promise<{ id: string; filter_id: string; status_id: string } | null> {
-  const row = await db
-    .prepare("SELECT id, filter_id, status_id FROM filter_statuses WHERE id = ?")
-    .bind(id)
-    .first<{ id: string; filter_id: string; status_id: string }>();
-  return row ?? null;
-}
-
-export async function createFilterStatus(db: D1Database, id: string, filterId: string, statusId: string): Promise<void> {
-  await db
-    .prepare("INSERT INTO filter_statuses (id, filter_id, status_id) VALUES (?, ?, ?)")
-    .bind(id, filterId, statusId)
-    .run();
-}
-
-export async function deleteFilterStatus(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM filter_statuses WHERE id = ?").bind(id).run();
-}
-
 // ─────────────────────────────────────────
 // Scheduled statuses
 // ─────────────────────────────────────────
@@ -1254,37 +1395,23 @@ export async function getFeaturedTagById(db: D1Database, id: string): Promise<{ 
 }
 
 export async function getTagSuggestions(db: D1Database, actorId: string): Promise<{ name: string; statuses_count: number }[]> {
+  // Indexed via object_tags instead of scanning raw for the actor's recent posts.
   const rows = await db
-    .prepare("SELECT raw FROM objects WHERE actor_id = ? AND raw LIKE '%\"type\":\"Hashtag\"%' ORDER BY published DESC LIMIT 200")
+    .prepare(
+      `SELECT t.tag, COUNT(*) as count FROM object_tags t
+       WHERE t.object_id IN (SELECT id FROM objects WHERE actor_id = ? ORDER BY published DESC LIMIT 200)
+       GROUP BY t.tag ORDER BY count DESC LIMIT 10`
+    )
     .bind(actorId)
-    .all<{ raw: string }>();
+    .all<{ tag: string; count: number }>();
 
   const featuredNames = new Set(
     (await getFeaturedTags(db, actorId)).map((t) => t.tag_name)
   );
 
-  const tagCounts = new Map<string, number>();
-  for (const row of rows.results) {
-    try {
-      const parsed = JSON.parse(row.raw) as { tag?: { type?: string; name?: string }[] };
-      const tags = parsed.tag ?? [];
-      for (const tag of tags) {
-        if (tag.type === "Hashtag" && tag.name) {
-          const name = tag.name.replace(/^#/, "").toLowerCase();
-          if (name && !featuredNames.has(name)) {
-            tagCounts.set(name, (tagCounts.get(name) ?? 0) + 1);
-          }
-        }
-      }
-    } catch {
-      // skip malformed raw JSON
-    }
-  }
-
-  return Array.from(tagCounts.entries())
-    .map(([name, count]) => ({ name, statuses_count: count }))
-    .sort((a, b) => b.statuses_count - a.statuses_count)
-    .slice(0, 10);
+  return rows.results
+    .filter((r) => !featuredNames.has(r.tag))
+    .map((r) => ({ name: r.tag, statuses_count: r.count }));
 }
 
 export async function updateActor(
@@ -1376,37 +1503,63 @@ export async function getReplyToAccountIdMap(
   return result;
 }
 
+/** Extract hashtag names (lowercased, without "#") from a stored object's raw AP JSON. */
+function extractObjectTags(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { tag?: unknown };
+    const tags = Array.isArray(parsed.tag) ? parsed.tag : [];
+    const names: string[] = [];
+    for (const t of tags) {
+      const tag = t as { type?: string; name?: string };
+      if (tag.type === "Hashtag" && typeof tag.name === "string") {
+        const name = tag.name.trim().replace(/^#+/, "").toLowerCase();
+        if (name) names.push(name);
+      }
+    }
+    return names;
+  } catch { /* ignore */ }
+  return [];
+}
+
 export async function createObject(db: D1Database, obj: Omit<LocalObject, "updatedAt">): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO objects (
-        id, type, actor_id, content, content_warning, sensitive,
-        visibility, in_reply_to_id, quote_id, language, url,
-        replies_count, reblogs_count, favourites_count,
-        published, is_local, raw, updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    )
-    .bind(
-      obj.id,
-      obj.type,
-      obj.actorId,
-      obj.content ?? null,
-      obj.contentWarning ?? null,
-      obj.sensitive ? 1 : 0,
-      obj.visibility,
-      obj.inReplyToId ?? null,
-      obj.quoteId ?? null,
-      obj.language ?? null,
-      obj.url,
-      obj.repliesCount,
-      obj.reblogsCount,
-      obj.favouritesCount,
-      obj.published,
-      obj.local ? 1 : 0,
-      obj.raw,
-      obj.published   // pin updated_at = published so new posts never appear as edited
-    )
-    .run();
+  const statements = [
+    db
+      .prepare(
+        `INSERT INTO objects (
+          id, type, actor_id, content, content_warning, sensitive,
+          visibility, in_reply_to_id, quote_id, language, url,
+          replies_count, reblogs_count, favourites_count,
+          published, is_local, raw, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      )
+      .bind(
+        obj.id,
+        obj.type,
+        obj.actorId,
+        obj.content ?? null,
+        obj.contentWarning ?? null,
+        obj.sensitive ? 1 : 0,
+        obj.visibility,
+        obj.inReplyToId ?? null,
+        obj.quoteId ?? null,
+        obj.language ?? null,
+        obj.url,
+        obj.repliesCount,
+        obj.reblogsCount,
+        obj.favouritesCount,
+        obj.published,
+        obj.local ? 1 : 0,
+        obj.raw,
+        obj.published   // pin updated_at = published so new posts never appear as edited
+      ),
+    ...extractObjectTags(obj.raw).map((tag) =>
+      db
+        .prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published, actor_id) VALUES (?, ?, ?, ?)")
+        .bind(obj.id, tag, obj.published, obj.actorId)
+    ),
+  ];
+  await db.batch(statements);
 }
 
 /**
@@ -1548,52 +1701,51 @@ export async function getHomeTimeline(
   // their followers (mirrors Mastodon). Silenced accounts still show to
   // followers, so only `suspended` is filtered here.
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
-  const baseWhere = `
-    NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
-    AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-    AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
-    AND (
-      (o.actor_id = ? AND o.visibility != 'direct')
-      OR (
-        o.actor_id IN (
-          SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'
-        )
-        AND o.visibility IN ('public', 'unlisted', 'followers')
-      )
-    )
-  `;
+  //
+  // The two visibility branches are index-incompatible under a single OR (one
+  // needs `actor_id = ?`, the other `actor_id IN (follows)`), which forced a
+  // full-table scan + sort on every request. Splitting them into a UNION lets
+  // each branch seek straight to the (actor_id, visibility, published) index
+  // and cap its own rows, so the scan only touches rows that can qualify.
+  const branch = (actorClause: string, visibilityClause: string, publishedClause: string) => `
+    SELECT o.* FROM objects o
+    WHERE ${actorClause}
+      AND ${visibilityClause}
+      AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
+      AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+      ${publishedClause}
+    ORDER BY o.published DESC LIMIT ?`;
+
+  let publishedClause = "";
+  let cursorBinds: unknown[] = [];
   if (minId) {
     const pivotRow = await db
       .prepare("SELECT published FROM objects WHERE id = ?")
       .bind(minId)
       .first<{ published: string }>();
     if (!pivotRow) return [];
-    const rows = await db
-      .prepare(
-        `SELECT o.* FROM objects o
-         WHERE ${baseWhere}
-           AND o.published > ?
-         ORDER BY o.published DESC LIMIT ?`
-      )
-      .bind(actorId, actorId, actorId, actorId, pivotRow.published, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
+    publishedClause = "AND o.published > ?";
+    cursorBinds = [pivotRow.published];
+  } else if (maxId) {
+    publishedClause = "AND o.published < (SELECT published FROM objects WHERE id = ?)";
+    cursorBinds = [maxId];
   }
-  if (maxId) {
-    const rows = await db
-      .prepare(
-        `SELECT o.* FROM objects o
-         WHERE ${baseWhere}
-           AND o.published < (SELECT published FROM objects WHERE id = ?)
-         ORDER BY o.published DESC LIMIT ?`
-      )
-      .bind(actorId, actorId, actorId, actorId, maxId, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
-  }
+  const ownBranch = branch("o.actor_id = ?", "o.visibility != 'direct'", publishedClause);
+  const followsBranch = branch(
+    "o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')",
+    "o.visibility IN ('public', 'unlisted', 'followers')",
+    publishedClause
+  );
   const rows = await db
-    .prepare(`SELECT o.* FROM objects o WHERE ${baseWhere} ORDER BY o.published DESC LIMIT ?`)
-    .bind(actorId, actorId, actorId, actorId, limit)
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM (${ownBranch})
+         UNION
+         SELECT * FROM (${followsBranch})
+       ) ORDER BY published DESC LIMIT ?`
+    )
+    .bind(actorId, actorId, actorId, ...cursorBinds, limit, actorId, actorId, actorId, ...cursorBinds, limit, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1606,9 +1758,11 @@ export async function getHashtagTimeline(
   sinceId?: string,
   viewerId?: string
 ): Promise<LocalObject[]> {
-  // Search the raw AP JSON for Hashtag tag entries matching the given hashtag name.
-  // LIKE is case-insensitive for ASCII in SQLite, so #test matches #Test etc.
-  const likePattern = `%"name":"#${hashtag.toLowerCase()}"%`;
+  // Indexed via object_tags (extracted at ingest time): the (tag, published)
+  // index resolves tag + ordering without scanning `raw`. The recency bound
+  // keeps outposts of rarely-used tags from touching the whole table.
+  const tag = hashtag.toLowerCase().replace(/^#+/, "");
+  const recencyBound = new Date(Date.now() - 90 * 86400000).toISOString();
   // Silenced (limited) and suspended accounts never appear on hashtag timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
@@ -1630,40 +1784,43 @@ export async function getHashtagTimeline(
     if (!pivot) return [];
     const rows = await db
       .prepare(
-        `SELECT o.* FROM objects o
-         WHERE o.visibility IN ('public', 'unlisted')
-           AND o.raw LIKE ?
-           AND o.published > ?
+        `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+         WHERE t.tag = ?
+           AND o.visibility IN ('public', 'unlisted')
+           AND t.published >= ?
+           AND t.published > ?
            ${stateFilter} ${blockFilter}
-         ORDER BY o.published DESC LIMIT ?`
+         ORDER BY t.published DESC LIMIT ?`
       )
-      .bind(likePattern, pivot.published, ...blockBinds, limit)
+      .bind(tag, recencyBound, pivot.published, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   if (maxId) {
     const rows = await db
       .prepare(
-        `SELECT o.* FROM objects o
-         WHERE o.visibility IN ('public', 'unlisted')
-           AND o.raw LIKE ?
-           AND o.published < (SELECT published FROM objects WHERE id = ?)
+        `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+         WHERE t.tag = ?
+           AND o.visibility IN ('public', 'unlisted')
+           AND t.published >= ?
+           AND t.published < (SELECT published FROM objects WHERE id = ?)
            ${stateFilter} ${blockFilter}
-         ORDER BY o.published DESC LIMIT ?`
+         ORDER BY t.published DESC LIMIT ?`
       )
-      .bind(likePattern, maxId, ...blockBinds, limit)
+      .bind(tag, recencyBound, maxId, ...blockBinds, limit)
       .all<Row>();
     return rows.results.map(rowToObject);
   }
   const rows = await db
     .prepare(
-      `SELECT o.* FROM objects o
-       WHERE o.visibility IN ('public', 'unlisted')
-         AND o.raw LIKE ?
+      `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
+       WHERE t.tag = ?
+         AND o.visibility IN ('public', 'unlisted')
+         AND t.published >= ?
          ${stateFilter} ${blockFilter}
-       ORDER BY o.published DESC LIMIT ?`
+       ORDER BY t.published DESC LIMIT ?`
     )
-    .bind(likePattern, ...blockBinds, limit)
+    .bind(tag, recencyBound, ...blockBinds, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1713,7 +1870,7 @@ export async function updateObject(
   id: string,
   fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string }
 ): Promise<void> {
-  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw FROM objects WHERE id = ?").bind(id).first<Row>();
+  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
     await db
       .prepare("INSERT INTO object_edits (id, object_id, content, content_warning, sensitive, raw, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))")
@@ -1738,6 +1895,19 @@ export async function updateObject(
     .prepare(`UPDATE objects SET ${setClauses.join(", ")} WHERE id = ?`)
     .bind(...values)
     .run();
+
+  // The raw document carries the hashtag list — keep the index in sync when it
+  // changes (edits can add/remove tags).
+  if ("raw" in fields && prev) {
+    const statements = [
+      db.prepare("DELETE FROM object_tags WHERE object_id = ?").bind(id),
+      ...extractObjectTags(fields.raw).map((tag) =>
+        db.prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published, actor_id) VALUES (?, ?, ?, ?)")
+          .bind(id, tag, prev.published, prev.actor_id)
+      ),
+    ];
+    await db.batch(statements);
+  }
 }
 
 export async function getObjectEditHistory(db: D1Database, objectId: string): Promise<ObjectEdit[]> {
@@ -1761,7 +1931,15 @@ function rowToObjectEdit(r: Row): ObjectEdit {
 }
 
 export async function deleteObject(db: D1Database, id: string): Promise<void> {
-  await db.prepare("DELETE FROM objects WHERE id = ?").bind(id).run();
+  // Tables that reference objects WITHOUT a FK must be cleaned explicitly:
+  // status_pins (pins of a deleted status would otherwise count against the
+  // pin limit) and custom_filter_statuses (stale filter entries). Likes,
+  // announces, bookmarks, attachments and polls cascade via their FKs.
+  await db.batch([
+    db.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id),
+    db.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id),
+    db.prepare("DELETE FROM objects WHERE id = ?").bind(id),
+  ]);
 }
 
 // ─────────────────────────────────────────
@@ -2215,6 +2393,32 @@ export async function getActorFields(db: D1Database, actorId: string): Promise<A
   return rows.results.map(rowToField);
 }
 
+/** Batch variant of getActorFields — one query for many actor ids. */
+export async function getActorFieldsMap(
+  db: D1Database,
+  actorIds: string[]
+): Promise<Map<string, ActorField[]>> {
+  const map = new Map<string, ActorField[]>();
+  const unique = [...new Set(actorIds)];
+  if (unique.length === 0) return map;
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM actor_fields WHERE actor_id IN (${placeholders}) ORDER BY actor_id, position ASC`
+    )
+    .bind(...unique)
+    .all<Row>();
+  for (const r of rows.results ?? []) {
+    const list = map.get(r.actor_id) ?? [];
+    list.push(rowToField(r));
+    map.set(r.actor_id, list);
+  }
+  for (const id of unique) {
+    if (!map.has(id)) map.set(id, []);
+  }
+  return map;
+}
+
 export async function setActorFields(
   db: D1Database,
   actorId: string,
@@ -2517,6 +2721,57 @@ export async function setInstanceSetting(db: D1Database, key: string, value: str
     .run();
 }
 
+export interface RegistrationSettings {
+  enabled: boolean;
+  approvalRequired: boolean;
+  reasonRequired: boolean;
+  message: string | null;
+  minAge: number | null;
+  url: string | null;
+}
+
+const REGISTRATION_SETTING_KEYS = [
+  "registrations_enabled",
+  "registrations_approval_required",
+  "registrations_reason_required",
+  "registrations_message",
+  "registrations_min_age",
+  "registrations_url",
+] as const;
+
+/** Instance registration policy, backed by instance_settings rows (defaults match Mastodon's open registration). */
+export async function getRegistrationSettings(db: D1Database): Promise<RegistrationSettings> {
+  const rows = await db
+    .prepare(`SELECT key, value FROM instance_settings WHERE key IN (${REGISTRATION_SETTING_KEYS.map(() => "?").join(",")})`)
+    .bind(...REGISTRATION_SETTING_KEYS)
+    .all<{ key: string; value: string }>();
+  const map = new Map(rows.results?.map((r) => [r.key, r.value]) ?? []);
+  const num = (key: string): number | null => {
+    const v = Number(map.get(key));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const str = (key: string): string | null => {
+    const v = map.get(key);
+    return v && v.trim() ? v.trim() : null;
+  };
+  return {
+    enabled: map.get("registrations_enabled") !== "false",
+    approvalRequired: map.get("registrations_approval_required") === "true",
+    reasonRequired: map.get("registrations_reason_required") === "true",
+    message: str("registrations_message"),
+    minAge: num("registrations_min_age"),
+    url: str("registrations_url"),
+  };
+}
+
+/** Set a local account's registration approval state (approve or pend). */
+export async function setActorApproval(db: D1Database, actorId: string, approved: boolean): Promise<void> {
+  await db
+    .prepare("UPDATE actors SET approved = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(approved ? 1 : 0, actorId)
+    .run();
+}
+
 // ─────────────────────────────────────────
 // Polls
 // ─────────────────────────────────────────
@@ -2765,15 +3020,32 @@ function rowToCustomEmoji(r: Row): LocalCustomEmoji {
   };
 }
 
+// The emoji list is read on every status render and changes rarely. Cache it
+// per-isolate with a short TTL so the (disabled, category, shortcode) query
+// runs once per minute per worker instead of once per request; mutations
+// invalidate the cache immediately.
+let emojiCache: { at: number; enabled: LocalCustomEmoji[]; all: LocalCustomEmoji[] } | null = null;
+const EMOJI_CACHE_TTL_MS = 60_000;
+
+export function invalidateCustomEmojiCache(): void {
+  emojiCache = null;
+}
+
 export async function getAllCustomEmojis(
   db: D1Database,
   includeDisabled = false
 ): Promise<LocalCustomEmoji[]> {
+  const now = Date.now();
+  if (emojiCache && now - emojiCache.at < EMOJI_CACHE_TTL_MS) {
+    return includeDisabled ? emojiCache.all : emojiCache.enabled;
+  }
   const query = includeDisabled
     ? "SELECT * FROM custom_emojis ORDER BY category, shortcode ASC"
     : "SELECT * FROM custom_emojis WHERE disabled = 0 ORDER BY category, shortcode ASC";
   const rows = await db.prepare(query).all<Row>();
-  return rows.results.map(rowToCustomEmoji);
+  const all = rows.results.map(rowToCustomEmoji);
+  emojiCache = { at: now, all, enabled: all.filter((e) => !e.disabled) };
+  return includeDisabled ? all : emojiCache.enabled;
 }
 
 export async function getCustomEmojiByShortcode(
@@ -2832,10 +3104,12 @@ export async function upsertCustomEmoji(
       emoji.actorId ?? null
     )
     .run();
+  invalidateCustomEmojiCache();
 }
 
 export async function deleteCustomEmoji(db: D1Database, id: string): Promise<void> {
   await db.prepare("DELETE FROM custom_emojis WHERE id = ?").bind(id).run();
+  invalidateCustomEmojiCache();
 }
 
 export async function disableCustomEmoji(db: D1Database, id: string): Promise<void> {
@@ -2843,6 +3117,7 @@ export async function disableCustomEmoji(db: D1Database, id: string): Promise<vo
     .prepare("UPDATE custom_emojis SET disabled = 1, updated_at = datetime('now') WHERE id = ?")
     .bind(id)
     .run();
+  invalidateCustomEmojiCache();
 }
 
 export async function getCustomEmojisByDomain(
@@ -3300,4 +3575,322 @@ export async function getMlsConversationsByRecipient(
     .bind(recipientId)
     .all<Row>();
   return (rows.results ?? []).map((r) => ({ conversation: r.conversation, last: r.last }));
+}
+
+// ─────────────────────────────────────────
+// Instance statistics (nodeinfo + /api/v1/instance)
+// ─────────────────────────────────────────
+
+export interface InstanceStats {
+  userCount: number;
+  statusCount: number;
+  activeMonth: number;
+  activeHalfyear: number;
+  commentCount: number;
+  domainCount: number;
+}
+
+/**
+ * The four instance-wide count queries (nodeinfo + instance endpoints) each
+ * scan a large share of the objects table. Compute them once and cache the
+ * result in KV for 15 minutes — the counts change slowly and no client needs
+ * second-precision numbers. The covering index (is_local, published,
+ * actor_id) keeps the recompute index-only.
+ */
+export async function getInstanceStats(
+  db: D1Database,
+  kv: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }
+): Promise<InstanceStats> {
+  const cacheKey = "instance:stats";
+  try {
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as InstanceStats;
+      if (typeof parsed.userCount === "number") return parsed;
+    }
+  } catch { /* fall through to recompute */ }
+
+  const monthCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const halfyearCutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+
+  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow, domainRow] = await Promise.all([
+    db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(monthCutoff).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= ?"
+    ).bind(halfyearCutoff).first<{ count: number }>(),
+    db.prepare(
+      "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
+    ).first<{ count: number }>(),
+    db.prepare("SELECT COUNT(DISTINCT domain) as count FROM actors WHERE is_local = 0").first<{ count: number }>(),
+  ]);
+
+  const stats: InstanceStats = {
+    userCount: userRow?.count ?? 0,
+    statusCount: postRow?.count ?? 0,
+    activeMonth: activeMonthRow?.count ?? 0,
+    activeHalfyear: activeHalfyearRow?.count ?? 0,
+    commentCount: commentRow?.count ?? 0,
+    domainCount: domainRow?.count ?? 0,
+  };
+
+  await kv.put(cacheKey, JSON.stringify(stats), { expirationTtl: 900 }).catch(() => {});
+  return stats;
+}
+
+// ─────────────────────────────────────────
+// User filters (Mastodon-compatible, server-side v2)
+// ─────────────────────────────────────────
+
+export interface LocalFilterRow {
+  id: string;
+  accountId: string;
+  title: string;
+  action: "warn" | "hide" | "blur";
+  context: string; // JSON array
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LocalFilterKeywordRow {
+  id: string;
+  customFilterId: string;
+  keyword: string;
+  wholeWord: boolean;
+}
+
+export interface LocalFilterStatusRow {
+  id: string;
+  customFilterId: string;
+  statusId: string;
+}
+
+type FilterRow = {
+  id: string;
+  account_id: string;
+  title: string;
+  action: string;
+  context: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type KeywordRow = {
+  id: string;
+  custom_filter_id: string;
+  keyword: string;
+  whole_word: number;
+};
+
+type StatusRow = {
+  id: string;
+  custom_filter_id: string;
+  status_id: string;
+};
+
+export async function getFiltersForAccount(db: D1Database, accountId: string): Promise<LocalFilterRow[]> {
+  // expires_at is stored ISO-8601; compare against an ISO "now" so the expiry
+  // instant is exact (datetime('now') uses a space format and would keep a
+  // filter active for up to a day past its expiry).
+  const nowIso = new Date().toISOString();
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filters WHERE account_id = ?
+       AND (expires_at IS NULL OR expires_at > ?)
+       ORDER BY created_at DESC`
+    )
+    .bind(accountId, nowIso)
+    .all<FilterRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function getAllFiltersForAccount(db: D1Database, accountId: string): Promise<LocalFilterRow[]> {
+  const rows = await db
+    .prepare("SELECT * FROM custom_filters WHERE account_id = ? ORDER BY created_at DESC")
+    .bind(accountId)
+    .all<FilterRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export async function getFilterById(db: D1Database, id: string, accountId: string): Promise<LocalFilterRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filters WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<FilterRow>();
+  if (!r) return null;
+  return {
+    id: r.id,
+    accountId: r.account_id,
+    title: r.title,
+    action: (["warn", "hide", "blur"].includes(r.action) ? r.action : "warn") as "warn" | "hide" | "blur",
+    context: r.context,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function insertFilter(
+  db: D1Database,
+  f: { id: string; accountId: string; title: string; action: "warn" | "hide" | "blur"; context: string; expiresAt: string | null }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filters (id, account_id, title, action, context, expires_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .bind(f.id, f.accountId, f.title, f.action, f.context, f.expiresAt)
+    .run();
+}
+
+export async function updateFilter(
+  db: D1Database,
+  id: string,
+  accountId: string,
+  fields: { title?: string; action?: string; context?: string; expiresAt?: string | null }
+): Promise<boolean> {
+  const clauses: string[] = ["updated_at = datetime('now')"];
+  const values: unknown[] = [];
+  if (fields.title !== undefined) { clauses.push("title = ?"); values.push(fields.title); }
+  if (fields.action !== undefined) { clauses.push("action = ?"); values.push(fields.action); }
+  if (fields.context !== undefined) { clauses.push("context = ?"); values.push(fields.context); }
+  if (fields.expiresAt !== undefined) { clauses.push("expires_at = ?"); values.push(fields.expiresAt); }
+  if (values.length === 0) return true;
+  values.push(id, accountId);
+  const r = await db
+    .prepare(`UPDATE custom_filters SET ${clauses.join(", ")} WHERE id = ? AND account_id = ?`)
+    .bind(...values)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function deleteFilter(db: D1Database, id: string, accountId: string): Promise<boolean> {
+  const r = await db
+    .prepare("DELETE FROM custom_filters WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function getFilterKeywords(db: D1Database, filterIds: string[]): Promise<LocalFilterKeywordRow[]> {
+  if (filterIds.length === 0) return [];
+  const placeholders = filterIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filter_keywords WHERE custom_filter_id IN (${placeholders}) ORDER BY created_at ASC`
+    )
+    .bind(...filterIds)
+    .all<KeywordRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    customFilterId: r.custom_filter_id,
+    keyword: r.keyword,
+    wholeWord: r.whole_word === 1,
+  }));
+}
+
+export async function getFilterKeywordById(db: D1Database, id: string): Promise<LocalFilterKeywordRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filter_keywords WHERE id = ?")
+    .bind(id)
+    .first<KeywordRow>();
+  if (!r) return null;
+  return { id: r.id, customFilterId: r.custom_filter_id, keyword: r.keyword, wholeWord: r.whole_word === 1 };
+}
+
+export async function insertFilterKeyword(
+  db: D1Database,
+  k: { id: string; customFilterId: string; keyword: string; wholeWord: boolean }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filter_keywords (id, custom_filter_id, keyword, whole_word, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    .bind(k.id, k.customFilterId, k.keyword, k.wholeWord ? 1 : 0)
+    .run();
+}
+
+export async function updateFilterKeyword(
+  db: D1Database,
+  id: string,
+  keyword: string,
+  wholeWord: boolean
+): Promise<boolean> {
+  const r = await db
+    .prepare("UPDATE custom_filter_keywords SET keyword = ?, whole_word = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(keyword, wholeWord ? 1 : 0, id)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function deleteFilterKeyword(db: D1Database, id: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM custom_filter_keywords WHERE id = ?").bind(id).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+export async function getFilterStatuses(db: D1Database, filterIds: string[]): Promise<LocalFilterStatusRow[]> {
+  if (filterIds.length === 0) return [];
+  const placeholders = filterIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT * FROM custom_filter_statuses WHERE custom_filter_id IN (${placeholders}) ORDER BY created_at ASC`
+    )
+    .bind(...filterIds)
+    .all<StatusRow>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    customFilterId: r.custom_filter_id,
+    statusId: r.status_id,
+  }));
+}
+
+export async function getFilterStatusById(db: D1Database, id: string): Promise<LocalFilterStatusRow | null> {
+  const r = await db
+    .prepare("SELECT * FROM custom_filter_statuses WHERE id = ?")
+    .bind(id)
+    .first<StatusRow>();
+  if (!r) return null;
+  return { id: r.id, customFilterId: r.custom_filter_id, statusId: r.status_id };
+}
+
+export async function insertFilterStatus(
+  db: D1Database,
+  s: { id: string; customFilterId: string; statusId: string }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO custom_filter_statuses (id, custom_filter_id, status_id, created_at)
+       VALUES (?, ?, ?, datetime('now'))`
+    )
+    .bind(s.id, s.customFilterId, s.statusId)
+    .run();
+}
+
+export async function deleteFilterStatus(db: D1Database, id: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM custom_filter_statuses WHERE id = ?").bind(id).run();
+  return (r.meta.changes ?? 0) > 0;
 }

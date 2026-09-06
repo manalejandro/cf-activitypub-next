@@ -20,7 +20,9 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { EmojiInput } from "@/components/EmojiInput";
+import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { Loading } from "@/components/Loading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -333,13 +335,13 @@ export default function ProfilePage() {
 
     // Load statuses
     const statusRes = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=20`,
+      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`,
       { headers: authHeaders }
     );
     if (statusRes.ok) {
       const data = await statusRes.json() as Status[];
       setStatuses(data);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setTabLoaded((p) => ({ ...p, posts: true }));
 
@@ -384,7 +386,7 @@ export default function ProfilePage() {
     if (res.ok) {
       const data = await res.json() as Status[];
       setStatuses((prev) => [...prev, ...data]);
-      setHasMorePosts(data.length >= 20);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setLoadingMorePosts(false);
   }
@@ -395,13 +397,13 @@ export default function ProfilePage() {
     setLoadingMoreFollowers(true);
     const nextPage = Math.floor(followers.length / 40);
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=40&page=${nextPage}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
     );
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowers((prev) => [...prev, ...data]);
-      setHasMoreFollowers(data.length >= 40);
+      setHasMoreFollowers(data.length >= limits.pageSize);
     }
     setLoadingMoreFollowers(false);
   }
@@ -412,13 +414,13 @@ export default function ProfilePage() {
     setLoadingMoreFollowing(true);
     const nextPage = Math.floor(following.length / 40);
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=40&page=${nextPage}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
     );
     if (res.ok) {
       const data = await res.json() as Account[];
       setFollowing((prev) => [...prev, ...data]);
-      setHasMoreFollowing(data.length >= 40);
+      setHasMoreFollowing(data.length >= limits.pageSize);
     }
     setLoadingMoreFollowing(false);
   }
@@ -462,23 +464,23 @@ export default function ProfilePage() {
       if (res.ok) setPinnedStatuses(await res.json() as Status[]);
     } else if (tab === "followers") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=40`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/followers?limit=${limits.pageSize}`,
         { headers: authHeaders }
       );
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowers(data);
-        setHasMoreFollowers(data.length >= 40);
+        setHasMoreFollowers(data.length >= limits.pageSize);
       }
     } else if (tab === "following") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/following?limit=40`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/following?limit=${limits.pageSize}`,
         { headers: authHeaders }
       );
       if (res.ok) {
         const data = await res.json() as Account[];
         setFollowing(data);
-        setHasMoreFollowing(data.length >= 40);
+        setHasMoreFollowing(data.length >= limits.pageSize);
       }
     } else if (tab === "collections") {
       const res = await fetch(
@@ -506,7 +508,7 @@ export default function ProfilePage() {
     setAvatarFile(null);
     setHeaderFile(null);
     setEditError(null);
-    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, 4);
+    const currentFields = (acct.source?.fields ?? me?.source?.fields ?? []).slice(0, limits.maxProfileFields);
     setEditFields(currentFields.map((f) => ({ name: f.name, value: f.value })));
     setEditOpen(true);
   }
@@ -560,7 +562,7 @@ export default function ProfilePage() {
   }
 
   function addField() {
-    if (editFields.length >= 4) return;
+    if (editFields.length >= limits.maxProfileFields) return;
     setEditFields((p) => [...p, { name: "", value: "" }]);
   }
 
@@ -679,13 +681,14 @@ export default function ProfilePage() {
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
   const { t } = useLocale();
-  const { startCall: initiateCall } = useStartCallButton(token);
+  const limits = useLimits();
+  const { startCall: initiateCall, pending: callPending } = useStartCallButton(token);
 
   return (
     <>
     <PageLayout sidebar={<Sidebar me={me} currentPath={`/users/${username}`} />}>
         {loading ? (
-          <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+          <Loading />
         ) : notFound || !account ? (
           <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem" }}><Icon name="user" size="3rem" /></div>
@@ -832,6 +835,7 @@ export default function ProfilePage() {
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
                         title={t.profile_call_voice}
+                        disabled={callPending}
                         onClick={() => void initiateCall(account.acct, "audio")}
                       >
                         <Icon name="phone" />
@@ -840,6 +844,7 @@ export default function ProfilePage() {
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
                         title={t.profile_call_video}
+                        disabled={callPending}
                         onClick={() => void initiateCall(account.acct, "video")}
                       >
                         <Icon name="video-camera" />
@@ -848,6 +853,7 @@ export default function ProfilePage() {
                         className="btn btn-ghost btn-sm btn-hide-mobile"
                         style={{ border: "1px solid var(--border)" }}
                         title={t.profile_call_screen}
+                        disabled={callPending}
                         onClick={() => void initiateCall(account.acct, "screen")}
                       >
                         <Icon name="desktop" />
@@ -925,6 +931,7 @@ export default function ProfilePage() {
                             <button
                               className="btn btn-ghost"
                               style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                              disabled={callPending}
                               onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "audio"); }}
                             >
                               <Icon name="phone" /> {t.profile_call_voice}
@@ -932,6 +939,7 @@ export default function ProfilePage() {
                             <button
                               className="btn btn-ghost"
                               style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                              disabled={callPending}
                               onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "video"); }}
                             >
                               <Icon name="video-camera" /> {t.profile_call_video}
@@ -939,6 +947,7 @@ export default function ProfilePage() {
                             <button
                               className="btn btn-ghost"
                               style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
+                              disabled={callPending}
                               onClick={() => { setProfileMenuOpen(false); void initiateCall(account.acct, "screen"); }}
                             >
                               <Icon name="desktop" /> {t.profile_call_screen}
@@ -1081,7 +1090,7 @@ export default function ProfilePage() {
                 <>
                   {statuses.map((s) => (
                     <StatusCard
-                      key={s.id}
+                    filterContext="account"key={s.id}
                       status={s}
                       onFav={handleStatusUpdate}
                       onReblog={handleStatusUpdate}
@@ -1093,7 +1102,7 @@ export default function ProfilePage() {
                     />
                   ))}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMorePosts ? "Cargando…" : ""}
+                    {loadingMorePosts && <Loading compact />}
                   </div>
                 </>
               )
@@ -1101,7 +1110,7 @@ export default function ProfilePage() {
 
             {activeTab === "replies" && (
               !tabLoaded.replies ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : replies.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="comment" size="2rem" /></span>
@@ -1110,7 +1119,7 @@ export default function ProfilePage() {
               ) : (
                 replies.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
@@ -1126,7 +1135,7 @@ export default function ProfilePage() {
 
             {activeTab === "pinned" && (
               !tabLoaded.pinned ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : pinnedStatuses.length === 0 ? (
                 <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="thumb-tack" size="2rem" /></span>
@@ -1135,7 +1144,7 @@ export default function ProfilePage() {
               ) : (
                 pinnedStatuses.map((s) => (
                   <StatusCard
-                    key={s.id}
+                  filterContext="account"key={s.id}
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
@@ -1159,14 +1168,14 @@ export default function ProfilePage() {
 
             {activeTab === "followers" && (
               !tabLoaded.followers ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : followers.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_followers}</div>
               ) : (
                 <>
                   {followers.map((f) => <AccountCard key={f.id} acct={f} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMoreFollowers ? "Cargando…" : ""}
+                    {loadingMoreFollowers && <Loading compact />}
                   </div>
                 </>
               )
@@ -1174,14 +1183,14 @@ export default function ProfilePage() {
 
             {activeTab === "following" && (
               !tabLoaded.following ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : following.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>{t.profile_no_following}</div>
               ) : (
                 <>
                   {following.map((f) => <AccountCard key={f.id} acct={f} />)}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                    {loadingMoreFollowing ? "Cargando…" : ""}
+                    {loadingMoreFollowing && <Loading compact />}
                   </div>
                 </>
               )
@@ -1189,7 +1198,7 @@ export default function ProfilePage() {
 
             {activeTab === "collections" && (
               !tabLoaded.collections ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>{t.loading}</div>
+                <Loading />
               ) : collections.length === 0 ? (
                 <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--text-muted)" }}>
                   <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="users" size="2rem" /></span>
@@ -1364,7 +1373,7 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   className="input"
-                  maxLength={30}
+                  maxLength={limits.maxDisplayNameChars}
                   ref={displayNameRef}
                   value={editDisplayName}
                   onChange={displayNameAuto.onChange}
@@ -1392,7 +1401,7 @@ export default function ProfilePage() {
                 <textarea
                   className="input"
                   style={{ resize: "none", minHeight: 90, fontFamily: "inherit" }}
-                  maxLength={500}
+                  maxLength={limits.maxStatusChars}
                   value={editNote}
                   onChange={bioAuto.onChange}
                   onKeyDown={bioAuto.onKeyDown}
@@ -1406,7 +1415,7 @@ export default function ProfilePage() {
                 />
               </div>
                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right" }}>
-                  {editNote.length}/500
+                  {editNote.length}/{limits.maxNoteChars}
                 </span>
               </div>
 
@@ -1416,7 +1425,7 @@ export default function ProfilePage() {
                   <label style={{ fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                     {t.profile_edit_fields}
                   </label>
-                  {editFields.length < 4 && (
+                  {editFields.length < limits.maxProfileFields && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={addField} style={{ fontSize: "0.8rem", padding: "0.2rem 0.5rem" }}>
                       {t.profile_edit_add_field}
                     </button>
@@ -1434,7 +1443,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: "0 0 35%" }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_label}
-                      maxLength={255}
+                      maxLength={limits.maxProfileFieldChars}
                       value={f.name}
                       onChange={(v) => updateField(i, "name", v)}
                     />
@@ -1443,7 +1452,7 @@ export default function ProfilePage() {
                       containerStyle={{ flex: 1 }}
                       style={{ fontSize: "0.85rem" }}
                       placeholder={t.profile_edit_fields_content}
-                      maxLength={255}
+                      maxLength={limits.maxProfileFieldChars}
                       value={f.value}
                       onChange={(v) => updateField(i, "value", v)}
                     />
@@ -1520,7 +1529,7 @@ export default function ProfilePage() {
               placeholder={t.note_placeholder}
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              maxLength={500}
+              maxLength={limits.maxStatusChars}
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNoteOpen(false)}>{t.profile_cancel}</button>

@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, notFound } from "@/lib/cf";
+import { getInstanceStats } from "@/lib/db";
 
 // GET /nodeinfo/:version
 export async function GET(
@@ -13,21 +14,16 @@ export async function GET(
     return notFound("Only NodeInfo 2.x is supported");
   }
 
-  const db = env.DB;
+  // NodeInfo is probed by every instance that discovers this server; a burst
+  // of probes must not run 5 count queries against D1 each time. Cache it.
+  const cacheKey = `nodeinfo:${version}`;
+  const cached = await env.KV.get(cacheKey).catch(() => null);
+  if (cached) {
+    return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+  }
 
-  const [userRow, postRow, activeMonthRow, activeHalfyearRow, commentRow] = await Promise.all([
-    db.prepare("SELECT COUNT(*) as count FROM actors WHERE is_local = 1").first<{ count: number }>(),
-    db.prepare("SELECT COUNT(*) as count FROM objects WHERE is_local = 1").first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-30 days')"
-    ).first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(DISTINCT actor_id) as count FROM objects WHERE is_local = 1 AND published >= datetime('now', '-180 days')"
-    ).first<{ count: number }>(),
-    db.prepare(
-      "SELECT COUNT(*) as count FROM objects WHERE is_local = 1 AND in_reply_to_id IS NOT NULL"
-    ).first<{ count: number }>(),
-  ]);
+  const db = env.DB;
+  const stats = await getInstanceStats(db, env.KV);
 
   const domain = new URL(request.url).hostname;
 
@@ -46,12 +42,12 @@ export async function GET(
     },
     usage: {
       users: {
-        total: userRow?.count ?? 0,
-        activeMonth: activeMonthRow?.count ?? 0,
-        activeHalfyear: activeHalfyearRow?.count ?? 0,
+        total: stats.userCount,
+        activeMonth: stats.activeMonth,
+        activeHalfyear: stats.activeHalfyear,
       },
-      localPosts: postRow?.count ?? 0,
-      localComments: commentRow?.count ?? 0,
+      localPosts: stats.statusCount,
+      localComments: stats.commentCount,
     },
     openRegistrations: true,
   };
@@ -63,5 +59,7 @@ export async function GET(
     };
   }
 
-  return json(payload);
+  const body = JSON.stringify(payload);
+  await env.KV.put(cacheKey, body, { expirationTtl: 900 }).catch(() => {});
+  return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }

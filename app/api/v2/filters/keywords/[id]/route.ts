@@ -1,70 +1,76 @@
+// GET /api/v2/filters/keywords/:id — view one keyword
+// PUT /api/v2/filters/keywords/:id — edit a keyword
+// DELETE /api/v2/filters/keywords/:id — delete a keyword
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getFilterKeywordById, updateFilterKeyword, deleteFilterKeyword, getFilterById } from "@/lib/db";
+import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterKeyword } from "@/lib/db";
+import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
+import { serializeFilterKeyword } from "@/lib/mastodon/filters";
+import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+type RouteParams = { params: Promise<{ id: string }> };
+
+export async function GET(request: NextRequest, { params }: RouteParams): Promise<Response> {
   const { env } = getCloudflareContext();
-
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
   const { id } = await params;
-  const kw = await getFilterKeywordById(env.DB, id);
-  if (!kw) return notFound();
+  const keyword = await getFilterKeywordById(env.DB, id);
+  if (!keyword) return notFound("Record not found");
+  const filter = await getFilterById(env.DB, keyword.customFilterId, actor.id);
+  if (!filter) return notFound("Record not found");
 
-  const filter = await getFilterById(env.DB, kw.filter_id);
-  if (!filter || filter.actor_id !== actor.id) return notFound();
-
-  return json({ id: kw.id, keyword: kw.keyword, whole_word: kw.whole_word });
+  return json(serializeFilterKeyword({ id: keyword.id, keyword: keyword.keyword, whole_word: keyword.wholeWord }));
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function PUT(request: NextRequest, { params }: RouteParams): Promise<Response> {
   const { env } = getCloudflareContext();
-
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
   const { id } = await params;
-  const kw = await getFilterKeywordById(env.DB, id);
-  if (!kw) return notFound();
-
-  const filter = await getFilterById(env.DB, kw.filter_id);
-  if (!filter || filter.actor_id !== actor.id) return notFound();
+  const keyword = await getFilterKeywordById(env.DB, id);
+  if (!keyword) return notFound("Record not found");
+  const filter = await getFilterById(env.DB, keyword.customFilterId, actor.id);
+  if (!filter) return notFound("Record not found");
 
   const contentType = request.headers.get("Content-Type") ?? "";
-  let keyword = "";
-  let wholeWord = false;
-
-  if (contentType.includes("application/json")) {
-    const body = await request.json() as Record<string, unknown>;
-    keyword = (body.keyword as string) ?? "";
-    wholeWord = Boolean(body.whole_word);
-  } else {
-    const form = await request.formData();
-    keyword = (form.get("keyword") as string) ?? "";
-    wholeWord = (form.get("whole_word") as string) === "true";
+  let body: Record<string, unknown> = {};
+  try {
+    if (contentType.includes("application/json")) {
+      body = await request.json() as Record<string, unknown>;
+    } else {
+      const form = await request.formData();
+      body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+    }
+  } catch {
+    return badRequest("Invalid request body");
   }
 
-  if (!keyword) return json({ error: "keyword is required" }, 422);
+  const text = (body.keyword as string | undefined)?.trim() ?? "";
+  if (!text) return badRequest("Validation failed: Keyword can't be blank");
+  const wholeWord = body.whole_word === "true" || body.whole_word === true;
 
-  await updateFilterKeyword(env.DB, id, keyword, wholeWord);
-  return json({ id, keyword, whole_word: wholeWord });
+  await updateFilterKeyword(env.DB, id, text.slice(0, MAX_FILTER_KEYWORD_CHARS), wholeWord);
+  await broadcastFiltersChanged(env.TIMELINE_STREAM, actor.username).catch(() => {});
+
+  return json(serializeFilterKeyword({ id, keyword: text.slice(0, MAX_FILTER_KEYWORD_CHARS), whole_word: wholeWord }));
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {
   const { env } = getCloudflareContext();
-
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
   const { id } = await params;
-  const kw = await getFilterKeywordById(env.DB, id);
-  if (!kw) return notFound();
-
-  const filter = await getFilterById(env.DB, kw.filter_id);
-  if (!filter || filter.actor_id !== actor.id) return notFound();
+  const keyword = await getFilterKeywordById(env.DB, id);
+  if (!keyword) return notFound("Record not found");
+  const filter = await getFilterById(env.DB, keyword.customFilterId, actor.id);
+  if (!filter) return notFound("Record not found");
 
   await deleteFilterKeyword(env.DB, id);
+  await broadcastFiltersChanged(env.TIMELINE_STREAM, actor.username).catch(() => {});
   return json({});
 }

@@ -4,6 +4,7 @@ import { getActorById, getFollow, deleteFollow } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildUndo, buildFollow, generateId } from "@/lib/activitypub/utils";
 import { deliverToInbox } from "@/lib/activitypub/federation";
+import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // POST /api/v1/accounts/:id/unfollow
 export async function POST(
@@ -23,7 +24,7 @@ export async function POST(
 
   const follow = await getFollow(env.DB, actor.id, target.id);
   if (!follow) {
-    return json({ id: target.id, following: false, requested: false });
+    return json(await buildRelationship(env.DB, actor.id, target.id));
   }
 
   await deleteFollow(env.DB, actor.id, target.id);
@@ -41,5 +42,5 @@ export async function POST(
     await deliverToInbox(inboxUrl, undoActivity, `${actor.id}#main-key`, actor.privateKeyPem);
   }
 
-  return json({ id: target.id, following: false, requested: false });
+  return json(await buildRelationship(env.DB, actor.id, target.id));
 }
