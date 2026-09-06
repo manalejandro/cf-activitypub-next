@@ -604,7 +604,7 @@ export function StatusCard({
   const visibilityInfo = (() => {
     switch (status.visibility) {
       case "unlisted": return { icon: "unlock", label: t.vis_unlisted };
-      case "followers": return { icon: "lock", label: t.vis_followers };
+      case "private": return { icon: "lock", label: t.vis_followers };
       case "direct": return { icon: "envelope", label: t.vis_direct };
       default: return { icon: "globe", label: t.vis_public };
     }

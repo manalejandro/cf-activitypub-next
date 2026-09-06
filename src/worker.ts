@@ -26,7 +26,6 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { normalizeVisibility } from "../lib/mastodon/visibility";
 import { getActorById } from "../lib/db";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { runModerationCycle } from "../lib/moderation/cycle";
@@ -516,7 +515,10 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
 
       const baseUrl = `https://${actor.domain}`;
       const content = (body.status as string | undefined)?.trim() ?? "";
-      const visibility = normalizeVisibility(body.visibility) ?? "public";
+      // Scheduled rows may predate the visibility rename: "followers" is the
+      // legacy internal name for Mastodon's "private".
+      let visibility = (body.visibility as string) ?? "public";
+      if (visibility === "followers") visibility = "private";
       const sensitive = body.sensitive === true || body.sensitive === "true";
       const spoilerText = (body.spoiler_text as string | undefined) ?? "";
       const language = body.language as string | undefined;
@@ -527,7 +529,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         actorUsername: actor.username,
         content,
         published,
-        visibility: visibility as "public" | "unlisted" | "followers" | "direct",
+        visibility: visibility as "public" | "unlisted" | "private" | "direct",
         inReplyTo: undefined,
         sensitive,
         summary: sensitive ? spoilerText : undefined,

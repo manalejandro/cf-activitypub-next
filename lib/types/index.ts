@@ -241,7 +241,7 @@ export interface LocalObject {
   content: string | null;
   contentWarning: string | null;
   sensitive: boolean;
-  visibility: "public" | "unlisted" | "followers" | "direct";
+  visibility: "public" | "unlisted" | "private" | "direct";
   inReplyToId: string | null;
   quoteId: string | null;
   language: string | null;

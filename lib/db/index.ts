@@ -116,7 +116,10 @@ function rowToObject(r: Row): LocalObject {
     content: r.content ?? null,
     contentWarning: r.content_warning ?? null,
     sensitive: Boolean(r.sensitive),
-    visibility: r.visibility,
+    // Legacy rows stored followers-only posts as "followers" (the old internal
+    // name); normalize at the DB boundary so the rest of the code only sees the
+    // Mastodon API name "private".
+    visibility: r.visibility === "followers" ? "private" : r.visibility,
     inReplyToId: r.in_reply_to_id ?? null,
     quoteId: r.quote_id ?? null,
     language: r.language ?? null,
@@ -146,7 +149,7 @@ function isMentioned(obj: Pick<LocalObject, "raw">, viewerId: string): boolean {
  * Check whether a viewer is allowed to see a status based on visibility rules.
  * Matches Mastodon behaviour:
  * - public / unlisted → always visible
- * - followers (private) → visible to author or followers
+ * - private (followers) → visible to author or followers
  * - direct → visible to author or mentioned users
  */
 export function canViewStatus(
@@ -159,7 +162,7 @@ export function canViewStatus(
     case "public":
     case "unlisted":
       return true;
-    case "followers":
+    case "private":
       return isFollowing;
     case "direct":
       return viewerId !== null && isMentioned(obj, viewerId);
@@ -1734,7 +1737,7 @@ export async function getHomeTimeline(
   const ownBranch = branch("o.actor_id = ?", "o.visibility != 'direct'", publishedClause);
   const followsBranch = branch(
     "o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')",
-    "o.visibility IN ('public', 'unlisted', 'followers')",
+    "o.visibility IN ('public', 'unlisted', 'private')",
     publishedClause
   );
   const rows = await db
@@ -1835,9 +1838,9 @@ export async function getActorStatuses(
 ): Promise<LocalObject[]> {
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
-    ? "'public', 'unlisted', 'followers', 'direct'"
+    ? "'public', 'unlisted', 'private', 'direct'"
     : isFollowing
-      ? "'public', 'unlisted', 'followers'"
+      ? "'public', 'unlisted', 'private'"
       : "'public', 'unlisted'";
 
   const query = (withPublished: boolean) => {
@@ -2484,9 +2487,9 @@ export async function getActorStatuses_withReplies(
 ): Promise<LocalObject[]> {
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
-    ? "'public', 'unlisted', 'followers', 'direct'"
+    ? "'public', 'unlisted', 'private', 'direct'"
     : isFollowing
-      ? "'public', 'unlisted', 'followers'"
+      ? "'public', 'unlisted', 'private'"
       : "'public', 'unlisted'";
 
   const query = (withPublished: boolean) => {

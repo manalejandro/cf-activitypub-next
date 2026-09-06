@@ -105,7 +105,7 @@ export async function GET(
           actorUsername: username,
           content: s.content ?? "",
           published: s.published,
-          visibility: s.visibility as "public" | "unlisted" | "followers" | "direct",
+          visibility: s.visibility as "public" | "unlisted" | "private" | "direct",
           inReplyTo: s.inReplyToId ?? undefined,
           sensitive: s.sensitive,
           summary: s.contentWarning ?? undefined,

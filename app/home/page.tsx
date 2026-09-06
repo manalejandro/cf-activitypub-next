@@ -38,7 +38,7 @@ export default function HomePage() {
   const [mediaFiles, setMediaFiles] = useState<MediaAttachment[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">("public");
+  const [visibility, setVisibility] = useState<"public" | "unlisted" | "private" | "direct">("public");
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -131,7 +131,7 @@ export default function HomePage() {
     if (!res.ok) return;
     const data = await res.json() as Record<string, string | boolean | null>;
     const vis = data["posting:default:visibility"];
-    if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "followers" | "direct");
+    if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "private" | "direct");
     // Mastodon: "always mark media as sensitive" → new attachments blur by default.
     if (data["posting:default:sensitive"] === true) setDefaultSensitive(true);
   }

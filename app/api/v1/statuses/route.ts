@@ -21,7 +21,6 @@ import {
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
-import { normalizeVisibility } from "@/lib/mastodon/visibility";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import {
   buildNote,
@@ -208,11 +207,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  // Accept both the Mastodon API names (public/unlisted/private/direct) and
-  // the internal value used by this instance's own UI (followers), normalized
-  // to the internal representation that everything downstream expects.
-  const visibility = normalizeVisibility(body.visibility) ?? "";
-  if (!visibility) {
+  // Mastodon visibility names: `private` = followers-only. The legacy internal
+  // name "followers" is accepted and normalized for older clients.
+  let visibility = (body.visibility as string) ?? "public";
+  if (visibility === "followers") visibility = "private";
+  if (!["public", "unlisted", "private", "direct"].includes(visibility)) {
     return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
   }
   if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < limits.pollMinExpiration)) {
@@ -240,8 +239,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (quoted.visibility === "direct") {
       return json({ error: "Validation failed: Cannot quote a direct message" }, 422);
     }
-    // A followers-only post may only be quoted privately (Mastodon behaviour).
-    if (quoted.visibility === "followers" && visibility !== "followers" && visibility !== "direct") {
+    // A followers-only (private) post may only be quoted privately (Mastodon behaviour).
+    if (quoted.visibility === "private" && visibility !== "private" && visibility !== "direct") {
       return json({ error: "Validation failed: Private posts can only be quoted privately" }, 422);
     }
     const qAuthor = await getActorById(env.DB, quoted.actorId);
@@ -388,7 +387,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   } else if (visibility === "unlisted") {
     noteTo = [followersAudience];
     noteCc = [PUBLIC_ADDRESS, ...mentionedIRIs];
-  } else if (visibility === "followers") {
+  } else if (visibility === "private") {
     noteTo = [followersAudience];
     noteCc = [...mentionedIRIs];
   } else {
@@ -404,7 +403,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     actorUsername: actor.username,
     content: htmlContent,
     published,
-    visibility: visibility as "public" | "unlisted" | "followers" | "direct",
+    visibility: visibility as "public" | "unlisted" | "private" | "direct",
     inReplyTo: inReplyToId,
     sensitive,
     summary: sensitive ? spoilerText : undefined,
@@ -427,7 +426,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     content: htmlContent,
     contentWarning: sensitive ? spoilerText : null,
     sensitive,
-    visibility: visibility as "public" | "unlisted" | "followers" | "direct",
+    visibility: visibility as "public" | "unlisted" | "private" | "direct",
     inReplyToId: inReplyToId ?? null,
     quoteId,
     language: language ?? null,

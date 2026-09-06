@@ -137,7 +137,7 @@ export default function SettingsPage() {
             >
               <option value="public">{t.vis_public}</option>
               <option value="unlisted">{t.vis_unlisted}</option>
-              <option value="followers">{t.vis_followers}</option>
+              <option value="private">{t.vis_followers}</option>
               <option value="direct">{t.vis_direct}</option>
             </select>
           </div>

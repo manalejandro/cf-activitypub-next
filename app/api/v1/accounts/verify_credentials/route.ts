@@ -5,7 +5,6 @@ import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCu
 import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { toApiVisibility, normalizeVisibility } from "@/lib/mastodon/visibility";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -23,7 +22,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
   const quotePolicy = (await getActorPreference(env.DB, actor.id, "posting:default:quote_policy")) ?? "followers";
   const postingLanguage = (await getActorPreference(env.DB, actor.id, "posting:default:language")) ?? "en";
-  const postingVisibility = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
+  const postingVisibilityRaw = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
+  // Legacy stored value for followers-only posts, normalized to Mastodon's name.
+  const postingVisibility = postingVisibilityRaw === "followers" ? "private" : postingVisibilityRaw;
   const postingSensitive = (await getActorPreference(env.DB, actor.id, "posting:default:sensitive")) === "true";
   const hideCollections = (await getActorPreference(env.DB, actor.id, "profile:hide_collections")) === "true";
   const followRequestsRow = await env.DB
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
   }
 
-  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: toApiVisibility(postingVisibility), sensitive: postingSensitive, followRequestsCount, hideCollections }));
+  return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: postingVisibility, sensitive: postingSensitive, followRequestsCount, hideCollections }));
 }
 
 // PATCH /api/v1/accounts/update_credentials
@@ -73,7 +74,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let fieldsRaw: { name: string; value: string }[] | undefined;
   let autoDeleteAfter: number | null | undefined;
   let sourceQuotePolicy: string | undefined;
-  let sourcePrivacy: string | undefined;
   let sourceHideCollections: boolean | undefined;
 
   if (contentType.includes("multipart/form-data")) {
@@ -93,8 +93,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     }
     const quotePolicyVal = form.get("source[quote_policy]") as string | null;
     if (quotePolicyVal !== null) sourceQuotePolicy = quotePolicyVal;
-    const privacyVal = form.get("source[privacy]") as string | null;
-    if (privacyVal !== null) sourcePrivacy = privacyVal;
     const hideCollectionsVal = form.get("source[hide_collections]") as string | null;
     if (hideCollectionsVal !== null) sourceHideCollections = hideCollectionsVal === "true";
 
@@ -158,9 +156,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       autoDeleteAfter = v === "" || v === 0 || v === "0" ? null : Number(v) || null;
     }
     if (typeof body.source === "object" && body.source !== null) {
-      const src = body.source as { quote_policy?: string; privacy?: string; hide_collections?: boolean };
+      const src = body.source as { quote_policy?: string; hide_collections?: boolean };
       if (src.quote_policy !== undefined) sourceQuotePolicy = src.quote_policy;
-      if (src.privacy !== undefined) sourcePrivacy = src.privacy;
       if (src.hide_collections !== undefined) sourceHideCollections = Boolean(src.hide_collections);
     }
   }
@@ -232,22 +229,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
          ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
       )
       .bind(actor.id, sourceQuotePolicy)
-      .run();
-  }
-
-  // Default post visibility — `source[privacy]` (Mastodon API). Accepts both
-  // the Mastodon name (`private`) and the internal one (`followers`).
-  if (sourcePrivacy !== undefined) {
-    const normalized = normalizeVisibility(sourcePrivacy);
-    if (!normalized) {
-      return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
-    }
-    await env.DB
-      .prepare(
-        `INSERT INTO preferences (actor_id, key, value, updated_at) VALUES (?, 'posting:default:visibility', ?, datetime('now'))
-         ON CONFLICT (actor_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
-      )
-      .bind(actor.id, normalized)
       .run();
   }
 

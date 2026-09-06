@@ -54,7 +54,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     content: r.content as string | null,
     contentWarning: r.content_warning as string | null,
     sensitive: Boolean(r.sensitive),
-    visibility: r.visibility as "public" | "unlisted" | "followers" | "direct",
+    visibility: r.visibility as "public" | "unlisted" | "private" | "direct",
     inReplyToId: r.in_reply_to_id as string | null,
     quoteId: (r.quote_id as string | null) ?? null,
     language: r.language as string | null,

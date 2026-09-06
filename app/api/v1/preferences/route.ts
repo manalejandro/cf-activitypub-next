@@ -1,7 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { normalizeVisibility } from "@/lib/mastodon/visibility";
 
 const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:visibility": "public",
@@ -14,12 +13,16 @@ const DEFAULT_PREFERENCES: Record<string, string | null> = {
 
 const PREFERENCE_KEYS = new Set(Object.keys(DEFAULT_PREFERENCES));
 
+const VISIBILITIES = new Set(["public", "unlisted", "private", "direct"]);
 const QUOTE_POLICIES = new Set(["public", "followers", "followed", "nobody"]);
 const MEDIA_EXPANSIONS = new Set(["default", "show_all", "hide_all"]);
 
+// Legacy internal name for followers-only posts, normalized to "private".
+function normalizeVisibility(raw: string): string {
+  return raw === "followers" ? "private" : raw;
+}
+
 // Validates and coerces a preference value into its storage (string) form.
-// Visibility accepts both the Mastodon API names (`private`) and the internal
-// ones (`followers`) and is always stored as the internal value.
 function normalizeValue(key: string, raw: unknown): string | null | undefined {
   if (key === "posting:default:sensitive" || key === "reading:expand:spoilers") {
     return typeof raw === "boolean" ? String(raw) : undefined;
@@ -29,11 +32,10 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
     if (typeof raw === "string" && /^[a-z]{2}$/.test(raw)) return raw;
     return undefined;
   }
-  if (key === "posting:default:visibility") {
-    return normalizeVisibility(raw) ?? undefined;
-  }
   if (typeof raw !== "string") return undefined;
   switch (key) {
+    case "posting:default:visibility":
+      return VISIBILITIES.has(normalizeVisibility(raw)) ? normalizeVisibility(raw) : undefined;
     case "posting:default:quote_policy":
       return QUOTE_POLICIES.has(raw) ? raw : undefined;
     case "reading:expand:media":
@@ -47,6 +49,9 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
 function toApiValue(key: string, stored: string | null): string | boolean | null {
   if (key === "posting:default:sensitive" || key === "reading:expand:spoilers") {
     return stored === "true";
+  }
+  if (key === "posting:default:visibility") {
+    return stored === null ? null : normalizeVisibility(stored);
   }
   return stored;
 }

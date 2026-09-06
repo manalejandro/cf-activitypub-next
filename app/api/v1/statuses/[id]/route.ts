@@ -170,7 +170,7 @@ export async function PUT(
     actorUsername: actor.username,
     content: htmlContent,
     published: obj.published,
-    visibility: obj.visibility as "public" | "unlisted" | "followers" | "direct",
+    visibility: obj.visibility as "public" | "unlisted" | "private" | "direct",
     inReplyTo: obj.inReplyToId ?? undefined,
     sensitive,
     summary: sensitive ? spoilerText : undefined,

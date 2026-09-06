@@ -54,7 +54,7 @@ export async function getQuotesByIds(
       content: (obj.content as string | null) ?? null,
       contentWarning: (obj.content_warning as string | null) ?? null,
       sensitive: Boolean(obj.sensitive),
-      visibility: obj.visibility as "public" | "unlisted" | "followers" | "direct",
+      visibility: obj.visibility as "public" | "unlisted" | "private" | "direct",
       inReplyToId: (obj.in_reply_to_id as string | null) ?? null,
       quoteId: (obj.quote_id as string | null) ?? null,
       language: (obj.language as string | null) ?? null,

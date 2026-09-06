@@ -4,12 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 
-export type Visibility = "public" | "unlisted" | "followers" | "direct";
+export type Visibility = "public" | "unlisted" | "private" | "direct";
 
 const OPTIONS: { value: Visibility; icon: string; labelKey: "vis_public" | "vis_unlisted" | "vis_followers" | "vis_direct" }[] = [
   { value: "public", icon: "globe", labelKey: "vis_public" },
   { value: "unlisted", icon: "unlock", labelKey: "vis_unlisted" },
-  { value: "followers", icon: "lock", labelKey: "vis_followers" },
+  { value: "private", icon: "lock", labelKey: "vis_followers" },
   { value: "direct", icon: "envelope", labelKey: "vis_direct" },
 ];
 

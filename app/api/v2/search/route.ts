@@ -58,7 +58,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       if (row && row.content) {
         const actor = await getActorById(env.DB, row.actor_id as string);
         if (actor && !actor.suspended && !actor.silenced) {
-          const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "followers" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
+          const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "private" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
           const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
           const filtered = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
           results.statuses.push(serializeStatus(obj, actor, domain, { attachments: attachments.get(obj.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered }));
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       content: r.content as string,
       contentWarning: r.content_warning as string | null,
       sensitive: Boolean(r.sensitive),
-      visibility: r.visibility as "public" | "unlisted" | "followers" | "direct",
+      visibility: r.visibility as "public" | "unlisted" | "private" | "direct",
       inReplyToId: r.in_reply_to_id as string | null,
       quoteId: (r.quote_id as string | null) ?? null,
       language: r.language as string | null,

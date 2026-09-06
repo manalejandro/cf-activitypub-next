@@ -264,7 +264,8 @@ export function serializeStatus(
   const visibilityMap: Record<string, MastodonStatus["visibility"]> = {
     public: "public",
     unlisted: "unlisted",
-    followers: "private",
+    private: "private",
+    followers: "private", // legacy stored rows, before the visibility rename
     direct: "direct",
   };
 

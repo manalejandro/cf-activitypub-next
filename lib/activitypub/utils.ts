@@ -166,7 +166,7 @@ export function buildNote(
     actorUsername: string;
     content: string;
     published: string;
-    visibility: "public" | "unlisted" | "followers" | "direct";
+    visibility: "public" | "unlisted" | "private" | "direct";
     inReplyTo?: string;
     sensitive?: boolean;
     summary?: string;
@@ -193,7 +193,7 @@ export function buildNote(
       to = options.to ?? [followers];
       cc = options.cc ?? [PUBLIC_ADDRESS];
       break;
-    case "followers":
+    case "private":
       to = options.to ?? [followers];
       cc = options.cc ?? [];
       break;

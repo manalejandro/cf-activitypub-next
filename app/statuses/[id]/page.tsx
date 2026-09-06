@@ -135,8 +135,8 @@ function ReplyBox({
   const { t, locale } = useLocale();
   const limits = useLimits();
   const [text, setText] = useState("");
-  const [visibility, setVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(
-    (["public", "unlisted", "followers", "direct"].includes(replyTo?.visibility ?? "public") ? replyTo?.visibility ?? "public" : "public") as "public" | "unlisted" | "followers" | "direct"
+  const [visibility, setVisibility] = useState<"public" | "unlisted" | "private" | "direct">(
+    (["public", "unlisted", "private", "direct"].includes(replyTo?.visibility ?? "public") ? replyTo?.visibility ?? "public" : "public") as "public" | "unlisted" | "private" | "direct"
   );
   const [mediaFiles, setMediaFiles] = useState<MediaAttachment[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);

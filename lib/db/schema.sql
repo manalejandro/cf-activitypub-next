@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS objects (
   content         TEXT,
   content_warning TEXT,
   sensitive       INTEGER NOT NULL DEFAULT 0,
-  visibility      TEXT NOT NULL DEFAULT 'public',  -- public|unlisted|followers|direct
+  visibility      TEXT NOT NULL DEFAULT 'public',  -- public|unlisted|private|direct
   in_reply_to_id  TEXT,
   quote_id        TEXT,
   language        TEXT,

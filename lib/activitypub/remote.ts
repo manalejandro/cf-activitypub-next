@@ -383,7 +383,7 @@ export async function fetchAndCacheRemoteActor(
  * Resolve the visibility of a fediverse status from its AP audience.
  * Mirrors the inbox's resolveVisibility so outbox-ingested objects line up.
  */
-function outboxVisibility(to: unknown, cc: unknown): "public" | "unlisted" | "followers" | "direct" {
+function outboxVisibility(to: unknown, cc: unknown): "public" | "unlisted" | "private" | "direct" {
   const toArr: string[] = Array.isArray(to) ? to : (to ? [to as string] : []);
   const ccArr: string[] = Array.isArray(cc) ? cc : (cc ? [cc as string] : []);
   const isPublic = (v: string) =>
@@ -393,7 +393,7 @@ function outboxVisibility(to: unknown, cc: unknown): "public" | "unlisted" | "fo
     v === "Public";
   if (toArr.some(isPublic)) return "public";
   if (ccArr.some(isPublic)) return "unlisted";
-  if (toArr.some((t) => t.includes("/followers"))) return "followers";
+  if (toArr.some((t) => t.includes("/followers"))) return "private";
   return "direct";
 }
 
