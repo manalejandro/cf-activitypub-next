@@ -24,12 +24,23 @@ const MIN_ACCOUNT_AGE = 10; // seconds — ignore accounts created milliseconds 
 /** How often the suspicious-account scan may run (KV cooldown, not every cron tick). */
 const ACCOUNT_SCAN_COOLDOWN_SECONDS = 10 * 60;
 
+/**
+ * Whether a stage has exhausted its time budget. The whole cron must finish
+ * inside the ~60s overlap window or the next tick logs "skipping overlapping
+ * run"; AI calls are seconds each, so every AI-heavy loop bails once the
+ * budget is spent and lets the next run continue (per-item KV markers make
+ * each stage resumable).
+ */
+function budgetExceeded(startedAt: number, budgetMs: number): boolean {
+  return Date.now() - startedAt >= budgetMs;
+}
+
 /** Recent local statuses (published in the last N minutes). */
 async function recentLocalStatuses(db: D1Database, minutes: number) {
   const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
   return db
     .prepare(
-      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 40"
+      "SELECT id, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id FROM objects WHERE is_local = 1 AND type = 'Note' AND published >= ? AND content IS NOT NULL AND content != '' ORDER BY published DESC LIMIT 10"
     )
     .bind(cutoff)
     .all<{ id: string; actor_id: string; content: string; content_warning: string | null; sensitive: number; visibility: string; in_reply_to_id: string | null }>();
@@ -50,7 +61,12 @@ async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
     }
   }
   const rows = await recentLocalStatuses(env.DB, 20);
+  const startedAt = Date.now();
   for (const row of rows.results) {
+    if (budgetExceeded(startedAt, 25_000)) {
+      console.log("[moderation] status screen: time budget spent, continuing next run");
+      return;
+    }
     if (env.KV) {
       try {
         if (await env.KV.get(`guardian:status:${row.id}`)) continue;
@@ -86,7 +102,7 @@ async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
 async function reviewableAccounts(db: D1Database): Promise<{ id: string }[]> {
   const rows = await db
     .prepare(
-      "SELECT id FROM actors WHERE (created_at >= datetime('now', '-1 day') OR (following_count >= 50 AND followers_count < 5)) AND suspended = 0 LIMIT 40"
+      "SELECT id FROM actors WHERE (created_at >= datetime('now', '-1 day') OR (following_count >= 50 AND followers_count < 5)) AND suspended = 0 LIMIT 10"
     )
     .all<{ id: string }>();
   return rows.results;
@@ -122,7 +138,12 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
   const hourCutoff = new Date(Date.now() - 60 * 60_000).toISOString();
   const dayCutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
 
+  const startedAt = Date.now();
   for (const { id } of candidates) {
+    if (budgetExceeded(startedAt, 30_000)) {
+      console.log("[moderation] account scan: time budget spent, continuing next run");
+      return;
+    }
     if (env.KV && (await env.KV.get(`guardian:account:${id}`))) continue;
     if (env.KV) await env.KV.put(`guardian:account:${id}`, "1", { expirationTtl: 6 * 3600 });
 
@@ -265,6 +286,7 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
     }
   }
   const cutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  const startedAt = Date.now();
   const rows = await env.DB
     .prepare("SELECT id, actor_id, content FROM objects WHERE type = 'Note' AND content IS NOT NULL AND content != '' AND published >= ? LIMIT 3000")
     .bind(cutoff)
@@ -275,6 +297,7 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
   // human behaviour on busy instances — it must never be treated as a spambot.
   const groups = new Map<string, { actorId: string; count: number; sample: string }>();
   for (const row of rows.results) {
+    if (budgetExceeded(startedAt, 20_000)) break;
     const signals = computeContentSignals(row.content);
     const spamLike = signals.flags.some((f) =>
       f === "patron_estafa" ||
@@ -394,7 +417,9 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
     }
   }
 
+  const startedAt = Date.now();
   for (const domain of domains) {
+    if (budgetExceeded(startedAt, 15_000)) break;
     if (!domain || domain === instanceDomain) continue;
     const alreadyBlocked = await env.DB.prepare("SELECT id FROM domain_blocks WHERE domain = ? LIMIT 1").bind(domain).first();
     if (alreadyBlocked) continue;

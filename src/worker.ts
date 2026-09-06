@@ -574,7 +574,9 @@ async function executeScheduled(env: Env): Promise<void> {
   }
 
   // Guard against overlapping cron invocations (slow runs or clock drift): only
-  // one patrol runs at a time. The lock expires by itself (60s < 1min).
+  // one patrol runs at a time. The lock outlives the run (90s > the stage
+  // budgets) so a slow stage can't start a second concurrent run; the per-stage
+  // KV throttles keep every run inside the overlap window.
   const lock = await env.KV.get("cron:lock");
   if (lock) {
     // Info-level: the guard is working as intended; with the per-task KV
@@ -583,7 +585,7 @@ async function executeScheduled(env: Env): Promise<void> {
     console.log("[cron] skipping overlapping run");
     return;
   }
-  await env.KV.put("cron:lock", "1", { expirationTtl: 60 });
+  await env.KV.put("cron:lock", "1", { expirationTtl: 90 });
 
   try {
     try {
@@ -751,6 +753,8 @@ async function verifyAccountFieldsCron(env: Env): Promise<void> {
     // external page) so the whole cron stays inside the 60s overlap window.
     // ORDER BY verified_at ASC: failed/never-checked fields (NULL) are retried
     // first, then the longest-verified ones get re-checked (badge revocation).
+    // The checks fetch external pages, so they run concurrently — the stage
+    // costs ~one page latency instead of 5 × latency.
 const localRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
@@ -760,14 +764,19 @@ const localRows = await env.DB
          LIMIT 5`
       )
       .all<{ actor_id: string }>();
-    for (const row of localRows.results) {
-      const actor = await getActorById(env.DB, row.actor_id);
-      if (!actor) continue;
-      const marker = `verify:local:${actor.id}`;
-      if (await env.KV.get(marker)) continue;
-      await verifyAccountFields(env.DB, actor.id, actor.domain);
-      await env.KV.put(marker, "1", { expirationTtl: 1800 });
-    }
+    await Promise.allSettled(
+      localRows.results.map(async (row) => {
+        const actor = await getActorById(env.DB, row.actor_id);
+        if (!actor) return;
+        const marker = `verify:local:${actor.id}`;
+        if (await env.KV.get(marker)) return;
+        try {
+          await verifyAccountFields(env.DB, actor.id, actor.domain);
+        } finally {
+          await env.KV.put(marker, "1", { expirationTtl: 1800 });
+        }
+      })
+    );
 
     // Remote accounts — verify those with unverified link fields (or never
     // checked), bounded to a few per run so the cron stays under the memory
@@ -784,11 +793,13 @@ const localRows = await env.DB
          LIMIT 5`
       )
       .all<{ actor_id: string }>();
-    for (const row of remoteRows.results) {
-      const actor = await getActorById(env.DB, row.actor_id);
-      if (!actor) continue;
-      await verifyAccountFields(env.DB, actor.id, actor.domain);
-    }
+    await Promise.allSettled(
+      remoteRows.results.map(async (row) => {
+        const actor = await getActorById(env.DB, row.actor_id);
+        if (!actor) return;
+        await verifyAccountFields(env.DB, actor.id, actor.domain);
+      })
+    );
   } catch (err) {
     console.error("[cron] verifyAccountFields failed", err);
   }
