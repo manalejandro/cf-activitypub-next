@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorFields, getAllCustomEmojis, getActorPreference } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { toApiVisibility } from "@/lib/mastodon/visibility";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 
 // POST /api/v1/accounts/verify — re-run the rel="me" verification for the
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       fields,
       emojis: await getAllCustomEmojis(env.DB),
       language: postingLanguage,
-      privacy: postingVisibility,
+      privacy: toApiVisibility(postingVisibility),
       sensitive: postingSensitive,
       followRequestsCount,
     })

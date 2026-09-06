@@ -21,6 +21,7 @@ import {
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
+import { normalizeVisibility } from "@/lib/mastodon/visibility";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import {
   buildNote,
@@ -207,8 +208,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  const visibility = (body.visibility as string) ?? "public";
-  if (!["public", "unlisted", "private", "direct"].includes(visibility)) {
+  // Accept both the Mastodon API names (public/unlisted/private/direct) and
+  // the internal value used by this instance's own UI (followers), normalized
+  // to the internal representation that everything downstream expects.
+  const visibility = normalizeVisibility(body.visibility) ?? "";
+  if (!visibility) {
     return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
   }
   if (pollRaw && pollRaw.expires_in != null && (!Number.isFinite(Number(pollRaw.expires_in)) || Number(pollRaw.expires_in) < limits.pollMinExpiration)) {
@@ -237,7 +241,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "Validation failed: Cannot quote a direct message" }, 422);
     }
     // A followers-only post may only be quoted privately (Mastodon behaviour).
-    if (quoted.visibility === "followers" && visibility !== "private" && visibility !== "direct") {
+    if (quoted.visibility === "followers" && visibility !== "followers" && visibility !== "direct") {
       return json({ error: "Validation failed: Private posts can only be quoted privately" }, 422);
     }
     const qAuthor = await getActorById(env.DB, quoted.actorId);
