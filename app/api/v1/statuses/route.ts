@@ -207,10 +207,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  // Mastodon visibility names: `private` = followers-only. The legacy internal
-  // name "followers" is accepted and normalized for older clients.
-  let visibility = (body.visibility as string) ?? "public";
-  if (visibility === "followers") visibility = "private";
+  const visibility = (body.visibility as string) ?? "public";
   if (!["public", "unlisted", "private", "direct"].includes(visibility)) {
     return json({ error: "Validation failed: Visibility can be one of public, unlisted, private, direct" }, 422);
   }

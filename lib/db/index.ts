@@ -116,10 +116,7 @@ function rowToObject(r: Row): LocalObject {
     content: r.content ?? null,
     contentWarning: r.content_warning ?? null,
     sensitive: Boolean(r.sensitive),
-    // Legacy rows stored followers-only posts as "followers" (the old internal
-    // name); normalize at the DB boundary so the rest of the code only sees the
-    // Mastodon API name "private".
-    visibility: r.visibility === "followers" ? "private" : r.visibility,
+    visibility: r.visibility,
     inReplyToId: r.in_reply_to_id ?? null,
     quoteId: r.quote_id ?? null,
     language: r.language ?? null,

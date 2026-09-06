@@ -265,7 +265,6 @@ export function serializeStatus(
     public: "public",
     unlisted: "unlisted",
     private: "private",
-    followers: "private", // legacy stored rows, before the visibility rename
     direct: "direct",
   };
 

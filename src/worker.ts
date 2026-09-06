@@ -515,10 +515,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
 
       const baseUrl = `https://${actor.domain}`;
       const content = (body.status as string | undefined)?.trim() ?? "";
-      // Scheduled rows may predate the visibility rename: "followers" is the
-      // legacy internal name for Mastodon's "private".
-      let visibility = (body.visibility as string) ?? "public";
-      if (visibility === "followers") visibility = "private";
+      const visibility = (body.visibility as string) ?? "public";
       const sensitive = body.sensitive === true || body.sensitive === "true";
       const spoilerText = (body.spoiler_text as string | undefined) ?? "";
       const language = body.language as string | undefined;

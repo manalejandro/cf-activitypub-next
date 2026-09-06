@@ -22,9 +22,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
   const quotePolicy = (await getActorPreference(env.DB, actor.id, "posting:default:quote_policy")) ?? "followers";
   const postingLanguage = (await getActorPreference(env.DB, actor.id, "posting:default:language")) ?? "en";
-  const postingVisibilityRaw = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
-  // Legacy stored value for followers-only posts, normalized to Mastodon's name.
-  const postingVisibility = postingVisibilityRaw === "followers" ? "private" : postingVisibilityRaw;
+  const postingVisibility = (await getActorPreference(env.DB, actor.id, "posting:default:visibility")) ?? "public";
   const postingSensitive = (await getActorPreference(env.DB, actor.id, "posting:default:sensitive")) === "true";
   const hideCollections = (await getActorPreference(env.DB, actor.id, "profile:hide_collections")) === "true";
   const followRequestsRow = await env.DB

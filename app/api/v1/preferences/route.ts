@@ -17,11 +17,6 @@ const VISIBILITIES = new Set(["public", "unlisted", "private", "direct"]);
 const QUOTE_POLICIES = new Set(["public", "followers", "followed", "nobody"]);
 const MEDIA_EXPANSIONS = new Set(["default", "show_all", "hide_all"]);
 
-// Legacy internal name for followers-only posts, normalized to "private".
-function normalizeVisibility(raw: string): string {
-  return raw === "followers" ? "private" : raw;
-}
-
 // Validates and coerces a preference value into its storage (string) form.
 function normalizeValue(key: string, raw: unknown): string | null | undefined {
   if (key === "posting:default:sensitive" || key === "reading:expand:spoilers") {
@@ -35,7 +30,7 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
   if (typeof raw !== "string") return undefined;
   switch (key) {
     case "posting:default:visibility":
-      return VISIBILITIES.has(normalizeVisibility(raw)) ? normalizeVisibility(raw) : undefined;
+      return VISIBILITIES.has(raw) ? raw : undefined;
     case "posting:default:quote_policy":
       return QUOTE_POLICIES.has(raw) ? raw : undefined;
     case "reading:expand:media":
@@ -49,9 +44,6 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
 function toApiValue(key: string, stored: string | null): string | boolean | null {
   if (key === "posting:default:sensitive" || key === "reading:expand:spoilers") {
     return stored === "true";
-  }
-  if (key === "posting:default:visibility") {
-    return stored === null ? null : normalizeVisibility(stored);
   }
   return stored;
 }
