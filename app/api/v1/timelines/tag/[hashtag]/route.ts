@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getHashtagTimeline, getActorById, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getHashtagTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
@@ -30,7 +30,7 @@ export async function GET(
 
   const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
@@ -41,13 +41,14 @@ export async function GET(
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
     authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
     authActor ? getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids)) : Promise.resolve(new Set<string>()),
+    getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
   const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
-      let author = await getActorById(env.DB, obj.actorId);
+      let author = authorMap.get(obj.actorId) ?? null;
       if (!author && obj.actorId.startsWith("https://")) {
         try {
           const { fetchRemoteObject } = await import("@/lib/activitypub/federation");

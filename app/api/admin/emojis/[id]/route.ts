@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { deleteCustomEmoji, disableCustomEmoji } from "@/lib/db";
+import { deleteCustomEmoji, disableCustomEmoji, invalidateCustomEmojiCache } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 
 // DELETE /api/admin/emojis/:id — Permanently delete a custom emoji
@@ -40,6 +40,7 @@ export async function PATCH(
       .prepare("UPDATE custom_emojis SET disabled = 0, updated_at = datetime('now') WHERE id = ?")
       .bind(id)
       .run();
+    invalidateCustomEmojiCache();
   }
 
   await env.KV.delete("custom_emojis:v1").catch(() => {});

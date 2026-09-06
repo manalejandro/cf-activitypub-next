@@ -339,6 +339,19 @@ function stripForDetails(html: string): string {
 
 /** Block domains that are a consistent source of abuse. */
 export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
+  // The scan walks every cached remote account (index-only with the covering
+  // (is_local, domain, suspended) index, but still a full pass) — run it at
+  // most every 10 minutes instead of on every cron tick.
+  if (env.KV) {
+    try {
+      const lastScan = await env.KV.get("guardian:domain_scan_last");
+      if (lastScan && Date.now() - Number(lastScan) < 10 * 60 * 1000) return;
+      await env.KV.put("guardian:domain_scan_last", String(Date.now()), { expirationTtl: 2 * 3600 });
+    } catch {
+      // keep scanning even if the cooldown marker cannot be written
+    }
+  }
+
   const instanceDomain = (env.INSTANCE_URL ? new URL(env.INSTANCE_URL).hostname : "") || "localhost";
 
   // Only auto-block a domain when it is *overwhelmingly* spammy relative to how
@@ -346,27 +359,40 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
   // to have a few spammers. Absolute count (>= 3) plus proportion (>= 50% of the
   // domain's cached accounts) prevents the collateral mass-suspension of a whole
   // legitimate instance (e.g. mastodon.social with 3 spam accounts out of 12k).
-  const suspendedByDomain = await env.DB
+  //
+  // One index-only pass gives total + suspended counts per domain; the old
+  // correlated `HAVING c * 1.0 / COUNT(*)` subquery and the second full scan
+  // for reported domains are replaced by joining these counts in JS.
+  const totals = await env.DB
     .prepare(
-      `SELECT domain, SUM(CASE WHEN suspended = 1 THEN 1 ELSE 0 END) AS c
+      `SELECT domain, COUNT(*) AS total, SUM(CASE WHEN suspended = 1 THEN 1 ELSE 0 END) AS c
        FROM actors WHERE is_local = 0
-       GROUP BY domain
-       HAVING c >= 3 AND c * 1.0 / COUNT(*) >= 0.5`
+       GROUP BY domain`
     )
-    .all<{ domain: string; c: number }>();
+    .all<{ domain: string; total: number; c: number }>();
 
-  const reportedByDomain = await env.DB
+  const reported = await env.DB
     .prepare(
       `SELECT a.domain, COUNT(DISTINCT r.id) AS c
        FROM reports r JOIN actors a ON a.id = r.target_id
        WHERE a.is_local = 0
-       GROUP BY a.domain
-       HAVING c >= 3 AND c >= 0.5 * (SELECT COUNT(*) FROM actors WHERE domain = a.domain AND is_local = 0)`
+       GROUP BY a.domain`
     )
     .all<{ domain: string; c: number }>();
 
   const domains = new Set<string>();
-  for (const r of [...suspendedByDomain.results, ...reportedByDomain.results]) domains.add(r.domain);
+  for (const row of totals.results) {
+    if (Number(row.c) >= 3 && Number(row.c) * 1.0 / Number(row.total) >= 0.5) {
+      domains.add(row.domain);
+    }
+  }
+  const totalByDomain = new Map(totals.results.map((r) => [r.domain, Number(r.total)]));
+  for (const row of reported.results) {
+    const total = totalByDomain.get(row.domain) ?? 0;
+    if (Number(row.c) >= 3 && Number(row.c) >= 0.5 * total) {
+      domains.add(row.domain);
+    }
+  }
 
   for (const domain of domains) {
     if (!domain || domain === instanceDomain) continue;

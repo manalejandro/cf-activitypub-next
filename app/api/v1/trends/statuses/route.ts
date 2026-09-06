@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import {
   getActorById,
+  getActorsByIds,
   getAttachmentsByObjectIds,
   getPollsByObjectIds,
   getLikedObjectIds,
@@ -55,26 +56,38 @@ export async function GET(request: NextRequest): Promise<Response> {
     limits.maxPageSize
   );
 
-  const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
-  const rows = await env.DB
-    .prepare(
-      `SELECT o.* FROM objects o
-       WHERE o.visibility IN ('public', 'unlisted')
-         AND o.type = 'Note'
-         AND o.published >= ?
-         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
-       ORDER BY (o.favourites_count + o.reblogs_count + o.replies_count) DESC,
-                o.published DESC
-       LIMIT ?`
-    )
-    .bind(weekCutoff, limit)
-    .all<Row>();
+  // The ranked candidate set is identical for every client; only the
+  // viewer-specific enrichments (favourited/reblogged/bookmarked/filters)
+  // differ per request. Cache the object rows in KV and re-enrich on hit.
+  let rows: Row[] | null = null;
+  try {
+    const cached = await env.KV.get("trends:statuses:v1");
+    if (cached) rows = JSON.parse(cached) as Row[];
+  } catch { /* fall through to DB */ }
+  if (!rows) {
+    const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    const dbRows = await env.DB
+      .prepare(
+        `SELECT o.* FROM objects o
+         WHERE o.visibility IN ('public', 'unlisted')
+           AND o.type = 'Note'
+           AND o.published >= ?
+           AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+         ORDER BY (o.favourites_count + o.reblogs_count + o.replies_count) DESC,
+                  o.published DESC
+         LIMIT ?`
+      )
+      .bind(weekCutoff, limit)
+      .all<Row>();
+    rows = dbRows.results ?? [];
+    await env.KV.put("trends:statuses:v1", JSON.stringify(rows), { expirationTtl: 300 }).catch(() => {});
+  }
 
-  const objects = (rows.results ?? []).map(rowToObject);
+  const objects = rows.map(rowToObject);
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 
-  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
+  const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
     getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
     authActor
@@ -89,6 +102,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       : Promise.resolve(new Map()),
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
     authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
+    getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
 
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
@@ -96,7 +110,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const statuses = await Promise.all(
     objects.map(async (obj) => {
-      let author = await getActorById(env.DB, obj.actorId);
+      let author = authorMap.get(obj.actorId) ?? null;
       if (!author && obj.actorId.startsWith("https://")) {
         try {
           const { fetchRemoteObject } = await import(

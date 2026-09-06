@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
@@ -157,66 +157,78 @@ export async function GET(request: NextRequest): Promise<Response> {
   // ── Statuses ─────────────────────────────────────────────────────────────
   if (doStatuses && me) {
     const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
+    // Recency bound: LIKE cannot use an index, so an unbounded search scans the
+    // whole objects table from newest to oldest until LIMIT rows match. The
+    // 90-day bound (same as the hashtag timeline) caps that scan.
+    const recencyBound = new Date(Date.now() - 90 * 86400000).toISOString();
     const rows = await env.DB
       .prepare(
         `SELECT o.* FROM objects o
          JOIN actors a ON a.id = o.actor_id
          WHERE o.content LIKE ? ESCAPE '\\'
            AND o.visibility IN ('public', 'unlisted')
+           AND o.published >= ?
            AND a.suspended = 0 AND a.silenced = 0
          ORDER BY o.published DESC
          LIMIT ? OFFSET ?`
       )
-      .bind(like, limit, offset)
+      .bind(like, recencyBound, limit, offset)
       .all<Record<string, unknown>>();
 
     const objectIds = rows.results.map((r) => r.id as string);
-    const [attachmentMap, allEmojis] = await Promise.all([
+    const objs = rows.results.map((r) => ({
+      id: r.id as string,
+      type: r.type as string,
+      actorId: r.actor_id as string,
+      content: r.content as string,
+      contentWarning: r.content_warning as string | null,
+      sensitive: Boolean(r.sensitive),
+      visibility: r.visibility as "public" | "unlisted" | "followers" | "direct",
+      inReplyToId: r.in_reply_to_id as string | null,
+      quoteId: (r.quote_id as string | null) ?? null,
+      language: r.language as string | null,
+      url: r.url as string,
+      repliesCount: Number(r.replies_count ?? 0),
+      reblogsCount: Number(r.reblogs_count ?? 0),
+      favouritesCount: Number(r.favourites_count ?? 0),
+      published: r.published as string,
+      updatedAt: r.updated_at as string,
+      local: Boolean(r.is_local),
+      raw: r.raw as string,
+    }));
+
+    // Batch everything once instead of N per-status round-trips (the old loop
+    // also re-fetched the viewer's mute list once per result row).
+    const actorIds = [...new Set(objs.map((o) => o.actorId))];
+    const [attachmentMap, allEmojis, authorMap, lastStatusAtMap, authorExtrasMap, authorFieldsMap, filteredMap, bookmarkedIds, mutedIds] = await Promise.all([
       objectIds.length > 0 ? getAttachmentsByObjectIds(env.DB, objectIds) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
+      getActorsByIds(env.DB, actorIds),
+      getLastStatusAtMap(env.DB, actorIds),
+      getStatusAuthorExtras(env.DB, actorIds, domain),
+      getActorFieldsMap(env.DB, actorIds),
+      me ? getFilterResultsForStatuses(env.DB, me.id, objs) : Promise.resolve(new Map()),
+      me ? getBookmarkedObjectIds(env.DB, me.id, objectIds) : Promise.resolve(new Set()),
+      me ? getMutedActorIds(env.DB, me.id) : Promise.resolve([]),
     ]);
 
-    for (const row of rows.results) {
-      const actor = await getActorById(env.DB, row.actor_id as string);
+    for (const obj of objs) {
+      const actor = authorMap.get(obj.actorId) ?? null;
       if (!actor) continue;
-      const obj = {
-        id: row.id as string,
-        type: row.type as string,
-        actorId: row.actor_id as string,
-        content: row.content as string,
-        contentWarning: row.content_warning as string | null,
-        sensitive: Boolean(row.sensitive),
-        visibility: row.visibility as "public" | "unlisted" | "followers" | "direct",
-        inReplyToId: row.in_reply_to_id as string | null,
-        quoteId: (row.quote_id as string | null) ?? null,
-        language: row.language as string | null,
-        url: row.url as string,
-        repliesCount: Number(row.replies_count ?? 0),
-        reblogsCount: Number(row.reblogs_count ?? 0),
-        favouritesCount: Number(row.favourites_count ?? 0),
-        published: row.published as string,
-        updatedAt: row.updated_at as string,
-        local: Boolean(row.local),
-        raw: row.raw as string,
-      };
-      const filteredKw = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
-      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
-      const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-      const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [obj.id])).has(obj.id) : false;
-      const muted = me ? (await getMutedActorIds(env.DB, me.id)).includes(obj.actorId) : false;
+      const mutedSet = new Set(mutedIds);
       results.statuses.push(
         serializeStatus(obj, actor, domain, {
           attachments: attachmentMap.get(obj.id) ?? [],
           favourited: false,
           reblogged: false,
           emojis: allEmojis,
-          filtered: filteredKw,
-          authorLastStatusAt,
-          authorSupportsCalls: authorExtras?.supportsCalls,
-          authorMoved: authorExtras?.moved ?? null,
-          bookmarked,
-          muted,
-          authorFields: (await getActorFieldsMap(env.DB, [obj.actorId])).get(obj.actorId) ?? [],
+          filtered: filteredMap.get(obj.id) ?? [],
+          authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
+          authorSupportsCalls: authorExtrasMap.get(obj.actorId)?.supportsCalls,
+          authorMoved: authorExtrasMap.get(obj.actorId)?.moved ?? null,
+          bookmarked: bookmarkedIds.has(obj.id),
+          muted: mutedSet.has(obj.actorId),
+          authorFields: authorFieldsMap.get(obj.actorId) ?? [],
         })
       );
     }
@@ -224,51 +236,31 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   // ── Hashtags ──────────────────────────────────────────────────────────────
   if (doHashtags) {
-    const tagQuery = q.startsWith("#") ? q.slice(1) : q;
-    const contentLike = `%#${tagQuery.replace(/[%_]/g, "\\$&")}%`;
-    const rawLike = `%"#${tagQuery.replace(/[%_]/g, "\\$&")}%`;
-    const contentRows = await env.DB
+    // Tag discovery + ranking comes from the object_tags index (extracted at
+    // ingest) instead of a LIKE scan over every stored content/raw document,
+    // which was the single most expensive query on the instance.
+    const tagQuery = (q.startsWith("#") ? q.slice(1) : q).toLowerCase();
+    const tagLike = `%${tagQuery.replace(/[%_]/g, "\\$&")}%`;
+    const tagCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+    const tagRows = await env.DB
       .prepare(
-        `SELECT content, raw FROM objects
-         WHERE (content LIKE ? ESCAPE '\\' OR raw LIKE ? ESCAPE '\\')
-           AND visibility IN ('public', 'unlisted')
-           AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = objects.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+        `SELECT tag, COUNT(*) AS uses
+         FROM object_tags
+         WHERE tag LIKE ? ESCAPE '\\'
+           AND published >= ?
+         GROUP BY tag
+         ORDER BY uses DESC
          LIMIT 200`
       )
-      .bind(contentLike, rawLike)
-      .all<{ content: string; raw: string }>();
+      .bind(tagLike, tagCutoff)
+      .all<{ tag: string; uses: number }>();
 
-    const tagCounts = new Map<string, number>();
-    for (const { content, raw } of contentRows.results) {
-      const names = new Set<string>();
-      for (const m of content.match(/#([a-zA-Z0-9_]+)/g) ?? []) {
-        names.add(m.slice(1).toLowerCase());
-      }
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as Record<string, unknown>;
-          const tagArr = Array.isArray(parsed.tag) ? parsed.tag as unknown[] : (parsed.tag ? [parsed.tag] : []);
-          for (const t of tagArr) {
-            const tagObj = t as Record<string, unknown>;
-            if (tagObj.type === "Hashtag" && typeof tagObj.name === "string") {
-              const n = (tagObj.name.startsWith("#") ? tagObj.name.slice(1) : tagObj.name).toLowerCase();
-              names.add(n);
-            }
-          }
-        } catch { /* ignore malformed JSON */ }
-      }
-      for (const name of names) {
-        if (name.includes(tagQuery.toLowerCase())) {
-          tagCounts.set(name, (tagCounts.get(name) ?? 0) + 1);
-        }
-      }
-    }
-    const sorted = [...tagCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(offset, offset + limit);
+    const sorted = tagRows.results
+      .slice(offset, offset + limit)
+      .map((r) => ({ name: r.tag, uses: r.uses }));
 
     results.hashtags = await Promise.all(
-      sorted.map(async ([name]) => ({
+      sorted.map(async ({ name }) => ({
         name,
         url: `https://${domain}/tags/${name}`,
         history: await getTagHistory(env.DB, name),
@@ -291,24 +283,23 @@ async function getTagHistory(
   db: D1Database,
   tagName: string
 ): Promise<{ day: string; uses: string; accounts: string }[]> {
-  const like = `%#${tagName.replace(/[%_]/g, "\\$&")}%`;
   // Bind the cutoff as ISO: `published` is stored ISO-8601, so comparing it
   // against datetime('now', ...) (space format) breaks the lexical comparison.
   const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+  // Fully index-only via the (tag, published, actor_id) covering index: no
+  // join back to objects, no JSON parsing, no row reads.
   const rows = await db
     .prepare(
       `SELECT CAST(strftime('%s', published) / 86400 AS INTEGER) AS day_bucket,
               COUNT(*) AS uses,
               COUNT(DISTINCT actor_id) AS accounts
-       FROM objects
-       WHERE (content LIKE ? ESCAPE '\\' OR raw LIKE ? ESCAPE '\\')
+       FROM object_tags
+       WHERE tag = ?
          AND published >= ?
-         AND visibility IN ('public', 'unlisted')
-         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = objects.actor_id AND (a.silenced = 1 OR a.suspended = 1))
        GROUP BY day_bucket
        ORDER BY day_bucket`
     )
-    .bind(like, like, weekCutoff)
+    .bind(tagName, weekCutoff)
     .all<{ day_bucket: number; uses: number; accounts: number }>();
 
   const byDay = new Map<number, { uses: number; accounts: number }>();

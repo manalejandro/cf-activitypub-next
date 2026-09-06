@@ -48,6 +48,9 @@ CREATE INDEX IF NOT EXISTS idx_actors_is_local     ON actors(is_local);
 CREATE INDEX IF NOT EXISTS idx_actors_email        ON actors(email);
 CREATE INDEX IF NOT EXISTS idx_actors_created_at   ON actors(created_at);
 CREATE INDEX IF NOT EXISTS idx_actors_follow_followers ON actors(following_count, followers_count);
+-- Covering index for the Guardian's per-domain quarantine scan: the
+-- (is_local, domain, suspended) scan is index-only, no row lookups.
+CREATE INDEX IF NOT EXISTS idx_actors_local_domain_susp ON actors(is_local, domain, suspended);
 
 -- ─────────────────────────────────────────
 -- Objects / Notes / Statuses
@@ -88,6 +91,22 @@ CREATE INDEX IF NOT EXISTS idx_objects_vis_published     ON objects(visibility, 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_vis_pub     ON objects(actor_id, visibility, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_reply_published   ON objects(in_reply_to_id, published ASC);
 
+-- Perf pass (2026): composite indexes that let the hot queries stay index-only
+-- or seek-driven instead of scanning visibility buckets and filtering in SQL:
+--  * (visibility, is_local, published)  — local/remote public timeline
+--  * (visibility, type, published)      — trending statuses / status search
+--  * (type, published)                  — moderation scans (repeated-spam patrol)
+--  * (is_local, type, published)        — cron status screening
+--  * (actor_id, visibility, type, published) — per-actor MAX(published) batch
+--    ("last status" maps: directory, account cards on every timeline)
+--  * (is_local, in_reply_to_id)         — instance stats comment count
+CREATE INDEX IF NOT EXISTS idx_objects_vis_local_pub     ON objects(visibility, is_local, published DESC);
+CREATE INDEX IF NOT EXISTS idx_objects_vis_type_pub      ON objects(visibility, type, published DESC);
+CREATE INDEX IF NOT EXISTS idx_objects_type_published    ON objects(type, published);
+CREATE INDEX IF NOT EXISTS idx_objects_local_type_pub    ON objects(is_local, type, published DESC);
+CREATE INDEX IF NOT EXISTS idx_objects_actor_vis_type_pub ON objects(actor_id, visibility, type, published DESC);
+CREATE INDEX IF NOT EXISTS idx_objects_local_reply       ON objects(is_local, in_reply_to_id);
+
 -- Hashtag index: tags extracted from the AP `tag` array at ingest time.
 -- The (tag, published) index lets hashtag timelines resolve tag + ordering
 -- without scanning `raw` (the old `raw LIKE` scan cost seconds on large DBs).
@@ -95,9 +114,17 @@ CREATE TABLE IF NOT EXISTS object_tags (
   object_id TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
   tag       TEXT NOT NULL,          -- lowercased, without '#'
   published TEXT NOT NULL,          -- denormalized for index-only ordering
+  actor_id  TEXT,                   -- denormalized so tag stats stay index-only
   PRIMARY KEY (object_id, tag)
 );
 CREATE INDEX IF NOT EXISTS idx_object_tags_tag_published ON object_tags(tag, published DESC);
+-- Covering index for tag stats (trending tags, tag history): COUNT(*),
+-- COUNT(DISTINCT actor_id) and per-day buckets resolve without touching rows.
+CREATE INDEX IF NOT EXISTS idx_object_tags_tag_pub_actor ON object_tags(tag, published DESC, actor_id);
+-- Published-leading covering index for the whole-window aggregations that have
+-- no equality on tag (trending tags, tag discovery): scanning the recent
+-- published range stays index-only and can filter/group by tag in place.
+CREATE INDEX IF NOT EXISTS idx_object_tags_pub_tag_actor ON object_tags(published DESC, tag, actor_id);
 
 -- ─────────────────────────────────────────
 -- Attachments
@@ -400,6 +427,8 @@ CREATE TABLE IF NOT EXISTS custom_emojis (
 
 CREATE INDEX IF NOT EXISTS idx_custom_emojis_shortcode ON custom_emojis(shortcode);
 CREATE INDEX IF NOT EXISTS idx_custom_emojis_domain    ON custom_emojis(domain);
+-- Serves the per-status emoji list: WHERE disabled = 0 ORDER BY category, shortcode.
+CREATE INDEX IF NOT EXISTS idx_custom_emojis_disabled_cat ON custom_emojis(disabled, category, shortcode);
 
 -- ─────────────────────────────────────────
 -- Followed hashtags (per user)

@@ -419,6 +419,28 @@ export async function getActorById(db: D1Database, id: string): Promise<LocalAct
   return row ? rowToActor(row) : null;
 }
 
+/**
+ * Batch variant of getActorById — one `IN` query instead of one round-trip per
+ * author. Timeline/search routes render up to ~40 statuses, and each D1 call
+ * costs an HTTP round-trip, so batching cuts both latency and D1 quota.
+ */
+export async function getActorsByIds(db: D1Database, ids: string[]): Promise<Map<string, LocalActor>> {
+  const map = new Map<string, LocalActor>();
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return map;
+  // SQLite's variable limit is 32766; chunk well below it.
+  for (let i = 0; i < unique.length; i += 900) {
+    const chunk = unique.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT * FROM actors WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<Row>();
+    for (const r of rows.results) map.set(r.id, rowToActor(r));
+  }
+  return map;
+}
+
 export async function getActorByUsername(
   db: D1Database,
   username: string,
@@ -1533,8 +1555,8 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
       ),
     ...extractObjectTags(obj.raw).map((tag) =>
       db
-        .prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published) VALUES (?, ?, ?)")
-        .bind(obj.id, tag, obj.published)
+        .prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published, actor_id) VALUES (?, ?, ?, ?)")
+        .bind(obj.id, tag, obj.published, obj.actorId)
     ),
   ];
   await db.batch(statements);
@@ -1679,52 +1701,51 @@ export async function getHomeTimeline(
   // their followers (mirrors Mastodon). Silenced accounts still show to
   // followers, so only `suspended` is filtered here.
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
-  const baseWhere = `
-    NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
-    AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-    AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
-    AND (
-      (o.actor_id = ? AND o.visibility != 'direct')
-      OR (
-        o.actor_id IN (
-          SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'
-        )
-        AND o.visibility IN ('public', 'unlisted', 'followers')
-      )
-    )
-  `;
+  //
+  // The two visibility branches are index-incompatible under a single OR (one
+  // needs `actor_id = ?`, the other `actor_id IN (follows)`), which forced a
+  // full-table scan + sort on every request. Splitting them into a UNION lets
+  // each branch seek straight to the (actor_id, visibility, published) index
+  // and cap its own rows, so the scan only touches rows that can qualify.
+  const branch = (actorClause: string, visibilityClause: string, publishedClause: string) => `
+    SELECT o.* FROM objects o
+    WHERE ${actorClause}
+      AND ${visibilityClause}
+      AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
+      AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+      ${publishedClause}
+    ORDER BY o.published DESC LIMIT ?`;
+
+  let publishedClause = "";
+  let cursorBinds: unknown[] = [];
   if (minId) {
     const pivotRow = await db
       .prepare("SELECT published FROM objects WHERE id = ?")
       .bind(minId)
       .first<{ published: string }>();
     if (!pivotRow) return [];
-    const rows = await db
-      .prepare(
-        `SELECT o.* FROM objects o
-         WHERE ${baseWhere}
-           AND o.published > ?
-         ORDER BY o.published DESC LIMIT ?`
-      )
-      .bind(actorId, actorId, actorId, actorId, pivotRow.published, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
+    publishedClause = "AND o.published > ?";
+    cursorBinds = [pivotRow.published];
+  } else if (maxId) {
+    publishedClause = "AND o.published < (SELECT published FROM objects WHERE id = ?)";
+    cursorBinds = [maxId];
   }
-  if (maxId) {
-    const rows = await db
-      .prepare(
-        `SELECT o.* FROM objects o
-         WHERE ${baseWhere}
-           AND o.published < (SELECT published FROM objects WHERE id = ?)
-         ORDER BY o.published DESC LIMIT ?`
-      )
-      .bind(actorId, actorId, actorId, actorId, maxId, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
-  }
+  const ownBranch = branch("o.actor_id = ?", "o.visibility != 'direct'", publishedClause);
+  const followsBranch = branch(
+    "o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')",
+    "o.visibility IN ('public', 'unlisted', 'followers')",
+    publishedClause
+  );
   const rows = await db
-    .prepare(`SELECT o.* FROM objects o WHERE ${baseWhere} ORDER BY o.published DESC LIMIT ?`)
-    .bind(actorId, actorId, actorId, actorId, limit)
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM (${ownBranch})
+         UNION
+         SELECT * FROM (${followsBranch})
+       ) ORDER BY published DESC LIMIT ?`
+    )
+    .bind(actorId, actorId, actorId, ...cursorBinds, limit, actorId, actorId, actorId, ...cursorBinds, limit, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -1849,7 +1870,7 @@ export async function updateObject(
   id: string,
   fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string }
 ): Promise<void> {
-  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published FROM objects WHERE id = ?").bind(id).first<Row>();
+  const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
     await db
       .prepare("INSERT INTO object_edits (id, object_id, content, content_warning, sensitive, raw, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))")
@@ -1881,8 +1902,8 @@ export async function updateObject(
     const statements = [
       db.prepare("DELETE FROM object_tags WHERE object_id = ?").bind(id),
       ...extractObjectTags(fields.raw).map((tag) =>
-        db.prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published) VALUES (?, ?, ?)")
-          .bind(id, tag, prev.published)
+        db.prepare("INSERT OR IGNORE INTO object_tags (object_id, tag, published, actor_id) VALUES (?, ?, ?, ?)")
+          .bind(id, tag, prev.published, prev.actor_id)
       ),
     ];
     await db.batch(statements);
@@ -2999,15 +3020,32 @@ function rowToCustomEmoji(r: Row): LocalCustomEmoji {
   };
 }
 
+// The emoji list is read on every status render and changes rarely. Cache it
+// per-isolate with a short TTL so the (disabled, category, shortcode) query
+// runs once per minute per worker instead of once per request; mutations
+// invalidate the cache immediately.
+let emojiCache: { at: number; enabled: LocalCustomEmoji[]; all: LocalCustomEmoji[] } | null = null;
+const EMOJI_CACHE_TTL_MS = 60_000;
+
+export function invalidateCustomEmojiCache(): void {
+  emojiCache = null;
+}
+
 export async function getAllCustomEmojis(
   db: D1Database,
   includeDisabled = false
 ): Promise<LocalCustomEmoji[]> {
+  const now = Date.now();
+  if (emojiCache && now - emojiCache.at < EMOJI_CACHE_TTL_MS) {
+    return includeDisabled ? emojiCache.all : emojiCache.enabled;
+  }
   const query = includeDisabled
     ? "SELECT * FROM custom_emojis ORDER BY category, shortcode ASC"
     : "SELECT * FROM custom_emojis WHERE disabled = 0 ORDER BY category, shortcode ASC";
   const rows = await db.prepare(query).all<Row>();
-  return rows.results.map(rowToCustomEmoji);
+  const all = rows.results.map(rowToCustomEmoji);
+  emojiCache = { at: now, all, enabled: all.filter((e) => !e.disabled) };
+  return includeDisabled ? all : emojiCache.enabled;
 }
 
 export async function getCustomEmojiByShortcode(
@@ -3066,10 +3104,12 @@ export async function upsertCustomEmoji(
       emoji.actorId ?? null
     )
     .run();
+  invalidateCustomEmojiCache();
 }
 
 export async function deleteCustomEmoji(db: D1Database, id: string): Promise<void> {
   await db.prepare("DELETE FROM custom_emojis WHERE id = ?").bind(id).run();
+  invalidateCustomEmojiCache();
 }
 
 export async function disableCustomEmoji(db: D1Database, id: string): Promise<void> {
@@ -3077,6 +3117,7 @@ export async function disableCustomEmoji(db: D1Database, id: string): Promise<vo
     .prepare("UPDATE custom_emojis SET disabled = 1, updated_at = datetime('now') WHERE id = ?")
     .bind(id)
     .run();
+  invalidateCustomEmojiCache();
 }
 
 export async function getCustomEmojisByDomain(
