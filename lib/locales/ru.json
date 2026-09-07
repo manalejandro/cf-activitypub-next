@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "Минимальный возраст",
   "admin_settings_reg_min_age_ph": "Оставьте пустым без возрастных требований",
   "admin_settings_reg_url": "Внешняя регистрация URL",
-  "admin_settings_reg_url_ph": "Перенаправить подписки на этот URL (необязательно)"
+  "admin_settings_reg_url_ph": "Перенаправить подписки на этот URL (необязательно)",
+  "graph_link": "Граф федерации",
+  "graph_title": "Граф федерации",
+  "graph_subtitle": "Живая карта экземпляров ActivityPub, подключённых к этому серверу.",
+  "graph_instances": "Экземпляры",
+  "graph_connections": "Соединения",
+  "graph_accounts": "Аккаунты",
+  "graph_legend_connection": "Соединение",
+  "graph_legend_local": "Этот экземпляр",
+  "graph_legend_blocked": "Заблокированный экземпляр",
+  "graph_loading": "Загрузка графа федерации…",
+  "graph_empty": "Пока нет соединений между экземплярами. Подпишитесь на аккаунты на других серверах, чтобы построить сеть.",
+  "graph_hint": "Перетащите, чтобы сдвинуть · Колесо для масштаба · Кликните по узлу для деталей",
+  "graph_you": "Вы",
+  "graph_blocked": "Заблокирован",
+  "graph_node_details": "Детали экземпляра"
 }

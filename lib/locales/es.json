@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "Edad mínima",
   "admin_settings_reg_min_age_ph": "Vacío = sin requisito de edad",
   "admin_settings_reg_url": "URL de registro externa",
-  "admin_settings_reg_url_ph": "Redirige los registros a esta URL (opcional)"
+  "admin_settings_reg_url_ph": "Redirige los registros a esta URL (opcional)",
+  "graph_link": "Grafo de federación",
+  "graph_title": "Grafo de federación",
+  "graph_subtitle": "Un mapa en vivo de las instancias de ActivityPub conectadas a este servidor.",
+  "graph_instances": "Instancias",
+  "graph_connections": "Conexiones",
+  "graph_accounts": "Cuentas",
+  "graph_legend_connection": "Conexión",
+  "graph_legend_local": "Esta instancia",
+  "graph_legend_blocked": "Instancia bloqueada",
+  "graph_loading": "Cargando el grafo de federación…",
+  "graph_empty": "Aún no hay conexiones entre instancias. Sigue cuentas de otros servidores para empezar a construir la red.",
+  "graph_hint": "Arrastra para mover · Rueda para hacer zoom · Haz clic en un nodo para ver detalles",
+  "graph_you": "Tú",
+  "graph_blocked": "Bloqueada",
+  "graph_node_details": "Detalles de la instancia"
 }

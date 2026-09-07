@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "最低年龄",
   "admin_settings_reg_min_age_ph": "空出没有年龄要求",
   "admin_settings_reg_url": "外部注册 URL",
-  "admin_settings_reg_url_ph": "将签名重定向到此 URL (可选)"
+  "admin_settings_reg_url_ph": "将签名重定向到此 URL (可选)",
+  "graph_link": "联盟图谱",
+  "graph_title": "联盟图谱",
+  "graph_subtitle": "此服务器所连接的 ActivityPub 实例的实时地图。",
+  "graph_instances": "实例",
+  "graph_connections": "连接",
+  "graph_accounts": "账户",
+  "graph_legend_connection": "连接",
+  "graph_legend_local": "本实例",
+  "graph_legend_blocked": "已屏蔽实例",
+  "graph_loading": "正在加载联盟图谱…",
+  "graph_empty": "尚无实例间连接。关注其他服务器上的账户以开始构建网络。",
+  "graph_hint": "拖动平移 · 滚动缩放 · 点击节点查看详情",
+  "graph_you": "你",
+  "graph_blocked": "已屏蔽",
+  "graph_node_details": "实例详情"
 }

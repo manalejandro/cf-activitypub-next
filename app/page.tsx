@@ -184,6 +184,7 @@ export default function Home() {
         <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
           <span>© {new Date().getFullYear()} CF ActivityPub — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
           <div className="flex gap-5">
+            <Link href="/graph" style={{ color: "var(--text-muted)" }}>{t.graph_link}</Link>
             <a href="/docs" style={{ color: "var(--text-muted)" }}>API Docs</a>
             <a href="/.well-known/nodeinfo" style={{ color: "var(--text-muted)" }}>NodeInfo</a>
             <a href="https://github.com/manalejandro/cf-activitypub-next" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)" }}>GitHub</a>

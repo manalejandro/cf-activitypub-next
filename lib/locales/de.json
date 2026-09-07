@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "Mindestalter",
   "admin_settings_reg_min_age_ph": "Leer lassen ohne Alterspflicht",
   "admin_settings_reg_url": "URL der externen Registrierung",
-  "admin_settings_reg_url_ph": "Umleiten von Anmeldungen zu dieser URL (optional)"
+  "admin_settings_reg_url_ph": "Umleiten von Anmeldungen zu dieser URL (optional)",
+  "graph_link": "Föderationsgraph",
+  "graph_title": "Föderationsgraph",
+  "graph_subtitle": "Eine Live-Karte der ActivityPub-Instanzen, mit denen dieser Server verbunden ist.",
+  "graph_instances": "Instanzen",
+  "graph_connections": "Verbindungen",
+  "graph_accounts": "Konten",
+  "graph_legend_connection": "Verbindung",
+  "graph_legend_local": "Diese Instanz",
+  "graph_legend_blocked": "Blockierte Instanz",
+  "graph_loading": "Föderationsgraph wird geladen…",
+  "graph_empty": "Noch keine Verbindungen zwischen Instanzen. Folge Konten auf anderen Servern, um das Netzwerk aufzubauen.",
+  "graph_hint": "Ziehen zum Verschieben · Scrollen zum Zoomen · Klick auf einen Knoten für Details",
+  "graph_you": "Du",
+  "graph_blocked": "Blockiert",
+  "graph_node_details": "Instanzdetails"
 }

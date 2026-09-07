@@ -357,3 +357,36 @@ img.emojione { display: inline; vertical-align: middle; }
   }
   .admin-main { padding: 1rem; }
 }
+
+/* ─────────────────────────────────────────
+   Federation graph page (/graph) — React Flow themed to the instance palette.
+   The page forces day mode (.force-light), so these override React Flow's own
+   light/dark defaults to match the instance CSS variables.
+   ───────────────────────────────────────── */
+.graph-page .react-flow {
+  --xy-background-color: var(--bg);
+  --xy-background-color-default: var(--bg);
+  --xy-edge-stroke-default: var(--border-hover);
+  background: var(--bg);
+}
+.graph-page .react-flow__renderer { background: var(--bg); }
+.graph-page .react-flow__controls {
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.graph-page .react-flow__controls-button {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.graph-page .react-flow__controls-button:hover { background: var(--bg-elevated); }
+.graph-page .react-flow__controls-button svg { fill: var(--text-primary); }
+.graph-page .react-flow__minimap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.graph-page .react-flow__attribution { display: none; }

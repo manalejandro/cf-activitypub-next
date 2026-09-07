@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "Minimum age",
   "admin_settings_reg_min_age_ph": "Leave empty for no age requirement",
   "admin_settings_reg_url": "External registration URL",
-  "admin_settings_reg_url_ph": "Redirect sign-ups to this URL (optional)"
+  "admin_settings_reg_url_ph": "Redirect sign-ups to this URL (optional)",
+  "graph_link": "Federation Graph",
+  "graph_title": "Federation graph",
+  "graph_subtitle": "A live map of the ActivityPub instances this server is connected to.",
+  "graph_instances": "Instances",
+  "graph_connections": "Connections",
+  "graph_accounts": "Accounts",
+  "graph_legend_connection": "Connection",
+  "graph_legend_local": "This instance",
+  "graph_legend_blocked": "Blocked instance",
+  "graph_loading": "Loading federation graph…",
+  "graph_empty": "No inter-instance connections yet. Follow accounts on other servers to start building the network.",
+  "graph_hint": "Drag to pan · Scroll to zoom · Click a node for details",
+  "graph_you": "You",
+  "graph_blocked": "Blocked",
+  "graph_node_details": "Instance details"
 }

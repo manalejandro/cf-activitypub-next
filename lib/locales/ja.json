@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "最低年齢",
   "admin_settings_reg_min_age_ph": "年齢の要求無しのために空の残して下さい",
   "admin_settings_reg_url": "外部登録URL",
-  "admin_settings_reg_url_ph": "このURLへのサインアップをリダイレクトする(オプション)"
+  "admin_settings_reg_url_ph": "このURLへのサインアップをリダイレクトする(オプション)",
+  "graph_link": "フェデレーショングラフ",
+  "graph_title": "フェデレーショングラフ",
+  "graph_subtitle": "このサーバーが接続している ActivityPub インスタンスのライブマップ。",
+  "graph_instances": "インスタンス",
+  "graph_connections": "接続",
+  "graph_accounts": "アカウント",
+  "graph_legend_connection": "接続",
+  "graph_legend_local": "このインスタンス",
+  "graph_legend_blocked": "ブロックされたインスタンス",
+  "graph_loading": "フェデレーショングラフを読み込み中…",
+  "graph_empty": "インスタンス間の接続はまだありません。他のサーバーのアカウントをフォローしてネットワークを構築しましょう。",
+  "graph_hint": "ドラッグで移動 · スクロールでズーム · ノードをクリックで詳細",
+  "graph_you": "あなた",
+  "graph_blocked": "ブロック済み",
+  "graph_node_details": "インスタンスの詳細"
 }

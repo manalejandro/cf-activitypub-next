@@ -837,5 +837,20 @@
   "admin_settings_reg_min_age": "최소 연령",
   "admin_settings_reg_min_age_ph": "연령 요구 사항에 대 한 빈",
   "admin_settings_reg_url": "외부 등록 URL",
-  "admin_settings_reg_url_ph": "이 URL (선택 사항)에 Redirect 기호 업"
+  "admin_settings_reg_url_ph": "이 URL (선택 사항)에 Redirect 기호 업",
+  "graph_link": "페더레이션 그래프",
+  "graph_title": "페더레이션 그래프",
+  "graph_subtitle": "이 서버에 연결된 ActivityPub 인스턴스의 라이브 지도.",
+  "graph_instances": "인스턴스",
+  "graph_connections": "연결",
+  "graph_accounts": "계정",
+  "graph_legend_connection": "연결",
+  "graph_legend_local": "이 인스턴스",
+  "graph_legend_blocked": "차단된 인스턴스",
+  "graph_loading": "페더레이션 그래프를 불러오는 중…",
+  "graph_empty": "아직 인스턴스 간 연결이 없습니다. 다른 서버의 계정을 팔로우하여 네트워크를 구축하세요.",
+  "graph_hint": "드래그로 이동 · 스크롤로 확대 · 노드를 클릭하면 세부 정보",
+  "graph_you": "나",
+  "graph_blocked": "차단됨",
+  "graph_node_details": "인스턴스 세부 정보"
 }
