@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
+import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
@@ -43,6 +44,7 @@ export function EditStatusModal({
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
   const auto = useEmojiAutocomplete(text, setText, textareaRef);
+  const accountAuto = useAccountAutocomplete(text, setText, textareaRef);
 
   // Initialize the form when the modal opens or the status changes.
   useEffect(() => {
@@ -175,8 +177,8 @@ export function EditStatusModal({
             autoFocus
             ref={textareaRef}
             value={text}
-            onChange={auto.onChange}
-            onKeyDown={auto.onKeyDown}
+            onChange={(e) => { auto.onChange(e); accountAuto.onChange(e); }}
+            onKeyDown={(e) => { auto.onKeyDown(e); accountAuto.onKeyDown(e); }}
             placeholder={t.edit_status_placeholder}
             aria-label={t.edit_label}
             maxLength={limits.maxStatusChars}
@@ -187,6 +189,12 @@ export function EditStatusModal({
             suggestions={auto.suggestions}
             activeIndex={auto.activeIndex}
             onSelect={auto.select}
+          />
+          <AccountAutocompleteDropdown
+            suggestions={accountAuto.suggestions}
+            activeIndex={accountAuto.activeIndex}
+            onSelect={accountAuto.select}
+            loading={accountAuto.loading}
           />
         </div>
 

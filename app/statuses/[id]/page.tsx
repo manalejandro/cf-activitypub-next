@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
+import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
 import { Icon } from "@/components/Icon";
@@ -197,6 +198,7 @@ function ReplyBox({
   }, [me, relatedHandles, text]);
   const closeEmoji = useCallback(() => setEmojiOpen(false), []);
   const emojiAuto = useEmojiAutocomplete(text, setText, textareaRef);
+  const accountAuto = useAccountAutocomplete(text, setText, textareaRef);
 
   const insertEmoji = useCallback((emoji: string) => {
     const ta = textareaRef.current;
@@ -370,8 +372,8 @@ function ReplyBox({
             <textarea
               ref={textareaRef}
               value={text}
-              onChange={emojiAuto.onChange}
-              onKeyDown={emojiAuto.onKeyDown}
+              onChange={(e) => { emojiAuto.onChange(e); accountAuto.onChange(e); }}
+              onKeyDown={(e) => { emojiAuto.onKeyDown(e); accountAuto.onKeyDown(e); }}
               placeholder={t.reply_placeholder}
               aria-label={t.reply_placeholder}
               maxLength={limits.maxStatusChars}
@@ -382,6 +384,12 @@ function ReplyBox({
               suggestions={emojiAuto.suggestions}
               activeIndex={emojiAuto.activeIndex}
               onSelect={emojiAuto.select}
+            />
+            <AccountAutocompleteDropdown
+              suggestions={accountAuto.suggestions}
+              activeIndex={accountAuto.activeIndex}
+              onSelect={accountAuto.select}
+              loading={accountAuto.loading}
             />
           </div>
           {pollMode && (

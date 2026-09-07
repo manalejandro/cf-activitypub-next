@@ -13,6 +13,7 @@ import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/ti
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
+import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
@@ -48,6 +49,7 @@ export default function HomePage() {
   const { t, locale } = useLocale();
   const limits = useLimits();
   const emojiAuto = useEmojiAutocomplete(composing, setComposing, textareaRef);
+  const accountAuto = useAccountAutocomplete(composing, setComposing, textareaRef);
 
   const fetchPage = useCallback(async (maxId?: string) => {
     const url = maxId ? `/api/v1/timelines/home?max_id=${encodeURIComponent(maxId)}` : "/api/v1/timelines/home";
@@ -335,14 +337,20 @@ export default function HomePage() {
                 placeholder={t.compose_placeholder}
                 aria-label={t.compose_label}
                 value={composing}
-                onChange={emojiAuto.onChange}
-                onKeyDown={emojiAuto.onKeyDown}
+                onChange={(e) => { emojiAuto.onChange(e); accountAuto.onChange(e); }}
+                onKeyDown={(e) => { emojiAuto.onKeyDown(e); accountAuto.onKeyDown(e); }}
                 maxLength={limits.maxStatusChars}
               />
               <EmojiAutocompleteDropdown
                 suggestions={emojiAuto.suggestions}
                 activeIndex={emojiAuto.activeIndex}
                 onSelect={emojiAuto.select}
+              />
+              <AccountAutocompleteDropdown
+                suggestions={accountAuto.suggestions}
+                activeIndex={accountAuto.activeIndex}
+                onSelect={accountAuto.select}
+                loading={accountAuto.loading}
               />
             </div>
 
