@@ -43,17 +43,27 @@ export async function GET(): Promise<Response> {
     nodeSet.add(e.target);
     if (nodeSet.size >= MAX_NODES) break;
   }
+  // D1 caps the number of bind variables (~100), so the IN lists are passed as
+  // one JSON array and expanded with json_each instead of one placeholder per
+  // domain (2×nodes placeholders on the edges query would exceed the limit).
   const nodeList = [...nodeSet];
-  const ph = nodeList.map(() => "?").join(",");
+  const nodeJson = JSON.stringify(nodeList);
 
   const [accountsRows, blockedRows, finalEdges] = await Promise.all([
     env.DB
-      .prepare(`SELECT domain, COUNT(*) AS accounts FROM actors WHERE domain IN (${ph}) GROUP BY domain`)
-      .bind(...nodeList)
+      .prepare(
+        `SELECT domain, COUNT(*) AS accounts FROM actors
+         WHERE domain IN (SELECT value FROM json_each(?))
+         GROUP BY domain`
+      )
+      .bind(nodeJson)
       .all<{ domain: string; accounts: number }>(),
     env.DB
-      .prepare(`SELECT domain FROM instance_domain_blocks WHERE domain IN (${ph})`)
-      .bind(...nodeList)
+      .prepare(
+        `SELECT domain FROM instance_domain_blocks
+         WHERE domain IN (SELECT value FROM json_each(?))`
+      )
+      .bind(nodeJson)
       .all<{ domain: string }>(),
     env.DB
       .prepare(
@@ -62,13 +72,13 @@ export async function GET(): Promise<Response> {
          JOIN actors a ON a.id = f.actor_id
          JOIN actors b ON b.id = f.target_id
          WHERE a.domain <> b.domain
-           AND a.domain IN (${ph})
-           AND b.domain IN (${ph})
+           AND a.domain IN (SELECT value FROM json_each(?))
+           AND b.domain IN (SELECT value FROM json_each(?))
          GROUP BY a.domain, b.domain
          ORDER BY weight DESC
          LIMIT ?`
       )
-      .bind(...nodeList, ...nodeList, MAX_EDGES)
+      .bind(nodeJson, nodeJson, MAX_EDGES)
       .all<EdgeRow>(),
   ]);
 
