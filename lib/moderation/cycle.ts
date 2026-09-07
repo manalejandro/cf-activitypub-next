@@ -394,14 +394,30 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
     )
     .all<{ domain: string; total: number; c: number }>();
 
-  const reported = await env.DB
-    .prepare(
-      `SELECT a.domain, COUNT(DISTINCT r.id) AS c
-       FROM reports r JOIN actors a ON a.id = r.target_id
-       WHERE a.is_local = 0
-       GROUP BY a.domain`
-    )
-    .all<{ domain: string; c: number }>();
+  // Report counts per *reported target* first: the single-query join version
+  // made SQLite drive from the actors side (SEARCH a USING INDEX is_local=?)
+  // and probe `reports` once per remote actor — 30k+ probes when reports is
+  // small. Grouping by target_id first is an index-only scan of
+  // idx_reports_target (no row fetches, no temp b-tree); the per-domain totals
+  // are then summed in JS over the few actors that actually have reports.
+  const reportCounts = await env.DB
+    .prepare("SELECT r.target_id AS actor_id, COUNT(*) AS c FROM reports r GROUP BY r.target_id")
+    .all<{ actor_id: string; c: number }>();
+
+  const countByActor = new Map(reportCounts.results.map((x) => [x.actor_id, Number(x.c)]));
+  const reportedByDomain = new Map<string, number>();
+  const reportedActorIds = [...countByActor.keys()];
+  for (let i = 0; i < reportedActorIds.length; i += 900) {
+    const chunk = reportedActorIds.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const reportedActors = await env.DB
+      .prepare(`SELECT id, domain FROM actors WHERE is_local = 0 AND id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ id: string; domain: string }>();
+    for (const row of reportedActors.results) {
+      reportedByDomain.set(row.domain, (reportedByDomain.get(row.domain) ?? 0) + (countByActor.get(row.id) ?? 0));
+    }
+  }
 
   const domains = new Set<string>();
   for (const row of totals.results) {
@@ -410,10 +426,10 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
     }
   }
   const totalByDomain = new Map(totals.results.map((r) => [r.domain, Number(r.total)]));
-  for (const row of reported.results) {
-    const total = totalByDomain.get(row.domain) ?? 0;
-    if (Number(row.c) >= 3 && Number(row.c) >= 0.5 * total) {
-      domains.add(row.domain);
+  for (const [domain, c] of reportedByDomain) {
+    const total = totalByDomain.get(domain) ?? 0;
+    if (c >= 3 && c >= 0.5 * total) {
+      domains.add(domain);
     }
   }
 
