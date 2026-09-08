@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useLocale } from "@/lib/i18n";
+import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon } from "@/components/Icon";
 import { layoutGraph, type GraphNode, type GraphEdge } from "@/lib/graph-layout";
@@ -176,6 +177,7 @@ export default function GraphPage() {
 
 function GraphView() {
   const { t } = useLocale();
+  const { authenticated } = useAuth();
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState(false);
@@ -217,8 +219,14 @@ function GraphView() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <LanguagePicker />
-            <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
-            <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
+            {authenticated ? (
+              <Link href="/home" className="btn btn-primary btn-sm">{t.nav_home}</Link>
+            ) : (
+              <>
+                <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
+                <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
