@@ -390,3 +390,9 @@ img.emojione { display: inline; vertical-align: middle; }
   box-shadow: var(--shadow);
 }
 .graph-page .react-flow__attribution { display: none; }
+
+/* Federation graph: soft glow on the edges so connections read clearly over
+   the light canvas, even at small zoom. */
+.graph-page .react-flow__edge-path {
+  filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.35));
+}

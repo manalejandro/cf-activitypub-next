@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   Controls,
   MiniMap,
+  useNodesState,
+  useEdgesState,
+  useReactFlow,
   type Node as FlowNode,
   type Edge as FlowEdge,
   type NodeProps,
@@ -114,12 +118,29 @@ const nodeTypes: NodeTypes = { instance: InstanceNode };
 
 const VIRTUAL_WIDTH = 1400;
 const VIRTUAL_HEIGHT = 860;
+// Slow constant rotation (~40s per full turn) — the graph "spins" by default.
+const ROTATION_SPEED = 0.0025;
 
 export default function GraphPage() {
+  return (
+    <ReactFlowProvider>
+      <GraphView />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphView() {
   const { t } = useLocale();
+  const { fitView } = useReactFlow();
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<InstanceFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
+
+  const draggingRef = useRef(false);
+  const rotationRef = useRef(0);
+  const centroidRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -130,37 +151,82 @@ export default function GraphPage() {
     return () => { alive = false; };
   }, []);
 
-  const nodes: InstanceFlowNode[] = useMemo(() => {
-    if (!data) return [];
+  // Build nodes + edges once the data arrives; edges only reference node ids
+  // that exist (defensive) and are styled with high contrast so every
+  // connection is clearly visible.
+  useEffect(() => {
+    if (!data || data.nodes.length <= 1) return;
     const positions = layoutGraph(data.nodes, data.edges, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
     const byId = new Map(data.nodes.map((n) => [n.id, n]));
-    return positions.map((p) => {
-      const n = byId.get(p.id);
-      if (!n) return { id: p.id, type: "instance", position: { x: p.x, y: p.y }, data: { id: p.id, accounts: 0, local: false, blocked: false } };
-      return { id: p.id, type: "instance", position: { x: p.x, y: p.y }, data: n };
-    });
-  }, [data]);
+    let cx = 0;
+    let cy = 0;
+    for (const p of positions) { cx += p.x; cy += p.y; }
+    centroidRef.current = { x: cx / positions.length, y: cy / positions.length };
 
-  // Edges rendered clearly: connections from the local instance are accent-coloured
-  // and animated, the rest use a solid mid tone — both clearly visible on the
-  // light canvas, with the stroke scaling by follow weight.
-  const edges: FlowEdge[] = useMemo(() => {
-    if (!data) return [];
-    return data.edges.map((e, i) => {
-      const fromLocal = e.source === data.instance || e.target === data.instance;
-      return {
-        id: `edge-${i}`,
-        source: e.source,
-        target: e.target,
-        animated: fromLocal,
-        style: {
-          stroke: fromLocal ? "var(--accent)" : "#8a8ab8",
-          strokeWidth: fromLocal ? 2.5 : Math.min(1.5 + e.weight / 8, 4),
-          opacity: 0.85,
-        },
-      };
-    });
-  }, [data]);
+    setNodes(
+      positions.map((p) => {
+        const n = byId.get(p.id);
+        return {
+          id: p.id,
+          type: "instance",
+          position: { x: p.x, y: p.y },
+          data: n ?? { id: p.id, accounts: 0, local: false, blocked: false },
+        };
+      })
+    );
+    const nodeIds = new Set(byId.keys());
+    setEdges(
+      data.edges
+        .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+        .map((e, i) => {
+          const fromLocal = e.source === data.instance || e.target === data.instance;
+          return {
+            id: `edge-${i}`,
+            source: e.source,
+            target: e.target,
+            animated: fromLocal,
+            style: {
+              stroke: fromLocal ? "var(--accent)" : "#7a7aaa",
+              strokeWidth: fromLocal ? 3 : Math.min(1.6 + e.weight / 6, 4.5),
+              opacity: 0.9,
+            },
+          };
+        })
+    );
+  }, [data, setNodes, setEdges]);
+
+  // Fit the graph into the viewport once it is populated.
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const id = requestAnimationFrame(() => fitView({ padding: 0.18, duration: 600 }));
+    return () => cancelAnimationFrame(id);
+  }, [nodes.length, fitView]);
+
+  // Gentle rotation around the graph centroid; paused while a node is being
+  // dragged so the user's manual placement is never fought.
+  useEffect(() => {
+    if (!data || data.nodes.length <= 1) return;
+    let raf = 0;
+    const tick = () => {
+      const c = centroidRef.current;
+      if (c && !draggingRef.current) {
+        rotationRef.current += ROTATION_SPEED;
+        const a = rotationRef.current;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
+        setNodes((nds) =>
+          nds.map((n) => {
+            const dx = n.position.x - c.x;
+            const dy = n.position.y - c.y;
+            return { ...n, position: { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos } };
+          })
+        );
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [data, setNodes]);
 
   const totalAccounts = useMemo(
     () => (data ? data.nodes.reduce((sum, n) => sum + n.accounts, 0) : 0),
@@ -216,17 +282,18 @@ export default function GraphPage() {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.18 }}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
               minZoom={0.1}
               maxZoom={3}
-              nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable
               selectionOnDrag={false}
               panOnDrag
               zoomOnScroll
               zoomOnPinch
+              onNodeDragStart={() => { draggingRef.current = true; }}
+              onNodeDragStop={() => { draggingRef.current = false; }}
               proOptions={{ hideAttribution: true }}
               onNodeClick={(_, node) => setSelected(node.data)}
             >
