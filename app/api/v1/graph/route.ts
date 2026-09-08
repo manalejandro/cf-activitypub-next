@@ -46,10 +46,15 @@ export async function GET(): Promise<Response> {
     if (nodeSet.size >= maxNodes) break;
   }
   // Instances that have rejected our deliveries with 403 Forbidden — the
-  // classic signal that a remote instance has blocked us. They are surfaced as
-  // their own nodes even when there is no follower connection to them.
+  // classic signal that a remote instance has blocked us. Only shown while the
+  // most recent delivery to the domain was a rejection (a later success clears
+  // it). Surfaced as their own nodes even without a follower connection.
   const blockedByRows = await env.DB
-    .prepare("SELECT domain FROM delivery_rejections WHERE status = 403")
+    .prepare(
+      `SELECT domain FROM delivery_rejections
+       WHERE status = 403
+         AND (last_ok_at IS NULL OR last_at > last_ok_at)`
+    )
     .all<{ domain: string }>();
   for (const row of blockedByRows.results) {
     nodeSet.add(row.domain);

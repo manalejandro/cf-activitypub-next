@@ -408,11 +408,14 @@ async function deliverOne(
     const permanent = PERMANENT_ERRORS.has(res.status);
     // Track permanent rejections per domain so the federation graph can show
     // instances that block us (403 Forbidden is the classic block signal).
-    // Records are cleared when a delivery to the same domain succeeds again.
+    // A rejection row is "blocked" while its last rejection is NEWER than the
+    // last successful delivery — so account-level blocks on a domain that also
+    // accepts other deliveries still surface, and an unblock shows up once a
+    // later delivery succeeds.
     const inboxDomain = new URL(inboxUrl).hostname.toLowerCase();
     if (res.ok) {
       await env.DB
-        .prepare("DELETE FROM delivery_rejections WHERE domain = ?")
+        .prepare("UPDATE delivery_rejections SET last_ok_at = datetime('now') WHERE domain = ?")
         .bind(inboxDomain)
         .run()
         .catch(() => {});

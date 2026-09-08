@@ -327,7 +327,8 @@ CREATE TABLE IF NOT EXISTS delivery_rejections (
   status     INTEGER NOT NULL,          -- permanent HTTP status from the remote inbox
   attempts   INTEGER NOT NULL DEFAULT 1,
   last_error TEXT,
-  last_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  last_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  last_ok_at TEXT                       -- last successful delivery to this domain
 );
 
 -- ─────────────────────────────────────────
