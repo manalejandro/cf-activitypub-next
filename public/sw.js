@@ -36,6 +36,70 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/* ── Web Push notifications ────────────────────────────────────────────────
+ * The server delivers an encrypted JSON payload: { title, body, icon, badge,
+ * tag, sound, data }. We show the notification here (service workers are the
+ * only place that can), and — when the user enabled the sound preference —
+ * ask any open page to play /notification.ogg (a service worker itself cannot
+ * play audio; only a window can).
+ */
+const notificationUrl = (type, data) => {
+  if (type === "direct" || type === "encrypted") return "/messages";
+  if (data && data.notification_id) return "/notifications";
+  return "/";
+};
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch { /* empty / non-JSON payload */ }
+  const type = (payload.data && payload.data.type) || "";
+  const options = {
+    body: payload.body || "",
+    icon: payload.icon || "/logo.svg",
+    badge: payload.badge || "/logo.svg",
+    tag: payload.tag || `cfap-notif-${type}`,
+    renotify: true,
+    data: payload.data || {},
+  };
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "CF ActivityPub", options).then(() => {
+      if (payload.sound) {
+        // Best-effort: tell open windows to play the notification chime.
+        return self.clients
+          .matchAll({ type: "window", includeUncontrolled: true })
+          .then((clients) => {
+            for (const client of clients) {
+              client.postMessage({ type: "cfap:notification-sound" });
+            }
+          })
+          .catch(() => {});
+      }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const url = notificationUrl(event.notification.data && event.notification.data.type, data);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) {
+          client.focus();
+          if (client.navigate && client.url !== new URL(url, self.location.origin).href) {
+            return client.navigate(url);
+          }
+          return undefined;
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

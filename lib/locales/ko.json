@@ -857,5 +857,17 @@
   "graph_legend_blocked_by": "당신을 차단함",
   "not_found_title": "페이지를 찾을 수 없습니다",
   "not_found_sub": "찾고 있는 페이지가 존재하지 않거나 이동되었습니다.",
-  "not_found_back": "랜딩 페이지로 돌아가기"
+  "not_found_back": "랜딩 페이지로 돌아가기",
+  "settings_push_sound": "알림이 도착하면 소리를 재생",
+  "push_notif_mention": "새 멘션",
+  "push_notif_follow": "새 팔로워",
+  "push_notif_follow_request": "팔로우 요청",
+  "push_notif_favourite": "새 즐겨찾기",
+  "push_notif_reblog": "새 부스트",
+  "push_notif_poll": "투표 종료",
+  "push_notif_update": "게시물 수정됨",
+  "push_notif_direct": "쪽지",
+  "push_notif_encrypted": "암호화 메시지",
+  "push_notif_quote": "새 인용",
+  "push_notif_default": "새 알림"
 }

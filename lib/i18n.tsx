@@ -66,6 +66,18 @@ const LocaleContext = createContext<{
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("en");
 
+  // Best-effort sync of the UI locale to the server (only works while logged
+  // in) so server-side features — e.g. the localized push notification titles —
+  // can match the user's language.
+  function persistLocale(l: Locale) {
+    void fetch("/api/v1/preferences", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ "ui:locale": l }),
+    }).catch(() => {});
+  }
+
   // Load the saved locale (or the browser language) once, then switch i18next.
   useEffect(() => {
     const saved = localStorage.getItem("locale") as Locale | null;
@@ -88,12 +100,14 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocaleState(resolved);
     void i18next.changeLanguage(resolved);
+    persistLocale(resolved);
   }, []);
 
   function setLocale(l: Locale) {
     setLocaleState(l);
     localStorage.setItem("locale", l);
     void i18next.changeLanguage(l);
+    persistLocale(l);
   }
 
   // Proxy keeps the existing `t.key` object-style API while i18next does the

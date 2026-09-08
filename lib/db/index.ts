@@ -3233,6 +3233,7 @@ function rowToPushSub(r: Row): LocalPushSubscription {
     policy: r.policy as string,
     alerts: r.alerts as string,
     serverKey: r.server_key as string,
+    sound: Boolean(r.sound),
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -3255,8 +3256,8 @@ export async function upsertPushSubscription(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO push_subscriptions (id, actor_id, endpoint, p256dh_key, auth_key, standard, policy, alerts, server_key, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `INSERT INTO push_subscriptions (id, actor_id, endpoint, p256dh_key, auth_key, standard, policy, alerts, server_key, sound, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
        ON CONFLICT(actor_id) DO UPDATE SET
          endpoint = excluded.endpoint,
          p256dh_key = excluded.p256dh_key,
@@ -3265,6 +3266,7 @@ export async function upsertPushSubscription(
          policy = excluded.policy,
          alerts = excluded.alerts,
          server_key = excluded.server_key,
+         sound = excluded.sound,
          updated_at = datetime('now')`
     )
     .bind(
@@ -3276,7 +3278,8 @@ export async function upsertPushSubscription(
       sub.standard ? 1 : 0,
       sub.policy,
       sub.alerts,
-      sub.serverKey
+      sub.serverKey,
+      sub.sound ? 1 : 0
     )
     .run();
 }
@@ -3285,25 +3288,24 @@ export async function updatePushSubscriptionAlerts(
   db: D1Database,
   actorId: string,
   alerts: string,
-  policy?: string
+  policy?: string,
+  sound?: boolean
 ): Promise<void> {
+  const sets = ["alerts = ?", "updated_at = datetime('now')"];
+  const binds: unknown[] = [alerts];
   if (policy !== undefined) {
-    await db
-      .prepare(
-        `UPDATE push_subscriptions SET alerts = ?, policy = ?, updated_at = datetime('now')
-         WHERE actor_id = ?`
-      )
-      .bind(alerts, policy, actorId)
-      .run();
-  } else {
-    await db
-      .prepare(
-        `UPDATE push_subscriptions SET alerts = ?, updated_at = datetime('now')
-         WHERE actor_id = ?`
-      )
-      .bind(alerts, actorId)
-      .run();
+    sets.push("policy = ?");
+    binds.push(policy);
   }
+  if (sound !== undefined) {
+    sets.push("sound = ?");
+    binds.push(sound ? 1 : 0);
+  }
+  binds.push(actorId);
+  await db
+    .prepare(`UPDATE push_subscriptions SET ${sets.join(", ")} WHERE actor_id = ?`)
+    .bind(...binds)
+    .run();
 }
 
 export async function deletePushSubscription(

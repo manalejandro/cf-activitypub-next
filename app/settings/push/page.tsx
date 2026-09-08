@@ -13,6 +13,7 @@ interface PushSubscriptionData {
   endpoint: string;
   standard: boolean;
   alerts: Record<string, boolean>;
+  sound: boolean;
   server_key: string;
 }
 
@@ -226,6 +227,25 @@ export default function PushNotificationsPage() {
     }
   }
 
+  async function handleToggleSound(value: boolean) {
+    if (!token || !subscription) return;
+    setError(null);
+
+    const res = await fetch("/api/v1/push/subscription", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: { sound: value } }),
+    });
+
+    if (res.ok) {
+      const data = await res.json() as PushSubscriptionData;
+      setSubscription(data);
+    } else {
+      const err = await res.json() as { error?: string };
+      setError(err.error ?? t.settings_push_update_failed);
+    }
+  }
+
   if (!browserSupport) {
     return (
       <PageLayout sidebar={<Sidebar currentPath="/settings" />}>
@@ -299,6 +319,18 @@ export default function PushNotificationsPage() {
                     </label>
                   );
                 })}
+
+                {/* Play a sound when a notification arrives */}
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0", cursor: "pointer", fontSize: "0.875rem", marginTop: "0.5rem" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={subscription.sound}
+                    onChange={(e) => void handleToggleSound(e.target.checked)}
+                  />
+                  {t.settings_push_sound}
+                </label>
               </div>
             )}
 

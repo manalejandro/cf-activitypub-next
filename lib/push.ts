@@ -1,6 +1,30 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { getPushSubscription } from "@/lib/db";
 import type { LocalNotification } from "@/lib/types";
+import en from "@/lib/locales/en.json";
+import es from "@/lib/locales/es.json";
+import fr from "@/lib/locales/fr.json";
+import de from "@/lib/locales/de.json";
+import it from "@/lib/locales/it.json";
+import ja from "@/lib/locales/ja.json";
+import ko from "@/lib/locales/ko.json";
+import pt from "@/lib/locales/pt.json";
+import ru from "@/lib/locales/ru.json";
+import zhHans from "@/lib/locales/zh-Hans.json";
+
+/** Server-side locale dictionaries for the notification titles. */
+const LOCALE_DICTS: Record<string, Record<string, string>> = {
+  en: en as unknown as Record<string, string>,
+  es: es as unknown as Record<string, string>,
+  fr: fr as unknown as Record<string, string>,
+  de: de as unknown as Record<string, string>,
+  it: it as unknown as Record<string, string>,
+  ja: ja as unknown as Record<string, string>,
+  ko: ko as unknown as Record<string, string>,
+  pt: pt as unknown as Record<string, string>,
+  ru: ru as unknown as Record<string, string>,
+  "zh-Hans": zhHans as unknown as Record<string, string>,
+};
 
 function b64url(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -44,19 +68,16 @@ async function hkdf(salt: ArrayBuffer, ikm: ArrayBuffer, info: ArrayBuffer, len:
   return concat(...blocks).slice(0, len);
 }
 
-function notifTitle(type: string): string {
-  switch (type) {
-    case "mention": return "Nueva mención";
-    case "follow": return "Nuevo seguidor";
-    case "follow_request": return "Solicitud de seguimiento";
-    case "favourite": return "Nuevo favorito";
-    case "reblog": return "Nuevo boost";
-    case "poll": return "Encuesta finalizada";
-    case "update": return "Publicación editada";
-    case "direct": return "Mensaje directo";
-    case "encrypted": return "Mensaje cifrado";
-    default: return "Nueva notificación";
-  }
+function notifTitle(dict: Record<string, string>, type: string): string {
+  const key = `push_notif_${type}`;
+  return dict[key] ?? dict.push_notif_default ?? "New notification";
+}
+
+/** Strip HTML tags and truncate to a short preview for the notification body. */
+function snippet(html: string | null | undefined, max = 120): string {
+  if (!html) return "";
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 const TYPE_MAP: Record<string, string> = {
@@ -81,12 +102,28 @@ export async function deliverPushNotification(
   if (ak && alerts[ak] === false) return;
   if (sub.policy === "none") return;
 
+  // Build a short body: the triggering account + (for content notifications) a
+  // preview of the object. The title comes from the i18n dictionaries in the
+  // user's stored UI locale (ui:locale preference), defaulting to English.
+  const [actorRow, objectRow, localeRow] = await Promise.all([
+    db.prepare("SELECT username, domain FROM actors WHERE id = ?").bind(notif.accountId).first<{ username: string; domain: string }>(),
+    notif.objectId
+      ? db.prepare("SELECT content FROM objects WHERE id = ?").bind(notif.objectId).first<{ content: string | null }>()
+      : Promise.resolve(null),
+    db.prepare("SELECT value FROM preferences WHERE actor_id = ? AND key = 'ui:locale'").bind(notif.targetAccountId).first<{ value: string }>(),
+  ]);
+  const dict = LOCALE_DICTS[localeRow?.value ?? "en"] ?? en;
+  const who = actorRow ? (actorRow.domain ? `@${actorRow.username}@${actorRow.domain}` : `@${actorRow.username}`) : "";
+  const preview = snippet(objectRow?.content ?? null);
+  const bodyText = preview ? `${who ? `${who} · ` : ""}${preview}` : who;
+
   const payload = strBuf(JSON.stringify({
-    title: notifTitle(notif.type),
-    body: "",
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
+    title: notifTitle(dict, notif.type),
+    body: bodyText,
+    icon: "/logo.svg",
+    badge: "/logo.svg",
     tag: `notif-${notif.id}`,
+    sound: Boolean(sub.sound),
     data: { type: notif.type, account_id: notif.accountId, notification_id: notif.id, object_id: notif.objectId },
   }));
 

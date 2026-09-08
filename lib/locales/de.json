@@ -857,5 +857,17 @@
   "graph_legend_blocked_by": "Blockt dich",
   "not_found_title": "Seite nicht gefunden",
   "not_found_sub": "Die gesuchte Seite existiert nicht oder wurde verschoben.",
-  "not_found_back": "Zurück zur Startseite"
+  "not_found_back": "Zurück zur Startseite",
+  "settings_push_sound": "Ton abspielen, wenn eine Benachrichtigung eintrifft",
+  "push_notif_mention": "Neue Erwähnung",
+  "push_notif_follow": "Neuer Follower",
+  "push_notif_follow_request": "Follow-Anfrage",
+  "push_notif_favourite": "Neues Favorit",
+  "push_notif_reblog": "Neuer Boost",
+  "push_notif_poll": "Umfrage beendet",
+  "push_notif_update": "Beitrag bearbeitet",
+  "push_notif_direct": "Direktnachricht",
+  "push_notif_encrypted": "Verschlüsselte Nachricht",
+  "push_notif_quote": "Neues Zitat",
+  "push_notif_default": "Neue Benachrichtigung"
 }

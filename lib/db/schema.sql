@@ -496,6 +496,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   policy        TEXT NOT NULL DEFAULT 'all',
   alerts        TEXT NOT NULL DEFAULT '{}',
   server_key    TEXT NOT NULL DEFAULT '',
+  sound         INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id)

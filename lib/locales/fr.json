@@ -857,5 +857,17 @@
   "graph_legend_blocked_by": "Vous bloque",
   "not_found_title": "Page introuvable",
   "not_found_sub": "La page que vous cherchez n'existe pas ou a été déplacée.",
-  "not_found_back": "Retour à l'accueil"
+  "not_found_back": "Retour à l'accueil",
+  "settings_push_sound": "Jouer un son lorsque arrive une notification",
+  "push_notif_mention": "Nouvelle mention",
+  "push_notif_follow": "Nouvel abonné",
+  "push_notif_follow_request": "Demande d'abonnement",
+  "push_notif_favourite": "Nouveau favori",
+  "push_notif_reblog": "Nouveau boost",
+  "push_notif_poll": "Sondage terminé",
+  "push_notif_update": "Publication modifiée",
+  "push_notif_direct": "Message direct",
+  "push_notif_encrypted": "Message chiffré",
+  "push_notif_quote": "Nouvelle citation",
+  "push_notif_default": "Nouvelle notification"
 }

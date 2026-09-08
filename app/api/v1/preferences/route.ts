@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
 
 const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:visibility": "public",
@@ -9,6 +10,7 @@ const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:quote_policy": "followers",
   "reading:expand:media": "default",
   "reading:expand:spoilers": "false",
+  "ui:locale": "en",
 };
 
 const PREFERENCE_KEYS = new Set(Object.keys(DEFAULT_PREFERENCES));
@@ -16,6 +18,9 @@ const PREFERENCE_KEYS = new Set(Object.keys(DEFAULT_PREFERENCES));
 const VISIBILITIES = new Set(["public", "unlisted", "private", "direct"]);
 const QUOTE_POLICIES = new Set(["public", "followers", "followed", "nobody"]);
 const MEDIA_EXPANSIONS = new Set(["default", "show_all", "hide_all"]);
+// Supported UI locales come from lib/locales/supported (the same source the
+// instance API endpoints use).
+const LOCALES = new Set(SUPPORTED_LANGUAGE_CODES);
 
 // Validates and coerces a preference value into its storage (string) form.
 function normalizeValue(key: string, raw: unknown): string | null | undefined {
@@ -35,6 +40,8 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
       return QUOTE_POLICIES.has(raw) ? raw : undefined;
     case "reading:expand:media":
       return MEDIA_EXPANSIONS.has(raw) ? raw : undefined;
+    case "ui:locale":
+      return LOCALES.has(raw) ? raw : undefined;
     default:
       return undefined;
   }

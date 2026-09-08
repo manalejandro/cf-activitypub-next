@@ -27,6 +27,7 @@ export async function GET(_request: NextRequest): Promise<Response> {
     endpoint: sub.endpoint,
     standard: sub.standard,
     alerts,
+    sound: sub.sound,
     server_key: env.VAPID_PUBLIC_KEY ?? sub.serverKey,
   });
 }
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   let standard = false;
   const alerts: Record<string, boolean> = {};
   let policy = "all";
+  let sound = false;
 
   if (contentType.includes("application/json")) {
     const body = await request.json() as Record<string, unknown>;
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       const dataAlerts = data.alerts as Record<string, boolean> | undefined;
       if (dataAlerts) Object.assign(alerts, dataAlerts);
       if (data.policy) policy = data.policy as string;
+      if (data.sound !== undefined) sound = data.sound === true || data.sound === "true";
     }
   } else {
     const form = await request.formData();
@@ -80,6 +83,8 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const policyVal = form.get("data[policy]") as string | null;
     if (policyVal) policy = policyVal;
+    const soundVal = form.get("data[sound]") as string | null;
+    if (soundVal !== null) sound = soundVal === "true";
   }
 
   if (!endpoint || !p256dh || !auth) {
@@ -96,6 +101,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     policy,
     alerts: JSON.stringify(alerts),
     serverKey: env.VAPID_PUBLIC_KEY ?? "",
+    sound,
   });
 
   const sub = await getPushSubscription(env.DB, actor.id);
@@ -106,6 +112,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     endpoint: sub.endpoint,
     standard: sub.standard,
     alerts: alerts,
+    sound: sub.sound,
     server_key: env.VAPID_PUBLIC_KEY ?? sub.serverKey,
   });
 }
@@ -124,6 +131,7 @@ export async function PUT(request: NextRequest): Promise<Response> {
 
   const alerts: Record<string, boolean> = {};
   let policy: string | undefined;
+  let sound: boolean | undefined;
 
   if (contentType.includes("application/json")) {
     const body = await request.json() as Record<string, unknown>;
@@ -132,6 +140,7 @@ export async function PUT(request: NextRequest): Promise<Response> {
       const dataAlerts = data.alerts as Record<string, boolean> | undefined;
       if (dataAlerts) Object.assign(alerts, dataAlerts);
       if (data.policy !== undefined) policy = data.policy as string;
+      if (data.sound !== undefined) sound = data.sound === true || data.sound === "true";
     }
   } else {
     const form = await request.formData();
@@ -144,10 +153,12 @@ export async function PUT(request: NextRequest): Promise<Response> {
     }
     const policyVal = form.get("policy") as string | null;
     if (policyVal) policy = policyVal;
+    const soundVal = form.get("sound") as string | null;
+    if (soundVal !== null) sound = soundVal === "true";
   }
 
   const mergedAlerts = { ...JSON.parse(existing.alerts), ...alerts };
-  await updatePushSubscriptionAlerts(env.DB, actor.id, JSON.stringify(mergedAlerts), policy);
+  await updatePushSubscriptionAlerts(env.DB, actor.id, JSON.stringify(mergedAlerts), policy, sound);
 
   const updated = await getPushSubscription(env.DB, actor.id);
   if (!updated) return json({ error: "Push subscription not found after update" }, 500);
@@ -159,6 +170,7 @@ export async function PUT(request: NextRequest): Promise<Response> {
     endpoint: updated.endpoint,
     standard: updated.standard,
     alerts: updatedAlerts,
+    sound: updated.sound,
     server_key: env.VAPID_PUBLIC_KEY ?? updated.serverKey,
   });
 }

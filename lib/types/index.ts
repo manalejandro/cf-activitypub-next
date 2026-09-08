@@ -652,6 +652,7 @@ export interface LocalPushSubscription {
   policy: string;
   alerts: string;
   serverKey: string;
+  sound: boolean;
   createdAt: string;
   updatedAt: string;
 }

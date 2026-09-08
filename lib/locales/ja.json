@@ -857,5 +857,17 @@
   "graph_legend_blocked_by": "あなたをブロック",
   "not_found_title": "ページが見つかりません",
   "not_found_sub": "お探しのページは存在しないか、移動しました。",
-  "not_found_back": "ランディングページへ戻る"
+  "not_found_back": "ランディングページへ戻る",
+  "settings_push_sound": "通知が届いたときに音を鳴らす",
+  "push_notif_mention": "新しいメンション",
+  "push_notif_follow": "新しいフォロワー",
+  "push_notif_follow_request": "フォローリクエスト",
+  "push_notif_favourite": "新しいお気に入り",
+  "push_notif_reblog": "新しいブースト",
+  "push_notif_poll": "投票が終了しました",
+  "push_notif_update": "投稿が編集されました",
+  "push_notif_direct": "ダイレクトメッセージ",
+  "push_notif_encrypted": "暗号化メッセージ",
+  "push_notif_quote": "新しい引用",
+  "push_notif_default": "新しい通知"
 }

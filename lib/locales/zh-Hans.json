@@ -857,5 +857,17 @@
   "graph_legend_blocked_by": "屏蔽了你",
   "not_found_title": "页面未找到",
   "not_found_sub": "您查找的页面不存在或已被移动。",
-  "not_found_back": "返回首页"
+  "not_found_back": "返回首页",
+  "settings_push_sound": "收到通知时播放声音",
+  "push_notif_mention": "新提及",
+  "push_notif_follow": "新关注者",
+  "push_notif_follow_request": "关注请求",
+  "push_notif_favourite": "新收藏",
+  "push_notif_reblog": "新转嘟",
+  "push_notif_poll": "投票已结束",
+  "push_notif_update": "帖子已编辑",
+  "push_notif_direct": "私信",
+  "push_notif_encrypted": "加密消息",
+  "push_notif_quote": "新引用",
+  "push_notif_default": "新通知"
 }
