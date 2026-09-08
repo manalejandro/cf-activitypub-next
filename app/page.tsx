@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
@@ -20,13 +19,8 @@ interface InstanceSettings {
 export default function Home() {
   const { authenticated, loading } = useAuth();
   const { t } = useLocale();
-  const router = useRouter();
   const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<InstanceSettings | null>(null);
-
-  useEffect(() => {
-    if (authenticated && !loading) router.replace("/home");
-  }, [authenticated, loading, router]);
 
   useEffect(() => {
     fetch("/api/v1/instance")
@@ -47,8 +41,9 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
+  // Wait for the auth check so the nav/hero buttons show the right state —
+  // the landing itself stays accessible to everyone, including signed-in users.
   if (loading) return null;
-  if (authenticated) return null;
 
   const features: { icon: IconName; title: string; desc: string }[] = [
     { icon: "bolt", title: t.f_edge_title, desc: t.f_edge_desc },
@@ -78,8 +73,14 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <LanguagePicker />
-            <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
-            <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
+            {authenticated ? (
+              <Link href="/home" className="btn btn-primary btn-sm">{t.nav_home}</Link>
+            ) : (
+              <>
+                <Link href="/login" className="btn btn-outline btn-sm">{t.landing_signin}</Link>
+                <Link href="/register" className="btn btn-primary btn-sm">{t.landing_join}</Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -108,9 +109,13 @@ export default function Home() {
           </p>
 
           <div className="flex flex-wrap gap-4 justify-center mt-4">
-            <Link href="/register" className="btn btn-primary btn-lg">
-              {t.landing_register}
-            </Link>
+            {authenticated ? (
+              <Link href="/home" className="btn btn-primary btn-lg">{t.nav_home}</Link>
+            ) : (
+              <Link href="/register" className="btn btn-primary btn-lg">
+                {t.landing_register}
+              </Link>
+            )}
             <a
               href="https://github.com/manalejandro/cf-activitypub-next"
               target="_blank"
