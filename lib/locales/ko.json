@@ -854,5 +854,8 @@
   "graph_blocked": "차단됨",
   "graph_node_details": "인스턴스 세부 정보",
   "graph_blocked_by": "당신을 차단함",
-  "graph_legend_blocked_by": "당신을 차단함"
+  "graph_legend_blocked_by": "당신을 차단함",
+  "not_found_title": "페이지를 찾을 수 없습니다",
+  "not_found_sub": "찾고 있는 페이지가 존재하지 않거나 이동되었습니다.",
+  "not_found_back": "랜딩 페이지로 돌아가기"
 }

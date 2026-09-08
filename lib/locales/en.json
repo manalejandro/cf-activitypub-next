@@ -854,5 +854,8 @@
   "graph_blocked": "Blocked",
   "graph_node_details": "Instance details",
   "graph_blocked_by": "Blocks you",
-  "graph_legend_blocked_by": "Blocks you"
+  "graph_legend_blocked_by": "Blocks you",
+  "not_found_title": "Page not found",
+  "not_found_sub": "The page you're looking for doesn't exist or has been moved.",
+  "not_found_back": "Back to the landing"
 }

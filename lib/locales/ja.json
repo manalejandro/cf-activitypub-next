@@ -854,5 +854,8 @@
   "graph_blocked": "ブロック済み",
   "graph_node_details": "インスタンスの詳細",
   "graph_blocked_by": "あなたをブロック",
-  "graph_legend_blocked_by": "あなたをブロック"
+  "graph_legend_blocked_by": "あなたをブロック",
+  "not_found_title": "ページが見つかりません",
+  "not_found_sub": "お探しのページは存在しないか、移動しました。",
+  "not_found_back": "ランディングページへ戻る"
 }

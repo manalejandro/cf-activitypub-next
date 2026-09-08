@@ -854,5 +854,8 @@
   "graph_blocked": "Bloqueada",
   "graph_node_details": "Detalhes da instância",
   "graph_blocked_by": "Bloqueia você",
-  "graph_legend_blocked_by": "Bloqueia você"
+  "graph_legend_blocked_by": "Bloqueia você",
+  "not_found_title": "Página não encontrada",
+  "not_found_sub": "A página que procura não existe ou foi movida.",
+  "not_found_back": "Voltar à página inicial"
 }
