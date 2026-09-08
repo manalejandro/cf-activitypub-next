@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -158,12 +158,14 @@ const nodeTypes: NodeTypes = { instance: InstanceNode };
 
 const VIRTUAL_WIDTH = 1400;
 const VIRTUAL_HEIGHT = 860;
-// Rotation throttling: node-position updates happen at most every 50ms (~20fps)
-// instead of every animation frame, cutting React Flow's per-update re-render
-// cost ~3x. ROTATION_DELTA_PER_FRAME keeps the angular speed constant (~50s per
-// full 360° turn) regardless of the actual frame rate.
-const ROTATION_INTERVAL_MS = 50;
+// Rotation throttling: node-position updates happen at most every 200ms (~5fps).
+// Each update makes React Flow re-render every node wrapper and recompute every
+// edge path, so the lower frequency is what keeps 100 nodes + edges cheap.
+// ROTATION_DELTA_PER_FRAME keeps the angular speed constant (~50s per full 360°)
+// regardless of the actual frame rate.
+const ROTATION_INTERVAL_MS = 200;
 const ROTATION_DELTA_PER_FRAME = 0.002;
+
 export default function GraphPage() {
   return (
     <ReactFlowProvider>
@@ -174,16 +176,10 @@ export default function GraphPage() {
 
 function GraphView() {
   const { t } = useLocale();
-  const { fitView } = useReactFlow();
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<GraphNode | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<InstanceFlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
-
-  const draggingRef = useRef(false);
-  const centroidRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -194,127 +190,7 @@ function GraphView() {
     return () => { alive = false; };
   }, []);
 
-  // Build nodes + edges once the data arrives; edges only reference node ids
-  // that exist (defensive) and are styled with high contrast so every
-  // connection is clearly visible.
-  useEffect(() => {
-    if (!data || data.nodes.length <= 1) return;
-    const positions = layoutGraph(data.nodes, data.edges, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-    const byId = new Map(data.nodes.map((n) => [n.id, n]));
-
-    // Rotation center: the bounding-box centroid of the initial layout. Rotating
-    // around it is a rigid transform, so the graph spins in place — it can never
-    // drift like the previous viewport-orbit approach.
-    let cx = 0;
-    let cy = 0;
-    for (const p of positions) { cx += p.x; cy += p.y; }
-    centroidRef.current = { x: cx / positions.length, y: cy / positions.length };
-
-    setNodes(
-      positions.map((p) => {
-        const n = byId.get(p.id);
-        const id = p.id;
-        // React Flow only draws edges for "initialized" nodes, and custom node
-        // types only become initialized when the ResizeObserver measures them —
-        // which is unreliable (headless, rapid re-renders, some browsers). An
-        // explicit width/height + explicit source/target handles satisfy the
-        // initialization check deterministically, so the connections always
-        // render.
-        const width = Math.min(210, Math.max(140, id.length * 7.5 + 36));
-        const height = 54;
-        return {
-          id,
-          type: "instance",
-          position: { x: p.x, y: p.y },
-          width,
-          height,
-          handles: [
-            { id: "source", type: "source", position: Position.Bottom, x: width / 2, y: height },
-            { id: "target", type: "target", position: Position.Top, x: width / 2, y: 0 },
-          ],
-          data: n ?? { id, accounts: 0, local: false, blocked: false, blockedBy: false },
-        };
-      })
-    );
-    const nodeIds = new Set(byId.keys());
-    setEdges(
-      data.edges
-        .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
-        .map((e, i) => {
-          const fromLocal = e.source === data.instance || e.target === data.instance;
-          // Colour the connection by the TARGET instance's state: red when we
-          // block it, amber when it blocks us, accent when it touches our own
-          // instance, neutral otherwise.
-          const targetNode = byId.get(e.target);
-          let stroke = "#7a7aaa";
-          let animated = false;
-          if (targetNode?.blocked) stroke = "var(--danger)";
-          else if (targetNode?.blockedBy) stroke = "var(--warning)";
-          else if (fromLocal) {
-            stroke = "var(--accent)";
-            animated = true;
-          }
-          return {
-            id: `edge-${i}`,
-            source: e.source,
-            target: e.target,
-            animated,
-            style: {
-              stroke,
-              strokeWidth: fromLocal ? 3 : Math.min(1.6 + e.weight / 6, 4.5),
-              opacity: 0.9,
-            },
-          };
-        })
-    );
-  }, [data, setNodes, setEdges]);
-
-  // Fit the graph into the viewport once populated.
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    const id = requestAnimationFrame(() => fitView({ padding: 0.18, duration: 600 }));
-    return () => cancelAnimationFrame(id);
-  }, [nodes.length, fitView]);
-
-// Slow 360° rotation: rotate the node POSITIONS around the layout centroid by a
-// constant angular delta. Rotation is a rigid transform around the centroid, so
-// the graph spins in place (no drift) and edges follow the nodes automatically.
-// Updates are THROTTLED to ~20fps: each setNodes re-renders all 60 nodes and
-// recomputes every edge path in React Flow, so running at 60fps would burn CPU.
-// The angular speed stays constant regardless of the frame rate.
-useEffect(() => {
-  if (!data || data.nodes.length <= 1) return;
-  let raf = 0;
-  let last = performance.now();
-  let pending = 0;
-  const tick = (now: number) => {
-    const c = centroidRef.current;
-    const dt = now - last;
-    last = now;
-    if (c && !draggingRef.current) {
-      pending += dt;
-      if (pending >= ROTATION_INTERVAL_MS) {
-        const steps = pending / 16.6667;
-        pending = 0;
-        const a = ROTATION_DELTA_PER_FRAME * steps;
-        const cos = Math.cos(a);
-        const sin = Math.sin(a);
-        setNodes((nds) =>
-          nds.map((n) => {
-            const dx = n.position.x - c.x;
-            const dy = n.position.y - c.y;
-            return { ...n, position: { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos } };
-          })
-        );
-      }
-    } else {
-      pending = 0; // don't accumulate while the user is dragging
-    }
-    raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}, [data, setNodes]);
+  const handleNodeClick = useCallback((node: GraphNode) => setSelected(node), []);
 
   const totalAccounts = useMemo(
     () => (data ? data.nodes.reduce((sum, n) => sum + n.accounts, 0) : 0),
@@ -366,40 +242,10 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              minZoom={0.1}
-              maxZoom={3}
-              nodesConnectable={false}
-              elementsSelectable
-              selectionOnDrag={false}
-              panOnDrag
-              zoomOnScroll
-              zoomOnPinch
-              onNodeDragStart={() => { draggingRef.current = true; }}
-              onNodeDragStop={() => { draggingRef.current = false; }}
-              proOptions={{ hideAttribution: true }}
-              onNodeClick={(_, node) => setSelected(node.data)}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={22} size={1.5} color="var(--border)" />
-              <Controls showInteractive={false} />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={(n) => {
-                  const d = n.data as GraphNode | undefined;
-                  if (d?.blocked) return "var(--danger)";
-                  if (d?.blockedBy) return "var(--warning)";
-                  if (d?.local) return "var(--accent)";
-                  return "var(--border-hover)";
-                }}
-                maskColor="rgba(240,240,252,0.7)"
-              />
-            </ReactFlow>
+            {/* The flow lives in its own component so the rotation (which updates
+                node positions ~5×/s) only re-renders the canvas, never the page
+                chrome above. */}
+            <FlowCanvas data={data} onNodeClick={handleNodeClick} />
 
             {/* Floating header panel */}
             <div style={{ ...GLASS, position: "absolute", top: 16, left: 16, zIndex: 10, maxWidth: isMobile ? "calc(100vw - 2rem)" : 320, display: "flex", flexDirection: "column", gap: isMobile ? "0.5rem" : "0.7rem", padding: isMobile ? "0.75rem 0.9rem" : "1rem 1.1rem" }}>
@@ -491,5 +337,172 @@ useEffect(() => {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * The React Flow canvas on its own. Isolating it here means the slow rotation
+ * (which mutates node positions ~5×/s) re-renders ONLY the canvas — the nav and
+ * floating panels in GraphView stay untouched, which is what keeps the page
+ * light with 100 nodes + edges.
+ */
+function FlowCanvas({ data, onNodeClick }: { data: GraphData; onNodeClick: (node: GraphNode) => void }) {
+  const { fitView } = useReactFlow();
+  const [nodes, setNodes, onNodesChange] = useNodesState<InstanceFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
+
+  const draggingRef = useRef(false);
+  const centroidRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Build nodes + edges once the data arrives. Nodes get explicit
+  // width/height + source/target handles so React Flow initializes them (and
+  // therefore draws the edges) deterministically, without relying on the
+  // ResizeObserver measuring them.
+  useEffect(() => {
+    if (data.nodes.length <= 1) return;
+    const positions = layoutGraph(data.nodes, data.edges, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+    const byId = new Map(data.nodes.map((n) => [n.id, n]));
+
+    // Rotation center: the bounding-box centroid of the initial layout.
+    let cx = 0;
+    let cy = 0;
+    for (const p of positions) { cx += p.x; cy += p.y; }
+    centroidRef.current = { x: cx / positions.length, y: cy / positions.length };
+
+    setNodes(
+      positions.map((p) => {
+        const n = byId.get(p.id);
+        const id = p.id;
+        const width = Math.min(210, Math.max(140, id.length * 7.5 + 36));
+        const height = 54;
+        return {
+          id,
+          type: "instance",
+          position: { x: p.x, y: p.y },
+          width,
+          height,
+          handles: [
+            { id: "source", type: "source", position: Position.Bottom, x: width / 2, y: height },
+            { id: "target", type: "target", position: Position.Top, x: width / 2, y: 0 },
+          ],
+          data: n ?? { id, accounts: 0, local: false, blocked: false, blockedBy: false },
+        };
+      })
+    );
+    const nodeIds = new Set(byId.keys());
+    setEdges(
+      data.edges
+        .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+        .map((e, i) => {
+          const fromLocal = e.source === data.instance || e.target === data.instance;
+          // Colour the connection by the TARGET instance's state: red when we
+          // block it, amber when it blocks us, accent when it touches our own
+          // instance, neutral otherwise.
+          const targetNode = byId.get(e.target);
+          let stroke = "#7a7aaa";
+          let animated = false;
+          if (targetNode?.blocked) stroke = "var(--danger)";
+          else if (targetNode?.blockedBy) stroke = "var(--warning)";
+          else if (fromLocal) {
+            stroke = "var(--accent)";
+            animated = true;
+          }
+          return {
+            id: `edge-${i}`,
+            source: e.source,
+            target: e.target,
+            animated,
+            style: {
+              stroke,
+              strokeWidth: fromLocal ? 3 : Math.min(1.6 + e.weight / 6, 4.5),
+              opacity: 0.9,
+            },
+          };
+        })
+    );
+  }, [data, setNodes, setEdges]);
+
+  // Fit the graph into the viewport once populated.
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const id = requestAnimationFrame(() => fitView({ padding: 0.18, duration: 600 }));
+    return () => cancelAnimationFrame(id);
+  }, [nodes.length, fitView]);
+
+  // Slow 360° rotation at ~5fps: rotate node positions around the centroid by a
+  // constant angular delta. Rotation is a rigid transform around the centroid,
+  // so the graph spins in place (no drift) and edges follow the nodes. Paused
+  // while the user drags a node.
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    let pending = 0;
+    const tick = (now: number) => {
+      const c = centroidRef.current;
+      const dt = now - last;
+      last = now;
+      if (c && !draggingRef.current) {
+        pending += dt;
+        if (pending >= ROTATION_INTERVAL_MS) {
+          const steps = pending / 16.6667;
+          pending = 0;
+          const a = ROTATION_DELTA_PER_FRAME * steps;
+          const cos = Math.cos(a);
+          const sin = Math.sin(a);
+          setNodes((nds) =>
+            nds.map((n) => {
+              const dx = n.position.x - c.x;
+              const dy = n.position.y - c.y;
+              return { ...n, position: { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos } };
+            })
+          );
+        }
+      } else {
+        pending = 0; // don't accumulate while the user is dragging
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [setNodes]);
+
+  // Memoized handlers so React Flow never re-creates them on rotation ticks.
+  const handleNodeClick = useCallback((_: unknown, node: InstanceFlowNode) => onNodeClick(node.data), [onNodeClick]);
+  const handleDragStart = useCallback(() => { draggingRef.current = true; }, []);
+  const handleDragStop = useCallback(() => { draggingRef.current = false; }, []);
+  const minimapColor = useCallback((n: { data?: unknown }) => {
+    const d = n.data as GraphNode | undefined;
+    if (d?.blocked) return "var(--danger)";
+    if (d?.blockedBy) return "var(--warning)";
+    if (d?.local) return "var(--accent)";
+    return "var(--border-hover)";
+  }, []);
+
+  return (
+    <div className="absolute inset-0">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        minZoom={0.1}
+        maxZoom={3}
+        nodesConnectable={false}
+        elementsSelectable
+        selectionOnDrag={false}
+        panOnDrag
+        zoomOnScroll
+        zoomOnPinch
+        onNodeDragStart={handleDragStart}
+        onNodeDragStop={handleDragStop}
+        proOptions={{ hideAttribution: true }}
+        onNodeClick={handleNodeClick}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1.5} color="var(--border)" />
+        <Controls showInteractive={false} />
+        <MiniMap pannable zoomable nodeColor={minimapColor} maskColor="rgba(240,240,252,0.7)" />
+      </ReactFlow>
+    </div>
   );
 }
