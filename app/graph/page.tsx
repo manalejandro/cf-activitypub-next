@@ -51,18 +51,21 @@ function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
   return (
     <div
       style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
         display: "flex",
         flexDirection: "column",
-        gap: "0.25rem",
-        padding: "0.5rem 0.8rem",
+        justifyContent: "center",
+        gap: "0.2rem",
+        padding: "0.45rem 0.75rem",
         borderRadius: "var(--radius)",
         background: "var(--bg-surface)",
         border: `1px solid ${data.local ? "var(--accent)" : "var(--border)"}`,
         boxShadow: data.local
           ? "0 0 0 2px var(--accent-light), 0 6px 20px rgba(99,102,241,0.28)"
           : "var(--shadow)",
-        minWidth: 126,
-        maxWidth: 200,
+        overflow: "hidden",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 }}>
@@ -82,7 +85,7 @@ function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
           {data.id}
         </span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 }}>
         <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
           {data.accounts} {t.graph_accounts.toLowerCase()}
         </span>
@@ -167,11 +170,19 @@ function GraphView() {
     setNodes(
       positions.map((p) => {
         const n = byId.get(p.id);
+        const id = p.id;
+        // Explicit dimensions are required: React Flow only draws edges for
+        // "initialized" nodes, and custom node types rely on ResizeObserver
+        // measurement which does not always fire (headless, fast re-renders).
+        // Default nodes work without this because the CSS gives them a size.
+        const width = Math.min(210, Math.max(140, id.length * 7.5 + 36));
         return {
-          id: p.id,
+          id,
           type: "instance",
           position: { x: p.x, y: p.y },
-          data: n ?? { id: p.id, accounts: 0, local: false, blocked: false },
+          width,
+          height: 54,
+          data: n ?? { id, accounts: 0, local: false, blocked: false },
         };
       })
     );
