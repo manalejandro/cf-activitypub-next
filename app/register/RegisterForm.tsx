@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
+import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 
 declare global {
@@ -57,7 +58,15 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   const [turnstileToken, setTurnstileToken] = useState("");
   const [regs, setRegs] = useState<RegSettings | null>(null);
   const { t } = useLocale();
+  const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Already signed in? Send them straight to their feed. (Placed after all
+  // hooks so the early return never skips a hook call.)
+  const { authenticated, loading: authLoading } = useAuth();
+  useEffect(() => {
+    if (!authLoading && authenticated) router.replace("/home");
+  }, [authLoading, authenticated, router]);
 
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -366,6 +375,7 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
   }
 
   // ── Registration form ──────────────────────────────────────────────────────
+  if (authLoading || authenticated) return null;
   return (
     <>
       {turnstileSiteKey && (

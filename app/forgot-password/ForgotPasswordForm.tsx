@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
+import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 
 export default function ForgotPasswordForm() {
@@ -12,6 +14,14 @@ export default function ForgotPasswordForm() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { t } = useLocale();
+
+  // Already signed in? Send them straight to their feed.
+  const { authenticated, loading: authLoading } = useAuth();
+  const router = useRouter();
+  useEffect(() => {
+    if (!authLoading && authenticated) router.replace("/home");
+  }, [authLoading, authenticated, router]);
+  if (authLoading || authenticated) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
