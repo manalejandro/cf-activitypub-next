@@ -1,4 +1,5 @@
 import { getCloudflareContext, json } from "@/lib/cf";
+import { resolveLimits } from "@/lib/constants";
 
 interface EdgeRow {
   source: string;
@@ -6,7 +7,6 @@ interface EdgeRow {
   weight: number;
 }
 
-const MAX_NODES = 60;
 const MAX_EDGES = 250;
 
 /**
@@ -14,10 +14,12 @@ const MAX_EDGES = 250;
  * Nodes are domains (instances), edges are follower relationships between
  * accounts on different domains, weighted by how many follows link the pair.
  * Bounded for readability: the strongest inter-instance connections win, the
- * local instance is always present, and reciprocal edges are merged.
+ * local instance is always present, and reciprocal edges are merged. The node
+ * cap is configurable via GRAPH_MAX_NODES (wrangler var, default 100).
  */
 export async function GET(): Promise<Response> {
   const { env } = getCloudflareContext();
+  const maxNodes = resolveLimits(env as unknown as Record<string, unknown>).graphMaxNodes;
   const instanceDomain = (
     (env.INSTANCE_URL ? new URL(env.INSTANCE_URL).hostname : "") || "localhost"
   ).toLowerCase();
@@ -41,7 +43,7 @@ export async function GET(): Promise<Response> {
   for (const e of edges.results) {
     nodeSet.add(e.source);
     nodeSet.add(e.target);
-    if (nodeSet.size >= MAX_NODES) break;
+    if (nodeSet.size >= maxNodes) break;
   }
   // Instances that have rejected our deliveries with 403 Forbidden — the
   // classic signal that a remote instance has blocked us. They are surfaced as
@@ -51,7 +53,7 @@ export async function GET(): Promise<Response> {
     .all<{ domain: string }>();
   for (const row of blockedByRows.results) {
     nodeSet.add(row.domain);
-    if (nodeSet.size >= MAX_NODES) break;
+    if (nodeSet.size >= maxNodes) break;
   }
   // D1 caps the number of bind variables (~100), so the IN lists are passed as
   // one JSON array and expanded with json_each instead of one placeholder per

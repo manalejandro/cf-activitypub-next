@@ -22,6 +22,8 @@ LIBRETRANSLATE_URL = ""
 # Charge per call: guard screen = 1, vision alt-text = 5, 70B reason = 25.
 # Cloudflare free ~10k neurons/day — tune this to your plan's allowance.
 AI_DAILY_BUDGET = "1000"
+# Max instances shown on the /graph federation graph
+GRAPH_MAX_NODES = "100"
 # Secrets: set with wrangler secret put
 #   wrangler secret put TURNSTILE_SECRET
 #   wrangler secret put CALLS_TURN_KEY_ID
