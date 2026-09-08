@@ -118,8 +118,10 @@ const nodeTypes: NodeTypes = { instance: InstanceNode };
 
 const VIRTUAL_WIDTH = 1400;
 const VIRTUAL_HEIGHT = 860;
-// Slow constant rotation (~40s per full turn) — the graph "spins" by default.
-const ROTATION_SPEED = 0.0025;
+// Slow constant rotation (~50s per full 360° turn) — the graph "spins" gently
+// by default. This is the INCREMENTAL angle applied each frame: rotating the
+// already-rotated positions by the cumulative angle would accelerate quadratically.
+const ROTATION_DELTA = 0.002;
 
 export default function GraphPage() {
   return (
@@ -139,7 +141,6 @@ function GraphView() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
 
   const draggingRef = useRef(false);
-  const rotationRef = useRef(0);
   const centroidRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -203,17 +204,17 @@ function GraphView() {
   }, [nodes.length, fitView]);
 
   // Gentle rotation around the graph centroid; paused while a node is being
-  // dragged so the user's manual placement is never fought.
+  // dragged so the user's manual placement is never fought. Each frame applies
+  // the same small angular DELTA to the current positions, so the speed stays
+  // constant and the graph completes a slow 360° turn.
   useEffect(() => {
     if (!data || data.nodes.length <= 1) return;
+    const cos = Math.cos(ROTATION_DELTA);
+    const sin = Math.sin(ROTATION_DELTA);
     let raf = 0;
     const tick = () => {
       const c = centroidRef.current;
       if (c && !draggingRef.current) {
-        rotationRef.current += ROTATION_SPEED;
-        const a = rotationRef.current;
-        const cos = Math.cos(a);
-        const sin = Math.sin(a);
         setNodes((nds) =>
           nds.map((n) => {
             const dx = n.position.x - c.x;
