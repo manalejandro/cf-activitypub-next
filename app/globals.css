@@ -250,6 +250,12 @@ img.emojione { display: inline; vertical-align: middle; }
   .page-inner { grid-column: 1; min-width: 0; }
   .page-sidebar { display: none; }
   .page-main { border-right: none; }
+  /* The federation graph page is full-bleed with its OWN in-flow nav — the
+     fixed Sidebar nav (and its body paddings) must not offset it. */
+  body:has(> main.graph-page) {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 }
 
 /* ── Admin layout: sidebar + content ── */

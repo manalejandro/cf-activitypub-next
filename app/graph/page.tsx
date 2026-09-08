@@ -42,6 +42,19 @@ const GLASS: React.CSSProperties = {
   boxShadow: "var(--shadow-lg)",
 };
 
+/** Tiny media-query hook so the floating panels adapt on small screens. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
   const { t } = useLocale();
   const dotColor = data.blocked
@@ -162,6 +175,7 @@ export default function GraphPage() {
 function GraphView() {
   const { t } = useLocale();
   const { fitView } = useReactFlow();
+  const isMobile = useMediaQuery("(max-width: 767px)");
   const [data, setData] = useState<GraphData | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<GraphNode | null>(null);
@@ -228,13 +242,25 @@ function GraphView() {
         .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
         .map((e, i) => {
           const fromLocal = e.source === data.instance || e.target === data.instance;
+          // Colour the connection by the TARGET instance's state: red when we
+          // block it, amber when it blocks us, accent when it touches our own
+          // instance, neutral otherwise.
+          const targetNode = byId.get(e.target);
+          let stroke = "#7a7aaa";
+          let animated = false;
+          if (targetNode?.blocked) stroke = "var(--danger)";
+          else if (targetNode?.blockedBy) stroke = "var(--warning)";
+          else if (fromLocal) {
+            stroke = "var(--accent)";
+            animated = true;
+          }
           return {
             id: `edge-${i}`,
             source: e.source,
             target: e.target,
-            animated: fromLocal,
+            animated,
             style: {
-              stroke: fromLocal ? "var(--accent)" : "#7a7aaa",
+              stroke,
               strokeWidth: fromLocal ? 3 : Math.min(1.6 + e.weight / 6, 4.5),
               opacity: 0.9,
             },
@@ -376,30 +402,30 @@ useEffect(() => {
             </ReactFlow>
 
             {/* Floating header panel */}
-            <div style={{ ...GLASS, position: "absolute", top: 16, left: 16, zIndex: 10, maxWidth: 320, display: "flex", flexDirection: "column", gap: "0.7rem", padding: "1rem 1.1rem" }}>
+            <div style={{ ...GLASS, position: "absolute", top: 16, left: 16, zIndex: 10, maxWidth: isMobile ? "calc(100vw - 2rem)" : 320, display: "flex", flexDirection: "column", gap: isMobile ? "0.5rem" : "0.7rem", padding: isMobile ? "0.75rem 0.9rem" : "1rem 1.1rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Icon name="share-alt" size="1.1rem" />
                 <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {data.instance}
                 </span>
               </div>
-              <h1 style={{ fontSize: "1.35rem", margin: 0, color: "var(--text-primary)" }}>{t.graph_title}</h1>
-              <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", margin: 0 }}>{t.graph_subtitle}</p>
+              <h1 style={{ fontSize: isMobile ? "1.1rem" : "1.35rem", margin: 0, color: "var(--text-primary)" }}>{t.graph_title}</h1>
+              {!isMobile && <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", margin: 0 }}>{t.graph_subtitle}</p>}
               <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
                 {[
                   { icon: "globe", label: t.graph_instances, value: data.nodes.length },
                   { icon: "share-alt", label: t.graph_connections, value: data.edges.length },
                   { icon: "users", label: t.graph_accounts, value: totalAccounts },
                 ].map((s) => (
-                  <div key={s.label} style={{ flex: "1 1 0", minWidth: 86, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem", padding: "0.5rem 0.4rem", borderRadius: "var(--radius)", background: "rgba(244,244,255,0.7)", border: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--text-primary)" }}>{s.value.toLocaleString()}</span>
-                    <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", textAlign: "center" }}>{s.label}</span>
+                  <div key={s.label} style={{ flex: "1 1 0", minWidth: isMobile ? 72 : 86, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.1rem", padding: isMobile ? "0.4rem 0.3rem" : "0.5rem 0.4rem", borderRadius: "var(--radius)", background: "rgba(244,244,255,0.7)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: isMobile ? "0.95rem" : "1.05rem", fontWeight: 800, color: "var(--text-primary)" }}>{s.value.toLocaleString()}</span>
+                    <span style={{ fontSize: isMobile ? "0.6rem" : "0.68rem", color: "var(--text-muted)", textAlign: "center" }}>{s.label}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5" style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1" style={{ fontSize: isMobile ? "0.66rem" : "0.72rem", color: "var(--text-muted)" }}>
                 <span className="flex items-center gap-1.5">
-                  <span style={{ width: 22, height: 3, borderRadius: 2, background: "var(--accent)" }} />
+                  <span style={{ width: 20, height: 3, borderRadius: 2, background: "var(--accent)" }} />
                   {t.graph_legend_connection}
                 </span>
                 <span className="flex items-center gap-1.5">
@@ -419,7 +445,7 @@ useEffect(() => {
 
             {/* Selected-node info card */}
             {selected && (
-              <div style={{ ...GLASS, position: "absolute", bottom: 16, left: 16, zIndex: 10, maxWidth: 280, display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.9rem 1rem" }}>
+              <div style={{ ...GLASS, position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 10, maxWidth: isMobile ? "calc(100vw - 2rem)" : 320, display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.9rem 1rem" }}>
                 <div className="flex items-center justify-between gap-3">
                   <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     {t.graph_node_details}
@@ -454,10 +480,13 @@ useEffect(() => {
               </div>
             )}
 
-            {/* Hint */}
-            <div style={{ position: "absolute", bottom: 16, right: 16, zIndex: 10, ...GLASS, padding: "0.4rem 0.8rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-              {t.graph_hint}
-            </div>
+            {/* Hint — desktop only, top-right (clear of Controls/MiniMap). On mobile the
+              touch gestures are self-explanatory and space is scarce. */}
+            {!isMobile && (
+              <div style={{ position: "absolute", top: 16, right: 16, zIndex: 10, ...GLASS, padding: "0.4rem 0.8rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                {t.graph_hint}
+              </div>
+            )}
           </>
         )}
       </div>
