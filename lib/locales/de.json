@@ -852,5 +852,7 @@
   "graph_hint": "Ziehen zum Verschieben · Scrollen zum Zoomen · Klick auf einen Knoten für Details",
   "graph_you": "Du",
   "graph_blocked": "Blockiert",
-  "graph_node_details": "Instanzdetails"
+  "graph_node_details": "Instanzdetails",
+  "graph_blocked_by": "Blockt dich",
+  "graph_legend_blocked_by": "Blockt dich"
 }

@@ -852,5 +852,7 @@
   "graph_hint": "拖动平移 · 滚动缩放 · 点击节点查看详情",
   "graph_you": "你",
   "graph_blocked": "已屏蔽",
-  "graph_node_details": "实例详情"
+  "graph_node_details": "实例详情",
+  "graph_blocked_by": "屏蔽了你",
+  "graph_legend_blocked_by": "屏蔽了你"
 }

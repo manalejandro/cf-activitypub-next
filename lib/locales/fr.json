@@ -852,5 +852,7 @@
   "graph_hint": "Glissez pour déplacer · Molette pour zoomer · Cliquez sur un nœud pour les détails",
   "graph_you": "Vous",
   "graph_blocked": "Bloquée",
-  "graph_node_details": "Détails de l'instance"
+  "graph_node_details": "Détails de l'instance",
+  "graph_blocked_by": "Vous bloque",
+  "graph_legend_blocked_by": "Vous bloque"
 }

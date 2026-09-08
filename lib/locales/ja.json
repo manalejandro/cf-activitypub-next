@@ -852,5 +852,7 @@
   "graph_hint": "ドラッグで移動 · スクロールでズーム · ノードをクリックで詳細",
   "graph_you": "あなた",
   "graph_blocked": "ブロック済み",
-  "graph_node_details": "インスタンスの詳細"
+  "graph_node_details": "インスタンスの詳細",
+  "graph_blocked_by": "あなたをブロック",
+  "graph_legend_blocked_by": "あなたをブロック"
 }

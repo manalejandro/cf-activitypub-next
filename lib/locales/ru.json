@@ -852,5 +852,7 @@
   "graph_hint": "Перетащите, чтобы сдвинуть · Колесо для масштаба · Кликните по узлу для деталей",
   "graph_you": "Вы",
   "graph_blocked": "Заблокирован",
-  "graph_node_details": "Детали экземпляра"
+  "graph_node_details": "Детали экземпляра",
+  "graph_blocked_by": "Блокирует вас",
+  "graph_legend_blocked_by": "Блокирует вас"
 }

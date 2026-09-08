@@ -406,6 +406,31 @@ async function deliverOne(
     // stall on unread responses (Cloudflare deadlock protection).
     await res.body?.cancel().catch(() => {});
     const permanent = PERMANENT_ERRORS.has(res.status);
+    // Track permanent rejections per domain so the federation graph can show
+    // instances that block us (403 Forbidden is the classic block signal).
+    // Records are cleared when a delivery to the same domain succeeds again.
+    const inboxDomain = new URL(inboxUrl).hostname.toLowerCase();
+    if (res.ok) {
+      await env.DB
+        .prepare("DELETE FROM delivery_rejections WHERE domain = ?")
+        .bind(inboxDomain)
+        .run()
+        .catch(() => {});
+    } else if (permanent) {
+      await env.DB
+        .prepare(
+          `INSERT INTO delivery_rejections (domain, status, attempts, last_error, last_at)
+           VALUES (?, ?, 1, ?, datetime('now'))
+           ON CONFLICT(domain) DO UPDATE SET
+             status = excluded.status,
+             attempts = delivery_rejections.attempts + 1,
+             last_error = excluded.last_error,
+             last_at = datetime('now')`
+        )
+        .bind(inboxDomain, res.status, `HTTP ${res.status}`)
+        .run()
+        .catch(() => {});
+    }
     return { ok: res.ok, permanent };
   } catch {
     clearTimeout(timer);

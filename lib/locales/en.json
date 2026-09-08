@@ -852,5 +852,7 @@
   "graph_hint": "Drag to pan · Scroll to zoom · Click a node for details",
   "graph_you": "You",
   "graph_blocked": "Blocked",
-  "graph_node_details": "Instance details"
+  "graph_node_details": "Instance details",
+  "graph_blocked_by": "Blocks you",
+  "graph_legend_blocked_by": "Blocks you"
 }

@@ -852,5 +852,7 @@
   "graph_hint": "드래그로 이동 · 스크롤로 확대 · 노드를 클릭하면 세부 정보",
   "graph_you": "나",
   "graph_blocked": "차단됨",
-  "graph_node_details": "인스턴스 세부 정보"
+  "graph_node_details": "인스턴스 세부 정보",
+  "graph_blocked_by": "당신을 차단함",
+  "graph_legend_blocked_by": "당신을 차단함"
 }

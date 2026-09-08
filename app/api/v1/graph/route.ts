@@ -43,6 +43,16 @@ export async function GET(): Promise<Response> {
     nodeSet.add(e.target);
     if (nodeSet.size >= MAX_NODES) break;
   }
+  // Instances that have rejected our deliveries with 403 Forbidden — the
+  // classic signal that a remote instance has blocked us. They are surfaced as
+  // their own nodes even when there is no follower connection to them.
+  const blockedByRows = await env.DB
+    .prepare("SELECT domain FROM delivery_rejections WHERE status = 403")
+    .all<{ domain: string }>();
+  for (const row of blockedByRows.results) {
+    nodeSet.add(row.domain);
+    if (nodeSet.size >= MAX_NODES) break;
+  }
   // D1 caps the number of bind variables (~100), so the IN lists are passed as
   // one JSON array and expanded with json_each instead of one placeholder per
   // domain (2×nodes placeholders on the edges query would exceed the limit).
@@ -84,6 +94,7 @@ export async function GET(): Promise<Response> {
 
   const accountsByDomain = new Map(accountsRows.results.map((r) => [r.domain, Number(r.accounts)]));
   const blockedSet = new Set(blockedRows.results.map((r) => r.domain));
+  const blockedBySet = new Set(blockedByRows.results.map((r) => r.domain));
 
   // Merge reciprocal edges (a→b and b→a) into a single undirected connection.
   const merged = new Map<string, { source: string; target: string; weight: number }>();
@@ -104,6 +115,7 @@ export async function GET(): Promise<Response> {
       accounts: accountsByDomain.get(d) ?? 0,
       local: d === instanceDomain,
       blocked: blockedSet.has(d),
+      blockedBy: blockedBySet.has(d),
     })),
     edges: [...merged.values()].sort((a, b) => b.weight - a.weight).slice(0, MAX_EDGES),
   });

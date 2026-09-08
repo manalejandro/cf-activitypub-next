@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -10,6 +10,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  Position,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -41,13 +42,15 @@ const GLASS: React.CSSProperties = {
   boxShadow: "var(--shadow-lg)",
 };
 
-function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
+const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
   const { t } = useLocale();
   const dotColor = data.blocked
     ? "var(--danger)"
-    : data.local
-      ? "var(--accent)"
-      : "var(--success)";
+    : data.blockedBy
+      ? "var(--warning)"
+      : data.local
+        ? "var(--accent)"
+        : "var(--success)";
   return (
     <div
       style={{
@@ -61,10 +64,12 @@ function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
         padding: "0.45rem 0.75rem",
         borderRadius: "var(--radius)",
         background: "var(--bg-surface)",
-        border: `1px solid ${data.local ? "var(--accent)" : "var(--border)"}`,
+        border: `1px solid ${data.local ? "var(--accent)" : data.blockedBy ? "var(--warning)" : "var(--border)"}`,
         boxShadow: data.local
           ? "0 0 0 2px var(--accent-light), 0 6px 20px rgba(99,102,241,0.28)"
-          : "var(--shadow)",
+          : data.blockedBy
+            ? "0 0 0 2px rgba(251,191,36,0.35), var(--shadow)"
+            : "var(--shadow)",
         overflow: "hidden",
       }}
     >
@@ -112,20 +117,40 @@ function InstanceNode({ data }: NodeProps<InstanceFlowNode>) {
             {t.graph_blocked}
           </span>
         )}
+        {data.blockedBy && (
+          <span
+            style={{
+              fontSize: "0.62rem",
+              padding: "0.05rem 0.4rem",
+              borderRadius: "999px",
+              background: "rgba(251,191,36,0.15)",
+              color: "var(--warning)",
+              fontWeight: 600,
+              marginLeft: "auto",
+            }}
+          >
+            {t.graph_blocked_by}
+          </span>
+        )}
       </div>
     </div>
   );
-}
+}, (prev, next) =>
+  // Ignore per-frame position changes (xPos/yPos): the card content only
+  // depends on the node data, so the rotation never re-renders it.
+  prev.data === next.data && prev.selected === next.selected && prev.id === next.id
+);
 
 const nodeTypes: NodeTypes = { instance: InstanceNode };
 
 const VIRTUAL_WIDTH = 1400;
 const VIRTUAL_HEIGHT = 860;
-// Slow constant rotation (~50s per full 360° turn) — the graph "spins" gently
-// by default. This is the INCREMENTAL angle applied each frame: rotating the
-// already-rotated positions by the cumulative angle would accelerate quadratically.
-const ROTATION_DELTA = 0.002;
-
+// Rotation throttling: node-position updates happen at most every 50ms (~20fps)
+// instead of every animation frame, cutting React Flow's per-update re-render
+// cost ~3x. ROTATION_DELTA_PER_FRAME keeps the angular speed constant (~50s per
+// full 360° turn) regardless of the actual frame rate.
+const ROTATION_INTERVAL_MS = 50;
+const ROTATION_DELTA_PER_FRAME = 0.002;
 export default function GraphPage() {
   return (
     <ReactFlowProvider>
@@ -162,6 +187,10 @@ function GraphView() {
     if (!data || data.nodes.length <= 1) return;
     const positions = layoutGraph(data.nodes, data.edges, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
     const byId = new Map(data.nodes.map((n) => [n.id, n]));
+
+    // Rotation center: the bounding-box centroid of the initial layout. Rotating
+    // around it is a rigid transform, so the graph spins in place — it can never
+    // drift like the previous viewport-orbit approach.
     let cx = 0;
     let cy = 0;
     for (const p of positions) { cx += p.x; cy += p.y; }
@@ -171,18 +200,25 @@ function GraphView() {
       positions.map((p) => {
         const n = byId.get(p.id);
         const id = p.id;
-        // Explicit dimensions are required: React Flow only draws edges for
-        // "initialized" nodes, and custom node types rely on ResizeObserver
-        // measurement which does not always fire (headless, fast re-renders).
-        // Default nodes work without this because the CSS gives them a size.
+        // React Flow only draws edges for "initialized" nodes, and custom node
+        // types only become initialized when the ResizeObserver measures them —
+        // which is unreliable (headless, rapid re-renders, some browsers). An
+        // explicit width/height + explicit source/target handles satisfy the
+        // initialization check deterministically, so the connections always
+        // render.
         const width = Math.min(210, Math.max(140, id.length * 7.5 + 36));
+        const height = 54;
         return {
           id,
           type: "instance",
           position: { x: p.x, y: p.y },
           width,
-          height: 54,
-          data: n ?? { id, accounts: 0, local: false, blocked: false },
+          height,
+          handles: [
+            { id: "source", type: "source", position: Position.Bottom, x: width / 2, y: height },
+            { id: "target", type: "target", position: Position.Top, x: width / 2, y: 0 },
+          ],
+          data: n ?? { id, accounts: 0, local: false, blocked: false, blockedBy: false },
         };
       })
     );
@@ -207,25 +243,36 @@ function GraphView() {
     );
   }, [data, setNodes, setEdges]);
 
-  // Fit the graph into the viewport once it is populated.
+  // Fit the graph into the viewport once populated.
   useEffect(() => {
     if (nodes.length === 0) return;
     const id = requestAnimationFrame(() => fitView({ padding: 0.18, duration: 600 }));
     return () => cancelAnimationFrame(id);
   }, [nodes.length, fitView]);
 
-  // Gentle rotation around the graph centroid; paused while a node is being
-  // dragged so the user's manual placement is never fought. Each frame applies
-  // the same small angular DELTA to the current positions, so the speed stays
-  // constant and the graph completes a slow 360° turn.
-  useEffect(() => {
-    if (!data || data.nodes.length <= 1) return;
-    const cos = Math.cos(ROTATION_DELTA);
-    const sin = Math.sin(ROTATION_DELTA);
-    let raf = 0;
-    const tick = () => {
-      const c = centroidRef.current;
-      if (c && !draggingRef.current) {
+// Slow 360° rotation: rotate the node POSITIONS around the layout centroid by a
+// constant angular delta. Rotation is a rigid transform around the centroid, so
+// the graph spins in place (no drift) and edges follow the nodes automatically.
+// Updates are THROTTLED to ~20fps: each setNodes re-renders all 60 nodes and
+// recomputes every edge path in React Flow, so running at 60fps would burn CPU.
+// The angular speed stays constant regardless of the frame rate.
+useEffect(() => {
+  if (!data || data.nodes.length <= 1) return;
+  let raf = 0;
+  let last = performance.now();
+  let pending = 0;
+  const tick = (now: number) => {
+    const c = centroidRef.current;
+    const dt = now - last;
+    last = now;
+    if (c && !draggingRef.current) {
+      pending += dt;
+      if (pending >= ROTATION_INTERVAL_MS) {
+        const steps = pending / 16.6667;
+        pending = 0;
+        const a = ROTATION_DELTA_PER_FRAME * steps;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
         setNodes((nds) =>
           nds.map((n) => {
             const dx = n.position.x - c.x;
@@ -234,11 +281,14 @@ function GraphView() {
           })
         );
       }
-      raf = requestAnimationFrame(tick);
-    };
+    } else {
+      pending = 0; // don't accumulate while the user is dragging
+    }
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [data, setNodes]);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
+}, [data, setNodes]);
 
   const totalAccounts = useMemo(
     () => (data ? data.nodes.reduce((sum, n) => sum + n.accounts, 0) : 0),
@@ -317,6 +367,7 @@ function GraphView() {
                 nodeColor={(n) => {
                   const d = n.data as GraphNode | undefined;
                   if (d?.blocked) return "var(--danger)";
+                  if (d?.blockedBy) return "var(--warning)";
                   if (d?.local) return "var(--accent)";
                   return "var(--border-hover)";
                 }}
@@ -359,6 +410,10 @@ function GraphView() {
                   <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--danger)" }} />
                   {t.graph_legend_blocked}
                 </span>
+                <span className="flex items-center gap-1.5">
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--warning)" }} />
+                  {t.graph_legend_blocked_by}
+                </span>
               </div>
             </div>
 
@@ -388,6 +443,11 @@ function GraphView() {
                   {selected.blocked && (
                     <span style={{ fontSize: "0.7rem", padding: "0.05rem 0.4rem", borderRadius: "999px", background: "rgba(248,113,113,0.12)", color: "var(--danger)", fontWeight: 600 }}>
                       {t.graph_blocked}
+                    </span>
+                  )}
+                  {selected.blockedBy && (
+                    <span style={{ fontSize: "0.7rem", padding: "0.05rem 0.4rem", borderRadius: "999px", background: "rgba(251,191,36,0.15)", color: "var(--warning)", fontWeight: 600 }}>
+                      {t.graph_blocked_by}
                     </span>
                   )}
                 </div>

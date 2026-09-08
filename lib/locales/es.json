@@ -852,5 +852,7 @@
   "graph_hint": "Arrastra para mover · Rueda para hacer zoom · Haz clic en un nodo para ver detalles",
   "graph_you": "Tú",
   "graph_blocked": "Bloqueada",
-  "graph_node_details": "Detalles de la instancia"
+  "graph_node_details": "Detalles de la instancia",
+  "graph_blocked_by": "Te bloquea",
+  "graph_legend_blocked_by": "Te bloquea"
 }

@@ -316,6 +316,21 @@ CREATE TABLE IF NOT EXISTS delivery_failures (
 );
 
 -- ─────────────────────────────────────────
+-- Permanent inbox rejections (federation blocks)
+-- A remote instance that rejects our deliveries with a permanent HTTP status
+-- (403 Forbidden = the classic "this instance has blocked us" signal) is
+-- tracked per domain so the federation graph can surface it. Records are
+-- cleared automatically when a later delivery succeeds.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS delivery_rejections (
+  domain     TEXT PRIMARY KEY,
+  status     INTEGER NOT NULL,          -- permanent HTTP status from the remote inbox
+  attempts   INTEGER NOT NULL DEFAULT 1,
+  last_error TEXT,
+  last_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─────────────────────────────────────────
 -- Remote object cache (for thread resolution)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS object_cache (

@@ -11,6 +11,7 @@ export interface GraphNode {
   accounts: number;
   local: boolean;
   blocked: boolean;
+  blockedBy: boolean;
   // React Flow's Node<T> requires T to extend Record<string, unknown>.
   [key: string]: unknown;
 }

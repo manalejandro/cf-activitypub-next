@@ -852,5 +852,7 @@
   "graph_hint": "Arraste para mover · Role para ampliar · Clique em um nó para detalhes",
   "graph_you": "Você",
   "graph_blocked": "Bloqueada",
-  "graph_node_details": "Detalhes da instância"
+  "graph_node_details": "Detalhes da instância",
+  "graph_blocked_by": "Bloqueia você",
+  "graph_legend_blocked_by": "Bloqueia você"
 }
