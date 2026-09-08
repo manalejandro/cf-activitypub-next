@@ -84,7 +84,7 @@ export default function FavouritesPage() {
                   me={me}
                   onFav={() => {}}
                   onReblog={() => {}}
-                  onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}`)}
+                  onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`)}
                   onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
                   onDelete={() => {}}
                   onEdit={() => {}}

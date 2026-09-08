@@ -8153,6 +8153,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sound",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
@@ -8185,6 +8192,13 @@
         "parameters": [
           {
             "name": "policy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sound",
             "in": "query",
             "schema": {
               "type": "string"
@@ -8250,6 +8264,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sound",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
@@ -8307,6 +8328,13 @@
         "parameters": [
           {
             "name": "policy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sound",
             "in": "query",
             "schema": {
               "type": "string"

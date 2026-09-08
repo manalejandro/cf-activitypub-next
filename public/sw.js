@@ -10,14 +10,25 @@
 const STATIC_CACHE = "cfap-static-v1";
 const SHELL_CACHE = "cfap-shell-v1";
 
+// Bump when the worker's behaviour changes (e.g. the push handler) so the
+// active version is visible in the browser's service worker debugger and in
+// `navigator.serviceWorker.controller` logs.
+const SW_VERSION = "2026.09.2";
+
 const STATIC_PREFIXES = ["/_next/static/", "/swagger-ui/", "/icons/", "/logo.svg"];
 
 self.addEventListener("install", (event) => {
+  // Pre-cache the app shell, but NEVER let a failing URL block activation —
+  // `skipWaiting` must always run so a newly deployed SW (e.g. one that adds a
+  // push handler) takes over immediately. Otherwise the browser keeps the old
+  // SW and push notifications stay dead until a successful install.
   event.waitUntil(
     caches
       .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(["/", "/login", "/explore", "/manifest.json"]))
-      .then(() => self.skipWaiting())
+      .then((cache) =>
+        Promise.allSettled(["/", "/login", "/explore", "/manifest.json"].map((u) => cache.add(u)))
+      )
+      .finally(() => self.skipWaiting())
   );
 });
 
@@ -55,28 +66,31 @@ self.addEventListener("push", (event) => {
     payload = event.data ? event.data.json() : {};
   } catch { /* empty / non-JSON payload */ }
   const type = (payload.data && payload.data.type) || "";
+  const origin = self.location.origin;
   const options = {
     body: payload.body || "",
-    icon: payload.icon || "/logo.svg",
-    badge: payload.badge || "/logo.svg",
+    icon: payload.icon ? new URL(payload.icon, origin).href : `${origin}/logo.svg`,
+    badge: payload.badge ? new URL(payload.badge, origin).href : `${origin}/logo.svg`,
     tag: payload.tag || `cfap-notif-${type}`,
     renotify: true,
     data: payload.data || {},
   };
   event.waitUntil(
-    self.registration.showNotification(payload.title || "CF ActivityPub", options).then(() => {
-      if (payload.sound) {
-        // Best-effort: tell open windows to play the notification chime.
-        return self.clients
+    Promise.resolve()
+      .then(() => self.registration.showNotification(payload.title || "CF ActivityPub", options))
+      .catch((err) => console.warn("[sw] showNotification failed:", err))
+      .then(() =>
+        // Always tell open windows a notification arrived (badge + UI refresh);
+        // the sound flag lets them play the chime.
+        self.clients
           .matchAll({ type: "window", includeUncontrolled: true })
           .then((clients) => {
             for (const client of clients) {
-              client.postMessage({ type: "cfap:notification-sound" });
+              client.postMessage({ type: "cfap:notification", sound: !!payload.sound });
             }
           })
-          .catch(() => {});
-      }
-    })
+          .catch(() => {})
+      )
   );
 });
 

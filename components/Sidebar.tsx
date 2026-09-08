@@ -116,6 +116,9 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   useTimelineStream("user", (event) => {
     if (event === "notification") {
       setUnreadCount((c) => c + 1);
+      // Let the global notification handler play the sound + tab badge (this
+      // is the reliable real-time signal, unlike the push SW message).
+      window.dispatchEvent(new Event("cf-ap:notification-received"));
     }
   }, {
     onReconnect: () => {
@@ -127,6 +130,19 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
         .catch(() => {});
     },
   });
+
+  // Fallback for when the streaming socket is throttled in a background tab: a
+  // web push (delivered by the service worker) tells us to re-sync the badge.
+  useEffect(() => {
+    const onPushNotification = () => {
+      fetch("/api/v1/notifications/unread_count", { credentials: "include", cache: "no-store" })
+        .then((res) => (res.ok ? res.json() as Promise<{ count: number }> : null))
+        .then((data) => { if (data) setUnreadCount(data.count); })
+        .catch(() => {});
+    };
+    window.addEventListener("cf-ap:push-notification", onPushNotification);
+    return () => window.removeEventListener("cf-ap:push-notification", onPushNotification);
+  }, []);
 
   // Mobile browsers move `position: fixed; top: 0` behind the URL bar when it
   // expands/collapses during scroll, leaving a gap above the header. Sync the

@@ -3,15 +3,15 @@
 import { useEffect } from "react";
 
 /**
- * Registers the PWA service worker. Only in production builds: during
- * development the SW's caches would mask fresh assets.
+ * Registers the PWA service worker. Plain and standard (see the Next.js PWA
+ * guide): register /sw.js at root scope with updateViaCache: 'none' so the
+ * browser always re-fetches it on navigation.
  */
 export function PwaRegister() {
   useEffect(() => {
-    if (process.env.NODE_ENV === "development") return;
-    if (!("serviceWorker" in navigator)) return;
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .catch((err) => console.warn("[pwa] service worker registration failed:", err));
   }, []);
 

@@ -141,19 +141,24 @@ export async function deliverPushNotification(
   // Derive shared secret
   const sharedSecret = await crypto.subtle.deriveBits({ name: "ECDH", public: clientPub }, ecdhKey.privateKey, 256) as ArrayBuffer;
 
-  // Encrypt payload
+  // Encrypt payload (RFC 8291 / RFC 8188 aes128gcm).
   const authSecret = b64urlDec(sub.authKey);
   const salt = crypto.getRandomValues(new Uint8Array(16));
 
   const prk = await hkdf(authSecret, sharedSecret, strBuf("Content-Encoding: auth\0"), 32);
   const cekInfo = concat(strBuf("Content-Encoding: aes128gcm\0"), salt.buffer as ArrayBuffer);
   const cek = await hkdf(salt.buffer as ArrayBuffer, prk, cekInfo, 16);
-  const nonceBuf = await hkdf(salt.buffer as ArrayBuffer, prk, cekInfo, 16);
-  const nonce = nonceBuf.slice(0, 12);
+  // NOTE: the nonce uses its OWN info label ("Content-Encoding: nonce\0"), not
+  // the aes128gcm one — deriving it from the same info as the CEK makes the
+  // push service unable to decrypt the record (silent delivery failure).
+  const nonceInfo = concat(strBuf("Content-Encoding: nonce\0"), salt.buffer as ArrayBuffer);
+  const nonce = await hkdf(salt.buffer as ArrayBuffer, prk, nonceInfo, 12);
 
   const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]);
-  const padding = new Uint8Array(2);
-  const plaintext = concat(payload, padding.buffer as ArrayBuffer);
+  // Padding is a 16-bit big-endian padding length (0) PREPENDED to the content
+  // (RFC 8291) — appending it yields a malformed record.
+  const padding = new Uint8Array([0x00, 0x00]);
+  const plaintext = concat(padding.buffer as ArrayBuffer, payload);
   const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: new Uint8Array(nonce), additionalData: new ArrayBuffer(0), tagLength: 128 }, aesKey, plaintext);
 
   const rs = new Uint8Array([0x00, 0x00, 0x10, 0x00]);
@@ -176,6 +181,11 @@ export async function deliverPushNotification(
 
   if (resp.status === 410 || resp.status === 404) {
     await db.prepare("DELETE FROM push_subscriptions WHERE actor_id = ?").bind(notif.targetAccountId).run();
+  } else if (!resp.ok) {
+    // A 400/401 from the push service usually means the VAPID keys don't match
+    // or the aes128gcm record is malformed — surface it in the logs instead of
+    // failing silently (the notification would just never arrive).
+    console.warn(`[push] delivery rejected by push service: HTTP ${resp.status} for ${sub.endpoint.slice(0, 60)}…`);
   }
 }
 
@@ -188,8 +198,10 @@ export async function deliverPushSafe(
 ): Promise<void> {
   try {
     await deliverPushNotification(db, vapidPub, vapidPriv, vapidEmail, notif);
-  } catch {
-    // Push delivery failures are non-critical
+  } catch (err) {
+    // Push delivery failures are non-critical, but log them so a broken VAPID
+    // config / encryption bug is visible in the worker logs.
+    console.warn("[push] delivery failed", err instanceof Error ? err.message : err);
   }
 }
 

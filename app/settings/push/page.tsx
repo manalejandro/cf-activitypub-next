@@ -103,7 +103,7 @@ export default function PushNotificationsPage() {
         return;
       }
 
-      const registration = await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
       // Use the instance's VAPID public key so the push service accepts
       // VAPID-authenticated deliveries (required by Chrome and increasingly by others).
       let vapidPublicKey: string | undefined;
