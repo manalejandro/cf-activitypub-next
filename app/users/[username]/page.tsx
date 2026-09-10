@@ -310,11 +310,15 @@ export default function ProfilePage() {
     const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
     const [accountRes, meRes] = await Promise.all([
-      fetch(`/api/v1/accounts/lookup?acct=${encodeURIComponent(uname)}`),
+      fetch(`/api/v1/accounts/lookup?acct=${encodeURIComponent(uname)}`, { headers: authHeaders }),
       token ? fetch("/api/v1/accounts/verify_credentials", { headers: authHeaders }) : Promise.resolve(null),
     ]);
 
-    if (!accountRes.ok) { setNotFound(true); setLoading(false); return; }
+    if (!accountRes.ok) {
+      // Remote profiles require an authenticated session (401).
+      if (accountRes.status === 401) { router.replace("/login"); return; }
+      setNotFound(true); setLoading(false); return;
+    }
     const acct = await accountRes.json() as Account;
     setAccount(acct);
 

@@ -44,10 +44,12 @@ export async function GET(
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
+  const authActor = await getAuthenticatedActor(request, env.DB);
   let obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   // Remote status not cached yet (e.g. a link shared before it was ingested):
   // resolve the IRI and cache it on-demand, then serve it like any other status.
-  if (!obj) {
+  // Resolution is authenticated-only; already-cached statuses stay public.
+  if (!obj && authActor) {
     const iri = decodeStatusId(id, domain);
     if (/^https?:\/\//i.test(iri) && !iri.startsWith(`https://${domain}/`)) {
       const resolved = await fetchAndCacheRemoteStatus(env.DB, iri);
@@ -59,7 +61,6 @@ export async function GET(
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound("Author not found");
 
-  const authActor = await getAuthenticatedActor(request, env.DB);
   const isFollowing = authActor ? !!(await getFollow(env.DB, authActor.id, obj.actorId)) : false;
   if (!canViewStatus(obj, authActor?.id ?? null, isFollowing)) {
     return notFound("Record not found");

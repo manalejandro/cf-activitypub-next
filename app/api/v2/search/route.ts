@@ -77,27 +77,30 @@ export async function GET(request: NextRequest): Promise<Response> {
       return json(results);
     }
 
-    // Remote: try a status URL, then an actor URL.
-    const remoteStatus = await fetchAndCacheRemoteStatus(env.DB, q);
-    if (remoteStatus.object && remoteStatus.actor) {
-      const [allEmojis, attachments] = await Promise.all([
-        getAllCustomEmojis(env.DB),
-        getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
-      ]);
-      const filteredRemote = me ? (await getFilterResultsForStatuses(env.DB, me.id, [remoteStatus.object])).get(remoteStatus.object.id) ?? [] : [];
-      const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? null;
-      const authorExtras = (await getStatusAuthorExtras(env.DB, [remoteStatus.object.actorId], domain)).get(remoteStatus.object.actorId);
-      const bookmarked = me ? (await getBookmarkedObjectIds(env.DB, me.id, [remoteStatus.object.id])).has(remoteStatus.object.id) : false;
-      const muted = me ? (await getMutedActorIds(env.DB, me.id)).includes(remoteStatus.object.actorId) : false;
-      const authorFields = (await getActorFieldsMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? [];
-      results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, muted, authorFields }));
-      return json(results);
-    }
-    const cachedActor = await fetchAndCacheRemoteActor(env.DB, q, env.KV);
-    if (cachedActor) {
-      const actor = await getActorById(env.DB, cachedActor.id);
-      if (actor && !actor.suspended && !actor.silenced) {
-        results.accounts.push(serializeAccount(actor, domain));
+    // Remote: try a status URL, then an actor URL. Resolution (remote fetch +
+    // cache) is authenticated-only; anonymous search stays local.
+    if (me) {
+      const remoteStatus = await fetchAndCacheRemoteStatus(env.DB, q);
+      if (remoteStatus.object && remoteStatus.actor) {
+        const [allEmojis, attachments] = await Promise.all([
+          getAllCustomEmojis(env.DB),
+          getAttachmentsByObjectIds(env.DB, [remoteStatus.object.id]),
+        ]);
+        const filteredRemote = (await getFilterResultsForStatuses(env.DB, me.id, [remoteStatus.object])).get(remoteStatus.object.id) ?? [];
+        const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? null;
+        const authorExtras = (await getStatusAuthorExtras(env.DB, [remoteStatus.object.actorId], domain)).get(remoteStatus.object.actorId);
+        const bookmarked = (await getBookmarkedObjectIds(env.DB, me.id, [remoteStatus.object.id])).has(remoteStatus.object.id);
+        const muted = (await getMutedActorIds(env.DB, me.id)).includes(remoteStatus.object.actorId);
+        const authorFields = (await getActorFieldsMap(env.DB, [remoteStatus.object.actorId])).get(remoteStatus.object.actorId) ?? [];
+        results.statuses.push(serializeStatus(remoteStatus.object, remoteStatus.actor, domain, { attachments: attachments.get(remoteStatus.object.id) ?? [], favourited: false, reblogged: false, emojis: allEmojis, filtered: filteredRemote, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null, bookmarked, muted, authorFields }));
+        return json(results);
+      }
+      const cachedActor = await fetchAndCacheRemoteActor(env.DB, q, env.KV);
+      if (cachedActor) {
+        const actor = await getActorById(env.DB, cachedActor.id);
+        if (actor && !actor.suspended && !actor.silenced) {
+          results.accounts.push(serializeAccount(actor, domain));
+        }
       }
     }
     return json(results);
@@ -107,7 +110,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (doAccounts) {
     // If the query looks like @username@domain or username@domain, try resolving remotely
     const isFederated = q.includes("@") && !q.startsWith("#");
-    if (isFederated && resolve) {
+    if (isFederated && resolve && me) {
       const parts = q.replace(/^@/, "").split("@");
       const username = parts[0];
       const remoteDomain = parts[1];

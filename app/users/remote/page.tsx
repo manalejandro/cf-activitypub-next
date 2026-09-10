@@ -243,11 +243,15 @@ function RemoteProfileInner() {
     const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
     const [acctRes, meRes] = await Promise.all([
-      fetch(`/api/v1/accounts/${encodeURIComponent(url)}`),
+      fetch(`/api/v1/accounts/${encodeURIComponent(url)}`, { headers }),
       token ? fetch("/api/v1/accounts/verify_credentials", { headers }) : Promise.resolve(null),
     ]);
 
-    if (!acctRes.ok) { setNotFound(true); setLoading(false); return; }
+    if (!acctRes.ok) {
+      // Remote profiles require an authenticated session (401).
+      if (acctRes.status === 401) { router.replace("/login"); return; }
+      setNotFound(true); setLoading(false); return;
+    }
     const acct = await acctRes.json() as Account;
     setAccount(acct);
 

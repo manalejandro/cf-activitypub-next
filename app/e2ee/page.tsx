@@ -473,7 +473,9 @@ export default function E2EEPage() {
   async function handleResolve() {
     if (!recipient.trim() || !data) return;
     try {
-      const res = await fetch(`/api/v1/e2ee/resolve?handle=${encodeURIComponent(recipient.trim().replace(/^@/, ""))}`);
+      const res = await fetch(`/api/v1/e2ee/resolve?handle=${encodeURIComponent(recipient.trim().replace(/^@/, ""))}`, {
+        credentials: "include",
+      });
       if (!res.ok) { setSendMsg({ ok: false, text: t.e2ee_receiver_err }); setResolvedIri(null); return; }
       const r = await res.json() as { iri: string };
       setResolvedIri(r.iri);

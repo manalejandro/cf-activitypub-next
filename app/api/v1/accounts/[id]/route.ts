@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
+import { getAuthenticatedActor } from "@/lib/auth";
 
 // GET /api/v1/accounts/:id
 export async function GET(
@@ -16,11 +17,16 @@ export async function GET(
   const rawId = decodeURIComponent(id);
   let supportsCalls: boolean | undefined;
 
+  const me = await getAuthenticatedActor(request, env.DB);
+
   let actor = await getActorById(env.DB, rawId);
 
   // For remote actors: always re-fetch from source to get up-to-date counts.
   // For actors not yet in DB: fetch and cache first.
+  // Resolution is authenticated-only: an anonymous visitor must not be able to
+  // make the instance fetch (or serve) remote accounts.
   if (rawId.startsWith("https://")) {
+    if (!me) return unauthorized();
     const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (refreshed) {
       actor = await getActorById(env.DB, refreshed.id) ?? actor;
@@ -31,6 +37,7 @@ export async function GET(
   }
 
   if (!actor) return notFound("Account not found");
+  if (!actor.isLocal && !me) return unauthorized();
 
   // Remote accounts are verified on demand (cached in KV) so the badge shows
   // without depending on the cron.

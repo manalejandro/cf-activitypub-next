@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -32,6 +32,8 @@ export async function GET(
   if (!actor) return notFound("Account not found");
 
   const me = await getAuthenticatedActor(request, env.DB);
+  // Remote profiles and their on-demand outbox fetch are authenticated-only.
+  if (!actor.isLocal && !me) return unauthorized();
   const isFollowing = me ? !!(await getFollow(env.DB, me.id, actor.id)) : false;
 
   // Remote accounts whose statuses were never federated here have nothing in
