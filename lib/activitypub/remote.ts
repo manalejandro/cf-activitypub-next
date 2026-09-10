@@ -224,7 +224,9 @@ export async function fetchAndCacheRemoteActor(
                statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
                inbox = excluded.inbox,
                also_known_as = excluded.also_known_as,
-               last_status_at = excluded.last_status_at,
+               last_status_at = CASE
+                 WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
+                 ELSE actors.last_status_at END,
                updated_at = datetime('now')`
           )
           .bind(

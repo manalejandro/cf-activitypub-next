@@ -575,6 +575,14 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         .bind(s.actor_id)
         .run();
 
+      if (visibility === "public" || visibility === "unlisted") {
+        const date = published.slice(0, 10);
+        await env.DB
+          .prepare("UPDATE actors SET last_status_at = ? WHERE id = ? AND ? > COALESCE(last_status_at, '')")
+          .bind(date, s.actor_id, date)
+          .run();
+      }
+
       await env.DB
         .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
         .bind(s.id)
@@ -714,6 +722,12 @@ async function executeScheduled(env: Env): Promise<void> {
     await env.DB
       .prepare("UPDATE actors SET statuses_count = MAX(COALESCE(statuses_count, 0) - ?, 0) WHERE id = ?")
       .bind(ids.length, actor.id)
+      .run();
+
+    // All public objects are gone — drop the account's directory rank too.
+    await env.DB
+      .prepare("UPDATE actors SET last_status_at = NULL WHERE id = ?")
+      .bind(actor.id)
       .run();
   }
 

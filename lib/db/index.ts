@@ -259,6 +259,15 @@ function rowToAttachment(r: Row): LocalAttachment {
 // Actors
 // ─────────────────────────────────────────
 
+// Object types that count as "statuses" for an account's last_status_at.
+// Kept in sync between the serializers, the directory ranking and the
+// actors.last_status_at maintenance on object writes.
+export const PUBLIC_STATUS_TYPES = [
+  "Note", "Article", "Page", "Video", "Audio", "Image", "Document", "Event", "Question", "Place",
+] as const;
+export const PUBLIC_STATUS_TYPE_SQL = PUBLIC_STATUS_TYPES.map((t) => `'${t}'`).join(",");
+const PUBLIC_STATUS_TYPE_SET: ReadonlySet<string> = new Set(PUBLIC_STATUS_TYPES);
+
 /**
  * Last public post date of an actor (YYYY-MM-DD form, like Mastodon's
  * `last_status_at`), or null when the actor has no public statuses.
@@ -298,7 +307,7 @@ export async function getLastStatusAt(db: D1Database, actorId: string): Promise<
 /** Last public post date computed from the actor's own stored objects. */
 async function computeLastStatusAtFromObjects(db: D1Database, actorId: string): Promise<string | null> {
   const row = await db
-    .prepare("SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')")
+    .prepare(`SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN (${PUBLIC_STATUS_TYPE_SQL})`)
     .bind(actorId)
     .first<{ p: string | null }>();
   if (!row?.p) return null;
@@ -339,7 +348,7 @@ export async function getLastStatusAtMap(
         `SELECT actor_id, MAX(published) AS p FROM objects
          WHERE actor_id IN (${lp})
            AND visibility IN ('public', 'unlisted')
-           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+           AND type IN (${PUBLIC_STATUS_TYPE_SQL})
          GROUP BY actor_id`
       )
       .bind(...unique)
@@ -380,7 +389,7 @@ export async function getLastStatusAtMap(
         `SELECT actor_id, MAX(published) AS p FROM objects
          WHERE actor_id IN (${lp})
            AND visibility IN ('public', 'unlisted')
-           AND type IN ('Note','Article','Page','Video','Audio','Image','Document','Event','Question','Place')
+           AND type IN (${PUBLIC_STATUS_TYPE_SQL})
          GROUP BY actor_id`
       )
       .bind(...computeIds)
@@ -595,7 +604,9 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             discoverable = excluded.discoverable,
             inbox = excluded.inbox,
             also_known_as = excluded.also_known_as,
-            last_status_at = excluded.last_status_at,
+            last_status_at = CASE
+              WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
+              ELSE actors.last_status_at END,
             updated_at = datetime('now')`
         )
         .bind(
@@ -1560,6 +1571,15 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         .bind(obj.id, tag, obj.published, obj.actorId)
     ),
   ];
+  // Keep the actor's directory "active" rank fresh (see idx_actors_discoverable_active).
+  if ((obj.visibility === "public" || obj.visibility === "unlisted") && PUBLIC_STATUS_TYPE_SET.has(obj.type)) {
+    const date = obj.published.slice(0, 10);
+    statements.push(
+      db
+        .prepare("UPDATE actors SET last_status_at = ? WHERE id = ? AND ? > COALESCE(last_status_at, '')")
+        .bind(date, obj.actorId, date)
+    );
+  }
   await db.batch(statements);
 }
 
@@ -1932,6 +1952,10 @@ function rowToObjectEdit(r: Row): ObjectEdit {
 }
 
 export async function deleteObject(db: D1Database, id: string): Promise<void> {
+  const row = await db
+    .prepare("SELECT actor_id, visibility, published FROM objects WHERE id = ?")
+    .bind(id)
+    .first<{ actor_id: string; visibility: string; published: string }>();
   // Tables that reference objects WITHOUT a FK must be cleaned explicitly:
   // status_pins (pins of a deleted status would otherwise count against the
   // pin limit) and custom_filter_statuses (stale filter entries). Likes,
@@ -1941,6 +1965,22 @@ export async function deleteObject(db: D1Database, id: string): Promise<void> {
     db.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id),
     db.prepare("DELETE FROM objects WHERE id = ?").bind(id),
   ]);
+  // If the deleted status was the actor's latest, recompute the directory rank
+  // (idx_actors_discoverable_active). Skipped when an older status was removed.
+  if (row && (row.visibility === "public" || row.visibility === "unlisted")) {
+    await db
+      .prepare(
+        `UPDATE actors SET last_status_at = NULLIF((
+           SELECT MAX(substr(o.published, 1, 10)) FROM objects o
+           WHERE o.actor_id = actors.id
+             AND o.visibility IN ('public', 'unlisted')
+             AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+         ), '')
+         WHERE id = ? AND COALESCE(last_status_at, '') <= substr(?, 1, 10)`
+      )
+      .bind(row.actor_id, row.published)
+      .run();
+  }
 }
 
 // ─────────────────────────────────────────

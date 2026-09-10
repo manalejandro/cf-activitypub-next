@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS actors (
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   last_active_at     TEXT,
-  last_status_at     TEXT,                          -- remote actors: federated value; local: computed
+  last_status_at     TEXT,                          -- MAX(federated value, newest stored public status date)
   verified           INTEGER NOT NULL DEFAULT 0,     -- 1 when a profile field's rel="me" link verifies
   approved           INTEGER NOT NULL DEFAULT 1,     -- 0 = registration pending admin approval (can't log in)
   registration_reason TEXT,                          -- sign-up reason when registrations.reason_required is on
@@ -51,6 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_actors_follow_followers ON actors(following_count
 -- Covering index for the Guardian's per-domain quarantine scan: the
 -- (is_local, domain, suspended) scan is index-only, no row lookups.
 CREATE INDEX IF NOT EXISTS idx_actors_local_domain_susp ON actors(is_local, domain, suspended);
+-- Directory "active" ranking: actors are listed by last public post date, so
+-- the ordered scan stays index-only (no per-actor MAX() subquery over objects).
+CREATE INDEX IF NOT EXISTS idx_actors_discoverable_active ON actors(discoverable, suspended, last_status_at DESC);
 
 -- ─────────────────────────────────────────
 -- Objects / Notes / Statuses
@@ -82,6 +85,9 @@ CREATE INDEX IF NOT EXISTS idx_objects_published   ON objects(published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_visibility  ON objects(visibility);
 CREATE INDEX IF NOT EXISTS idx_objects_reply       ON objects(in_reply_to_id);
 CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
+-- Inbox Like/Announce objects sometimes carry the status URL instead of its
+-- AP id; resolving that fallback was a full table scan without this index.
+CREATE INDEX IF NOT EXISTS idx_objects_url         ON objects(url);
 -- Covering index for the instance-statistics COUNT(DISTINCT actor_id) /
 -- COUNT(*) queries (nodeinfo, /api/v1/instance): the published-range scans
 -- stay index-only instead of reading the whole table.
