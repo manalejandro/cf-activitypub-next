@@ -529,7 +529,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // If it's a reply, increment replies count on parent
   if (inReplyToId) {
     await env.DB
-      .prepare("UPDATE objects SET replies_count = replies_count + 1 WHERE id = ?")
+      .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
       .bind(inReplyToId)
       .run();
 

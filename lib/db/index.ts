@@ -1529,9 +1529,9 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         `INSERT INTO objects (
           id, type, actor_id, content, content_warning, sensitive,
           visibility, in_reply_to_id, quote_id, language, url,
-          replies_count, reblogs_count, favourites_count,
+          replies_count, reblogs_count, favourites_count, engagement,
           published, is_local, raw, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         obj.id,
@@ -1548,6 +1548,7 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         obj.repliesCount,
         obj.reblogsCount,
         obj.favouritesCount,
+        obj.repliesCount + obj.reblogsCount + obj.favouritesCount,
         obj.published,
         obj.local ? 1 : 0,
         obj.raw,
@@ -2044,7 +2045,7 @@ export async function createLike(db: D1Database, like: LocalLike): Promise<void>
     .bind(like.id, like.actorId, like.objectId, like.activityId)
     .run();
   await db
-    .prepare("UPDATE objects SET favourites_count = favourites_count + 1 WHERE id = ?")
+    .prepare("UPDATE objects SET favourites_count = favourites_count + 1, engagement = engagement + 1 WHERE id = ?")
     .bind(like.objectId)
     .run();
 }
@@ -2056,7 +2057,7 @@ export async function deleteLike(db: D1Database, actorId: string, objectId: stri
     .run();
   if (result.meta.changes > 0) {
     await db
-      .prepare("UPDATE objects SET favourites_count = MAX(0, favourites_count - 1) WHERE id = ?")
+      .prepare("UPDATE objects SET favourites_count = MAX(0, favourites_count - 1), engagement = MAX(0, engagement - 1) WHERE id = ?")
       .bind(objectId)
       .run();
   }
@@ -2099,7 +2100,7 @@ export async function createAnnounce(db: D1Database, announce: LocalAnnounce): P
     .bind(announce.id, announce.actorId, announce.objectId, announce.activityId)
     .run();
   await db
-    .prepare("UPDATE objects SET reblogs_count = reblogs_count + 1 WHERE id = ?")
+    .prepare("UPDATE objects SET reblogs_count = reblogs_count + 1, engagement = engagement + 1 WHERE id = ?")
     .bind(announce.objectId)
     .run();
 }
@@ -2111,7 +2112,7 @@ export async function deleteAnnounce(db: D1Database, actorId: string, objectId: 
     .run();
   if (result.meta.changes > 0) {
     await db
-      .prepare("UPDATE objects SET reblogs_count = MAX(0, reblogs_count - 1) WHERE id = ?")
+      .prepare("UPDATE objects SET reblogs_count = MAX(0, reblogs_count - 1), engagement = MAX(0, engagement - 1) WHERE id = ?")
       .bind(objectId)
       .run();
   }

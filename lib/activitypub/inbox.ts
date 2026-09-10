@@ -492,7 +492,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       // Increment replies_count on parent (remote reply to a local post)
       if (replyTarget.actorId.startsWith(ctx.baseUrl + "/")) {
         await ctx.db
-          .prepare("UPDATE objects SET replies_count = replies_count + 1 WHERE id = ?")
+          .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
           .bind(obj.inReplyTo)
           .run();
       }

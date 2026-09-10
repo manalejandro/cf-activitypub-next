@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS objects (
   replies_count   INTEGER NOT NULL DEFAULT 0,
   reblogs_count   INTEGER NOT NULL DEFAULT 0,
   favourites_count INTEGER NOT NULL DEFAULT 0,
+  engagement      INTEGER NOT NULL DEFAULT 0,  -- favourites + reblogs + replies (trending rank)
   published       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   is_local        INTEGER NOT NULL DEFAULT 0,
@@ -106,6 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_objects_type_published    ON objects(type, publis
 CREATE INDEX IF NOT EXISTS idx_objects_local_type_pub    ON objects(is_local, type, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_actor_vis_type_pub ON objects(actor_id, visibility, type, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_local_reply       ON objects(is_local, in_reply_to_id);
+-- Trending rank: `engagement` is the denormalized favourites+reblogs+replies
+-- sum. SQLite/D1 won't use an expression index for the trends ORDER BY, and
+-- the two `visibility` branches can't share a sorted scan, so this lets each
+-- branch seek straight to its top engaged statuses.
+CREATE INDEX IF NOT EXISTS idx_objects_trending           ON objects(visibility, type, engagement DESC, published DESC);
 
 -- Hashtag index: tags extracted from the AP `tag` array at ingest time.
 -- The (tag, published) index lets hashtag timelines resolve tag + ordering

@@ -66,18 +66,38 @@ export async function GET(request: NextRequest): Promise<Response> {
   } catch { /* fall through to DB */ }
   if (!rows) {
     const weekCutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    // Two single-visibility branches: with `visibility IN (...)` the planner
+    // cannot use idx_objects_trending for the ORDER BY (two ranges aren't
+    // globally sorted) and falls back to a full published-range scan plus a
+    // temp b-tree over every post of the week (~85k rows). INDEXED BY forces
+    // the engagement index so each branch stops at LIMIT after a few rows.
     const dbRows = await env.DB
       .prepare(
-        `SELECT o.* FROM objects o
-         WHERE o.visibility IN ('public', 'unlisted')
-           AND o.type = 'Note'
-           AND o.published >= ?
-           AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
-         ORDER BY (o.favourites_count + o.reblogs_count + o.replies_count) DESC,
-                  o.published DESC
+        `SELECT * FROM (
+           SELECT * FROM (
+             SELECT o.* FROM objects o INDEXED BY idx_objects_trending
+             WHERE o.visibility = 'public'
+               AND o.type = 'Note'
+               AND o.published >= ?
+               AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+             ORDER BY o.engagement DESC, o.published DESC
+             LIMIT ?
+           )
+           UNION ALL
+           SELECT * FROM (
+             SELECT o.* FROM objects o INDEXED BY idx_objects_trending
+             WHERE o.visibility = 'unlisted'
+               AND o.type = 'Note'
+               AND o.published >= ?
+               AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+             ORDER BY o.engagement DESC, o.published DESC
+             LIMIT ?
+           )
+         )
+         ORDER BY engagement DESC, published DESC
          LIMIT ?`
       )
-      .bind(weekCutoff, limit)
+      .bind(weekCutoff, limit, weekCutoff, limit, limit)
       .all<Row>();
     rows = dbRows.results ?? [];
     await env.KV.put("trends:statuses:v1", JSON.stringify(rows), { expirationTtl: 300 }).catch(() => {});
