@@ -32,7 +32,7 @@ node scripts/upgrade-schema.mjs        # idempotent upgrade for existing instanc
 node scripts/upgrade-schema.mjs --local
 ```
 
-The repo manages several production instances (e.g. `cf-ap`, `fedisocial`). Wrangler needs the D1 name explicitly:
+Wrangler needs the D1 name explicitly:
 
 ```bash
 npx wrangler d1 execute <db> --remote --json --command="EXPLAIN QUERY PLAN SELECT ..."
