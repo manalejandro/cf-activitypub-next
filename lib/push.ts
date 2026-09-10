@@ -128,8 +128,7 @@ export async function deliverPushNotification(
   }));
 
   // Import VAPID private key for ECDSA JWT signing
-  const vapidRaw = ab2uint(b64urlDec(vapidPriv));
-  const vapidKey = await importEcdsaPriv(vapidRaw);
+  const vapidKey = await importVapidPrivateKey(vapidPriv);
 
   // Generate ephemeral ECDH key pair for encryption
   const ecdhKey = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
@@ -207,9 +206,29 @@ export async function deliverPushSafe(
 
 // ── VAPID JWT ──
 
-async function importEcdsaPriv(raw: Uint8Array): Promise<CryptoKey> {
-  const pkcs8 = buildPkcs8(raw);
-  return crypto.subtle.importKey("pkcs8", pkcs8, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+/**
+ * Import the VAPID private key as an ECDSA P-256 signing key.
+ *
+ * Accepts the two formats found in the wild:
+ *  - a PKCS8 PEM (`-----BEGIN PRIVATE KEY-----`), imported verbatim;
+ *  - the Web Push standard: the raw 32-byte P-256 scalar, base64url (or base64)
+ *    encoded — wrapped into a PKCS8 PrivateKeyInfo.
+ */
+export async function importVapidPrivateKey(vapidPriv: string): Promise<CryptoKey> {
+  const trimmed = vapidPriv.trim();
+  if (!trimmed) throw new Error("VAPID_PRIVATE_KEY is empty");
+
+  if (trimmed.includes("-----BEGIN")) {
+    const b64 = trimmed.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
+    const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer as ArrayBuffer;
+    return crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  }
+
+  const raw = ab2uint(b64urlDec(trimmed));
+  if (raw.byteLength !== 32) {
+    throw new Error(`VAPID_PRIVATE_KEY must be a 32-byte P-256 key (got ${raw.byteLength} bytes)`);
+  }
+  return crypto.subtle.importKey("pkcs8", buildPkcs8(raw), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
 }
 
 async function vapidJwt(key: CryptoKey, aud: string, sub: string): Promise<string> {
@@ -223,16 +242,29 @@ async function vapidJwt(key: CryptoKey, aud: string, sub: string): Promise<strin
 // ── DER encoding helpers ──
 
 function buildPkcs8(rawPriv: Uint8Array): ArrayBuffer {
-  const keyBytes = new Uint8Array(rawPriv.length + 1);
-  keyBytes[0] = 0x00;
-  keyBytes.set(rawPriv, 1);
+  // PrivateKeyInfo ::= SEQUENCE {
+  //   version INTEGER 0,
+  //   privateKeyAlgorithm SEQUENCE { id-ecPublicKey, prime256v1 },
+  //   privateKey OCTET STRING (ECPrivateKey)
+  // }
+  // ECPrivateKey ::= SEQUENCE { version INTEGER 1, privateKey OCTET STRING }
+  const privBytes = rawPriv.buffer.slice(
+    rawPriv.byteOffset,
+    rawPriv.byteOffset + rawPriv.byteLength
+  ) as ArrayBuffer;
+  const ecPrivateKey = derSeq(concat(
+    derInt(new Uint8Array([0x01]).buffer as ArrayBuffer),
+    derOctet(privBytes),
+  ));
   return derSeq(concat(
     derInt(new Uint8Array([0x00]).buffer as ArrayBuffer),
     derSeq(concat(
+      // id-ecPublicKey: 1.2.840.10045.2.1
+      derOid(new Uint8Array([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]).buffer as ArrayBuffer),
+      // prime256v1: 1.2.840.10045.3.1.7
       derOid(new Uint8Array([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]).buffer as ArrayBuffer),
-      derOid(new Uint8Array([0x01, 0x08]).buffer as ArrayBuffer),
     )),
-    derOctet(keyBytes.buffer as ArrayBuffer),
+    derOctet(ecPrivateKey),
   ));
 }
 
