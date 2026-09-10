@@ -402,18 +402,19 @@ async function deliverOne(
       body: activityJson,
     }, 15_000);
     if (!res) {
-      return { ok: false, permanent: false, status: 0, error: "Blocked or unreachable" };
+      const domain = new URL(inboxUrl).hostname.toLowerCase();
+      await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");
+      return { ok: false, permanent: true, status: 0, error: "Blocked redirect or unreachable" };
     }
     // We only need the status; cancel the body so concurrent deliveries don't
     // stall on unread responses (Cloudflare deadlock protection).
     await res.body?.cancel().catch(() => {});
     const permanent = PERMANENT_ERRORS.has(res.status);
-    // Track permanent rejections per domain so the federation graph can show
-    // instances that block us (403 Forbidden is the classic block signal).
-    // A rejection row is "blocked" while its last rejection is NEWER than the
-    // last successful delivery — so account-level blocks on a domain that also
-    // accepts other deliveries still surface, and an unblock shows up once a
-    // later delivery succeeds.
+    // Track failures per domain so the federation graph can flag instances that
+    // block us (403) or that are unreachable (status 0 after retries). A row is
+    // "active" while its last failure is NEWER than the last successful
+    // delivery, so any later success clears it. A permanent HTTP status is kept
+    // over a transient 0 so a timeout never erases a known block.
     const inboxDomain = new URL(inboxUrl).hostname.toLowerCase();
     if (res.ok) {
       await env.DB
@@ -422,25 +423,40 @@ async function deliverOne(
         .run()
         .catch(() => {});
     } else if (permanent) {
-      await env.DB
-        .prepare(
-          `INSERT INTO delivery_rejections (domain, status, attempts, last_error, last_at)
-           VALUES (?, ?, 1, ?, datetime('now'))
-           ON CONFLICT(domain) DO UPDATE SET
-             status = excluded.status,
-             attempts = delivery_rejections.attempts + 1,
-             last_error = excluded.last_error,
-             last_at = datetime('now')`
-        )
-        .bind(inboxDomain, res.status, `HTTP ${res.status}`)
-        .run()
-        .catch(() => {});
+      await recordDeliveryFailure(env, inboxDomain, res.status, `HTTP ${res.status}`);
     }
     return { ok: res.ok, permanent, status: res.status };
   } catch (err) {
-    // Network / timeout error — transient, retry
+    // Network / timeout error — transient, retry. Recorded with status 0 so the
+    // graph can show the instance as unreachable if retries keep failing.
+    try {
+      await recordDeliveryFailure(env, new URL(inboxUrl).hostname.toLowerCase(), 0, String(err));
+    } catch { /* best-effort */ }
     return { ok: false, permanent: false, status: 0, error: String(err) };
   }
+}
+
+/** Upsert a per-domain delivery failure (permanent HTTP status or 0 = timeout). */
+async function recordDeliveryFailure(
+  env: Env,
+  domain: string,
+  status: number,
+  error: string
+): Promise<void> {
+  try {
+    await env.DB
+      .prepare(
+        `INSERT INTO delivery_rejections (domain, status, attempts, last_error, last_at)
+         VALUES (?, ?, 1, ?, datetime('now'))
+         ON CONFLICT(domain) DO UPDATE SET
+           status = CASE WHEN excluded.status >= 400 THEN excluded.status ELSE delivery_rejections.status END,
+           attempts = delivery_rejections.attempts + 1,
+           last_error = excluded.last_error,
+           last_at = datetime('now')`
+      )
+      .bind(domain, status, error)
+      .run();
+  } catch { /* best-effort */ }
 }
 
 /**
