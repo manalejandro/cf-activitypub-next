@@ -472,7 +472,7 @@ export async function getInstanceContactActor(db: D1Database): Promise<LocalActo
   const withEmail = await db
     .prepare(
       `SELECT * FROM actors
-       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND username != 'guardian' AND email IS NOT NULL
+       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND COALESCE(reserved, 0) = 0 AND email IS NOT NULL
        ORDER BY created_at ASC LIMIT 1`
     )
     .first<Row>();
@@ -481,7 +481,7 @@ export async function getInstanceContactActor(db: D1Database): Promise<LocalActo
   const row = await db
     .prepare(
       `SELECT * FROM actors
-       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND username != 'guardian'
+       WHERE is_local = 1 AND role IN ('admin', 'moderator') AND COALESCE(reserved, 0) = 0
        ORDER BY created_at ASC LIMIT 1`
     )
     .first<Row>();
@@ -607,7 +607,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             last_status_at = CASE
               WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
               ELSE actors.last_status_at END,
-            updated_at = datetime('now')`
+            updated_at = datetime('now')
+          WHERE actors.is_local = 0`
         )
         .bind(
           actor.id,
@@ -648,7 +649,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             discoverable = excluded.discoverable,
             inbox = excluded.inbox,
             also_known_as = excluded.also_known_as,
-            updated_at = datetime('now')`
+            updated_at = datetime('now')
+          WHERE actors.is_local = 0`
         )
         .bind(
           actor.id,
@@ -680,7 +682,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
             public_key_pem = ?, is_bot = ?, manually_approves_followers = ?,
             discoverable = ?, inbox = ?, also_known_as = ?, updated_at = datetime('now')
-          WHERE username = ? AND domain = ?`
+          WHERE username = ? AND domain = ? AND is_local = 0`
         )
         .bind(
           actor.id,
@@ -1846,6 +1848,18 @@ export async function getHashtagTimeline(
   return rows.results.map(rowToObject);
 }
 
+/** Number of public statuses an actor exposes in their AP outbox. */
+export async function countActorPublicStatuses(db: D1Database, actorId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM objects
+       WHERE actor_id = ? AND visibility = 'public' AND type IN (${PUBLIC_STATUS_TYPE_SQL})`
+    )
+    .bind(actorId)
+    .first<{ c: number }>();
+  return Number(row?.c ?? 0);
+}
+
 export async function getActorStatuses(
   db: D1Database,
   actorId: string,
@@ -1853,8 +1867,7 @@ export async function getActorStatuses(
   maxId?: string,
   viewerId?: string,
   isFollowing = false
-): Promise<LocalObject[]> {
-  const isAuthor = viewerId === actorId;
+): Promise<LocalObject[]> {  const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
     ? "'public', 'unlisted', 'private', 'direct'"
     : isFollowing
@@ -1953,18 +1966,35 @@ function rowToObjectEdit(r: Row): ObjectEdit {
 
 export async function deleteObject(db: D1Database, id: string): Promise<void> {
   const row = await db
-    .prepare("SELECT actor_id, visibility, published FROM objects WHERE id = ?")
+    .prepare("SELECT actor_id, visibility, published, in_reply_to_id FROM objects WHERE id = ?")
     .bind(id)
-    .first<{ actor_id: string; visibility: string; published: string }>();
+    .first<{ actor_id: string; visibility: string; published: string; in_reply_to_id: string | null }>();
   // Tables that reference objects WITHOUT a FK must be cleaned explicitly:
   // status_pins (pins of a deleted status would otherwise count against the
-  // pin limit) and custom_filter_statuses (stale filter entries). Likes,
-  // announces, bookmarks, attachments and polls cascade via their FKs.
+  // pin limit), custom_filter_statuses (stale filter entries), notifications
+  // (favourite/reblog/reply/mention rows would dangle) and conversations
+  // (last_status_id has no FK). Likes, announces, bookmarks, attachments and
+  // polls cascade via their FKs.
   await db.batch([
     db.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id),
     db.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id),
+    db.prepare("DELETE FROM notifications WHERE object_id = ?").bind(id),
+    db.prepare("UPDATE conversations SET last_status_id = NULL WHERE last_status_id = ?").bind(id),
     db.prepare("DELETE FROM objects WHERE id = ?").bind(id),
   ]);
+  // Deleting a reply must release the parent's reply counter (handleCreate
+  // increments it on ingest; nothing else ever decremented it).
+  if (row?.in_reply_to_id) {
+    await db
+      .prepare(
+        `UPDATE objects
+         SET replies_count = MAX(COALESCE(replies_count, 0) - 1, 0),
+             engagement = MAX(COALESCE(engagement, 0) - 1, 0)
+         WHERE id = ?`
+      )
+      .bind(row.in_reply_to_id)
+      .run();
+  }
   // If the deleted status was the actor's latest, recompute the directory rank
   // (idx_actors_discoverable_active). Skipped when an older status was removed.
   if (row && (row.visibility === "public" || row.visibility === "unlisted")) {
@@ -1983,6 +2013,28 @@ export async function deleteObject(db: D1Database, id: string): Promise<void> {
   }
 }
 
+/**
+ * Purge a remote actor and its cached content after a federated Delete{Actor}.
+ * Local actors are never removed this way. Most child tables cascade from
+ * `actors(id)`; the ones without an FK (notifications.object_id, conversations,
+ * activities) are cleaned explicitly first.
+ */
+export async function deleteRemoteActorData(db: D1Database, actorId: string): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM activities WHERE actor_id = ?").bind(actorId),
+    db.prepare(
+      `DELETE FROM notifications
+       WHERE account_id = ? OR target_account_id = ?
+          OR object_id IN (SELECT id FROM objects WHERE actor_id = ?)`
+    ).bind(actorId, actorId, actorId),
+    db.prepare(
+      `UPDATE conversations SET last_status_id = NULL
+       WHERE last_status_id IN (SELECT id FROM objects WHERE actor_id = ?)`
+    ).bind(actorId),
+    db.prepare("DELETE FROM actors WHERE id = ? AND is_local = 0").bind(actorId),
+  ]);
+}
+
 // ─────────────────────────────────────────
 // Follows
 // ─────────────────────────────────────────
@@ -1997,6 +2049,23 @@ export async function getFollow(
     .bind(actorId, targetId)
     .first<Row>();
   return row ? rowToFollow(row) : null;
+}
+
+/**
+ * True only when an ACCEPTED follow exists. Pending/rejected rows (e.g. a
+ * follow request a locked account hasn't approved) must not unlock
+ * followers-only content.
+ */
+export async function isAcceptedFollower(
+  db: D1Database,
+  actorId: string,
+  targetId: string
+): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS ok FROM follows WHERE actor_id = ? AND target_id = ? AND state = 'accepted' LIMIT 1")
+    .bind(actorId, targetId)
+    .first<{ ok: number }>();
+  return !!row;
 }
 
 export async function createFollow(db: D1Database, follow: LocalFollow): Promise<void> {
@@ -3414,7 +3483,8 @@ export async function upsertMlsKeyPackage(
         encoding = excluded.encoding,
         content = excluded.content,
         is_active = excluded.is_active,
-        updated_at = datetime('now')`
+        updated_at = datetime('now')
+      WHERE mls_key_packages.actor_id = excluded.actor_id`
     )
     .bind(
       kp.id,
@@ -3470,28 +3540,37 @@ export async function getMlsKeyPackagesByActor(
 export async function setMlsKeyPackageActive(
   db: D1Database,
   objectId: string,
-  active: boolean
+  active: boolean,
+  actorId: string
 ): Promise<void> {
   await db
     .prepare(
-      "UPDATE mls_key_packages SET is_active = ?, updated_at = datetime('now') WHERE object_id = ?"
+      "UPDATE mls_key_packages SET is_active = ?, updated_at = datetime('now') WHERE object_id = ? AND actor_id = ?"
     )
-    .bind(active ? 1 : 0, objectId)
+    .bind(active ? 1 : 0, objectId, actorId)
     .run();
 }
 
 export async function deleteMlsKeyPackageByObjectId(
   db: D1Database,
-  objectId: string
+  objectId: string,
+  actorId: string
 ): Promise<void> {
-  await db.prepare("DELETE FROM mls_key_packages WHERE object_id = ?").bind(objectId).run();
+  await db
+    .prepare("DELETE FROM mls_key_packages WHERE object_id = ? AND actor_id = ?")
+    .bind(objectId, actorId)
+    .run();
 }
 
 export async function deleteMlsMessagesByObjectId(
   db: D1Database,
-  objectId: string
+  objectId: string,
+  actorId: string
 ): Promise<void> {
-  await db.prepare("DELETE FROM mls_messages WHERE object_id = ?").bind(objectId).run();
+  await db
+    .prepare("DELETE FROM mls_messages WHERE object_id = ? AND actor_id = ?")
+    .bind(objectId, actorId)
+    .run();
 }
 
 /** Delete a single delivered MLS envelope for one recipient (per-recipient copy). */

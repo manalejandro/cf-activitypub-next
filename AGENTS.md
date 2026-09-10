@@ -10,92 +10,120 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # CF ActivityPub — Agent Instructions
 
-A Mastodon-compatible ActivityPub social server that runs entirely on Cloudflare Workers via **Next.js 16 App Router + @opennextjs/cloudflare**. There is no Node.js server, no Docker, no database server — everything is bound to Cloudflare primitives. This file tells an AI (or human) how to work in this repo without breaking the architecture.
+A Mastodon-compatible ActivityPub server running entirely on Cloudflare Workers via **Next.js 16 App Router + @opennextjs/cloudflare**. There is no Node.js server, no Docker, no database server — everything is a Cloudflare binding. This file is the working contract for anyone (human or AI) changing this repo.
 
-## Before you touch anything
+## Ground rules
 
-- **This is Next.js 16** (see the warning block above). Route handler signatures changed: `{ params }` is now a `Promise` in Next 16 (`{ params }: { params: Promise<{ id: string }> }`) and you must `await params`. Do not assume your training data's API. Read `node_modules/next/dist/docs/`.
-- **The runtime is Cloudflare Workers**, not Node. Never use Node-only globals/APIs in runtime code. `nodejs_compat` is enabled, but everything runs inside the Worker sandbox.
-- **Do not commit secrets.** Never put real secrets in `wrangler.toml` or in code. Secrets are set with `wrangler secret put` (see README). `wrangler.toml` only holds public vars, bindings, and resource IDs.
+- **Next.js 16** (see the warning block above). Route handlers receive `{ params }` as a `Promise` and must `await` it. Do not assume your training data's API; read `node_modules/next/dist/docs/` first.
+- **Cloudflare Workers runtime.** Never use Node-only globals in runtime code (`nodejs_compat` is enabled, but stay portable). Bindings are read with `getCloudflareContext()` — never `process.env`.
+- **No secrets in git.** `wrangler.toml` holds public vars, bindings and resource IDs only. Secrets go through `wrangler secret put`.
+- **Validate before finishing:** `npx tsc --noEmit && npx eslint . && npx vitest run`. All three must stay green. If you add/remove a route file, run `npx next typegen` first (stale `.next/types` breaks `tsc`).
 
-## Quick commands
+## Commands
 
 ```bash
-npm run dev          # local Next.js dev server (plain Next, no CF bindings)
-npm run test         # vitest (jsdom)
-npm run lint         # eslint (eslint-config-next, core-web-vitals + typescript)
+npm run dev          # plain Next.js dev server (no CF bindings)
+npm run test         # vitest
+npm run lint         # eslint
 npm run preview      # opennextjs-cloudflare build + wrangler dev (local CF runtime)
 npm run deploy       # opennextjs-cloudflare build + wrangler deploy
-npm run db:migrate   # wrangler d1 execute schema against the remote D1 DB
+npm run db:migrate   # apply lib/db/schema.sql to the remote D1 DB
+node scripts/upgrade-schema.mjs        # idempotent upgrade for existing instances
+node scripts/upgrade-schema.mjs --local
 ```
 
-**Always validate before finishing a task:**
+The repo manages several production instances (e.g. `cf-ap`, `fedisocial`). Wrangler needs the D1 name explicitly:
 
 ```bash
-npx tsc --noEmit && npx eslint . && npx vitest run
+npx wrangler d1 execute <db> --remote --json --command="EXPLAIN QUERY PLAN SELECT ..."
 ```
 
-tsc and eslint are separate from `npm run build` (build is slow and requires CF assets). Run all three after any change and keep the suite green.
+`--file=` is broken in this environment (`fetch failed`); always use `--command=` for one statement and `scripts/upgrade-schema.mjs` for batches/backfills.
 
-## Architecture (the mental model)
+## Architecture
 
 | Concern | Where |
 |---|---|
 | Next.js App Router pages | `app/` (server & client components) |
-| REST API routes (Mastodon-compatible `/api/v1/*`) | `app/api/**/route.ts` |
-| ActivityPub federation (inbox, actors, security) | `lib/activitypub/` |
+| Mastodon-compatible REST API | `app/api/**/route.ts` |
+| ActivityPub federation (inbox/outbox, actors, security, queue) | `lib/activitypub/` |
 | Mastodon serializers + status ID encoding | `lib/mastodon/` |
-| D1 row mappers + queries | `lib/db/index.ts`, schema in `lib/db/schema.sql` |
+| D1 queries + row mappers | `lib/db/index.ts`; schema `lib/db/schema.sql`; reset `lib/db/drop.sql` |
 | Types (actors, objects, env, calls) | `lib/types/` |
 | AI moderation ("Guardian") | `lib/moderation/` |
-| Streaming / WebRTC Durable Objects | `lib/streaming/`, exported from `src/worker.ts` |
-| i18n (EN + ES dictionaries) | `lib/i18n.tsx` |
-| Cloudflare Worker entry (wrangler `main`) | `src/worker.ts` |
+| Streaming / WebRTC Durable Objects | `lib/streaming/`; exported by `src/worker.ts` |
+| i18n (10 locales) | `lib/locales/*.json` + `lib/i18n.tsx` |
+| Instance brand context | `lib/instance-context.tsx` |
+| Worker entry (wrangler `main`) | `src/worker.ts` |
 | Edge middleware / rewrites | `middleware.ts` |
-| DB migrations (incremental SQL + runner) | `scripts/`, `scripts/upgrade-schema.mjs` |
-| Next.js config + custom image loader | `next.config.ts`, `app/image-loader.ts` |
+| Migrations + idempotent upgrade | `scripts/*.sql`, `scripts/upgrade-schema.mjs` |
+| Limits (env-overridable) | `lib/constants.ts` (`resolveLimits`) |
 
-### Cloudflare bindings (`wrangler.toml` → `lib/types/env.ts` → `lib/cf.ts`)
+### Bindings (`wrangler.toml` → `lib/types/env.ts`)
 
-- `DB` — D1 (SQLite) relational store.
-- `KV` — cache, sessions/rate-limit markers, WS abuse protection.
-- `R2` — media uploads.
-- `DELIVERY_QUEUE` — async ActivityPub fan-out with retries + DLQ; consumed by `src/worker.ts`.
-- `TIMELINE_STREAM`, `CALL_SIGNALING` — Durable Objects (WebSockets streaming, WebRTC signaling).
-- `AI` — Workers AI (LLaVA alt-text, Llama moderation).
-- `VECTORIZE` — optional semantic memory for moderation.
-- `EMAIL` — Email Workers binding for transactional mail.
-- Cron `* * * * *` — scheduled maintenance + Guardian patrol.
-
-**Access env in code like this** (never read `process.env` for bindings):
+`DB` (D1) · `KV` (cache/markers) · `R2` (media) · `DELIVERY_QUEUE` (AP fan-out + DLQ) · `TIMELINE_STREAM`, `CALL_SIGNALING` (DOs) · `AI` · `VECTORIZE` (optional) · `EMAIL`. Cron `* * * * *` runs maintenance + Guardian patrol.
 
 ```ts
 import { getCloudflareContext, json, notFound, unauthorized, badRequest } from "@/lib/cf";
-const { env } = getCloudflareContext(); // → { DB, KV, R2, DELIVERY_QUEUE, ... }
+const { env } = getCloudflareContext();
 ```
+
+## Data layer (D1 / SQLite) — lessons learned the hard way
+
+- **`lib/db/schema.sql` is the single source of truth.** `scripts/upgrade-schema.mjs` replays every `CREATE TABLE/INDEX IF NOT EXISTS` from it, so operators using the script alone stay current. Still add numbered `scripts/NNN-*.sql` files to document each change; update `lib/db/drop.sql` (generated, children before parents) when adding tables.
+- **Measure before optimizing.** Use `EXPLAIN QUERY PLAN` against the remote DB. Confirm the plan uses the index and that `rows_read` drops. `USE TEMP B-TREE FOR ORDER BY` over tens of thousands of rows is the usual smell.
+- **SQLite/D1 does not use expression indexes for `ORDER BY`**, and partial indexes whose predicate uses `IN (...)` are not matched by the planner. Don't design around them.
+- **`col IN (...)` on the leading index column defeats ordered scans.** Split hot queries into one branch per value with `UNION ALL` (each branch gets its own ordered index scan) and, when the planner still prefers a range index, force it with `INDEXED BY idx_name`.
+- **Don't `ORDER BY` a computed expression over a big table.** Denormalize and maintain on writes:
+  - `objects.engagement` = favourites + reblogs + replies (kept in sync in every counter mutation; index `idx_objects_trending`).
+  - `actors.last_status_at` = max public status date (maintained by `createObject`, `deleteObject`, remote upsert and the scheduled-publish cron; index `idx_actors_discoverable_active`; directory ranks by it).
+  - `idx_objects_url` backs the Like/Announce URL fallback.
+- **Correlated `MAX(published)` subqueries per row are a smell** — precompute on `actors` instead.
+- **D1 bind limit ≈ 100.** For long `IN` lists pass a JSON array and use `json_each(?)`.
+- **Large backfills must be batched**: single full-table `UPDATE`s hit `SQLITE_NOMEM`. Walk an id cursor and chunk statements by bytes in `upgrade-schema.mjs`; guard one-shot migrations with `instance_settings` markers.
+- **Never `DROP` stateful tables in the upgrade script** (`delivery_rejections` was wiped every run once — don't repeat that).
+- Wrap queries in `try/catch` with a migration pointer when columns may be missing on old DBs (`last_status_at`, `quote_id`, …).
+- `lib/db/index.ts` has shared SQL constants (`PUBLIC_STATUS_TYPE_SQL`) and helpers (`isAcceptedFollower`, `countActorPublicStatuses`, `deleteRemoteActorData`). Reuse them; don't inline the type list or fire raw ownership-less deletes.
+
+## Federation rules
+
+- **All outbound delivery goes through the queue** (`enqueueDeliveries`). `deliverToInbox` is only reachable from `lib/activitypub/queue.ts` (fallback when no binding/`sendBatch` throws) and the worker's `deliverOne` consumer. Never call it from a handler. The DLQ (`cf-ap-delivery-dlq`) has its own consumer that records failures in KV (`dlq:delivery:*`, 30 days) and acks.
+- **Inbound signatures**: `verifySignature` requires `(request-target)` and, when there is a body, `digest` **inside the signed-headers list**; the inbox routes also require a valid `Date` (12h window). Only RSA/hs2019 is accepted.
+- **Actor id binding**: never cache an actor document whose `id` differs from the URL that was fetched; `upsertRemoteActor` must never update `is_local = 1` rows (cache-poisoning guard).
+- **Domain blocks** (`instance_domain_blocks`): `severity = 'suspend'` drops the activity; `'silence'` processes it but strips media (`reject_media`) and ignores forwarded Flags (`reject_reports`).
+- **Dedup**: `processInboxActivity` records each signed `activity.id` in `activities` (`INSERT OR IGNORE`) and skips replays. Record only after signature/ownership checks.
+- **Ownership**: embedded objects in Announce/Update must be authored by the signer or share origin; MLS mutations are actor-scoped (`setMlsKeyPackageActive`, `deleteMlsKeyPackageByObjectId`, `deleteMlsMessagesByObjectId`); call events are validated against the `call:<id>` KV session from the `CallOffer`.
+- **`Delete` cleanup** lives in `deleteObject` (notifications, conversation pointer, parent `replies_count`/`engagement`) and `deleteRemoteActorData` (`Delete{Actor}` purge). `Undo{Accept}` removes followers; `Undo{Follow}` only decrements accepted follows.
+- **Remote accounts require auth**: `/api/v1/accounts/:id`, `/lookup`, account statuses, `/api/v2/search` remote resolution, `/api/v1/statuses/:id` on-demand resolution and `/api/v1/e2ee/resolve` all return 401 for anonymous requests. Local content stays public.
+- **Outbox**: `buildOrderedCollectionPage(collectionId, pageId, items, nextId?, prevId?)`; `totalItems` counts only public statuses; cursor advances with the last fetched status regardless of visibility; suspended actors 404. Collections are CORS-enabled via `middleware.ts`.
+- **Scheduled statuses** publish through `createObject` + `enqueueDeliveries` + streaming (public/home) and link pending media (`pending_media:` KV, TTL extended at schedule time). Don't hand-roll inserts there.
+- **SSRF**: run `safeFetch` (or at least `validateOutboundUrl`) before every outbound request. `safeFetch` re-validates each redirect hop and bounds the whole exchange with a timeout; it blocks private/metadata/CGNAT/multicast ranges and internal suffixes (DNS rebinding is out of scope inside a Worker).
 
 ## Code conventions
 
-- **Path alias**: `@/*` → repo root (`tsconfig.json` + vitest alias). Always import with `@/`.
-- **API routes** are plain exported async functions (`GET`, `POST`, `PUT`, `DELETE`) in `app/api/**/route.ts`, typed `(request: NextRequest, { params }: { params: Promise<{ id: string }> })`. Use the `json()`/`notFound()`/`unauthorized()` helpers from `@/lib/cf`.
-- **Admin API auth**: import `requireAdmin(request, env)` from `@/lib/admin-auth`. It accepts a role check (`admin`/`moderator` on the actor) plus an optional `ADMIN_TOKEN` bearer fallback.
-- **Authenticated actor**: `getAuthenticatedActor(request, env.DB)` from `@/lib/auth`. Client-side auth uses `getToken()` from `@/lib/client-api` (cookie `auth_token`, falls back to localStorage).
-- **i18n**: the dictionaries live in `lib/i18n.tsx`. `t` from `useLocale()` is a **plain translation OBJECT, not a function** — use `t.some_key` (or `t[key as keyof Translations]` for dynamic keys). The instance is **bilingual (EN + ES)**. Every key must exist in **both** `EN` and `ES` with identical key sets (`Translations = typeof EN`, `ES: typeof EN`). For interpolated strings use `.replace("{var}", value)` (see `components/StatusCard.tsx` poll expiry). New UI text must be added as a key to both dictionaries — never hardcode English in components.
-- **Images**: a custom loader (`app/image-loader.ts` in `next.config.ts`) lets `next/image` serve any remote URL — no `remotePatterns` needed. **Prefer `next/image` components over plain `<img>`/HTML tags.** When sizing non-square remote avatars, force `width`/`height` in an inline `style` plus `objectFit: "cover"` — Tailwind preflight's `img { height: auto }` overrides the HTML `width`/`height` attributes and causes misalignment.
-- **DB access**: write raw SQL via `env.DB.prepare(sql).bind(...)`. D1 returns snake_case columns; convert to camelCase via the row mappers in `lib/db/index.ts` (`rowToActor`, etc.). Wrap legacy-format queries in `try/catch` with a comment pointing to the migration when columns may be missing in an old DB.
-- **Federation**: outbound activity is JSON-signed (`lib/activitypub/security.ts`) and delivered through the `DELIVERY_QUEUE` (`enqueueDeliveries`), never by `fetch`ing inboxes inline. Inbound goes through `app/inbox/route.ts` / `lib/activitypub/inbox.ts`. Always SSRF-check URLs (`validateOutboundUrl`).
-- **Remote content rendering**: linkify/process remote object text via `renderRemoteContent` in `lib/mastodon/serializers.ts` (HTML → sanitize + `linkifyHtmlText`; plain text → `processStatusContent(...)`), using helpers in `lib/activitypub/content.ts`. Don't render raw remote HTML.
-- **Testing**: vitest with jsdom and `globals: true`. API-route tests mock `@/lib/cf`'s `getCloudflareContext` (returning a fake `{ env: { DB: mockDb } }`), the DB chain (`prepare().bind().all()/.first()/.run()`), and dependencies with `vi.hoisted`. Tests live next to lib code under `lib/__tests__/`. Match the existing mock style exactly.
-- **DB schema**: `lib/db/schema.sql` is the full, idempotent schema (`CREATE TABLE IF NOT EXISTS`). Incremental changes go in a numbered SQL file under `scripts/` and must be added to `scripts/upgrade-schema.mjs`. Always create both the full schema change AND the incremental migration.
-- **Code style**: no comments unless they explain *why* (non-obvious decisions). TypeScript strict. Prefer functional style with `useCallback`/`useEffect` in client components. Keep the existing naming: `setX`, `handleX`, `fetchX`.
-- **Scheduling/cron**: the cron worker phase drifts (a `* * * * *` cron keeps the phase it had at deploy). `executeScheduled` in `src/worker.ts` aligns to the top of the minute before doing time-sensitive work. Don't rely on `:00` firing exactly.
+- **Path alias** `@/*` → repo root. Always import with `@/`.
+- **API routes**: exported async `GET`/`POST`/… typed `(request: NextRequest, { params }: { params: Promise<{ id: string }> })`. Use `json()`/`notFound()`/`unauthorized()`/`badRequest()` from `@/lib/cf`.
+- **Auth**: `getAuthenticatedActor(request, env.DB)` from `@/lib/auth` (cookie `auth_token` or Bearer; client `getToken()` from `@/lib/client-api`). Mutating requests require the `write` scope (`read`-only tokens are rejected). Admin: `requireAdmin(request, env)` from `@/lib/admin-auth` (role + optional `ADMIN_TOKEN`).
+- **i18n**: 10 locale files in `lib/locales/`. `t` from `useLocale()` is a Proxy — use `t.some_key`; interpolate with `.replace("{var}", value)`. **Every key must exist in all 10 locales with identical key sets** — never hardcode user-facing strings.
+- **Brand**: read `useInstanceTitle()` / `INSTANCE_TITLE`; metadata comes from `generateMetadata()` in `app/layout.tsx` and the PWA manifest from `app/manifest.webmanifest/route.ts`. Don't hardcode the instance name in UI.
+- **Limits**: read `resolveLimits(env)` (`lib/constants.ts`) instead of hardcoding page sizes/char limits; new limits get a constant, an env override and a comment in `wrangler.toml`.
+- **Images**: custom loader in `next.config.ts`; prefer `next/image`. For non-square remote avatars force `width`/`height` + `objectFit: "cover"` inline (Tailwind preflight overrides attributes).
+- **Remote content**: render via `renderRemoteContent`/helpers in `lib/activitypub/content.ts`; never inject raw remote HTML.
+- **Objects**: set `updated_at = published` explicitly on insert (the column DEFAULT uses a different format and would mark new posts as edited).
+- **Style**: no comments unless they explain *why*; TypeScript strict; `setX`/`handleX`/`fetchX` naming; admin pages keep the emoji prefix in nav/titles.
+
+## Testing
+
+- Vitest + jsdom (`globals: true`), tests under `lib/__tests__/` and `lib/activitypub/__tests__/`.
+- API-route tests mock `@/lib/cf`'s `getCloudflareContext` and the DB chain with `vi.hoisted`; match the existing mock style.
+- Inbox/federation tests use an in-memory `node:sqlite` D1 adapter that loads `lib/db/schema.sql` (so schema changes are exercised) and mock `@/lib/streaming/broadcast` + `@/lib/push`.
+- When touching security, add tests: `lib/activitypub/__tests__/security.test.ts` (signatures, SSRF) and `queue.test.ts` (queue vs fallback). When touching call handling, seed the `call:<id>` KV session in the test context.
 
 ## Gotchas that have bitten before
 
-- `middleware.ts` must stay **Edge-compatible** (only `next/server`). A file named `proxy.ts` would run on the Node runtime — don't rename it.
-- `src/worker.ts` is wrangler's `main`: it wraps the OpenNext handler, exports the Durable Object classes, and adds the queue consumer + streaming WebSocket upgrade handling + cron. WebSocket upgrades for `/api/v1/streaming` and `/api/v1/calls/:id/ws` are intercepted **before** falling through to `openNextDefault.fetch`.
-- Never deliver federated activity synchronously in a request handler — always enqueue.
-- The `objects` table needs an explicit `updated_at` on insert (its `DEFAULT` stores `datetime('now')` in a different format than the ISO `published`, which would misreport new posts as "edited").
-- Removing local accounts must also clean `oauth_tokens`, `activities` and `moderation_log` (they reference the actor without FKs) and, for local actors with a private key, federate a `Delete` tombstone to followers (see `app/api/v1/admin/accounts/[id]/route.ts` DELETE and `app/api/v1/accounts/delete/route.ts`).
-- Admin sections (nav + page titles) use emoji prefixes — keep that style when adding new admin pages.
+- `middleware.ts` must stay Edge-compatible (only `next/server`). A file named `proxy.ts` would run on Node — don't rename it.
+- `src/worker.ts` is wrangler's `main`: wraps OpenNext, exports the DO classes, and adds the queue consumer (incl. DLQ), WebSocket upgrades for `/api/v1/streaming` and `/api/v1/calls/:id/ws`, and cron. Intercept those **before** `openNextDefault.fetch`.
+- Cron phase drifts: `executeScheduled` aligns to the top of the minute; never assume `:00`.
+- `getFollow` does **not** filter by state — use `isAcceptedFollower` for followers-only visibility.
+- Removing local accounts must clean `oauth_tokens`, `activities` and `moderation_log` (no FKs) and federate a `Delete` tombstone (see `app/api/v1/accounts/delete/route.ts` and the admin DELETE route).
 - Never re-ingest already-stored objects to change rendering — serializers read `objects.raw`, so rendering fixes are backward-compatible without migration.

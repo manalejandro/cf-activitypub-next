@@ -186,7 +186,7 @@ export function isObjectType(type: string): boolean {
 
 /** Whether a remote object type should be ingested and rendered as a status. */
 export function isContentObjectType(type: string): boolean {
-  return CONTENT_SET.has(type);
+  return CONTENT_SET.has(type) || CONTENT_SET.has(type.toLowerCase());
 }
 
 /** Whether the UI has a dedicated renderer block for the given object type. */

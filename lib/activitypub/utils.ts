@@ -439,13 +439,14 @@ export function buildOrderedCollection(
 
 export function buildOrderedCollectionPage(
   collectionId: string,
+  pageId: string,
   items: unknown[],
   nextId?: string,
   prevId?: string
 ): APCollectionPage {
   const page: APCollectionPage = {
     "@context": DEFAULT_CONTEXT,
-    id: `${collectionId}?page=true`,
+    id: pageId,
     type: "OrderedCollectionPage",
     partOf: collectionId,
     orderedItems: items as APCollectionPage["orderedItems"],

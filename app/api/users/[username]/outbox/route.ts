@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById } from "@/lib/db";
+import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, countActorPublicStatuses } from "@/lib/db";
 import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI } from "@/lib/activitypub/utils";
-import { deliverToInbox, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { mlsObjectTypeFromType } from "@/lib/activitypub/vocab";
 import { storePublicMlsEnvelope } from "@/lib/activitypub/mlsEnvelope";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -70,14 +71,16 @@ export async function GET(
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
-  if (!actor || !actor.isLocal) return notFound("Actor not found");
+  if (!actor || !actor.isLocal || actor.suspended) return notFound("Actor not found");
 
   const outboxId = `${actorIRI(baseUrl, username)}/outbox`;
   const page = pageParam;
 
   let response: Record<string, unknown>;
   if (!page) {
-    response = buildOrderedCollection(outboxId, actor.statusesCount);
+    // totalItems must count only what the collection actually exposes (public),
+    // not statusesCount (which includes followers-only/direct posts).
+    response = buildOrderedCollection(outboxId, await countActorPublicStatuses(env.DB, actor.id));
   } else {
     const maxId = page !== "true" ? page : undefined;
     const statuses = await getActorStatuses(env.DB, actor.id, 20, maxId);
@@ -120,12 +123,20 @@ export async function GET(
         return buildCreate(baseUrl, actorIRI(baseUrl, username), note, objectUuid + "-create");
       });
 
+    // Advance the cursor on the last fetched status regardless of visibility so
+    // a page containing unlisted posts can't strand older public statuses.
+    const lastStatus = statuses[statuses.length - 1];
     const nextId =
-      items.length === 20
-        ? `${outboxId}?page=${statuses[statuses.length - 1]?.id}`
+      statuses.length === 20 && lastStatus
+        ? `${outboxId}?page=${encodeURIComponent(lastStatus.id)}`
         : undefined;
 
-    response = buildOrderedCollectionPage(outboxId, items, nextId);
+    response = buildOrderedCollectionPage(
+      outboxId,
+      `${outboxId}?page=${encodeURIComponent(page)}`,
+      items,
+      nextId
+    );
   }
 
   await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 120 }).catch(() => {});
@@ -214,7 +225,13 @@ export async function POST(
     );
   }
 
-  const type = (activity.type ?? "").toLowerCase();
+  if (typeof activity.type !== "string" || !activity.type) {
+    return new Response(
+      JSON.stringify({ error: "activity.type must be a string" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  const type = activity.type.toLowerCase();
   const actorIri = actorIRI(baseUrl, username);
   const activityActor =
     typeof activity.actor === "string" ? activity.actor : (activity.actor as { id?: string })?.id;
@@ -234,7 +251,17 @@ export async function POST(
   }
 
   const object = (activity.object ?? null) as MlsOutboxObject | string | null;
-  let objectId = typeof object === "string" ? object : (object?.id ?? null);
+  let objectId = typeof object === "string"
+    ? object
+    : (typeof object?.id === "string" ? object.id : null);
+  // Reject foreign IRIs on MLS mutations: object ids must be local (canonical
+  // /objects/ form) or actor-scoped before being canonicalised.
+  if (objectId && !objectId.startsWith(`${baseUrl}/objects/`) && !objectId.startsWith(`${actorIri}/`)) {
+    return new Response(
+      JSON.stringify({ error: "object.id must belong to this actor/instance" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
   // Local MLS objects must live under https://{domain}/objects/{uuid} so the
   // Mastodon API status-id encoding (encode/decodeStatusId) round-trips and
   // status detail pages can resolve them. Actors may send actor-scoped IDs
@@ -265,9 +292,17 @@ export async function POST(
     }
   }
 
-  const published = typeof activity.published === "string"
-    ? new Date(activity.published).toISOString()
-    : new Date().toISOString();
+  let published = new Date().toISOString();
+  if (typeof activity.published === "string") {
+    const parsed = new Date(activity.published);
+    if (isNaN(parsed.getTime())) {
+      return new Response(
+        JSON.stringify({ error: "activity.published is not a valid date" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    published = parsed.toISOString();
+  }
 
   try {
     if (type === "create" && objectType === "KeyPackage") {
@@ -291,15 +326,12 @@ export async function POST(
       const obj = object as MlsOutboxObject;
       const recipients = [...collectAudience(activity.to), ...collectAudience(activity.cc)]
         .filter((iri) => iri !== "https://www.w3.org/ns/activitystreams#Public" && iri !== "as:Public");
-      let deliveredTo = 0;
+      const remoteInboxes: string[] = [];
       const activityId = activity.id ?? `${actorIri}/mls/${Date.now()}`;
       for (const iri of new Set(recipients)) {
         if (!iri.startsWith(baseUrl + "/")) {
           const inbox = await resolveRemoteInbox(env.DB, iri);
-          if (inbox) {
-            await deliverToInbox(inbox, activity as never, `${actor.id}#main-key`, actor.privateKeyPem);
-            deliveredTo++;
-          }
+          if (inbox) remoteInboxes.push(inbox);
           continue;
         }
         const localRecipient = await getActorById(env.DB, iri);
@@ -350,21 +382,25 @@ export async function POST(
         published,
         true
       );
-      void deliveredTo;
+      if (remoteInboxes.length > 0) {
+        await enqueueDeliveries(env.DELIVERY_QUEUE, remoteInboxes, JSON.stringify(activity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+      }
     } else if (type === "add") {
-      await setMlsKeyPackageActive(env.DB, objectId!, true);
+      await setMlsKeyPackageActive(env.DB, objectId!, true, actor.id);
     } else if (type === "remove") {
-      await setMlsKeyPackageActive(env.DB, objectId!, false);
+      await setMlsKeyPackageActive(env.DB, objectId!, false, actor.id);
     } else if (type === "delete") {
-      await deleteMlsKeyPackageByObjectId(env.DB, objectId!);
-      await deleteMlsMessagesByObjectId(env.DB, objectId!);
+      await deleteMlsKeyPackageByObjectId(env.DB, objectId!, actor.id);
+      await deleteMlsMessagesByObjectId(env.DB, objectId!, actor.id);
+      const remoteInboxes: string[] = [];
       for (const iri of [...collectAudience(activity.to), ...collectAudience(activity.cc)]) {
         if (!iri.startsWith(baseUrl + "/") && iri !== "https://www.w3.org/ns/activitystreams#Public") {
           const inbox = await resolveRemoteInbox(env.DB, iri);
-          if (inbox) {
-            await deliverToInbox(inbox, activity as never, `${actor.id}#main-key`, actor.privateKeyPem);
-          }
+          if (inbox) remoteInboxes.push(inbox);
         }
+      }
+      if (remoteInboxes.length > 0) {
+        await enqueueDeliveries(env.DELIVERY_QUEUE, remoteInboxes, JSON.stringify(activity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
       }
     }
   } catch (err) {

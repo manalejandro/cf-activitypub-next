@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { resolveLimits } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
 import { linkifyHtmlText, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
@@ -83,7 +84,8 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const content = String(body.content ?? "").trim();
   if (!content) return json({ error: "content is required" }, 422);
-  if (content.length > 10000) return json({ error: "content is too long (max 10000 chars)" }, 422);
+  const maxAnnouncementChars = resolveLimits(env as unknown as Record<string, unknown>).maxAnnouncementChars;
+  if (content.length > maxAnnouncementChars) return json({ error: `content is too long (max ${maxAnnouncementChars} chars)` }, 422);
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString().replace("T", " ").replace("Z", "").slice(0, 19);

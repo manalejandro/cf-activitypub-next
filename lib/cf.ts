@@ -19,6 +19,19 @@ export function getDomain(env: CloudflareEnv): string {
   return new URL(getBaseUrl(env)).hostname;
 }
 
+/**
+ * Instance brand name (INSTANCE_TITLE) for code that runs inside a request but
+ * has no env at hand (serializers). Falls back to the project default outside a
+ * Cloudflare context (tests, build).
+ */
+export function getInstanceTitle(): string {
+  try {
+    const { env } = getCloudflareContext();
+    if (env.INSTANCE_TITLE) return env.INSTANCE_TITLE;
+  } catch { /* no Cloudflare context */ }
+  return "CF ActivityPub";
+}
+
 export function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,

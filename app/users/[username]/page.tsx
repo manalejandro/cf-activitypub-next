@@ -384,7 +384,7 @@ export default function ProfilePage() {
     setLoadingMorePosts(true);
     const oldestId = statuses[statuses.length - 1].id;
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=20`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}`,
       { headers: authHeaders }
     );
     if (res.ok) {
@@ -399,7 +399,7 @@ export default function ProfilePage() {
     if (!account || loadingMoreFollowers || !hasMoreFollowers) return;
     const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     setLoadingMoreFollowers(true);
-    const nextPage = Math.floor(followers.length / 40);
+    const nextPage = Math.floor(followers.length / limits.pageSize);
     const res = await fetch(
       `/api/v1/accounts/${encodeURIComponent(account.id)}/followers?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
@@ -416,7 +416,7 @@ export default function ProfilePage() {
     if (!account || loadingMoreFollowing || !hasMoreFollowing) return;
     const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     setLoadingMoreFollowing(true);
-    const nextPage = Math.floor(following.length / 40);
+    const nextPage = Math.floor(following.length / limits.pageSize);
     const res = await fetch(
       `/api/v1/accounts/${encodeURIComponent(account.id)}/following?limit=${limits.pageSize}&page=${nextPage}`,
       { headers: authHeaders }
@@ -456,13 +456,13 @@ export default function ProfilePage() {
 
     if (tab === "replies") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?only_replies=true&limit=20`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?only_replies=true&limit=${limits.defaultTimelinePage}`,
         { headers: authHeaders }
       );
       if (res.ok) setReplies(await res.json() as Status[]);
     } else if (tab === "pinned") {
       const res = await fetch(
-        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?pinned=true&limit=20`,
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?pinned=true&limit=${limits.defaultTimelinePage}`,
         { headers: authHeaders }
       );
       if (res.ok) setPinnedStatuses(await res.json() as Status[]);
@@ -592,7 +592,7 @@ export default function ProfilePage() {
 
   async function handleDelete(s: SharedStatus) {
     if (!token) return;
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },

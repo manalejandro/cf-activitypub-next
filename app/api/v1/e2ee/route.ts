@@ -99,7 +99,7 @@ export async function DELETE(request: NextRequest): Promise<Response> {
   if (!target || !id) return json({ error: "Faltan target o id" }, 400);
 
   if (target === "key-package") {
-    await deleteMlsKeyPackageByObjectId(env.DB, id);
+    await deleteMlsKeyPackageByObjectId(env.DB, id, actor.id);
   } else if (target === "message") {
     await deleteMlsMessageForRecipient(env.DB, actor.id, id);
   } else if (target === "conversation") {

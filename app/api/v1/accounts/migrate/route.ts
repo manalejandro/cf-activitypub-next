@@ -24,7 +24,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: verification.error ?? "Verification failed" }, 422);
   }
 
-  const { migratedLocal, delivered } = await performMove(env.DB, baseUrl, actor, verification.target);
+  const { migratedLocal, delivered } = await performMove(env.DB, baseUrl, actor, verification.target, env.DELIVERY_QUEUE);
 
   return json({
     moved_to: verification.target.id,

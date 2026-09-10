@@ -3,7 +3,7 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getFollow, deleteFollow } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildUndo, buildFollow, generateId } from "@/lib/activitypub/utils";
-import { deliverToInbox } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { buildRelationship } from "@/lib/mastodon/relationships";
 
 // POST /api/v1/accounts/:id/unfollow
@@ -39,7 +39,7 @@ export async function POST(
     const originalFollow = buildFollow(baseUrl, actor.id, target.id, follow.id);
     const undoActivity = buildUndo(baseUrl, actor.id, { ...originalFollow, id: follow.activityId }, undoId);
     const inboxUrl = (target as unknown as Record<string, string>).inbox ?? `${target.id}/inbox`;
-    await deliverToInbox(inboxUrl, undoActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+    await enqueueDeliveries(env.DELIVERY_QUEUE, [inboxUrl], JSON.stringify(undoActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
   }
 
   return json(await buildRelationship(env.DB, actor.id, target.id));

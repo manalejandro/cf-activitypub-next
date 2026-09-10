@@ -7,8 +7,6 @@ interface EdgeRow {
   weight: number;
 }
 
-const MAX_EDGES = 250;
-
 /**
  * GET /api/v1/graph — the federation network this instance is connected to.
  * Nodes are domains (instances), edges are follower relationships between
@@ -20,6 +18,9 @@ const MAX_EDGES = 250;
 export async function GET(): Promise<Response> {
   const { env } = getCloudflareContext();
   const maxNodes = resolveLimits(env as unknown as Record<string, unknown>).graphMaxNodes;
+  // Each edge can add at most two nodes; bound the query so the configured
+  // node cap is actually reachable.
+  const MAX_EDGES = Math.max(250, maxNodes);
   const instanceDomain = (
     (env.INSTANCE_URL ? new URL(env.INSTANCE_URL).hostname : "") || "localhost"
   ).toLowerCase();

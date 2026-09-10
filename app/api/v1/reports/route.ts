@@ -4,7 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { createReport, getActorById, getReportsByActor, getObjectById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { buildFlag, generateId } from "@/lib/activitypub/utils";
-import { deliverToInbox } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest): Promise<Response> {
           if (refreshed?.inbox) inboxUrl = refreshed.inbox;
         }
         try {
-          await deliverToInbox(inboxUrl, flag, `${actor.id}#main-key`, actor.privateKeyPem);
+          await enqueueDeliveries(env.DELIVERY_QUEUE, [inboxUrl], JSON.stringify(flag), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
           await env.DB.prepare("UPDATE reports SET forwarded = 1 WHERE id = ?").bind(id).run();
         } catch (err) {
           console.error("[reports] Flag forward failed:", err);

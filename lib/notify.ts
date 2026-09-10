@@ -7,6 +7,7 @@ import { deliverPushSafe } from "@/lib/push";
 
 export interface NotifyEnv {
   DB: D1Database;
+  INSTANCE_URL?: string;
   TIMELINE_STREAM?: DONamespace;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
@@ -42,7 +43,11 @@ async function serializeFullNotification(
 export async function notify(env: NotifyEnv, notif: LocalNotification): Promise<void> {
   await createNotification(env.DB, notif);
   if (env.TIMELINE_STREAM) {
-    const payload = await serializeFullNotification(env.DB, notif, "localhost");
+    let domain = "localhost";
+    try {
+      if (env.INSTANCE_URL) domain = new URL(env.INSTANCE_URL).hostname;
+    } catch { /* keep fallback */ }
+    const payload = await serializeFullNotification(env.DB, notif, domain);
     void broadcastNotificationEvent(env.TIMELINE_STREAM, notif.targetAccountId, payload).catch(() => {});
   }
   if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_EMAIL) {

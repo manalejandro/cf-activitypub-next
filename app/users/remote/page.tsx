@@ -269,8 +269,8 @@ function RemoteProfileInner() {
     // Load cached statuses, replies, pinned, followers, following and collections in parallel
     const [statusRes, repliesRes, pinnedRes, followersRes, followingRes, collectionsRes] = await Promise.all([
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?only_replies=true&limit=20`, { headers }),
-      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?pinned=true&limit=20`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?only_replies=true&limit=${limits.defaultTimelinePage}`, { headers }),
+      fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?pinned=true&limit=${limits.defaultTimelinePage}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/followers?limit=${limits.pageSize}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/following?limit=${limits.pageSize}`, { headers }),
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/collections`, { headers }),
@@ -399,7 +399,7 @@ function RemoteProfileInner() {
     setLoadingMorePosts(true);
     const oldestId = statuses[statuses.length - 1].id;
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=20`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}`,
       { headers }
     );
     if (res.ok) {
@@ -445,7 +445,7 @@ function RemoteProfileInner() {
 
   async function handleDelete(s: SharedStatus) {
     if (!token) return;
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },

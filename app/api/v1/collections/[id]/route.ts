@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import type { D1Database } from "@cloudflare/workers-types";
 import { getCloudflareContext, json, unauthorized, notFound, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { resolveLimits } from "@/lib/constants";
 import {
   getCollectionById,
   getCollectionItems,
@@ -66,17 +67,18 @@ export async function PATCH(
   if (col.account_id !== actor.id) return json({ error: "This action is not allowed" }, 403);
 
   const body = await request.json() as Record<string, unknown>;
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   const fields: Parameters<typeof updateCollection>[2] = {};
   if (body.name !== undefined) {
     const name = String(body.name).trim();
     if (!name) return badRequest("name is required");
-    if (name.length > 40) return json({ error: "Validation failed: Name is too long (maximum is 40 characters)" }, 422);
+    if (name.length > limits.maxCollectionNameChars) return json({ error: `Validation failed: Name is too long (maximum is ${limits.maxCollectionNameChars} characters)` }, 422);
     fields.name = name;
   }
   if (body.description !== undefined) {
     const description = body.description === null ? null : String(body.description);
-    if (description && description.length > 100) return json({ error: "Validation failed: Description is too long (maximum is 100 characters)" }, 422);
+    if (description && description.length > limits.maxCollectionDescriptionChars) return json({ error: `Validation failed: Description is too long (maximum is ${limits.maxCollectionDescriptionChars} characters)` }, 422);
     fields.description = description;
   }
   if (body.language !== undefined) fields.language = body.language === null ? null : String(body.language);

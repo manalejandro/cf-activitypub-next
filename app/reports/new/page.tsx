@@ -138,7 +138,7 @@ function NewReportPage() {
       router.push("/reports");
     } else {
       const err = await res.json() as { error?: string };
-      setError(err.error ?? "Failed to submit report");
+      setError(err.error ?? t.reports_failed);
     }
     setSubmitting(false);
   }
@@ -161,7 +161,7 @@ function NewReportPage() {
           >
             <Icon name="arrow-left" />
           </button>
-          <span style={{ fontWeight: 600 }}>New Report</span>
+          <span style={{ fontWeight: 600 }}>{t.reports_new}</span>
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -196,7 +196,7 @@ function NewReportPage() {
               }}
             >
               <div style={{ fontWeight: 600, fontSize: "0.8rem", marginBottom: "0.375rem", color: "var(--text-muted)" }}>
-                Reported Status
+                {t.reports_reported_status}
               </div>
               <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                 {stripHtml(previewStatus.content)}
@@ -207,7 +207,7 @@ function NewReportPage() {
           {/* Reason */}
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.375rem" }}>
-              Reason
+              {t.reports_reason}
             </label>
             <select
               value={category}
@@ -218,21 +218,21 @@ function NewReportPage() {
                 color: "var(--text)", fontSize: "0.9rem", fontFamily: "inherit",
               }}
             >
-              <option value="spam">Spam</option>
-              <option value="violation">Violation</option>
-              <option value="other">Other</option>
+              <option value="spam">{t.reports_spam}</option>
+              <option value="violation">{t.reports_violation}</option>
+              <option value="other">{t.reports_other}</option>
             </select>
           </div>
 
           {/* Comment */}
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.375rem" }}>
-              Comment
+              {t.reports_comment}
             </label>
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Additional information…"
+              placeholder={t.reports_comment_placeholder}
               rows={4}
               style={{
                 width: "100%", padding: "0.5rem 0.75rem", borderRadius: "var(--radius)",
@@ -256,7 +256,7 @@ function NewReportPage() {
               onChange={(e) => setForward(e.target.checked)}
               style={{ width: "1rem", height: "1rem", accentColor: "var(--accent)" }}
             />
-            Forward to server
+            {t.reports_forward}
           </label>
 
           {error && (
@@ -271,7 +271,7 @@ function NewReportPage() {
             disabled={submitting || !accountId}
             style={{ width: "100%", padding: "0.625rem", fontWeight: 600 }}
           >
-            {submitting ? "Submitting…" : "Submit Report"}
+            {submitting ? t.reports_submitting : t.reports_submit}
           </button>
         </form>
     </PageLayout>

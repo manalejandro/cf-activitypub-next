@@ -1,5 +1,6 @@
 "use client";
 
+import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
@@ -114,7 +115,7 @@ export default function AdminModerationLogPage() {
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return new Date(dateStr).toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
   function label(key: string, fallback: string): string {

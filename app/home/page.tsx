@@ -290,7 +290,7 @@ export default function HomePage() {
   }
 
   async function handleDelete(s: Status) {
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${s.id}`, {
       method: "DELETE",
       credentials: "include",

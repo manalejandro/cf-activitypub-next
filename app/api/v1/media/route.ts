@@ -20,6 +20,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const form = await request.formData();
   const file = form.get("file") as File | null;
   const description = (form.get("description") as string | null) ?? null;
+  if (description && description.length > limits.maxAltTextChars) {
+    return json({ error: `description is too long (max ${limits.maxAltTextChars} chars)` }, 422);
+  }
   const sensitive = form.get("sensitive") === "true";
   // UI locale sent by the client to determine auto-description prefix language
   const locale = (form.get("locale") as string | null) ?? "en";
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const MAX_SIZE = limits.maxImageSize; // images/uploads capped at the instance image limit
   if (file.size > MAX_SIZE) {
-    return json({ error: "File too large (max 16 MB)" }, 422);
+    return json({ error: `File too large (max ${Math.floor(MAX_SIZE / (1024 * 1024))} MB)` }, 422);
   }
 
   // Generate a unique key for R2

@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useLocale } from "@/lib/i18n";
+import { useInstanceTitle } from "@/lib/instance-context";
 import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon } from "@/components/Icon";
@@ -177,6 +178,7 @@ export default function GraphPage() {
 
 function GraphView() {
   const { t } = useLocale();
+  const brand = useInstanceTitle();
   const { authenticated } = useAuth();
   const isMobile = useMediaQuery("(max-width: 767px)");
   const [data, setData] = useState<GraphData | null>(null);
@@ -211,9 +213,9 @@ function GraphView() {
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
           <div className="flex items-center gap-3">
             <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <Image src="/logo.svg" alt="CF ActivityPub" width={32} height={32} />
+              <Image src="/logo.svg" alt={brand} width={32} height={32} />
               <span className="hidden sm:inline font-bold text-base" style={{ color: "var(--text-primary)" }}>
-                CF ActivityPub
+                {brand}
               </span>
             </Link>
           </div>

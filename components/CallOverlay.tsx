@@ -127,7 +127,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             <p className="text-sm opacity-70" style={{ color: "inherit" }}>{event.callerAcct}</p>
           </div>
           <p className="text-sm opacity-60" style={{ color: "inherit" }}>
-            Incoming {event.callType === "video" ? "video" : "voice"} call…
+            {event.callType === "video" ? t.call_incoming_video : t.call_incoming_voice}
           </p>
           <div className="flex gap-4 mt-2">
             <button
@@ -164,8 +164,8 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
         >
           <Icon name="ban" size="2rem" />
           <div>
-            <p className="font-semibold text-sm">Llamada bloqueada</p>
-            <p className="text-xs opacity-70">{callState.targetAcct} te ha bloqueado.</p>
+            <p className="font-semibold text-sm">{t.call_blocked}</p>
+            <p className="text-xs opacity-70">{t.call_blocked_by.replace("{user}", callState.targetAcct)}</p>
           </div>
         </div>
       </div>
@@ -178,7 +178,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
       <div className="fixed bottom-4 right-4 z-50">
         <div className="bg-base-100 rounded-2xl shadow-2xl p-5 flex flex-col items-center gap-3 w-64">
           <p className="text-sm font-medium">
-            Calling {callState.targetAcct}…
+            {t.call_calling.replace("{user}", callState.targetAcct)}
           </p>
           <div className="flex gap-2 items-center">
             <span className="animate-pulse text-2xl"><Icon name="phone" size="2rem" /></span>
@@ -187,7 +187,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             onClick={endCall}
             className="btn btn-error btn-sm w-full"
           >
-            Cancel
+            {t.call_cancel}
           </button>
         </div>
       </div>
@@ -225,7 +225,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
 
     // Size button icon: show what the *next* action will do
     const sizeIcon = callSize === "mini" ? <Icon name="expand" /> : callSize === "normal" ? <Icon name="arrows-alt" /> : <Icon name="compress" />;
-    const sizeTitle = callSize === "mini" ? "Ampliar" : callSize === "normal" ? "Pantalla completa" : "Restaurar";
+    const sizeTitle = callSize === "mini" ? t.call_expand : callSize === "normal" ? t.call_fullscreen : t.call_restore;
 
     return (
       <div className={outerClass}>
@@ -271,24 +271,24 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             <button
               onClick={() => void toggleMute()}
               className={`btn btn-circle btn-sm ${isMuted ? "btn-error" : "btn-ghost"}`}
-              aria-label={isMuted ? "Unmute" : "Mute"}
-              title={isMuted ? "Activar micrófono" : "Silenciar micrófono"}
+              aria-label={isMuted ? t.call_unmute : t.call_mute}
+              title={isMuted ? t.call_unmute : t.call_mute}
             >
               {isMuted ? <Icon name="microphone-slash" color="#fff" /> : <Icon name="microphone" />}
             </button>
             <button
               onClick={() => void toggleVideo()}
               className="btn btn-circle btn-sm btn-ghost"
-              aria-label={isVideoOff ? "Enable camera" : "Disable camera"}
-              title={isVideoOff ? "Activar cámara" : "Desactivar cámara"}
+              aria-label={isVideoOff ? t.call_enable_camera : t.call_disable_camera}
+              title={isVideoOff ? t.call_enable_camera : t.call_disable_camera}
             >
               {isVideoOff ? <Icon name="camera" /> : <Icon name="video-camera" />}
             </button>
             <button
               onClick={() => void toggleScreenShare()}
               className={`btn btn-circle btn-sm ${isSharingScreen ? "btn-warning" : "btn-ghost"}`}
-              aria-label={isSharingScreen ? "Stop sharing screen" : "Share screen"}
-              title={isSharingScreen ? "Dejar de compartir pantalla" : "Compartir pantalla"}
+              aria-label={isSharingScreen ? t.call_stop_share_screen : t.call_share_screen}
+              title={isSharingScreen ? t.call_stop_share_screen : t.call_share_screen}
             >
               <Icon name="desktop" />
             </button>
@@ -320,7 +320,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
         <div className="bg-error text-white rounded-xl px-4 py-3 shadow-lg text-sm">
-          Call ended{callState.reason ? ` (${callState.reason.replace(/_/g, " ")})` : ""}
+          {t.call_ended}{callState.reason ? ` (${callState.reason.replace(/_/g, " ")})` : ""}
         </div>
       </div>
     );

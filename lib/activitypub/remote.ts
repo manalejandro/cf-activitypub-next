@@ -15,7 +15,7 @@ import {
   getPollByObjectId,
   upsertCustomEmoji,
 } from "@/lib/db";
-import { validateOutboundUrl, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
@@ -60,12 +60,11 @@ async function remoteFetch(
   let last: Response | null = null;
   for (const ua of uas) {
     try {
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         headers: { ...headers, "User-Agent": ua },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      }, timeoutMs);
       last = res;
-      if (res.ok) return res;
+      if (res?.ok) return res;
     } catch {
       /* try next UA */
     }
@@ -227,7 +226,8 @@ export async function fetchAndCacheRemoteActor(
                last_status_at = CASE
                  WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
                  ELSE actors.last_status_at END,
-               updated_at = datetime('now')`
+               updated_at = datetime('now')
+             WHERE actors.is_local = 0`
           )
           .bind(
             id, usernameNorm, domain,
@@ -270,7 +270,8 @@ export async function fetchAndCacheRemoteActor(
                statuses_count = CASE WHEN excluded.statuses_count > 0 THEN excluded.statuses_count ELSE actors.statuses_count END,
                inbox = excluded.inbox,
                also_known_as = excluded.also_known_as,
-               updated_at = datetime('now')`
+               updated_at = datetime('now')
+             WHERE actors.is_local = 0`
           )
           .bind(
             id, usernameNorm, domain,
@@ -305,7 +306,7 @@ export async function fetchAndCacheRemoteActor(
                following_count = CASE WHEN ? > 0 THEN ? ELSE following_count END,
                statuses_count  = CASE WHEN ? > 0 THEN ? ELSE statuses_count  END,
                discoverable = ?, inbox = ?, also_known_as = ?, updated_at = datetime('now')
-             WHERE username = ? AND domain = ?`
+             WHERE username = ? AND domain = ? AND is_local = 0`
           )
           .bind(
             id,

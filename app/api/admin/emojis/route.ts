@@ -60,7 +60,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     httpMetadata: { contentType: file.type },
   });
 
-  const baseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? `http://localhost:3000`;
+  const baseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? `https://${new URL(request.url).hostname}`;
   const url = `${baseUrl}/api/media/${key}`;
   const staticUrl = url; // Same image for now; could generate static PNG later
 

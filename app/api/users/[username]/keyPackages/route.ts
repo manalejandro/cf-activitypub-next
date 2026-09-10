@@ -29,7 +29,7 @@ export async function GET(
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
-  if (!actor || !actor.isLocal) return notFound("Actor not found");
+  if (!actor || !actor.isLocal || actor.suspended) return notFound("Actor not found");
 
   const collectionId = `${actorIRI(baseUrl, username)}/keyPackages`;
   const keyPackages = await getMlsKeyPackagesByActor(env.DB, actor.id);

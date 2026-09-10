@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
+import { useInstanceTitle } from "@/lib/instance-context";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon, type IconName } from "@/components/Icon";
 import { RichText } from "@/components/RichText";
@@ -17,6 +18,7 @@ interface InstanceSettings {
 }
 
 export default function Home() {
+  const brand = useInstanceTitle();
   const { authenticated, loading } = useAuth();
   const { t } = useLocale();
   const [version, setVersion] = useState<string | null>(null);
@@ -66,9 +68,9 @@ export default function Home() {
       <nav style={{ position: "sticky", top: 0, zIndex: 40, borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-4">
           <div className="flex items-center gap-3">
-            <Image src="/logo.svg" alt="CF ActivityPub" width={36} height={36} />
+            <Image src="/logo.svg" alt={brand} width={36} height={36} />
             <span className="hidden sm:inline font-bold text-lg" style={{ color: "var(--text-primary)" }}>
-              CF ActivityPub
+              {brand}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -187,7 +189,7 @@ export default function Home() {
       {/* Footer */}
       <footer style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
-          <span>© {new Date().getFullYear()} CF ActivityPub — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
+          <span>© {new Date().getFullYear()} {brand} — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
           <div className="flex gap-5">
             <Link href="/graph" style={{ color: "var(--text-muted)" }}>{t.graph_link}</Link>
             <a href="/docs" style={{ color: "var(--text-muted)" }}>API Docs</a>

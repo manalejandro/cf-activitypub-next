@@ -321,7 +321,7 @@ function ReplyBox({
         if (quote && !replyTo) onCancel();
       }
     } catch {
-      setError("Network error");
+      setError(t.error_network);
     } finally {
       setSubmitting(false);
     }
@@ -680,7 +680,7 @@ export default function ThreadPage() {
 
   async function handleDelete(s: Status) {
     if (!token) return;
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
@@ -728,7 +728,7 @@ export default function ThreadPage() {
             >
               <Icon name="arrow-left" />
             </button>
-            <span style={{ fontWeight: 600 }}>Post</span>
+            <span style={{ fontWeight: 600 }}>{t.compose_post}</span>
           </div>
           <div className="flex" style={{ borderTop: "1px solid var(--border)" }}>
             <button

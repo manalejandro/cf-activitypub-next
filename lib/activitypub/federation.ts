@@ -10,20 +10,31 @@ const AP_ACCEPT = 'application/activity+json, application/ld+json; profile="http
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const PRIVATE_IP_RANGES = [
-  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^192\.168\.\d{1,3}\.\d{1,3}$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/,
-  /^0\.0\.0\.0$/,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,                              // link-local incl. cloud metadata 169.254.169.254
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // CGNAT 100.64.0.0/10
+  /^0\./,                                     // "this network" 0.0.0.0/8
+  /^(22[4-9]|23\d|24\d|25[0-5])\./,           // multicast + reserved 224.0.0.0/4
   /^::1$/,
+  /^::$/,
   /^fc00:/i,
+  /^fd[0-9a-f]{2}:/i,                         // unique local fc00::/7
   /^fe80:/i,
+  // IPv4-mapped IPv6 forms of the ranges above (dotted and normalized hex).
+  /^::ffff:/i,
 ];
+
+const PRIVATE_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa"];
 
 /**
  * Validates that a URL is safe for outbound HTTP requests.
- * Rejects non-HTTPS, private IPs, localhost, and malformed URLs.
+ * Rejects non-HTTPS, private/reserved IPs, localhost and internal DNS names.
  * Defense-in-depth against SSRF via injected ActivityPub actor fields.
+ * Note: this cannot resolve DNS, so a public hostname pointing at a private
+ * address is out of scope for this check.
  */
 export function validateOutboundUrl(url: string): { valid: boolean; reason?: string } {
   try {
@@ -32,8 +43,8 @@ export function validateOutboundUrl(url: string): { valid: boolean; reason?: str
       return { valid: false, reason: "Only HTTPS URLs are allowed" };
     }
     const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return { valid: false, reason: "Localhost is not allowed" };
+    if (hostname === "localhost" || PRIVATE_HOST_SUFFIXES.some((s) => hostname.endsWith(s))) {
+      return { valid: false, reason: "Localhost/internal hostnames are not allowed" };
     }
     if (PRIVATE_IP_RANGES.some((re) => re.test(hostname))) {
       return { valid: false, reason: "Private IP ranges are not allowed" };
@@ -42,6 +53,52 @@ export function validateOutboundUrl(url: string): { valid: boolean; reason?: str
   } catch {
     return { valid: false, reason: "Invalid URL format" };
   }
+}
+
+// ─────────────────────────────────────────
+// SSRF-safe fetch
+// ─────────────────────────────────────────
+
+const MAX_REDIRECTS = 3;
+
+/**
+ * Fetch wrapper that re-validates every hop (initial URL and each redirect
+ * target) with validateOutboundUrl and bounds the whole exchange with a
+ * timeout. Redirects are followed manually because `fetch` would otherwise
+ * follow a `Location` into private space without re-validation.
+ */
+export async function safeFetch(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response | null> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const validation = validateOutboundUrl(current);
+    if (!validation.valid) {
+      console.warn(`[federation] Blocked outbound request to ${current}: ${validation.reason}`);
+      return null;
+    }
+    const res = await fetch(current, {
+      ...init,
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) return res;
+      await res.body?.cancel().catch(() => {});
+      try {
+        current = new URL(location, current).toString();
+      } catch {
+        return null;
+      }
+      continue;
+    }
+    return res;
+  }
+  console.warn(`[federation] Too many redirects for ${url}`);
+  return null;
 }
 
 // ─────────────────────────────────────────
@@ -63,11 +120,8 @@ export async function deliverToInbox(
   const body = JSON.stringify(activity);
   const headers = await signRequest("POST", inboxUrl, body, privateKeyPem, senderKeyId);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   try {
-    const res = await fetch(inboxUrl, {
+    const res = await safeFetch(inboxUrl, {
       method: "POST",
       headers: {
         "Content-Type": AP_CONTENT_TYPE,
@@ -75,35 +129,16 @@ export async function deliverToInbox(
         ...headers,
       },
       body,
-      signal: controller.signal,
     });
-    clearTimeout(timer);
+    if (!res) return { ok: false, status: 0, error: "Blocked or unreachable" };
     // We only care about the status. Cancel the body so the connection is
     // released — delivering to many inboxes in parallel without reading the
     // responses would stall and trip Cloudflare's deadlock protection.
     await res.body?.cancel().catch(() => {});
     return { ok: res.ok, status: res.status };
   } catch (err) {
-    clearTimeout(timer);
     return { ok: false, status: 0, error: String(err) };
   }
-}
-
-// ─────────────────────────────────────────
-// Fan-out delivery to multiple inboxes
-// ─────────────────────────────────────────
-
-export async function deliverToInboxes(
-  inboxUrls: string[],
-  activity: APActivity,
-  senderKeyId: string,
-  privateKeyPem: string
-): Promise<void> {
-  // De-duplicate inboxes
-  const unique = [...new Set(inboxUrls)];
-  await Promise.allSettled(
-    unique.map((url) => deliverToInbox(url, activity, senderKeyId, privateKeyPem))
-  );
 }
 
 // ─────────────────────────────────────────
@@ -128,28 +163,23 @@ export async function fetchRemoteObject(
     Object.assign(additionalHeaders, signed);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: {
         Accept: AP_ACCEPT,
         ...additionalHeaders,
       },
-      signal: controller.signal,
     });
-    clearTimeout(timer);
-
-    if (!res.ok) return null;
+    if (!res?.ok) return null;
 
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("json")) return null;
 
+    // The timeout signal stays armed while the body is read, so a slow body
+    // can't hang the request past REQUEST_TIMEOUT_MS.
     const data = await res.json();
     return data as APActor | APObject | APActivity;
   } catch {
-    clearTimeout(timer);
     return null;
   }
 }
@@ -201,15 +231,10 @@ export async function resolveWebFinger(
 
   try {
     const url = `https://${domain}/.well-known/webfinger?resource=acct:${normalized}`;
-    const validation = validateOutboundUrl(url);
-    if (!validation.valid) {
-      console.warn(`[federation] Blocked WebFinger resolution for ${url}: ${validation.reason}`);
-      return null;
-    }
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { Accept: "application/jrd+json, application/json" },
-    });
-    if (!res.ok) return null;
+    }, 5000);
+    if (!res?.ok) return null;
     const data = await res.json() as { links?: { rel: string; href: string }[] };
     const selfLink = data.links?.find((l) => l.rel === "self");
     return selfLink?.href ?? null;

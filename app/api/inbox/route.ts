@@ -27,6 +27,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
+  // Reject oversized payloads before any parsing work (1 MB is far above any
+  // legitimate AP activity we accept).
+  if (rawBody.length > 1_000_000) {
+    return json({ error: "Payload too large" }, 413);
+  }
 
   const actorId = typeof body.actor === "string" ? body.actor : (body.actor as { id?: string })?.id;
   if (!actorId) return json({ error: "Missing actor" }, 400);
@@ -82,10 +87,10 @@ export async function POST(request: NextRequest): Promise<Response> {
         signingKey ? `${signingKey.id}#main-key` : undefined,
         signingKey?.privateKeyPem,
       ) as APActor | null;
-      if (fetched?.publicKey?.publicKeyPem) {
-        // Mastodon resolves keyId by looking for a publicKey whose `id`
-        // matches the keyId from the Signature header. Use that specific key.
-        // See: https://docs.joinmastodon.org/spec/security/#http-verify
+      // Never cache a document whose id differs from the actor we asked for:
+      // a malicious server could otherwise return an actor document pointing at
+      // another (local or remote) account and poison the key cache.
+      if (fetched?.id === signingActorId && fetched.publicKey?.publicKeyPem) {
         senderActor = fetched;
         try { await upsertRemoteActor(env.DB, senderActor); } catch { /* ignore */ }
       }
@@ -98,13 +103,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
-  // Mastodon spec step 5: verify the Date header is within 12 hours.
+  // Mastodon spec step 5: the Date header is required and must be within 12 hours.
   const dateHeader = headers["date"];
-  if (dateHeader) {
-    const requestDate = new Date(dateHeader);
-    if (isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
-      return json({ error: "Request date too old or invalid" }, 401);
-    }
+  const requestDate = dateHeader ? new Date(dateHeader) : null;
+  if (!requestDate || isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
+    return json({ error: "Request date missing, invalid, or too old" }, 401);
   }
 
   const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem, rawBody);
@@ -120,6 +123,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       signingActorId,
       signingKey,
       timelineStream: env.TIMELINE_STREAM,
+      deliveryQueue: env.DELIVERY_QUEUE,
       vapidPublicKey: env.VAPID_PUBLIC_KEY,
       vapidPrivateKey: env.VAPID_PRIVATE_KEY,
       vapidEmail: env.VAPID_EMAIL,

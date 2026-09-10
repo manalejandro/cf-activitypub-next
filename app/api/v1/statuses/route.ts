@@ -282,6 +282,12 @@ export async function POST(request: NextRequest): Promise<Response> {
       const mediaIds = (body.media_ids as string[] | undefined) ?? [];
       const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
       await createScheduledStatus(env.DB, schedId, actor.id, normalizedScheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
+      // The upload TTL is 1h, but the status may be scheduled days ahead — keep
+      // the pending uploads alive until the cron publishes them.
+      for (const mediaId of mediaIds) {
+        const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
+        if (pendingRaw) await env.KV.put(`pending_media:${mediaId}`, pendingRaw, { expirationTtl: 30 * 86400 }).catch(() => {});
+      }
       return json({
         id: schedId,
         scheduled_at: scheduledAt,

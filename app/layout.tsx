@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { getCloudflareContext } from "@/lib/cf";
+import { InstanceTitleProvider } from "@/lib/instance-context";
 import { LocaleProvider } from "@/lib/i18n";
 import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
 import { PwaRegister } from "@/components/PwaRegister";
@@ -14,40 +16,53 @@ const inter = Inter({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "CF ActivityPub",
-    template: "%s · CF ActivityPub",
-  },
-  description:
-    "A Mastodon-compatible ActivityPub server built for the edge — powered by Cloudflare Workers, D1, and the open web.",
-  keywords: ["activitypub", "mastodon", "fediverse", "cloudflare", "social network"],
-  authors: [{ name: "CF ActivityPub" }],
-  creator: "CF ActivityPub",
-  metadataBase: new URL("https://github.com/manalejandro/cf-activitypub-next"),
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    title: "CF ActivityPub",
-    description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
-    siteName: "CF ActivityPub",
-    images: [{ url: "/logo.svg", width: 120, height: 120, alt: "CF ActivityPub logo" }],
-  },
-  twitter: {
-    card: "summary",
-    title: "CF ActivityPub",
-    description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
-    images: ["/logo.svg"],
-  },
-  manifest: "/manifest.json",
-  icons: { icon: "/logo.svg", shortcut: "/logo.svg", apple: "/logo.svg" },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "CF ActivityPub",
-  },
-  formatDetection: { telephone: false, email: false, address: false },
-};
+// Brand and canonical URL come from the instance configuration so renamed or
+// self-hosted deployments don't emit another instance's metadata (OG images,
+// canonical URLs, app title).
+export async function generateMetadata(): Promise<Metadata> {
+  let baseUrl = "http://localhost:3000";
+  let brand = "CF ActivityPub";
+  try {
+    const { env } = getCloudflareContext();
+    if (env.INSTANCE_URL) baseUrl = env.INSTANCE_URL;
+    if (env.INSTANCE_TITLE) brand = env.INSTANCE_TITLE;
+  } catch { /* local next dev / build without a Cloudflare context */ }
+
+  return {
+    title: {
+      default: brand,
+      template: `%s · ${brand}`,
+    },
+    description:
+      "A Mastodon-compatible ActivityPub server built for the edge — powered by Cloudflare Workers, D1, and the open web.",
+    keywords: ["activitypub", "mastodon", "fediverse", "cloudflare", "social network"],
+    authors: [{ name: brand }],
+    creator: brand,
+    metadataBase: new URL(baseUrl),
+    openGraph: {
+      type: "website",
+      locale: "en_US",
+      title: brand,
+      description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
+      siteName: brand,
+      images: [{ url: "/logo.svg", width: 120, height: 120, alt: `${brand} logo` }],
+    },
+    twitter: {
+      card: "summary",
+      title: brand,
+      description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
+      images: ["/logo.svg"],
+    },
+    manifest: "/manifest.webmanifest",
+    icons: { icon: "/logo.svg", shortcut: "/logo.svg", apple: "/logo.svg" },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: brand,
+    },
+    formatDetection: { telephone: false, email: false, address: false },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#6366f1",
@@ -57,6 +72,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  let instanceTitle = "CF ActivityPub";
+  try {
+    const { env } = getCloudflareContext();
+    if (env.INSTANCE_TITLE) instanceTitle = env.INSTANCE_TITLE;
+  } catch { /* local next dev / build without a Cloudflare context */ }
+
   return (
     <html lang="en" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>
@@ -74,13 +95,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full flex flex-col pb-14 md:pb-0">
-        <LocaleProvider>
-          {children}
-          <CallOverlayWrapper />
-          <PwaRegister />
-          <NotificationSound />
-          <PaletteApplier />
-        </LocaleProvider>
+        <InstanceTitleProvider title={instanceTitle}>
+          <LocaleProvider>
+            {children}
+            <CallOverlayWrapper />
+            <PwaRegister />
+            <NotificationSound />
+            <PaletteApplier />
+          </LocaleProvider>
+        </InstanceTitleProvider>
       </body>
     </html>
   );

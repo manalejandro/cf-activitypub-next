@@ -28,7 +28,7 @@ export async function GET(
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
-  if (!actor || !actor.isLocal) return notFound("Actor not found");
+  if (!actor || !actor.isLocal || actor.suspended) return notFound("Actor not found");
 
   const fields = await getActorFields(env.DB, actor.id);
   const baseUrl = `https://${domain}`;

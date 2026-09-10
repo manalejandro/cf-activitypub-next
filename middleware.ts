@@ -75,7 +75,10 @@ export function middleware(request: NextRequest) {
   if (subMatch) {
     const url = request.nextUrl.clone();
     url.pathname = `/api/users/${subMatch[1]}/${subMatch[2]}`;
+    searchParams.forEach((v, k) => url.searchParams.set(k, v));
     const rewriteResponse = NextResponse.rewrite(url);
+    // AP collections are consumed cross-origin by remote instances/clients.
+    Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
     Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
     return rewriteResponse;
   }

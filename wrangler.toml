@@ -91,6 +91,14 @@ max_batch_timeout = 5
 max_retries = 5
 dead_letter_queue = "cf-activitypub-delivery-dlq"
 
+# Dead-letter queue: failures past max_retries land here. The worker records
+# them (KV, 30 days) and acks so the DLQ doesn't grow unbounded.
+[[queues.consumers]]
+queue = "cf-activitypub-delivery-dlq"
+max_batch_size = 20
+max_batch_timeout = 5
+max_retries = 0
+
 [ai]
 binding = "AI"
 

@@ -3,7 +3,8 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getFollow, createFollow } from "@/lib/db";
 import { buildFollow, generateId } from "@/lib/activitypub/utils";
-import { resolveWebFinger, deliverToInbox } from "@/lib/activitypub/federation";
+import { resolveWebFinger } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 
 // POST /api/v1/import/follows — Mastodon-compatible CSV import
@@ -86,12 +87,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       } else {
         const inboxUrl = target.inbox ?? `${target.id}/inbox`;
         try {
-          await deliverToInbox(
-            inboxUrl,
-            followActivity,
-            `${actor.id}#main-key`,
-            actor.privateKeyPem
-          );
+          await enqueueDeliveries(env.DELIVERY_QUEUE, [inboxUrl], JSON.stringify(followActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
         } catch {
           // Delivery failure is non-fatal — follow is saved locally.
         }

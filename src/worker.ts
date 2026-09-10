@@ -20,13 +20,16 @@ import openNextDefault from "../.open-next/worker.js";
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { signRequest } from "../lib/activitypub/security";
-import { buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
-import { collectFollowerInboxes, validateOutboundUrl } from "../lib/activitypub/federation";
+import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
+import { collectFollowerInboxes, fetchRemoteObject, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
-import { broadcastDelete, broadcastHomeDelete } from "../lib/streaming/broadcast";
+import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { getActorById } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById } from "../lib/db";
+import { serializeStatus } from "../lib/mastodon/serializers";
+import { notify } from "../lib/notify";
+import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { runModerationCycle } from "../lib/moderation/cycle";
 import type { APActor } from "../lib/types";
@@ -541,12 +544,15 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const actor = await getActorById(env.DB, s.actor_id);
       if (!actor || !actor.privateKeyPem) continue;
 
+      const limits = resolveLimits(env as unknown as Record<string, unknown>);
       const baseUrl = `https://${actor.domain}`;
+      const domain = actor.domain;
       const content = (body.status as string | undefined)?.trim() ?? "";
       const visibility = (body.visibility as string) ?? "public";
       const sensitive = body.sensitive === true || body.sensitive === "true";
       const spoilerText = (body.spoiler_text as string | undefined) ?? "";
       const language = body.language as string | undefined;
+      const inReplyToId = (body.in_reply_to_id as string | undefined) ?? null;
       const published = new Date().toISOString();
       const noteId = generateId();
 
@@ -555,31 +561,113 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         content,
         published,
         visibility: visibility as "public" | "unlisted" | "private" | "direct",
-        inReplyTo: undefined,
+        inReplyTo: inReplyToId ?? undefined,
         sensitive,
         summary: sensitive ? spoilerText : undefined,
         language,
         tags: [],
       });
 
-      // Set updated_at = published explicitly: the table's DEFAULT would store
-      // `datetime('now')` (space format) which is never === the ISO `published`,
-      // so a brand-new post would be misreported as "edited".
-      await env.DB
-        .prepare("INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, in_reply_to_id, language, url, replies_count, reblogs_count, favourites_count, published, updated_at, is_local, raw) VALUES (?, 'Note', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, 1, ?)")
-        .bind(note.id, s.actor_id, content, sensitive ? spoilerText : null, sensitive ? 1 : 0, visibility, null, language ?? null, note.url ?? note.id, published, published, JSON.stringify(note))
-        .run();
+      // Link pending media uploads (same `pending_media:` KV contract as
+      // POST /api/v1/statuses; the schedule-time branch extends their TTL).
+      const noteAttachments: Record<string, unknown>[] = [];
+      const mediaIds = Array.isArray(body.media_ids)
+        ? body.media_ids as string[]
+        : s.media_ids ? JSON.parse(s.media_ids) as string[] : [];
+      for (const mediaId of mediaIds.slice(0, limits.maxMediaAttachments)) {
+        const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
+        if (!pendingRaw) continue;
+        try {
+          const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+          const mimeType = (pending.mimeType as string | null) ?? null;
+          const att = {
+            id: mediaId,
+            objectId: noteId,
+            type: (pending.type as string) ?? "image",
+            url: pending.url as string,
+            remoteUrl: null,
+            description: (pending.description as string | null) ?? null,
+            blurhash: null,
+            width: null,
+            height: null,
+            fileSize: (pending.fileSize as number | null) ?? null,
+            mimeType,
+            sensitive: sensitive || pending.sensitive === true,
+            createdAt: published,
+          };
+          await createAttachment(env.DB, att);
+          await env.KV.delete(`pending_media:${mediaId}`);
+          noteAttachments.push({
+            id: att.url,
+            type: mimeType?.startsWith("image/") ? "Image"
+              : mimeType?.startsWith("video/") ? "Video"
+              : mimeType?.startsWith("audio/") ? "Audio" : "Document",
+            mediaType: mimeType,
+            url: att.url,
+            ...(att.description ? { name: att.description } : {}),
+          });
+        } catch { /* skip malformed pending media */ }
+      }
+
+      // Create the poll (Question object + local poll rows) if requested.
+      const pollRaw = body.poll as { options?: unknown[]; expires_in?: number; multiple?: boolean } | undefined;
+      if (pollRaw && Array.isArray(pollRaw.options)) {
+        const validOptions = pollRaw.options.map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
+        if (validOptions.length >= 2) {
+          const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), limits.pollMinExpiration), limits.pollMaxExpiration);
+          const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+          await createPoll(env.DB, {
+            id: generateId(),
+            objectId: noteId,
+            expiresAt,
+            multiple: Boolean(pollRaw.multiple),
+            options: validOptions.map((title, i) => ({ id: generateId(), title, position: i })),
+          });
+          const pollChoices = validOptions.map((title) => ({
+            type: "Note",
+            name: title,
+            replies: { type: "Collection", totalItems: 0 },
+          }));
+          const noteAny = note as Record<string, unknown>;
+          noteAny.type = "Question";
+          if (pollRaw.multiple) noteAny.anyOf = pollChoices;
+          else noteAny.oneOf = pollChoices;
+          noteAny.endTime = expiresAt;
+          noteAny.votersCount = 0;
+        }
+      }
+
+      if (noteAttachments.length > 0) note.attachment = noteAttachments;
+
+      await createObject(env.DB, {
+        id: noteId,
+        type: (note.type as string) ?? "Note",
+        actorId: actor.id,
+        content,
+        contentWarning: sensitive ? spoilerText : null,
+        sensitive,
+        visibility,
+        inReplyToId,
+        quoteId: null,
+        language: language ?? null,
+        url: note.id,
+        repliesCount: 0,
+        reblogsCount: 0,
+        favouritesCount: 0,
+        published,
+        local: true,
+        raw: JSON.stringify(note),
+      });
 
       await env.DB
         .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
         .bind(s.actor_id)
         .run();
 
-      if (visibility === "public" || visibility === "unlisted") {
-        const date = published.slice(0, 10);
+      if (inReplyToId) {
         await env.DB
-          .prepare("UPDATE actors SET last_status_at = ? WHERE id = ? AND ? > COALESCE(last_status_at, '')")
-          .bind(date, s.actor_id, date)
+          .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
+          .bind(inReplyToId)
           .run();
       }
 
@@ -587,6 +675,62 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
         .bind(s.id)
         .run();
+
+      // Fan-out delivery (through the queue) to followers and the replied-to
+      // author, plus a mention notification when the parent is local.
+      const fetchActor = async (id: string): Promise<APActor | null> => {
+        const cached = await getActorById(env.DB, id);
+        if (cached) return cached as unknown as APActor;
+        const remote = await fetchRemoteObject(id, `${actor.id}#main-key`, actor.privateKeyPem!);
+        return remote as APActor | null;
+      };
+      const inboxes: string[] = [];
+      const followerRows = await env.DB
+        .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
+        .bind(actor.id)
+        .all<{ actor_id: string }>();
+      inboxes.push(...await collectFollowerInboxes(followerRows.results.map((r) => r.actor_id), fetchActor));
+      if (inReplyToId) {
+        const parent = await getObjectById(env.DB, inReplyToId);
+        const parentAuthor = parent ? await getActorById(env.DB, parent.actorId) : null;
+        if (parentAuthor && !parentAuthor.isLocal) {
+          inboxes.push(...await collectFollowerInboxes([parentAuthor.id], fetchActor));
+        } else if (parentAuthor?.isLocal) {
+          await notify(env, {
+            id: generateId(),
+            type: "mention",
+            accountId: actor.id,
+            targetAccountId: parentAuthor.id,
+            objectId: noteId,
+            read: false,
+            createdAt: published,
+          });
+        }
+      }
+      if (inboxes.length > 0 && visibility !== "direct") {
+        const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
+        await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+      }
+
+      // Live streaming: public/local channels + the author's and local
+      // followers' home channels.
+      if (env.TIMELINE_STREAM) {
+        const stored = await getObjectById(env.DB, noteId);
+        if (stored) {
+          const serialized = serializeStatus(stored, actor, domain, { authorLastStatusAt: published.slice(0, 10) });
+          const tasks: Promise<void>[] = [];
+          if ((visibility === "public" || visibility === "unlisted") && !actor.silenced && !actor.suspended) {
+            tasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serialized, true));
+          }
+          tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serialized));
+          const localFollowers = await env.DB
+            .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+            .bind(actor.id)
+            .all<{ id: string }>();
+          for (const row of localFollowers.results) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serialized));
+          await Promise.allSettled(tasks);
+        }
+      }
 
       publishedCount++;
     } catch (e) {
@@ -876,6 +1020,32 @@ const worker = {
     batch: MessageBatch<APDeliveryMessage>,
     env: Env
   ): Promise<void> {
+    // Dead-letter queue: record undeliverable activities for inspection
+    // (KV, 30 days) and ack them so the DLQ doesn't grow unbounded.
+    if (batch.queue === "cf-ap-delivery-dlq") {
+      for (const message of batch.messages) {
+        const body = message.body as Partial<APDeliveryMessage>;
+        console.error("[dlq] Undeliverable federation activity", {
+          inboxUrl: body.inboxUrl,
+          actorId: body.actorId,
+        });
+        try {
+          await env.KV.put(
+            `dlq:delivery:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+            JSON.stringify({
+              inboxUrl: body.inboxUrl ?? null,
+              actorId: body.actorId ?? null,
+              activity: (body.activityJson ?? "").slice(0, 2000),
+              at: new Date().toISOString(),
+            }),
+            { expirationTtl: 30 * 86400 }
+          );
+        } catch { /* best-effort */ }
+        message.ack();
+      }
+      return;
+    }
+
     // Deliver in-flight requests concurrently so a batch never takes longer
     // than the consumer visibility timeout (see wrangler.toml). A serial loop
     // of up to 20 inboxes x 15s each could exceed it and trigger spurious

@@ -4,6 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { createCollection, addAccountToCollection, getCollectionById } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
 import { generateId } from "@/lib/activitypub/utils";
+import { resolveLimits } from "@/lib/constants";
 
 // POST /api/v1/collections — create a new Collection.
 export async function POST(request: NextRequest): Promise<Response> {
@@ -24,10 +25,11 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) return badRequest("name is required");
-  if (name.length > 40) return json({ error: "Validation failed: Name is too long (maximum is 40 characters)" }, 422);
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
+  if (name.length > limits.maxCollectionNameChars) return json({ error: `Validation failed: Name is too long (maximum is ${limits.maxCollectionNameChars} characters)` }, 422);
 
   const description = typeof body.description === "string" ? body.description : null;
-  if (description && description.length > 100) return json({ error: "Validation failed: Description is too long (maximum is 100 characters)" }, 422);
+  if (description && description.length > limits.maxCollectionDescriptionChars) return json({ error: `Validation failed: Description is too long (maximum is ${limits.maxCollectionDescriptionChars} characters)` }, 422);
 
   const language = typeof body.language === "string" ? body.language : null;
   const tagName = typeof body.tag_name === "string" ? body.tag_name : null;

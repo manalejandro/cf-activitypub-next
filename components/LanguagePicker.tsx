@@ -28,7 +28,7 @@ export function LanguagePicker({
   direction?: "up" | "down";
   fullWidth?: boolean;
 }) {
-  const { locale, setLocale } = useLocale();
+  const { t, locale, setLocale } = useLocale();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -67,7 +67,7 @@ export function LanguagePicker({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label="Language"
+        aria-label={t.a11y_language}
         title={current.name}
         style={{
           display: "inline-flex",
@@ -87,7 +87,7 @@ export function LanguagePicker({
         <span>{current.name}</span>
       </button>
       {open && (
-        <div role="listbox" aria-label="Language" style={menuStyle}>
+        <div role="listbox" aria-label={t.a11y_language} style={menuStyle}>
           {LOCALES.map((l) => (
             <button
               key={l.code}

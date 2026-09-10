@@ -388,7 +388,7 @@ export default function E2EEPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `cf-ap-mls-keys-${data.me.username}.json`;
+      a.download = `mls-keys-${data.me.username}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();

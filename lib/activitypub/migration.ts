@@ -11,10 +11,11 @@
  *     followers receive the Move and migrate on their own servers.
  */
 
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, Queue } from "@cloudflare/workers-types";
 import type { LocalActor } from "@/lib/types";
 import { getActorById, getFollowers, createFollow, deleteFollow, updateActor } from "@/lib/db";
-import { resolveWebFinger, deliverToInbox } from "@/lib/activitypub/federation";
+import { resolveWebFinger } from "@/lib/activitypub/federation";
+import { enqueueDeliveries, type APDeliveryMessage } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { buildMove, generateId } from "@/lib/activitypub/utils";
 
@@ -82,7 +83,8 @@ export async function performMove(
   db: D1Database,
   baseUrl: string,
   source: LocalActor,
-  target: LocalActor
+  target: LocalActor,
+  queue?: Queue<APDeliveryMessage> | null
 ): Promise<{ migratedLocal: number; delivered: number }> {
   const sourceId = source.id;
   const targetId = target.id;
@@ -117,7 +119,7 @@ export async function performMove(
     migratedLocal++;
   }
 
-  // 3. Deliver Move to remote followers' inboxes.
+  // 3. Deliver Move to remote followers' inboxes (through the delivery queue).
   let delivered = 0;
   if (source.privateKeyPem) {
     const remoteInboxes = allFollowers
@@ -126,12 +128,15 @@ export async function performMove(
     const inboxes = [...new Set(remoteInboxes)];
     if (inboxes.length > 0) {
       const moveActivity = buildMove(baseUrl, sourceId, targetId, generateId(), inboxes);
-      const results = await Promise.allSettled(
-        inboxes.map((inbox) =>
-          deliverToInbox(inbox, moveActivity, `${sourceId}#main-key`, source.privateKeyPem!)
-        )
+      await enqueueDeliveries(
+        queue,
+        inboxes,
+        JSON.stringify(moveActivity),
+        sourceId,
+        `${sourceId}#main-key`,
+        source.privateKeyPem
       );
-      delivered = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+      delivered = inboxes.length;
     }
   }
 

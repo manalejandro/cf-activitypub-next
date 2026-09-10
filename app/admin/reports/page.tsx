@@ -1,5 +1,6 @@
 "use client";
 
+import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
@@ -197,7 +198,7 @@ export default function AdminReportsPage() {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleDateString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {

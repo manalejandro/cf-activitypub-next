@@ -3,7 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { APActivity, APNote, APActor, APAttachment, LocalAttachment } from "@/lib/types";
+import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor } from "@/lib/types";
 import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
@@ -16,6 +16,7 @@ import {
   createObject,
   createAttachment,
   deleteObject,
+  deleteRemoteActorData,
   createLike,
   deleteLike,
   createAnnounce,
@@ -32,8 +33,9 @@ import {
   createPollVotes,
   getAllCustomEmojis,
   getLocalInteractedActorIds,
+  getLastStatusAtMap,
   isActorBlockedBy,
-  isInstanceDomainBlocked,
+  getInstanceDomainBlock,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -42,10 +44,11 @@ import {
 } from "./utils";
 import { upsertCustomEmoji } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
-import { deliverToInbox, fetchRemoteObject } from "./federation";
+import { fetchRemoteObject } from "./federation";
+import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
@@ -83,6 +86,12 @@ interface InboxContext {
   signingActorId?: string | null;
   /** A local actor key to use when making signed HTTP GET requests to remote servers. */
   signingKey?: { id: string; privateKeyPem: string } | null;
+  /** Delivery queue — outbound activities are enqueued, never delivered inline. */
+  deliveryQueue?: Queue<APDeliveryMessage> | null;
+  /** Silence-level domain block: drop attachments from the blocked domain. */
+  rejectMedia?: boolean;
+  /** Domain block with reject_reports: ignore inbound Flag activities. */
+  rejectReports?: boolean;
   /** DO namespace for streaming — used to push notification events to connected clients. */
   timelineStream?: DONamespace | null;
   /** VAPID keys for Web Push delivery. */
@@ -109,6 +118,25 @@ async function broadcastAndPush(ctx: InboxContext, notif: LocalNotification): Pr
 }
 
 /**
+ * Refresh a stored status in connected timelines after a federated interaction
+ * (Like, Announce, Update). Without this, clients keep the stale counters /
+ * content until the next full timeline reload.
+ */
+async function broadcastRemoteStatusRefresh(ctx: InboxContext, objectId: string): Promise<void> {
+  if (!ctx.timelineStream) return;
+  try {
+    const obj = await getObjectById(ctx.db, objectId);
+    if (!obj) return;
+    const author = await getActorById(ctx.db, obj.actorId);
+    if (!author) return;
+    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
+    const serialized = serializeStatus(obj, author, new URL(ctx.baseUrl).hostname, { authorLastStatusAt: lastStatusAt });
+    await broadcastStatusInteraction(ctx.timelineStream, serialized, author);
+    await broadcastStatusInteractionToLists(ctx.db, ctx.timelineStream, author.id, serialized);
+  } catch { /* streaming refresh is best-effort */ }
+}
+
+/**
  * Serialize a notification to its Mastodon REST shape so streaming clients
  * receive the full payload instead of "{}".
  */
@@ -132,7 +160,12 @@ export async function processInboxActivity(
   activity: APActivity,
   ctx: InboxContext
 ): Promise<void> {
-  const type = (activity.type ?? "").toLowerCase();
+  const rawType = activity.type as unknown;
+  const type = typeof rawType === "string"
+    ? rawType.toLowerCase()
+    : Array.isArray(rawType)
+      ? String(rawType[rawType.length - 1] ?? "").toLowerCase()
+      : "";
 
   // Anti-spoofing: the HTTP-signature signer must own the activity's `actor`.
   // Mastodon (ProcessActivityService#different_actor?) only processes activities
@@ -150,16 +183,52 @@ export async function processInboxActivity(
     return;
   }
 
-  // Reject activities from domains the instance has blocked (like Mastodon's
-  // suspend-level domain block).
+  // Apply the instance's domain block policy (like Mastodon's severity):
+  // suspend drops the activity entirely; silence still processes content but
+  // strips media and ignores forwarded reports.
   const blockedActorId = ctx.signingActorId ?? activityActorId;
   if (blockedActorId) {
     try {
       const domain = new URL(blockedActorId).hostname;
-      if (domain && (await isInstanceDomainBlocked(ctx.db, domain))) {
-        return;
+      if (domain) {
+        const block = await getInstanceDomainBlock(ctx.db, domain);
+        if (block) {
+          if (block.severity !== "silence") return;
+          ctx = { ...ctx, rejectMedia: block.rejectMedia, rejectReports: block.rejectReports };
+        }
       }
     } catch { /* non-URL actor id */ }
+  }
+
+  // Replay protection: record the activity id and skip duplicates. Most handlers
+  // are idempotent, but replayed Delete/Undo/Update/Move activities can still
+  // corrupt counters or state. Recorded after signature/ownership checks so an
+  // attacker cannot poison ids for activities they didn't sign.
+  const dedupActorId = activityActorId ?? ctx.signingActorId;
+  if (typeof activity.id === "string" && activity.id && dedupActorId) {
+    try {
+      const dedup = await ctx.db
+        .prepare(
+          `INSERT OR IGNORE INTO activities (id, type, actor_id, object_id, target_id, to_list, cc_list, raw, is_local, delivered)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)`
+        )
+        .bind(
+          activity.id,
+          type || "unknown",
+          dedupActorId,
+          typeof activity.object === "string"
+            ? activity.object
+            : (activity.object as { id?: string } | undefined)?.id ?? null,
+          typeof (activity as Record<string, unknown>).target === "string"
+            ? (activity as Record<string, unknown>).target as string
+            : ((activity as Record<string, unknown>).target as { id?: string } | undefined)?.id ?? null,
+          JSON.stringify(activity.to ?? []),
+          JSON.stringify(activity.cc ?? []),
+          JSON.stringify(activity)
+        )
+        .run();
+      if ((dedup.meta?.changes ?? 0) === 0) return;
+    } catch { /* dedup is best-effort — never block processing */ }
   }
 
   try {
@@ -276,7 +345,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   const obj = activity.object as APNote | undefined;
   if (!obj || typeof obj !== "object") return;
 
-  const objType = (obj.type ?? "").split("/").pop() ?? "";
+  const objType = typeof obj.type === "string" ? obj.type.split("/").pop() ?? "" : "";
   // MLS envelopes (KeyPackage, Welcome, GroupInfo, PrivateMessage, PublicMessage)
   // are handled separately — they carry ciphertext, not renderable content.
   // `type` may be an array ([“Object”, “PrivateMessage”]) or a namespaced string.
@@ -307,6 +376,8 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           // Deduplicate: only count if this actor hasn't voted yet
           const existing = await getPollVotesByActor(ctx.db, pollDb.id, actorId);
           if (existing.length === 0) {
+            // FK on poll_votes.actor_id requires the actor row to exist.
+            await ensureActorCached(ctx.db, actorId);
             await createPollVotes(ctx.db, pollDb.id, actorId, [idx]);
           }
         }
@@ -388,7 +459,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   // Direct messages create an unread conversation for the local recipient
   // and show up in the notifications column. Blocked (or domain-blocked)
   // accounts cannot send the recipient DMs.
-  if (visibility === "direct" && ctx.recipient && !(await isActorBlockedBy(ctx.db, ctx.recipient.id, actorId))) {
+  if (visibility === "direct" && ctx.recipient && audienceIncludes(obj, ctx.recipient.id) && !(await isActorBlockedBy(ctx.db, ctx.recipient.id, actorId))) {
     await upsertDirectConversation(ctx.db, ctx.recipient.id, [actorId], obj.id, true);
     const notif: LocalNotification = {
       id: generateId(),
@@ -664,9 +735,11 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
     const requesterInbox = followerActor.inbox ??
       (followerActor.id ? `${followerActor.id.replace(/\/$/, "")}/inbox` : null);
     if (requesterInbox) {
-      await deliverToInbox(
-        requesterInbox,
-        acceptActivity,
+      await enqueueDeliveries(
+        ctx.deliveryQueue,
+        [requesterInbox],
+        JSON.stringify(acceptActivity),
+        recipientInfo.id,
         `${recipientInfo.id}#main-key`,
         recipientInfo.privateKeyPem
       );
@@ -689,6 +762,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
 async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APActivity | undefined;
   if (!obj) return;
+  const signerId = activityActorId(activity);
 
   const followActivityId = typeof obj === "string" ? obj : obj.id;
   // find the follow by activityId
@@ -697,7 +771,8 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
     .bind(followActivityId)
     .first<{ id: string; target_id: string; actor_id: string; state: string }>();
 
-  if (rows) {
+  // Only the account that received the follow request may accept it.
+  if (rows && rows.target_id === signerId) {
     const wasPending = rows.state === "pending";
     await updateFollowState(ctx.db, rows.id, "accepted");
     // Only update counts if the follow was pending (not already accepted optimistically)
@@ -720,14 +795,16 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
 async function handleReject(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APActivity | undefined;
   if (!obj) return;
+  const signerId = activityActorId(activity);
 
   const followActivityId = typeof obj === "string" ? obj : obj.id;
   const rows = await ctx.db
     .prepare("SELECT * FROM follows WHERE activity_id = ?")
     .bind(followActivityId)
-    .first<{ id: string }>();
+    .first<{ id: string; target_id: string }>();
 
-  if (rows) {
+  // Only the account that received the follow request may reject it.
+  if (rows && rows.target_id === signerId) {
     await updateFollowState(ctx.db, rows.id, "rejected");
   }
 }
@@ -742,14 +819,45 @@ async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void
   if (innerType === "follow") {
     const targetId = typeof obj.object === "string" ? obj.object : (obj.object as APActor)?.id;
     if (targetId) {
+      // Only decrement when an ACCEPTED follow row is actually removed: pending
+      // requests are never counted as followers, so Undoing one must not lower
+      // the target's follower count (and duplicate Undos can't either).
+      const existingFollow = await getFollow(ctx.db, actorId, targetId);
       const deleted = await deleteFollow(ctx.db, actorId, targetId);
-      // Only decrement when a follow row was actually removed, so a malicious
-      // or duplicate Undo(Follow) can't drive the counter below reality.
-      if (deleted) {
+      if (deleted && existingFollow?.state === "accepted") {
         await ctx.db
           .prepare("UPDATE actors SET followers_count = MAX(COALESCE(followers_count, 0) - 1, 0) WHERE id = ?")
           .bind(targetId)
           .run();
+      }
+    }
+  } else if (innerType === "accept") {
+    // Undo{Accept}: the remote account removed one of its followers (Mastodon
+    // sends this when the followed account removes a local follower).
+    // Shape: Undo { object: Accept { object: Follow { actor: local, object: remote } } }.
+    const inner = obj.object as APActivity | string | undefined;
+    const followActivity = inner && typeof inner === "object"
+      ? inner.object as APActivity | string | undefined
+      : undefined;
+    const followActivityId = typeof followActivity === "string" ? followActivity : followActivity?.id;
+    if (followActivityId) {
+      const rows = await ctx.db
+        .prepare("SELECT id, actor_id, target_id, state FROM follows WHERE activity_id = ?")
+        .bind(followActivityId)
+        .first<{ id: string; actor_id: string; target_id: string; state: string }>();
+      // Only the account that accepted the follow may undo it.
+      if (rows && rows.target_id === activityActorId(activity)) {
+        await deleteFollow(ctx.db, rows.actor_id, rows.target_id);
+        if (rows.state === "accepted") {
+          await ctx.db
+            .prepare("UPDATE actors SET following_count = MAX(COALESCE(following_count, 0) - 1, 0) WHERE id = ?")
+            .bind(rows.actor_id)
+            .run();
+          await ctx.db
+            .prepare("UPDATE actors SET followers_count = MAX(COALESCE(followers_count, 0) - 1, 0) WHERE id = ?")
+            .bind(rows.target_id)
+            .run();
+        }
       }
     }
   } else if (innerType === "like") {
@@ -800,46 +908,53 @@ async function handleMove(activity: APActivity, ctx: InboxContext): Promise<void
     .bind(sourceId)
     .all<{ actor_id: string }>();
 
-  const signingKey = ctx.signingKey ??
-    (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
-
-  let migratedCount = 0;
+  let removedAccepted = 0;
+  let addedAccepted = 0;
   for (const row of followerRows.results) {
     const followerId = row.actor_id;
     const follower = await getActorById(ctx.db, followerId);
     if (!follower?.isLocal) continue;
 
-    // If the follower already follows the target, just drop the old follow.
-    const existingTarget = await getFollow(ctx.db, followerId, targetId);
     await deleteFollow(ctx.db, followerId, sourceId);
-    migratedCount++;
+    removedAccepted++;
 
-    if (!existingTarget) {
-      await createFollow(ctx.db, {
-        id: generateId(),
-        actorId: followerId,
-        targetId,
-        state: target.manuallyApprovesFollowers ? "pending" : "accepted",
-        activityId: null,
-        createdAt: new Date().toISOString(),
-      });
-      // Notify the new account so it registers the follower.
-      if (!target.manuallyApprovesFollowers && target.inbox && signingKey?.privateKeyPem) {
-        const followActivity = buildFollow(ctx.baseUrl, followerId, targetId, generateId());
-        await deliverToInbox(target.inbox, followActivity, signingKey.id, signingKey.privateKeyPem).catch(() => {});
-      }
+    // If the follower already follows the target, just drop the old follow
+    // (the target already counts them, so the follower count must not change).
+    const existingTarget = await getFollow(ctx.db, followerId, targetId);
+    if (existingTarget) continue;
+
+    const newState = target.manuallyApprovesFollowers ? "pending" : "accepted";
+    await createFollow(ctx.db, {
+      id: generateId(),
+      actorId: followerId,
+      targetId,
+      state: newState,
+      activityId: null,
+      createdAt: new Date().toISOString(),
+    });
+    if (newState === "accepted") addedAccepted++;
+
+    // Notify the new account so it registers the follower. The Follow's actor is
+    // the follower, so it must be signed with the FOLLOWER's key — signing with
+    // the moving account's key would be rejected/misattributed by the target.
+    if (target.inbox && follower.privateKeyPem) {
+      const followActivity = buildFollow(ctx.baseUrl, followerId, targetId, generateId());
+      await enqueueDeliveries(ctx.deliveryQueue, [target.inbox], JSON.stringify(followActivity), followerId, `${followerId}#main-key`, follower.privateKeyPem).catch(() => {});
     }
   }
 
-  // Adjust follower counts: decrement source by migrated, bump target by same.
-  if (migratedCount > 0) {
+  // Adjust follower counts: source loses every accepted follower that moved;
+  // target only gains the ones whose new follow is accepted immediately.
+  if (removedAccepted > 0) {
     await ctx.db
       .prepare("UPDATE actors SET followers_count = MAX(COALESCE(followers_count, 0) - ?, 0) WHERE id = ?")
-      .bind(migratedCount, sourceId)
+      .bind(removedAccepted, sourceId)
       .run();
+  }
+  if (addedAccepted > 0) {
     await ctx.db
       .prepare("UPDATE actors SET followers_count = COALESCE(followers_count, 0) + ? WHERE id = ?")
-      .bind(migratedCount, targetId)
+      .bind(addedAccepted, targetId)
       .run();
   }
 }
@@ -911,7 +1026,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
             local: false,
             raw: JSON.stringify(fetched),
           });
-          await saveObjectAttachments(ctx.db, fetched.id, fetched.attachment, fetched.sensitive === true);
+          if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, fetched.id, fetched.attachment, fetched.sensitive === true);
           await ensurePollRowsForQuestion(ctx, fetched);
           likedObject = await getObjectById(ctx.db, objectId);
         }
@@ -953,6 +1068,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
       await createNotification(ctx.db, notif);
       await broadcastAndPush(ctx, notif);
     }
+    await broadcastRemoteStatusRefresh(ctx, objectId);
   }
 }
 
@@ -967,6 +1083,16 @@ async function persistRemoteNote(
   const noteActorId = typeof note.attributedTo === "string"
     ? note.attributedTo
     : (note.attributedTo as APActor | undefined)?.id;
+  // A boosted object must come from the same origin it claims as its author...
+  if (noteActorId && noteActorId !== fallbackActorId) {
+    let sameOrigin = false;
+    try { sameOrigin = new URL(noteActorId).host === new URL(note.id).host; } catch { return; }
+    if (!sameOrigin) return;
+    // ...and a remote actor must never be persisted as the author of a local
+    // object (the local account is the only writer of its own statuses).
+    const attributed = await getActorById(ctx.db, noteActorId);
+    if (attributed?.isLocal) return;
+  }
   if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
   const { content, contentWarning } = sanitizeRemoteNoteContent(
     note.content,
@@ -976,6 +1102,8 @@ async function persistRemoteNote(
 
   const existing = await getObjectById(ctx.db, note.id);
   if (existing) {
+    // Never let an activity rewrite an object owned by a different actor.
+    if (noteActorId && existing.actorId !== noteActorId) return;
     // Object already present but may have empty content (e.g. saved earlier
     // before the embedded content was used). Fill it in from the activity.
     if (!existing.content && content) {
@@ -986,7 +1114,7 @@ async function persistRemoteNote(
         raw: JSON.stringify(note),
       });
     }
-    await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
+    if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
     return;
   }
 
@@ -1009,7 +1137,7 @@ async function persistRemoteNote(
     local: false,
     raw: JSON.stringify(note),
   });
-  await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
+  if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
   await ensurePollRowsForQuestion(ctx, note);
 }
 
@@ -1098,6 +1226,7 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
       await createNotification(ctx.db, notif);
       await broadcastAndPush(ctx, notif);
     }
+    await broadcastRemoteStatusRefresh(ctx, objectId);
   }
 }
 
@@ -1108,13 +1237,23 @@ async function handleDelete(activity: APActivity, ctx: InboxContext): Promise<vo
     : (activity.object as { id: string })?.id;
   if (!objectId) return;
 
-  // MLS: delete a KeyPackage or a delivered message envelope.
+  // Account deletion: an actor may only delete itself. Purge its cached data.
+  if (objectId === actorId) {
+    const self = await getActorById(ctx.db, objectId);
+    if (self && !self.isLocal) {
+      await deleteRemoteActorData(ctx.db, objectId);
+    }
+    return;
+  }
+
+  // MLS: delete a KeyPackage or a delivered message envelope. Deletions are
+  // scoped to the signer so one actor cannot wipe another's stored objects.
   const kp = await getMlsKeyPackageByObjectId(ctx.db, objectId);
   if (kp && kp.actorId === actorId) {
-    await deleteMlsKeyPackageByObjectId(ctx.db, objectId);
+    await deleteMlsKeyPackageByObjectId(ctx.db, objectId, actorId);
   }
   if (await mlsObjectExists(ctx, objectId)) {
-    await deleteMlsMessagesByObjectId(ctx.db, objectId);
+    await deleteMlsMessagesByObjectId(ctx.db, objectId, actorId);
     await routeMlsLifecycle(activity, ctx, objectId, null);
     return;
   }
@@ -1144,6 +1283,8 @@ async function handleDelete(activity: APActivity, ctx: InboxContext): Promise<vo
  * No automatic action is taken — federated reports queue for local moderators.
  */
 async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void> {
+  // Domain blocks with reject_reports: ignore reports forwarded from them.
+  if (ctx.rejectReports) return;
   const reporterId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
   if (!reporterId) return;
 
@@ -1314,7 +1455,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
   const actorId = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
 
   // Handle object/status edits (Mastodon 3.5.0+)
-  if (obj.type === "Note" || isContentObjectType((obj.type ?? "").split("/").pop() ?? "")) {
+  if (obj.type === "Note" || isContentObjectType(typeof obj.type === "string" ? obj.type.split("/").pop() ?? "" : "")) {
     const note = obj as APNote;
     const existing = await getObjectById(ctx.db, note.id);
     if (!existing) {
@@ -1323,7 +1464,13 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
         const noteActorId = typeof note.attributedTo === "string"
           ? note.attributedTo
           : (note.attributedTo as APActor | undefined)?.id;
-        if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+        // Only the object's own author (the signer) may create it via Update,
+        // and the object must live on the origin it claims as author.
+        if (noteActorId && noteActorId !== actorId) return;
+        try {
+          if (new URL(note.id).host !== new URL(noteActorId ?? actorId).host) return;
+        } catch { return; }
+        await ensureActorCached(ctx.db, noteActorId ?? actorId);
         const { content, contentWarning } = sanitizeRemoteNoteContent(
           note.content, note.summary, note.sensitive ?? false
         );
@@ -1346,7 +1493,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
           local: false,
           raw: JSON.stringify(note),
         });
-        await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
+        if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
         await ensurePollRowsForQuestion(ctx, note);
       }
       return;
@@ -1382,6 +1529,8 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       await createNotification(ctx.db, notif);
       await broadcastAndPush(ctx, notif);
     }
+    // Push the new content to connected clients (Mastodon status.update).
+    await broadcastRemoteStatusRefresh(ctx, note.id);
     return;
   }
 
@@ -1396,15 +1545,17 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
 
     // Never trust publicKey from the activity body — that field is only updated
     // by upsertRemoteActor after a fresh signed fetch from the canonical URL.
-    await updateActor(ctx.db, actor.id, {
-      displayName: sanitizeFediversePlain(actor.name ?? null),
-      summary: sanitizeRemoteActorSummary(actor.summary ?? null),
-      avatarUrl: actor.icon?.url ?? null,
-      headerUrl: actor.image?.url ?? null,
-      discoverable: actor.discoverable ?? true,
-      manuallyApprovesFollowers: actor.manuallyApprovesFollowers ?? false,
-      alsoKnownAs: actor.alsoKnownAs?.length ? actor.alsoKnownAs : undefined,
-    });
+    // Only apply the fields the activity actually carries: a partial update
+    // (e.g. only `name`) must not NULL out the cached avatar/header/summary.
+    const updates: Partial<LocalActor> = {};
+    if (typeof actor.name === "string") updates.displayName = sanitizeFediversePlain(actor.name);
+    if (typeof actor.summary === "string") updates.summary = sanitizeRemoteActorSummary(actor.summary);
+    if (actor.icon?.url) updates.avatarUrl = actor.icon.url;
+    if (actor.image?.url) updates.headerUrl = actor.image.url;
+    if (typeof actor.discoverable === "boolean") updates.discoverable = actor.discoverable;
+    if (typeof actor.manuallyApprovesFollowers === "boolean") updates.manuallyApprovesFollowers = actor.manuallyApprovesFollowers;
+    if (actor.alsoKnownAs?.length) updates.alsoKnownAs = actor.alsoKnownAs;
+    await updateActor(ctx.db, actor.id, updates);
   }
 }
 
@@ -1633,7 +1784,7 @@ async function handleAdd(activity: APActivity, ctx: InboxContext): Promise<void>
 
   const kp = await getMlsKeyPackageByObjectId(ctx.db, objectId);
   if (kp && kp.actorId === actorId) {
-    await setMlsKeyPackageActive(ctx.db, objectId, true);
+    await setMlsKeyPackageActive(ctx.db, objectId, true, actorId);
   }
   await routeMlsLifecycle(activity, ctx, objectId, "KeyPackage");
 }
@@ -1647,7 +1798,7 @@ async function handleRemove(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const kp = await getMlsKeyPackageByObjectId(ctx.db, objectId);
   if (kp && kp.actorId === actorId) {
-    await setMlsKeyPackageActive(ctx.db, objectId, false);
+    await setMlsKeyPackageActive(ctx.db, objectId, false, actorId);
   }
   await routeMlsLifecycle(activity, ctx, objectId, "KeyPackage");
 }
@@ -1720,11 +1871,36 @@ function signerOwnsActor(signingActorId: string, actorId: string): boolean {
   return signingActorId === actorId;
 }
 
-function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unlisted" | "private" | "direct" {
-  // Some AP implementations send a plain string instead of an array when there
-  // is a single recipient — coerce to array so .includes() and .some() are safe.
-  const toArr: string[] = Array.isArray(to) ? to : (to ? [to as string] : []);
-  const ccArr: string[] = Array.isArray(cc) ? cc : (cc ? [cc as string] : []);
+/** Whether an object's audience (to/cc/mentions) includes the given actor. */
+function audienceIncludes(obj: APNote, actorId: string): boolean {
+  for (const list of [obj.to, obj.cc] as unknown[]) {
+    const arr = Array.isArray(list) ? list : list != null ? [list] : [];
+    for (const item of arr) {
+      if (typeof item === "string" && item === actorId) return true;
+      if (item && typeof item === "object" && (item as { id?: string }).id === actorId) return true;
+    }
+  }
+  const tags = Array.isArray(obj.tag) ? obj.tag as { type?: string; href?: string }[] : [];
+  return tags.some((t) => t.type === "Mention" && t.href === actorId);
+}
+
+function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unlisted" | "private" | "direct" {  // Some AP implementations send a plain string, an object reference, or an
+  // array mixing both. Normalise to string IRIs so .includes()/.some() are safe.
+  const normalize = (value: unknown): string[] => {
+    const arr = Array.isArray(value) ? value : value != null ? [value] : [];
+    const out: string[] = [];
+    for (const item of arr) {
+      if (typeof item === "string") {
+        out.push(item);
+      } else if (item && typeof item === "object") {
+        const iri = (item as { id?: unknown; href?: unknown }).id ?? (item as { href?: unknown }).href;
+        if (typeof iri === "string") out.push(iri);
+      }
+    }
+    return out;
+  };
+  const toArr = normalize(to);
+  const ccArr = normalize(cc);
   // Implementations may use the full IRI, the compact "as:Public", or just "Public".
   // http:// and https:// variants both appear in the wild.
   const isPublic = (v: string) =>
@@ -1757,6 +1933,28 @@ async function resolveCtxRecipient(activity: APActivity, ctx: InboxContext): Pro
   const actor = await getActorByUsername(ctx.db, username, domain);
   if (!actor?.privateKeyPem) return ctx;
   return { ...ctx, recipient: { id: actor.id, username: actor.username, privateKeyPem: actor.privateKeyPem } };
+}
+
+/**
+ * Authorize an inbound call event against the session created by the original
+ * CallOffer: only the two participants may answer/ICE/hangup/renegotiate.
+ * Without this, any federated actor that guesses a call id could inject SDP,
+ * ICE candidates or a hangup into an in-progress call.
+ */
+async function authorizeCallEvent(ctx: InboxContext, activity: APActivity, callId: string): Promise<boolean> {
+  if (!callId || !ctx.kv) return false;
+  try {
+    const raw = await ctx.kv.get(`call:${callId}`);
+    if (!raw) return false;
+    const session = JSON.parse(raw) as { callerId?: string; calleeId?: string };
+    const actorId = typeof activity.actor === "string"
+      ? activity.actor
+      : (activity.actor as { id?: string } | undefined)?.id;
+    if (!actorId) return false;
+    return actorId === session.callerId || actorId === session.calleeId;
+  } catch {
+    return false;
+  }
 }
 
 async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise<void> {
@@ -1819,7 +2017,7 @@ async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promis
   if (!obj) return;
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
-  const callerId = ctx.recipient.id;
+  if (!(await authorizeCallEvent(ctx, activity, callId))) return;
   const callerUsername = ctx.recipient.username;
 
   await broadcastCallEvent(ctx.timelineStream, callerUsername, {
@@ -1827,24 +2025,6 @@ async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promis
     callId,
     answerSdp: obj.sdp ?? "",
   });
-
-  // Also relay via the signaling DO for low-latency ICE exchange
-  if (callId && ctx.baseUrl) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ns = (ctx as any).callSignaling as typeof ctx.timelineStream | undefined;
-      if (ns) {
-        const doId = ns.idFromName(callId);
-        const stub = ns.get(doId);
-        await stub.fetch(`https://call-do/relay`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "answer", sdp: obj.sdp }),
-        });
-      }
-    } catch { /* best-effort */ }
-  }
-  void callerId; // used for context, suppress unused warning
 }
 
 async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): Promise<void> {
@@ -1856,6 +2036,7 @@ async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): 
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   if (!callId) return;
+  if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   const candidate = obj.candidate
     ? (typeof obj.candidate === "string" ? JSON.parse(obj.candidate) : obj.candidate)
@@ -1878,6 +2059,7 @@ async function handleCallHangup(activity: APActivity, ctx: InboxContext): Promis
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj = activity.object as Record<string, any> | undefined;
   const callId = (obj?.id as string ?? "").split("/").pop() ?? "";
+  if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
     await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
@@ -1895,6 +2077,7 @@ async function handleCallRenegotiate(activity: APActivity, ctx: InboxContext): P
   if (!obj) return;
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   if (!callId || !obj.sdp) return;
+  if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
     await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
@@ -1913,6 +2096,7 @@ async function handleCallRenegotiateAnswer(activity: APActivity, ctx: InboxConte
   if (!obj) return;
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   if (!callId || !obj.sdp) return;
+  if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
     await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {

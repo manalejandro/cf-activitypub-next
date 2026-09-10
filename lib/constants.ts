@@ -47,6 +47,7 @@ export const MAX_COLLECTION_PAGE = 80;
 export const TRENDING_TAGS_LIMIT = 10;
 export const TRENDING_TAGS_MAX = 20;
 export const ADMIN_LOG_PAGE_SIZE = 100;
+export const MLS_MESSAGES_PAGE_SIZE = 50; // AP /messages collection page size
 export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation graph
 
 export const MAX_IMAGE_SIZE = 16 * 1024 * 1024; // 16 MB
@@ -98,6 +99,7 @@ export interface InstanceLimits {
   trendingTagsLimit: number;
   trendingTagsMax: number;
   adminLogPageSize: number;
+  mlsMessagesPageSize: number;
   graphMaxNodes: number;
   maxImageSize: number;
   maxVideoSize: number;
@@ -135,6 +137,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   trendingTagsLimit: TRENDING_TAGS_LIMIT,
   trendingTagsMax: TRENDING_TAGS_MAX,
   adminLogPageSize: ADMIN_LOG_PAGE_SIZE,
+  mlsMessagesPageSize: MLS_MESSAGES_PAGE_SIZE,
   graphMaxNodes: GRAPH_MAX_NODES,
   maxImageSize: MAX_IMAGE_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
@@ -186,6 +189,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     trendingTagsLimit: num(env, "TRENDING_TAGS_LIMIT", DEFAULT_LIMITS.trendingTagsLimit),
     trendingTagsMax: num(env, "TRENDING_TAGS_MAX", DEFAULT_LIMITS.trendingTagsMax),
     adminLogPageSize: num(env, "ADMIN_LOG_PAGE_SIZE", DEFAULT_LIMITS.adminLogPageSize),
+    mlsMessagesPageSize: num(env, "MLS_MESSAGES_PAGE_SIZE", DEFAULT_LIMITS.mlsMessagesPageSize),
     graphMaxNodes: num(env, "GRAPH_MAX_NODES", DEFAULT_LIMITS.graphMaxNodes),
     maxImageSize: num(env, "MAX_IMAGE_SIZE", DEFAULT_LIMITS.maxImageSize),
     maxVideoSize: num(env, "MAX_VIDEO_SIZE", DEFAULT_LIMITS.maxVideoSize),

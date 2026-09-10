@@ -26,6 +26,13 @@ export async function getAuthenticatedActor(
   // Suspended accounts cannot authenticate (Guardian / admin suspension).
   if (actor.suspended) return null;
 
+  // OAuth scope enforcement: read-only tokens must not mutate state. The web
+  // session token is always issued with the full "read write follow push"
+  // scope, so this only affects third-party clients that asked for `read`.
+  const method = request.method.toUpperCase();
+  const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  if (mutating && !scopesAllow(tokenRow.scope, "write")) return null;
+
   // Throttled last-access tracking (at most one write per actor per hour).
   try {
     const now = new Date().toISOString();
@@ -39,6 +46,21 @@ export async function getAuthenticatedActor(
   } catch { /* last_active_at column may be missing pre-migration */ }
 
   return actor;
+}
+
+/**
+ * Mastodon OAuth scope semantics: `write` also grants follow actions.
+ * A token without a scope string (legacy rows) is treated as full access.
+ */
+export function scopesAllow(
+  scope: string | null | undefined,
+  required: "read" | "write" | "follow"
+): boolean {
+  if (!scope) return true;
+  const parts = scope.split(/[\s,]+/).filter(Boolean);
+  if (parts.includes(required)) return true;
+  if (required === "follow" && parts.includes("write")) return true;
+  return false;
 }
 
 export function extractBearerToken(request: Request): string | null {

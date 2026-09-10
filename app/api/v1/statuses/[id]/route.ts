@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, getFollow, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -61,7 +61,7 @@ export async function GET(
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound("Author not found");
 
-  const isFollowing = authActor ? !!(await getFollow(env.DB, authActor.id, obj.actorId)) : false;
+  const isFollowing = authActor ? await isAcceptedFollower(env.DB, authActor.id, obj.actorId) : false;
   if (!canViewStatus(obj, authActor?.id ?? null, isFollowing)) {
     return notFound("Record not found");
   }

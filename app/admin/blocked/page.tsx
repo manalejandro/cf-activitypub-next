@@ -1,5 +1,6 @@
 "use client";
 
+import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
@@ -89,7 +90,7 @@ export default function AdminBlockedPage() {
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    return new Date(dateStr).toLocaleDateString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric" });
   }
 
   return (

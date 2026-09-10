@@ -14,6 +14,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!file) return json({ error: "File is required" }, 400);
   if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) return json({ error: "Unsupported media type" }, 400);
   if (file.size > limits.maxImageSize) return json({ error: "File too large" }, 413);
+  const description = (formData.get("description") as string | null) ?? null;
+  if (description && description.length > limits.maxAltTextChars) {
+    return json({ error: `description is too long (max ${limits.maxAltTextChars} chars)` }, 422);
+  }
   const id = crypto.randomUUID();
   const key = `media/${me.username}/${id}-${file.name}`;
   const buffer = await file.arrayBuffer();
@@ -25,7 +29,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "audio",
     url,
     remoteUrl: null,
-    description: (formData.get("description") as string | null) ?? null,
+    description,
     blurhash: null,
     width: null,
     height: null,

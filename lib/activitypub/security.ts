@@ -97,8 +97,22 @@ export async function verifySignature(
   const parsed = parseSignatureHeader(sigHeader);
   if (!parsed) return false;
 
+  // Only RSA-PKCS#1 v1.5 (rsa-sha256) and the hs2019 alias are supported.
+  if (parsed.algorithm && !/^(rsa-sha256|hs2019)$/i.test(parsed.algorithm)) return false;
+
   const urlObj = new URL(url);
-  const headerList = (parsed.headers || "(request-target) host date").split(" ");
+  const headerList = (parsed.headers || "(request-target) host date")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  // The signature must cover the request target, otherwise it can be replayed
+  // against another endpoint.
+  if (!headerList.includes("(request-target)")) return false;
+
+  // A request with a body MUST include `digest` in the signed-headers list so
+  // the payload is cryptographically bound to the signature. A digest header
+  // that is merely present (but not signed) can be swapped with the body.
+  if (body != null && !headerList.includes("digest")) return false;
 
   const headerMap: Record<string, string> = {
     "(request-target)": `${method.toLowerCase()} ${urlObj.pathname}${urlObj.search}`,

@@ -77,7 +77,7 @@ export default function ResetPasswordForm() {
         <div className="w-full max-w-sm">
           <div className="flex flex-col items-center gap-3 mb-8">
             <Link href="/">
-              <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
+              <Image src="/logo.svg" alt="" width={52} height={52} />
             </Link>
           </div>
           <div className="card p-8">
@@ -105,7 +105,7 @@ export default function ResetPasswordForm() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
           <Link href="/">
-            <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
+            <Image src="/logo.svg" alt="" width={52} height={52} />
           </Link>
           <h1 style={{ fontSize: "1.6rem", margin: 0 }}>{t.reset_password_title}</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: 0 }}>

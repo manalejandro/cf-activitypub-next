@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useLocale } from "@/lib/i18n";
+import { useInstanceTitle } from "@/lib/instance-context";
 import { LanguagePicker } from "@/components/LanguagePicker";
 
 /**
@@ -11,6 +12,7 @@ import { LanguagePicker } from "@/components/LanguagePicker";
  */
 export default function NotFound() {
   const { t } = useLocale();
+  const brand = useInstanceTitle();
 
   return (
     <main
@@ -22,9 +24,9 @@ export default function NotFound() {
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-4">
           <div className="flex items-center gap-3">
             <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <Image src="/logo.svg" alt="CF ActivityPub" width={36} height={36} />
+              <Image src="/logo.svg" alt={brand} width={36} height={36} />
               <span className="hidden sm:inline font-bold text-lg" style={{ color: "var(--text-primary)" }}>
-                CF ActivityPub
+                {brand}
               </span>
             </Link>
           </div>

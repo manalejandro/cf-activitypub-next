@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, getInstanceTitle, json, notFound } from "@/lib/cf";
 import { getObjectById } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 
@@ -24,6 +24,6 @@ export async function GET(
     spoiler_text: obj.contentWarning ?? null,
     created_at: obj.published,
     updated_at: obj.updatedAt ?? obj.published,
-    application: obj.local ? { name: "CF ActivityPub", website: null } : null,
+    application: obj.local ? { name: getInstanceTitle(), website: null } : null,
   });
 }

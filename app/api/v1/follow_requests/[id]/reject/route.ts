@@ -3,7 +3,8 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getFollow, updateFollowState } from "@/lib/db";
 import { buildFollow, buildReject, generateId } from "@/lib/activitypub/utils";
-import { deliverToInbox, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 
 // POST /api/v1/follow_requests/:id/reject
@@ -44,7 +45,7 @@ export async function POST(
   }
 
   if (requesterInbox) {
-    await deliverToInbox(requesterInbox, rejectActivity, `${actor.id}#main-key`, actor.privateKeyPem);
+    await enqueueDeliveries(env.DELIVERY_QUEUE, [requesterInbox], JSON.stringify(rejectActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
   }
 
   return json({ id: requester.id, following: false, followed_by: false, requested: false });

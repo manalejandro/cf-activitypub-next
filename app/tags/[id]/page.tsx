@@ -126,7 +126,7 @@ export default function TagPage() {
 
   async function handleDelete(s: Status) {
     if (!token) return;
-    if (!confirm("¿Eliminar este estado?")) return;
+    if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },

@@ -3,6 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { getInstanceTitle } from "@/lib/cf";
 import type {
   LocalActor,
   ActorField,
@@ -290,7 +291,7 @@ export function serializeStatus(
     edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIso(obj.updatedAt) : null,
     content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, opts.emojis), obj.raw, localDomain),
     reblog: opts.reblogOf ?? null,
-    application: obj.local ? { name: "CF ActivityPub", website: `https://${localDomain}` } : null,
+    application: obj.local ? { name: getInstanceTitle(), website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain, {
       lastStatusAt: opts.authorLastStatusAt ?? null,
       emojis: opts.authorEmojis ?? opts.emojis ?? [],

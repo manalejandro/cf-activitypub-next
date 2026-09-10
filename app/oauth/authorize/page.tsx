@@ -66,7 +66,7 @@ export default async function OAuthAuthorizePage({ searchParams }: Props) {
   return (
     <Centered>
       <div className="flex flex-col items-center gap-3 mb-8">
-        <Image src="/logo.svg" alt="CF ActivityPub" width={52} height={52} />
+        <Image src="/logo.svg" alt="" width={52} height={52} />
         <h1 style={{ fontSize: "1.6rem", margin: 0 }}>Authorize application</h1>
       </div>
 

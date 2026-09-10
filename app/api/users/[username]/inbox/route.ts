@@ -34,6 +34,10 @@ export async function POST(
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
+  // Reject oversized payloads before any parsing work.
+  if (body.length > 1_000_000) {
+    return json({ error: "Payload too large" }, 413);
+  }
 
   // Verify HTTP signature
   const headers: Record<string, string> = {};
@@ -72,10 +76,11 @@ export async function POST(
       );
       if (fetched && "publicKey" in fetched) {
         const actor = fetched as APActor;
-        if (actor.publicKey?.publicKeyPem) {
+        // Never cache a document whose id differs from the actor we asked for:
+        // it could point at another (local or remote) account and poison the
+        // key cache used for signature verification.
+        if (actor.id === signingActorId && actor.publicKey?.publicKeyPem) {
           remoteActor = actor;
-          // Cache the remote actor so subsequent activities don't require a
-          // network round-trip and so handleCreate can find the author.
           try { await upsertRemoteActor(env.DB, remoteActor); } catch { /* ignore */ }
         }
       }
@@ -88,13 +93,11 @@ export async function POST(
     return json({ error: "Cannot verify signature: no public key" }, 401);
   }
 
-  // Mastodon spec step 5: verify the Date header is within 12 hours.
+  // Mastodon spec step 5: the Date header is required and must be within 12 hours.
   const dateHeader = headers["date"];
-  if (dateHeader) {
-    const requestDate = new Date(dateHeader);
-    if (isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
-      return json({ error: "Request date too old or invalid" }, 401);
-    }
+  const requestDate = dateHeader ? new Date(dateHeader) : null;
+  if (!requestDate || isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
+    return json({ error: "Request date missing, invalid, or too old" }, 401);
   }
 
   // Use the canonical inbox URL (before middleware rewrite) for signature verification.
@@ -108,7 +111,7 @@ export async function POST(
     remoteActor.publicKey.publicKeyPem,
     body
   );
-  if (!valid && env.NODE_ENV !== "development") {
+  if (!valid) {
     return json({ error: "Invalid signature" }, 401);
   }
 
@@ -128,6 +131,7 @@ export async function POST(
         privateKeyPem: recipient.privateKeyPem,
       },
       timelineStream: env.TIMELINE_STREAM,
+      deliveryQueue: env.DELIVERY_QUEUE,
       vapidPublicKey: env.VAPID_PUBLIC_KEY,
       vapidPrivateKey: env.VAPID_PRIVATE_KEY,
       vapidEmail: env.VAPID_EMAIL,

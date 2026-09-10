@@ -1,5 +1,6 @@
 "use client";
 
+import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -79,7 +80,7 @@ export default function AdminSuspendedPage() {
   }
 
   function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    return new Date(dateStr).toLocaleDateString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric" });
   }
 
   return (

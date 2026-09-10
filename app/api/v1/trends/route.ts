@@ -1,9 +1,14 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
+import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? "10"), 20);
   const { env } = getCloudflareContext();
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
+  const limit = Math.min(
+    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.trendingTagsLimit)),
+    limits.trendingTagsMax
+  );
 
   // Aggregated from the object_tags index (extracted at ingest) instead of
   // scanning and JSON-parsing the last 7 days of stored posts.

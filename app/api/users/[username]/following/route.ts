@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
-  if (!actor || !actor.isLocal) return notFound("Actor not found");
+  if (!actor || !actor.isLocal || actor.suspended) return notFound("Actor not found");
 
   const collectionId = `${actorIRI(baseUrl, username)}/following`;
   const page = pageParam;
@@ -37,6 +37,7 @@ export async function GET(
 
     response = buildOrderedCollectionPage(
       collectionId,
+      `${collectionId}?page=${page}`,
       items,
       following.length === 40 ? `${collectionId}?page=${pageNum + 1}` : undefined
     );

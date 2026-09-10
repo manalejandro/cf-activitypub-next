@@ -131,6 +131,16 @@ function makeCallActivity(type: string, overrides: Record<string, unknown> = {})
 
 const timelineStream = {} as never;
 
+/** KV seeded with the call session created by the original CallOffer. */
+async function makeCallKv(): Promise<ReturnType<typeof makeKv>> {
+  const kv = makeKv();
+  await kv.put(
+    `call:${CALL_ID}`,
+    JSON.stringify({ id: CALL_ID, callerId: REMOTE_ACTOR, calleeId: LOCAL_ACTOR, state: "pending" })
+  );
+  return kv;
+}
+
 beforeAll(async () => {
   db = await freshDb();
 });
@@ -176,11 +186,12 @@ describe("call negotiation inbox handling", () => {
   });
 
   it("resolves the recipient from activity.to and broadcasts call.answered for CallAnswer", async () => {
+    const kv = await makeCallKv();
     await processInboxActivity(
       makeCallActivity("CallAnswer", {
         object: { type: "CallSession", id: `${BASE}/calls/${CALL_ID}`, sdp: "answer-sdp-1" },
       }) as never,
-      { db, baseUrl: BASE, timelineStream } as never
+      { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
     expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
@@ -194,11 +205,12 @@ describe("call negotiation inbox handling", () => {
 
   it("broadcasts call.ice with a parsed candidate for CallIceCandidate", async () => {
     const candidate = { candidate: "candidate:1 1 UDP 2122260223 192.0.2.1 54321 typ host", sdpMid: "0", sdpMLineIndex: 0 };
+    const kv = await makeCallKv();
     await processInboxActivity(
       makeCallActivity("CallIceCandidate", {
         object: { type: "CallSession", id: `${BASE}/calls/${CALL_ID}`, candidate: JSON.stringify(candidate) },
       }) as never,
-      { db, baseUrl: BASE, timelineStream } as never
+      { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
     expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
@@ -219,9 +231,10 @@ describe("call negotiation inbox handling", () => {
   });
 
   it("broadcasts call.ended for CallHangup", async () => {
+    const kv = await makeCallKv();
     await processInboxActivity(
       makeCallActivity("CallHangup") as never,
-      { db, baseUrl: BASE, timelineStream } as never
+      { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
     expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
@@ -233,11 +246,12 @@ describe("call negotiation inbox handling", () => {
   });
 
   it("broadcasts call.renegotiate for CallRenegotiate (mid-call track add)", async () => {
+    const kv = await makeCallKv();
     await processInboxActivity(
       makeCallActivity("CallRenegotiate", {
         object: { type: "CallSession", id: `${BASE}/calls/${CALL_ID}`, sdp: "reoffer-sdp" },
       }) as never,
-      { db, baseUrl: BASE, timelineStream } as never
+      { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
     expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
@@ -250,11 +264,12 @@ describe("call negotiation inbox handling", () => {
   });
 
   it("broadcasts call.renegotiate-answer for CallRenegotiateAnswer", async () => {
+    const kv = await makeCallKv();
     await processInboxActivity(
       makeCallActivity("CallRenegotiateAnswer", {
         object: { type: "CallSession", id: `${BASE}/calls/${CALL_ID}`, sdp: "reanswer-sdp" },
       }) as never,
-      { db, baseUrl: BASE, timelineStream } as never
+      { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
     expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
@@ -264,5 +279,28 @@ describe("call negotiation inbox handling", () => {
     expect(event.type).toBe("call.renegotiate-answer");
     expect(event.callId).toBe(CALL_ID);
     expect(event.sdp).toBe("reanswer-sdp");
+  });
+
+  it("drops call events from an actor outside the call session", async () => {
+    const other = "https://evil.example/users/mallory";
+    await db
+      .prepare("INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local) VALUES (?,?,?,?,?,?)")
+      .bind(other, "mallory", "evil.example", "key-m", null, 0)
+      .run();
+    const kv = await makeCallKv();
+    await processInboxActivity(
+      makeCallActivity("CallHangup", { actor: other, id: `${other}/activities/hangup-1` }) as never,
+      { db, baseUrl: BASE, kv, timelineStream, signingActorId: other } as never
+    );
+    expect(broadcastCallEvent).not.toHaveBeenCalled();
+  });
+
+  it("processes a replayed activity id only once", async () => {
+    const kv = await makeCallKv();
+    const activity = makeCallActivity("CallHangup");
+    const ctx = { db, baseUrl: BASE, kv, timelineStream } as never;
+    await processInboxActivity(activity as never, ctx);
+    await processInboxActivity(activity as never, ctx);
+    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
   });
 });
