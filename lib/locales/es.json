@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Dejar de compartir pantalla",
   "call_ended": "Llamada finalizada",
   "a11y_language": "Idioma",
-  "error_network": "Error de red"
+  "error_network": "Error de red",
+  "graph_unreachable": "Inalcanzable",
+  "graph_legend_unreachable": "Instancia inalcanzable"
 }

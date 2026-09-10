@@ -890,5 +890,7 @@
   "call_stop_share_screen": "画面共有を停止",
   "call_ended": "通話終了",
   "a11y_language": "言語",
-  "error_network": "ネットワークエラー"
+  "error_network": "ネットワークエラー",
+  "graph_unreachable": "到達不能",
+  "graph_legend_unreachable": "到達できないインスタンス"
 }

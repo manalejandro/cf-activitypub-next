@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Остановить показ экрана",
   "call_ended": "Вызов завершён",
   "a11y_language": "Язык",
-  "error_network": "Ошибка сети"
+  "error_network": "Ошибка сети",
+  "graph_unreachable": "Недоступный",
+  "graph_legend_unreachable": "Недоступный сервер"
 }

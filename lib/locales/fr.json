@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Arrêter le partage d'écran",
   "call_ended": "Appel terminé",
   "a11y_language": "Langue",
-  "error_network": "Erreur réseau"
+  "error_network": "Erreur réseau",
+  "graph_unreachable": "Injoignable",
+  "graph_legend_unreachable": "Instance injoignable"
 }

@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Stop sharing screen",
   "call_ended": "Call ended",
   "a11y_language": "Language",
-  "error_network": "Network error"
+  "error_network": "Network error",
+  "graph_unreachable": "Unreachable",
+  "graph_legend_unreachable": "Unreachable instance"
 }

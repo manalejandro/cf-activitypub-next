@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Interrompi condivisione schermo",
   "call_ended": "Chiamata terminata",
   "a11y_language": "Lingua",
-  "error_network": "Errore di rete"
+  "error_network": "Errore di rete",
+  "graph_unreachable": "Non raggiungibile",
+  "graph_legend_unreachable": "Istanza non raggiungibile"
 }

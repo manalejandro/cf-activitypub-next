@@ -46,21 +46,27 @@ export async function GET(): Promise<Response> {
     nodeSet.add(e.target);
     if (nodeSet.size >= maxNodes) break;
   }
-  // Instances that have rejected our deliveries with 403 Forbidden — the
-  // classic signal that a remote instance has blocked us. Only shown while the
-  // most recent delivery to the domain was a rejection (a later success clears
-  // it). Surfaced as their own nodes even without a follower connection.
-  const blockedByRows = await env.DB
+  // Instances that rejected our deliveries (403 = they block us) or that keep
+  // timing out (status 0 = unreachable). Only shown while the most recent
+  // delivery to the domain was a failure (a later success clears it). Surfaced
+  // as their own nodes even without a follower connection.
+  const rejectionRows = await env.DB
     .prepare(
-      `SELECT domain FROM delivery_rejections
-       WHERE status = 403
+      `SELECT domain, status FROM delivery_rejections
+       WHERE status IN (0, 403)
          AND (last_ok_at IS NULL OR last_at > last_ok_at)`
     )
-    .all<{ domain: string }>();
-  for (const row of blockedByRows.results) {
+    .all<{ domain: string; status: number }>();
+  for (const row of rejectionRows.results) {
     nodeSet.add(row.domain);
     if (nodeSet.size >= maxNodes) break;
   }
+  const blockedBySet = new Set(
+    rejectionRows.results.filter((r) => r.status === 403).map((r) => r.domain)
+  );
+  const unreachableSet = new Set(
+    rejectionRows.results.filter((r) => r.status === 0).map((r) => r.domain)
+  );
   // D1 caps the number of bind variables (~100), so the IN lists are passed as
   // one JSON array and expanded with json_each instead of one placeholder per
   // domain (2×nodes placeholders on the edges query would exceed the limit).
@@ -102,7 +108,6 @@ export async function GET(): Promise<Response> {
 
   const accountsByDomain = new Map(accountsRows.results.map((r) => [r.domain, Number(r.accounts)]));
   const blockedSet = new Set(blockedRows.results.map((r) => r.domain));
-  const blockedBySet = new Set(blockedByRows.results.map((r) => r.domain));
 
   // Merge reciprocal edges (a→b and b→a) into a single undirected connection.
   const merged = new Map<string, { source: string; target: string; weight: number }>();
@@ -124,6 +129,7 @@ export async function GET(): Promise<Response> {
       local: d === instanceDomain,
       blocked: blockedSet.has(d),
       blockedBy: blockedBySet.has(d),
+      unreachable: unreachableSet.has(d),
     })),
     edges: [...merged.values()].sort((a, b) => b.weight - a.weight).slice(0, MAX_EDGES),
   });

@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Bildschirmfreigabe beenden",
   "call_ended": "Anruf beendet",
   "a11y_language": "Sprache",
-  "error_network": "Netzwerkfehler"
+  "error_network": "Netzwerkfehler",
+  "graph_unreachable": "Nicht erreichbar",
+  "graph_legend_unreachable": "Nicht erreichbare Instanz"
 }

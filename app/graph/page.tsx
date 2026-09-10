@@ -63,9 +63,11 @@ const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlow
     ? "var(--danger)"
     : data.blockedBy
       ? "var(--warning)"
-      : data.local
-        ? "var(--accent)"
-        : "var(--success)";
+      : data.unreachable
+        ? "var(--text-muted)"
+        : data.local
+          ? "var(--accent)"
+          : "var(--success)";
   return (
     <div
       style={{
@@ -79,7 +81,7 @@ const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlow
         padding: "0.45rem 0.75rem",
         borderRadius: "var(--radius)",
         background: "var(--bg-surface)",
-        border: `1px solid ${data.local ? "var(--accent)" : data.blockedBy ? "var(--warning)" : "var(--border)"}`,
+        border: `1px solid ${data.local ? "var(--accent)" : data.blockedBy ? "var(--warning)" : data.unreachable ? "var(--text-muted)" : "var(--border)"}`,
         boxShadow: data.local
           ? "0 0 0 2px var(--accent-light), 0 6px 20px rgba(99,102,241,0.28)"
           : data.blockedBy
@@ -145,6 +147,21 @@ const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlow
             }}
           >
             {t.graph_blocked_by}
+          </span>
+        )}
+        {data.unreachable && (
+          <span
+            style={{
+              fontSize: "0.62rem",
+              padding: "0.05rem 0.4rem",
+              borderRadius: "999px",
+              background: "rgba(148,163,184,0.15)",
+              color: "var(--text-muted)",
+              fontWeight: 600,
+              marginLeft: "auto",
+            }}
+          >
+            {t.graph_unreachable}
           </span>
         )}
       </div>
@@ -296,6 +313,10 @@ function GraphView() {
                   <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--warning)" }} />
                   {t.graph_legend_blocked_by}
                 </span>
+                <span className="flex items-center gap-1.5">
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--text-muted)" }} />
+                  {t.graph_legend_unreachable}
+                </span>
               </div>
             </div>
 
@@ -330,6 +351,11 @@ function GraphView() {
                   {selected.blockedBy && (
                     <span style={{ fontSize: "0.7rem", padding: "0.05rem 0.4rem", borderRadius: "999px", background: "rgba(251,191,36,0.15)", color: "var(--warning)", fontWeight: 600 }}>
                       {t.graph_blocked_by}
+                    </span>
+                  )}
+                  {selected.unreachable && (
+                    <span style={{ fontSize: "0.7rem", padding: "0.05rem 0.4rem", borderRadius: "999px", background: "rgba(148,163,184,0.15)", color: "var(--text-muted)", fontWeight: 600 }}>
+                      {t.graph_unreachable}
                     </span>
                   )}
                 </div>
@@ -395,7 +421,7 @@ function FlowCanvas({ data, onNodeClick }: { data: GraphData; onNodeClick: (node
             { id: "source", type: "source", position: Position.Bottom, x: width / 2, y: height },
             { id: "target", type: "target", position: Position.Top, x: width / 2, y: 0 },
           ],
-          data: n ?? { id, accounts: 0, local: false, blocked: false, blockedBy: false },
+          data: n ?? { id, accounts: 0, local: false, blocked: false, blockedBy: false, unreachable: false },
         };
       })
     );
@@ -413,6 +439,7 @@ function FlowCanvas({ data, onNodeClick }: { data: GraphData; onNodeClick: (node
           let animated = false;
           if (targetNode?.blocked) stroke = "var(--danger)";
           else if (targetNode?.blockedBy) stroke = "var(--warning)";
+          else if (targetNode?.unreachable) stroke = "var(--text-muted)";
           else if (fromLocal) {
             stroke = "var(--accent)";
             animated = true;
@@ -484,6 +511,7 @@ function FlowCanvas({ data, onNodeClick }: { data: GraphData; onNodeClick: (node
     const d = n.data as GraphNode | undefined;
     if (d?.blocked) return "var(--danger)";
     if (d?.blockedBy) return "var(--warning)";
+    if (d?.unreachable) return "var(--text-muted)";
     if (d?.local) return "var(--accent)";
     return "var(--border-hover)";
   }, []);

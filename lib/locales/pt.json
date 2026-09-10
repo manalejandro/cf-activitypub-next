@@ -890,5 +890,7 @@
   "call_stop_share_screen": "Parar de compartilhar tela",
   "call_ended": "Chamada encerrada",
   "a11y_language": "Idioma",
-  "error_network": "Erro de rede"
+  "error_network": "Erro de rede",
+  "graph_unreachable": "Inacessível",
+  "graph_legend_unreachable": "Instância inacessível"
 }
