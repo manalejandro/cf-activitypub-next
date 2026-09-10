@@ -11040,6 +11040,35 @@
         }
       }
     },
+    "/manifest.webmanifest": {
+      "get": {
+        "summary": "Get /manifest.webmanifest",
+        "operationId": "get_manifestwebmanifest",
+        "tags": [
+          "Misc"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/nodeinfo/{version}": {
       "get": {
         "summary": "Get /nodeinfo/{version}",
@@ -11222,35 +11251,6 @@
       "get": {
         "summary": "Get /security.txt",
         "operationId": "get_securitytxt",
-        "tags": [
-          "Misc"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/sw.js": {
-      "get": {
-        "summary": "Get /sw.js",
-        "operationId": "get_swjs",
         "tags": [
           "Misc"
         ],

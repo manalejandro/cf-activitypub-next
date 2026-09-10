@@ -21,7 +21,7 @@ import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
-import { collectFollowerInboxes, fetchRemoteObject, validateOutboundUrl } from "../lib/activitypub/federation";
+import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
@@ -366,13 +366,13 @@ async function deliverOne(
   activityJson: string,
   actorId: string,
   env: Env
-): Promise<{ ok: boolean; permanent: boolean }> {
+): Promise<{ ok: boolean; permanent: boolean; status: number; error?: string }> {
   // SSRF guard: inbox URLs originate from remote actor documents / user input.
   // Never POST to non-HTTPS, private, or local addresses.
   const validation = validateOutboundUrl(inboxUrl);
   if (!validation.valid) {
     console.warn(`[worker] Blocked delivery to ${inboxUrl}: ${validation.reason}`);
-    return { ok: false, permanent: true };
+    return { ok: false, permanent: true, status: 0, error: validation.reason };
   }
 
   // Look up the local actor's private key
@@ -384,17 +384,15 @@ async function deliverOne(
 
   if (!row?.private_key_pem) {
     // Actor not found or not local — permanent failure, don't retry
-    return { ok: false, permanent: true };
+    return { ok: false, permanent: true, status: 0, error: "Local actor or key not found" };
   }
 
   const keyId = `${actorId}#main-key`;
   const headers = await signRequest("POST", inboxUrl, activityJson, row.private_key_pem, keyId);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-
   try {
-    const res = await fetch(inboxUrl, {
+    // safeFetch re-validates redirect hops (SSRF) and bounds the timeout.
+    const res = await safeFetch(inboxUrl, {
       method: "POST",
       headers: {
         "Content-Type": AP_CONTENT_TYPE,
@@ -402,9 +400,10 @@ async function deliverOne(
         ...headers,
       },
       body: activityJson,
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
+    }, 15_000);
+    if (!res) {
+      return { ok: false, permanent: false, status: 0, error: "Blocked or unreachable" };
+    }
     // We only need the status; cancel the body so concurrent deliveries don't
     // stall on unread responses (Cloudflare deadlock protection).
     await res.body?.cancel().catch(() => {});
@@ -437,11 +436,10 @@ async function deliverOne(
         .run()
         .catch(() => {});
     }
-    return { ok: res.ok, permanent };
-  } catch {
-    clearTimeout(timer);
+    return { ok: res.ok, permanent, status: res.status };
+  } catch (err) {
     // Network / timeout error — transient, retry
-    return { ok: false, permanent: false };
+    return { ok: false, permanent: false, status: 0, error: String(err) };
   }
 }
 
@@ -1025,9 +1023,20 @@ const worker = {
     if (batch.queue === "cf-ap-delivery-dlq") {
       for (const message of batch.messages) {
         const body = message.body as Partial<APDeliveryMessage>;
+        // The main consumer stores the last failure reason per inbox before
+        // retrying, so the DLQ record explains WHY the delivery died.
+        let last: { status?: number; error?: string | null; attempts?: number } | null = null;
+        if (body.inboxUrl) {
+          try {
+            const raw = await env.KV.get(`dlq:last:${body.inboxUrl}`);
+            if (raw) last = JSON.parse(raw) as typeof last;
+          } catch { /* best-effort */ }
+        }
         console.error("[dlq] Undeliverable federation activity", {
           inboxUrl: body.inboxUrl,
           actorId: body.actorId,
+          lastError: last?.error ?? (last?.status ? `HTTP ${last.status}` : null),
+          attempts: last?.attempts ?? null,
         });
         try {
           await env.KV.put(
@@ -1036,6 +1045,9 @@ const worker = {
               inboxUrl: body.inboxUrl ?? null,
               actorId: body.actorId ?? null,
               activity: (body.activityJson ?? "").slice(0, 2000),
+              lastStatus: last?.status ?? null,
+              lastError: last?.error ?? null,
+              attempts: last?.attempts ?? null,
               at: new Date().toISOString(),
             }),
             { expirationTtl: 30 * 86400 }
@@ -1066,19 +1078,53 @@ const worker = {
         }
 
         try {
-          const { ok, permanent } = await deliverOne(
-            inboxUrl,
-            activityJson,
-            actorId,
-            env
-          );
-          if (ok || permanent) {
+          // Circuit breaker: 3 recent failures → skip this host for an hour so
+          // dead instances don't generate retries/DLQ noise on every post.
+          const host = new URL(inboxUrl).hostname.toLowerCase();
+          if (await env.KV.get(`dead:inbox:${host}`).catch(() => null)) {
+            message.ack();
+            continue;
+          }
+
+          const result = await deliverOne(inboxUrl, activityJson, actorId, env);
+          if (result.ok) {
+            await env.KV.delete(`dead:inbox:${host}`).catch(() => {});
+            await env.KV.delete(`fail:inbox:${host}`).catch(() => {});
+            message.ack();
+          } else if (result.permanent) {
+            console.warn(
+              `[queue] Permanent delivery failure (HTTP ${result.status}) to ${inboxUrl}`
+            );
             message.ack();
           } else {
-            message.retry();
+            const failKey = `fail:inbox:${host}`;
+            const fails = Number(await env.KV.get(failKey).catch(() => null) ?? 0) + 1;
+            await env.KV.put(failKey, String(fails), { expirationTtl: 3600 }).catch(() => {});
+            if (fails >= 3) {
+              await env.KV.put(`dead:inbox:${host}`, "1", { expirationTtl: 3600 }).catch(() => {});
+            }
+            const detail = {
+              inboxUrl,
+              actorId,
+              status: result.status,
+              error: result.error ?? null,
+              attempts: message.attempts,
+              at: new Date().toISOString(),
+            };
+            console.warn(
+              `[queue] Delivery attempt ${message.attempts} to ${inboxUrl} failed:`,
+              result.error ?? `HTTP ${result.status}`
+            );
+            // Keep the last failure so the DLQ record can explain it.
+            await env.KV
+              .put(`dlq:last:${inboxUrl}`, JSON.stringify(detail), { expirationTtl: 86400 })
+              .catch(() => {});
+            // Exponential-ish backoff capped at 5 minutes.
+            message.retry({ delaySeconds: Math.min(30 * message.attempts, 300) });
           }
-        } catch {
-          message.retry();
+        } catch (err) {
+          console.error("[queue] Delivery threw", inboxUrl, err);
+          message.retry({ delaySeconds: 30 });
         }
       }
     };
