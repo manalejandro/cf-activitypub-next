@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "Недоступный сервер",
   "redirect_title": "Вы покидаете {instance}.",
   "redirect_hint": "Если вы доверяете этой ссылке, нажмите на неё, чтобы продолжить.",
-  "redirect_invalid": "Эта ссылка недействительна."
+  "redirect_invalid": "Эта ссылка недействительна.",
+  "explore_suggested_accounts": "Рекомендуемые аккаунты",
+  "explore_suggested_more": "Показать ещё",
+  "explore_suggested_empty": "Пока нет рекомендаций.",
+  "explore_suggested_dismiss": "Скрыть рекомендацию",
+  "explore_suggested_friends": "Подписаны аккаунты, на которые вы подписаны",
+  "explore_suggested_global": "Популярно на этом сервере"
 }

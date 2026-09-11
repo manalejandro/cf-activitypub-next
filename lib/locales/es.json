@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "Instancia inalcanzable",
   "redirect_title": "Vas a salir de {instance}.",
   "redirect_hint": "Si confías en este enlace, púlsalo para continuar.",
-  "redirect_invalid": "Este enlace no es válido."
+  "redirect_invalid": "Este enlace no es válido.",
+  "explore_suggested_accounts": "Cuentas recomendadas",
+  "explore_suggested_more": "Ver más",
+  "explore_suggested_empty": "No hay sugerencias por ahora.",
+  "explore_suggested_dismiss": "Descartar sugerencia",
+  "explore_suggested_friends": "Seguida por cuentas que sigues",
+  "explore_suggested_global": "Popular en esta instancia"
 }

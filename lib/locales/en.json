@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "Unreachable instance",
   "redirect_title": "You are about to leave {instance}.",
   "redirect_hint": "If you trust this link, click it to continue.",
-  "redirect_invalid": "This link is not valid."
+  "redirect_invalid": "This link is not valid.",
+  "explore_suggested_accounts": "Suggested accounts",
+  "explore_suggested_more": "Show more",
+  "explore_suggested_empty": "No suggestions right now.",
+  "explore_suggested_dismiss": "Dismiss suggestion",
+  "explore_suggested_friends": "Followed by people you follow",
+  "explore_suggested_global": "Popular on this instance"
 }

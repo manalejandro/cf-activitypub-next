@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "연결할 수 없는 인스턴스",
   "redirect_title": "{instance}에서 나가려고 합니다.",
   "redirect_hint": "이 링크를 신뢰한다면 클릭하여 계속하세요.",
-  "redirect_invalid": "유효하지 않은 링크입니다."
+  "redirect_invalid": "유효하지 않은 링크입니다.",
+  "explore_suggested_accounts": "추천 계정",
+  "explore_suggested_more": "더 보기",
+  "explore_suggested_empty": "지금은 추천이 없습니다.",
+  "explore_suggested_dismiss": "추천 숨기기",
+  "explore_suggested_friends": "팔로우하는 계정이 팔로우함",
+  "explore_suggested_global": "이 인스턴스에서 인기"
 }

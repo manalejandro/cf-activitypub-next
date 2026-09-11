@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "Instance injoignable",
   "redirect_title": "Vous allez quitter {instance}.",
   "redirect_hint": "Si vous faites confiance à ce lien, cliquez dessus pour continuer.",
-  "redirect_invalid": "Ce lien n'est pas valide."
+  "redirect_invalid": "Ce lien n'est pas valide.",
+  "explore_suggested_accounts": "Comptes suggérés",
+  "explore_suggested_more": "Afficher plus",
+  "explore_suggested_empty": "Aucune suggestion pour le moment.",
+  "explore_suggested_dismiss": "Ignorer la suggestion",
+  "explore_suggested_friends": "Suivi par des comptes que vous suivez",
+  "explore_suggested_global": "Populaire sur cette instance"
 }

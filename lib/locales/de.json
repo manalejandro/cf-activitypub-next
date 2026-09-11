@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "Nicht erreichbare Instanz",
   "redirect_title": "Du verlässt gerade {instance}.",
   "redirect_hint": "Wenn du diesem Link vertraust, klicke darauf, um fortzufahren.",
-  "redirect_invalid": "Dieser Link ist ungültig."
+  "redirect_invalid": "Dieser Link ist ungültig.",
+  "explore_suggested_accounts": "Empfohlene Konten",
+  "explore_suggested_more": "Mehr anzeigen",
+  "explore_suggested_empty": "Derzeit keine Vorschläge.",
+  "explore_suggested_dismiss": "Vorschlag ausblenden",
+  "explore_suggested_friends": "Gefolgt von Konten, denen du folgst",
+  "explore_suggested_global": "Beliebt auf dieser Instanz"
 }

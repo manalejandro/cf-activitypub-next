@@ -895,5 +895,11 @@
   "graph_legend_unreachable": "到達できないインスタンス",
   "redirect_title": "{instance} から離れようとしています。",
   "redirect_hint": "このリンクを信頼できる場合は、クリックして続行してください。",
-  "redirect_invalid": "このリンクは有効ではありません。"
+  "redirect_invalid": "このリンクは有効ではありません。",
+  "explore_suggested_accounts": "おすすめのアカウント",
+  "explore_suggested_more": "もっと見る",
+  "explore_suggested_empty": "現在おすすめはありません。",
+  "explore_suggested_dismiss": "おすすめを非表示",
+  "explore_suggested_friends": "フォロー中のアカウントがフォロー",
+  "explore_suggested_global": "このインスタンスで人気"
 }

@@ -36,7 +36,8 @@ interface Account {
 interface TrendingTag { name: string; url: string; history: { day: string; uses: string; accounts: string }[]; }
 interface Collection { id: string; name: string; description: string | null; url?: string | null; local?: boolean; item_count: number; account_id: string; }
 interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: TrendingTag[]; collections: Collection[]; }
-type Tab = "trending" | "trending_tags" | "accounts" | "hashtags" | "statuses" | "collections";
+interface SuggestedAccount { source: "friends_of_friends" | "global" | string; account: Account; }
+type Tab = "trending" | "trending_tags" | "suggested" | "accounts" | "hashtags" | "statuses" | "collections";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -54,6 +55,9 @@ export default function ExplorePage() {
   const [editSpoiler, setEditSpoiler] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [trendingLoading, setTrendingLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState<SuggestedAccount[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [suggestionsHasMore, setSuggestionsHasMore] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = getToken();
   const router = useRouter();
@@ -68,6 +72,36 @@ export default function ExplorePage() {
     if (statusesRes.ok) setTrendingStatuses(await statusesRes.json() as Status[]);
     if (tagsRes.ok) setTrendingTags(await tagsRes.json() as TrendingTag[]);
     setTrendingLoading(false);
+  }
+
+  async function fetchSuggestions(offset = 0) {
+    const params = new URLSearchParams({
+      limit: String(limits.defaultTimelinePage),
+      offset: String(offset),
+    });
+    const res = await fetch(`/api/v2/suggestions?${params.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.ok) {
+      const data = await res.json() as SuggestedAccount[];
+      setSuggestions((prev) => {
+        if (offset === 0) return data;
+        const known = new Set(prev.map((s) => s.account.id));
+        return [...prev, ...data.filter((s) => !known.has(s.account.id))];
+      });
+      setSuggestionsHasMore(data.length >= limits.defaultTimelinePage);
+    }
+    setSuggestionsLoading(false);
+  }
+
+  async function dismissSuggestion(accountId: string) {
+    // Optimistic: hide it locally, then persist the dismissal.
+    setSuggestions((prev) => prev.filter((s) => s.account.id !== accountId));
+    if (!token) return;
+    await fetch(`/api/v1/suggestions/${encodeURIComponent(accountId)}/dismiss`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
   }
 
   async function fetchMe() {
@@ -96,6 +130,7 @@ export default function ExplorePage() {
 
   useEffect(() => {
     void fetchTrending();
+    void fetchSuggestions();
     if (token) void fetchMe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -180,6 +215,7 @@ export default function ExplorePage() {
     : [
         { id: "trending", label: t.explore_tab_trending_all },
         { id: "trending_tags", label: t.explore_tab_trending_tags, count: trendingTags.length },
+        { id: "suggested", label: t.explore_tab_accounts, count: suggestions.length },
       ];
 
   return (
@@ -247,8 +283,21 @@ export default function ExplorePage() {
               </div>
             )}
             {trendingTags.slice(0, 5).map((tag) => <HashtagCard key={tag.name} tag={tag} />)}
+            {suggestions.length > 0 && (
+              <div style={{ borderTop: "1px solid var(--border)" }}>
+                <div style={{ padding: "0.75rem 1rem 0.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <span>{t.explore_suggested_accounts}</span>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ textTransform: "none", fontWeight: 500, flexShrink: 0 }} onClick={() => setTab("suggested")}>
+                    {t.explore_suggested_more}
+                  </button>
+                </div>
+                {suggestions.slice(0, 3).map((s) => (
+                  <AccountCard key={s.account.id} account={s.account} source={s.source} onDismiss={token ? () => void dismissSuggestion(s.account.id) : undefined} />
+                ))}
+              </div>
+            )}
             {trendingStatuses.length > 0 && (
-              <div style={{ padding: "0.75rem 1rem 0.25rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderTop: trendingTags.length > 0 ? "1px solid var(--border)" : undefined }}>
+              <div style={{ padding: "0.75rem 1rem 0.25rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderTop: trendingTags.length > 0 || suggestions.length > 0 ? "1px solid var(--border)" : undefined }}>
                 {t.explore_trending_statuses}
               </div>
             )}
@@ -261,6 +310,27 @@ export default function ExplorePage() {
           trendingLoading ? <LoadingSkeletons /> :
           trendingTags.length === 0 ? <EmptyState icon="hashtag" text={t.explore_trending_empty} /> :
           <>{trendingTags.map((tag) => <HashtagCard key={tag.name} tag={tag} />)}</>
+        )}
+
+        {/* Suggested accounts tab */}
+        {tab === "suggested" && !isSearching && (
+          suggestionsLoading ? <LoadingSkeletons /> :
+          suggestions.length === 0 ? <EmptyState icon="user" text={t.explore_suggested_empty} /> :
+          <>
+            <div style={{ padding: "0.75rem 1rem 0.25rem", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {t.explore_suggested_accounts}
+            </div>
+            {suggestions.map((s) => (
+              <AccountCard key={s.account.id} account={s.account} source={s.source} onDismiss={token ? () => void dismissSuggestion(s.account.id) : undefined} />
+            ))}
+            {suggestionsHasMore && (
+              <div style={{ padding: "1rem", textAlign: "center" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => void fetchSuggestions(suggestions.length)}>
+                  {t.explore_suggested_more}
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Search result tabs */}
@@ -367,7 +437,7 @@ function EmptyState({ icon, text }: { icon: IconName; text: string }) {
   );
 }
 
-function AccountCard({ account }: { account: Account }) {
+function AccountCard({ account, source, onDismiss }: { account: Account; source?: string; onDismiss?: () => void }) {
   const token = getToken();
   const [following, setFollowing] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -421,6 +491,11 @@ function AccountCard({ account }: { account: Account }) {
           </Link>
           {account.bot && <span style={{ fontSize: "0.68rem", padding: "0.1rem 0.35rem", borderRadius: "var(--radius-sm)", background: "var(--accent-bg)", color: "var(--accent)" }}>BOT</span>}
           {isRemote && <span style={{ fontSize: "0.68rem", padding: "0.1rem 0.35rem", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}><Icon name="globe" /> {t.explore_tip_remote}</span>}
+          {source && (
+            <span style={{ fontSize: "0.68rem", padding: "0.1rem 0.35rem", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+              {source === "friends_of_friends" ? t.explore_suggested_friends : t.explore_suggested_global}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>@{account.acct}</div>
         {account.note && (
@@ -447,6 +522,18 @@ function AccountCard({ account }: { account: Account }) {
         <a href={account.url ?? "#"} target="_blank" rel="noopener noreferrer"
           style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}
           title={t.a11y_view_remote_profile}><Icon name="globe" /></a>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ flexShrink: 0, color: "var(--text-muted)" }}
+          onClick={onDismiss}
+          aria-label={t.explore_suggested_dismiss}
+          title={t.explore_suggested_dismiss}
+        >
+          <Icon name="times" />
+        </button>
       )}
     </div>
   );

@@ -985,6 +985,103 @@ function rowToCollection(r: Row): CollectionRow {
   };
 }
 
+// ─────────────────────────────────────────
+// Account suggestions (Explore → Accounts)
+// ─────────────────────────────────────────
+
+export interface AccountSuggestion {
+  actor: LocalActor;
+  source: "friends_of_friends" | "global";
+}
+
+/**
+ * Recommended accounts for the Explore page.
+ *
+ * Authenticated: accounts followed by the accounts you follow ("friends of
+ * friends") first, then active local accounts as fallback. Anonymous: just the
+ * active local accounts. Never suggests yourself, accounts you already follow,
+ * blocked/muted targets, or accounts you dismissed — and never suspended,
+ * silenced or empty accounts.
+ */
+export async function getAccountSuggestions(
+  db: D1Database,
+  viewerId: string | null,
+  opts: { limit?: number; offset?: number } = {}
+): Promise<AccountSuggestion[]> {
+  const { limit = 20, offset = 0 } = opts;
+  const wanted = Math.min(limit + offset, 100);
+  const picked = new Map<string, AccountSuggestion["source"]>();
+
+  if (viewerId) {
+    const fof = await db
+      .prepare(
+        `SELECT f2.target_id AS id, COUNT(*) AS score
+         FROM follows f1
+         JOIN follows f2 ON f2.actor_id = f1.target_id AND f2.state = 'accepted'
+         JOIN actors a ON a.id = f2.target_id
+         WHERE f1.actor_id = ? AND f1.state = 'accepted'
+           AND f2.target_id != ?
+           AND a.suspended = 0 AND a.silenced = 0
+           AND NOT EXISTS (SELECT 1 FROM follows mf WHERE mf.actor_id = ? AND mf.target_id = f2.target_id)
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.actor_id = ? AND b.target_id = f2.target_id)
+           AND NOT EXISTS (SELECT 1 FROM mutes m WHERE m.actor_id = ? AND m.target_id = f2.target_id)
+           AND NOT EXISTS (SELECT 1 FROM dismissed_suggestions d WHERE d.actor_id = ? AND d.target_id = f2.target_id)
+         GROUP BY f2.target_id
+         ORDER BY score DESC, f2.target_id
+         LIMIT ?`
+      )
+      .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerId, wanted)
+      .all<{ id: string; score: number }>();
+    for (const row of fof.results ?? []) picked.set(row.id, "friends_of_friends");
+  }
+
+  const exclude: string[] = [];
+  const binds: unknown[] = [];
+  if (viewerId) {
+    exclude.push("a.id != ?", "NOT EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = ? AND f.target_id = a.id)",
+      "NOT EXISTS (SELECT 1 FROM blocks b WHERE b.actor_id = ? AND b.target_id = a.id)",
+      "NOT EXISTS (SELECT 1 FROM mutes m WHERE m.actor_id = ? AND m.target_id = a.id)",
+      "NOT EXISTS (SELECT 1 FROM dismissed_suggestions d WHERE d.actor_id = ? AND d.target_id = a.id)");
+    binds.push(viewerId, viewerId, viewerId, viewerId, viewerId);
+  }
+  const popular = await db
+    .prepare(
+      `SELECT a.id FROM actors a
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+         AND COALESCE(a.reserved, 0) = 0
+         AND COALESCE(a.statuses_count, 0) > 0
+         ${exclude.length ? `AND ${exclude.join(" AND ")}` : ""}
+       ORDER BY a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
+       LIMIT ?`
+    )
+    .bind(...binds, wanted)
+    .all<{ id: string }>();
+  for (const row of popular.results ?? []) {
+    if (!picked.has(row.id)) picked.set(row.id, "global");
+  }
+
+  const ordered = [...picked.entries()].slice(offset, offset + limit);
+  const actors = await getActorsByIds(db, ordered.map(([id]) => id));
+  return ordered
+    .map(([id, source]) => {
+      const actor = actors.get(id);
+      return actor ? { actor, source } : null;
+    })
+    .filter((v): v is AccountSuggestion => v !== null);
+}
+
+/** Hide an account from this viewer's suggestions (Explore → Accounts). */
+export async function dismissSuggestedAccount(
+  db: D1Database,
+  actorId: string,
+  targetId: string
+): Promise<void> {
+  await db
+    .prepare("INSERT OR IGNORE INTO dismissed_suggestions (id, actor_id, target_id) VALUES (?,?,?)")
+    .bind(crypto.randomUUID(), actorId, targetId)
+    .run();
+}
+
 const COLLECTION_SELECT = `SELECT c.*, (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) AS item_count FROM collections c`;
 
 export async function createCollection(db: D1Database, col: LocalCollection): Promise<void> {
