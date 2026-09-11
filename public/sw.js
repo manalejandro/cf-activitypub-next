@@ -13,7 +13,7 @@ const SHELL_CACHE = "cfap-shell-v1";
 // Bump when the worker's behaviour changes (e.g. the push handler) so the
 // active version is visible in the browser's service worker debugger and in
 // `navigator.serviceWorker.controller` logs.
-const SW_VERSION = "2026.09.2";
+const SW_VERSION = "2026.09.3";
 
 const STATIC_PREFIXES = ["/_next/static/", "/swagger-ui/", "/icons/", "/logo.svg"];
 
@@ -26,7 +26,7 @@ self.addEventListener("install", (event) => {
     caches
       .open(SHELL_CACHE)
       .then((cache) =>
-        Promise.allSettled(["/", "/login", "/explore", "/manifest.json"].map((u) => cache.add(u)))
+        Promise.allSettled(["/", "/login", "/explore", "/manifest.webmanifest"].map((u) => cache.add(u)))
       )
       .finally(() => self.skipWaiting())
   );
@@ -69,8 +69,10 @@ self.addEventListener("push", (event) => {
   const origin = self.location.origin;
   const options = {
     body: payload.body || "",
-    icon: payload.icon ? new URL(payload.icon, origin).href : `${origin}/logo.svg`,
-    badge: payload.badge ? new URL(payload.badge, origin).href : `${origin}/logo.svg`,
+    // PNG icons: Chrome does not render SVG notification icons, and the badge
+    // must be a monochrome PNG (Android status bar).
+    icon: payload.icon ? new URL(payload.icon, origin).href : `${origin}/icons/icon-192.png`,
+    badge: payload.badge ? new URL(payload.badge, origin).href : `${origin}/icons/badge-96.png`,
     tag: payload.tag || `cfap-notif-${type}`,
     renotify: true,
     data: payload.data || {},
@@ -78,7 +80,18 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     Promise.resolve()
       .then(() => self.registration.showNotification(payload.title || "CF ActivityPub", options))
-      .catch((err) => console.warn("[sw] showNotification failed:", err))
+      // Some engines reject individual options (e.g. `renotify`/`badge` on older
+      // Firefox builds). Retry with the minimal set so a notification is still
+      // shown instead of failing the whole push.
+      .catch(() =>
+        self.registration
+          .showNotification(payload.title || "CF ActivityPub", {
+            body: options.body,
+            icon: options.icon,
+            data: options.data,
+          })
+          .catch((err) => console.warn("[sw] showNotification failed:", err))
+      )
       .then(() =>
         // Always tell open windows a notification arrived (badge + UI refresh);
         // the sound flag lets them play the chime.

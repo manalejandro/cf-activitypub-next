@@ -120,8 +120,8 @@ export async function deliverPushNotification(
   const payload = strBuf(JSON.stringify({
     title: notifTitle(dict, notif.type),
     body: bodyText,
-    icon: "/logo.svg",
-    badge: "/logo.svg",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/badge-96.png",
     tag: `notif-${notif.id}`,
     sound: Boolean(sub.sound),
     data: { type: notif.type, account_id: notif.accountId, notification_id: notif.id, object_id: notif.objectId },
@@ -160,6 +160,10 @@ export async function deliverPushNotification(
   });
 
   if (resp.status === 410 || resp.status === 404) {
+    // The push service dropped the subscription (uninstalled browser, stale
+    // endpoint). Remove it and make it visible — silent deletion hides why a
+    // device stopped receiving notifications.
+    console.warn(`[push] subscription gone (HTTP ${resp.status}) — removed for ${notif.targetAccountId}`);
     await db.prepare("DELETE FROM push_subscriptions WHERE actor_id = ?").bind(notif.targetAccountId).run();
   } else if (!resp.ok) {
     // A 400/401 from the push service usually means the VAPID keys don't match
