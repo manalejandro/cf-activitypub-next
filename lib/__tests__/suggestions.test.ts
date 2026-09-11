@@ -159,6 +159,39 @@ describe("getAccountSuggestions", () => {
     expect(byId.get("https://local.example/users/popular")).toBe("global");
   });
 
+  it("suggests local and remote accounts that are popular on this instance", async () => {
+    await insertActor(db, "https://remote.example/users/remote-pop", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z" });
+    await insertActor(db, "https://local.example/users/local-pop", { isLocal: true, lastStatusAt: "2026-02-01T00:00:00Z" });
+    await insertActor(db, "https://local.example/users/someone", { isLocal: true });
+    await insertFollow(db, "https://local.example/users/someone", "https://remote.example/users/remote-pop");
+    await insertFollow(db, "https://local.example/users/someone", "https://local.example/users/local-pop");
+
+    const out = await getAccountSuggestions(db, null);
+    const remote = out.find((s) => s.actor.id === "https://remote.example/users/remote-pop");
+    expect(remote?.source).toBe("global");
+    expect(remote?.actor.isLocal).toBe(false);
+    expect(out.find((s) => s.actor.id === "https://local.example/users/local-pop")?.source).toBe("global");
+    // Popular accounts rank above the active-local fallback (ME posts but has no followers).
+    expect(out.findIndex((s) => s.actor.id === "https://remote.example/users/remote-pop")).toBeLessThan(
+      out.findIndex((s) => s.actor.id === ME)
+    );
+  });
+
+  it("still excludes popular accounts the viewer already follows or dismissed", async () => {
+    await insertActor(db, "https://remote.example/users/remote-pop", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z" });
+    await insertActor(db, "https://local.example/users/someone", { isLocal: true });
+    await insertFollow(db, "https://local.example/users/someone", "https://remote.example/users/remote-pop");
+    await insertFollow(db, ME, "https://remote.example/users/remote-pop");
+
+    const followed = await getAccountSuggestions(db, ME);
+    expect(followed.map((s) => s.actor.id)).not.toContain("https://remote.example/users/remote-pop");
+
+    await undismissSuggestedAccount(db, ME, "https://remote.example/users/remote-pop");
+    await dismissSuggestedAccount(db, ME, "https://remote.example/users/remote-pop");
+    const dismissed = await getAccountSuggestions(db, ME);
+    expect(dismissed.map((s) => s.actor.id)).not.toContain("https://remote.example/users/remote-pop");
+  });
+
   it("supports limit/offset and keeps dismissals idempotent", async () => {
     await insertActor(db, "https://local.example/users/a", { isLocal: true, lastStatusAt: "2026-03-01T00:00:00Z" });
     await insertActor(db, "https://local.example/users/b", { isLocal: true, lastStatusAt: "2026-02-01T00:00:00Z" });

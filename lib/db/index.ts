@@ -998,10 +998,11 @@ export interface AccountSuggestion {
  * Recommended accounts for the Explore page.
  *
  * Authenticated: accounts followed by the accounts you follow ("friends of
- * friends") first, then active local accounts as fallback. Anonymous: just the
- * active local accounts. Never suggests yourself, accounts you already follow,
- * blocked/muted targets, or accounts you dismissed — and never suspended,
- * silenced or empty accounts.
+ * friends") first. Then the accounts most followed by people on this instance
+ * (local or remote), and finally active local accounts. Anonymous viewers get
+ * the last two tiers only. Never suggests yourself, accounts you already
+ * follow, blocked/muted targets, or accounts you dismissed — and never
+ * suspended, silenced or inactive accounts.
  */
 export async function getAccountSuggestions(
   db: D1Database,
@@ -1044,19 +1045,43 @@ export async function getAccountSuggestions(
       "NOT EXISTS (SELECT 1 FROM dismissed_suggestions d WHERE d.actor_id = ? AND d.target_id = a.id)");
     binds.push(viewerId, viewerId, viewerId, viewerId, viewerId);
   }
+  const excludedSql = exclude.length ? `AND ${exclude.join(" AND ")}` : "";
+
+  // Popular on this instance: most followed actors (local or remote) by
+  // accepted local follows. Relevance before raw recency.
   const popular = await db
     .prepare(
-      `SELECT a.id FROM actors a
-       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+      `SELECT a.id, COUNT(*) AS local_follows
+       FROM actors a
+       JOIN follows f ON f.target_id = a.id AND f.state = 'accepted'
+       WHERE a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
          AND COALESCE(a.reserved, 0) = 0
-         AND COALESCE(a.statuses_count, 0) > 0
-         ${exclude.length ? `AND ${exclude.join(" AND ")}` : ""}
-       ORDER BY a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
+         AND a.last_status_at IS NOT NULL
+         ${excludedSql}
+       GROUP BY a.id
+       ORDER BY local_follows DESC, a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
        LIMIT ?`
     )
     .bind(...binds, wanted)
     .all<{ id: string }>();
   for (const row of popular.results ?? []) {
+    if (!picked.has(row.id)) picked.set(row.id, "global");
+  }
+
+  // Final fallback: active local accounts (fresh instances with no follows yet).
+  const activeLocal = await db
+    .prepare(
+      `SELECT a.id FROM actors a
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+         AND COALESCE(a.reserved, 0) = 0
+         AND a.last_status_at IS NOT NULL
+         ${excludedSql}
+       ORDER BY a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
+       LIMIT ?`
+    )
+    .bind(...binds, wanted)
+    .all<{ id: string }>();
+  for (const row of activeLocal.results ?? []) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
   }
 
