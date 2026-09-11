@@ -770,16 +770,35 @@ async function executeScheduled(env: Env): Promise<void> {
   // Guard against overlapping cron invocations (slow runs or clock drift): only
   // one patrol runs at a time. The lock outlives the run (90s > the stage
   // budgets) so a slow stage can't start a second concurrent run; the per-stage
-  // KV throttles keep every run inside the overlap window.
-  const lock = await env.KV.get("cron:lock");
-  if (lock) {
+  // KV throttles keep every run inside the overlap window. The lock stores the
+  // running stage + start time so a skip explains itself in the logs.
+  const existingLock = await env.KV.get("cron:lock").catch(() => null);
+  if (existingLock) {
+    let info = "";
+    try {
+      const parsed = JSON.parse(existingLock) as { startedAt?: string; stage?: string };
+      if (parsed.startedAt) {
+        const elapsed = Math.round((Date.now() - new Date(parsed.startedAt).getTime()) / 1000);
+        info = ` (stage=${parsed.stage ?? "?"} elapsed=${elapsed}s)`;
+      }
+    } catch { /* legacy lock value */ }
     // Info-level: the guard is working as intended; with the per-task KV
     // throttles the previous run should finish within the window, so this is
     // rare and not an error condition.
-    console.log("[cron] skipping overlapping run");
+    console.log(`[cron] skipping overlapping run${info}`);
     return;
   }
-  await env.KV.put("cron:lock", "1", { expirationTtl: 90 });
+  const runStartedAt = Date.now();
+  let currentStage = "start";
+  const setStage = async (name: string) => {
+    currentStage = name;
+    await env.KV
+      .put("cron:lock", JSON.stringify({ startedAt: new Date(runStartedAt).toISOString(), stage: name }), {
+        expirationTtl: 90,
+      })
+      .catch(() => {});
+  };
+  await setStage("scheduled");
 
   try {
     try {
@@ -787,6 +806,7 @@ async function executeScheduled(env: Env): Promise<void> {
     } catch (err) {
       console.error("[cron] publishDueScheduled failed", err);
     }
+    await setStage("auto-delete");
 
   const actors = await env.DB
     .prepare(
@@ -914,6 +934,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // AI Guardian patrol — reviews recent posts and suspicious accounts, blocks
   // spam domains. Runs after the routine tasks; each run is idempotent via KV
   // markers so overlapping cron invocations stay cheap.
+  await setStage("guardian");
   try {
     await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
   } catch (err) {
@@ -922,6 +943,7 @@ async function executeScheduled(env: Env): Promise<void> {
 
   // Account verification — periodically re-check rel="me" backlinks so the
   // verified badge stays accurate when an external site changes its markup.
+  await setStage("verify");
   try {
     await verifyAccountFieldsCron(env);
   } catch (err) {
@@ -930,6 +952,12 @@ async function executeScheduled(env: Env): Promise<void> {
   } catch (err) {
     console.error("[cron] executeScheduled failed", err);
   } finally {
+    const elapsedSeconds = Math.round((Date.now() - runStartedAt) / 1000);
+    if (elapsedSeconds >= 55) {
+      console.warn(`[cron] run took ${elapsedSeconds}s (last stage: ${currentStage}) — overlaps are likely`);
+    } else {
+      console.log(`[cron] run completed in ${elapsedSeconds}s`);
+    }
     await env.KV.delete("cron:lock").catch(() => {});
   }
 }

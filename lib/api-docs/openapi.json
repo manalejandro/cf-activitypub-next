@@ -11276,6 +11276,39 @@
         }
       }
     },
+    "/users/{username}/collections/{id}": {
+      "get": {
+        "summary": "Get /users/{username}/collections/{id}",
+        "operationId": "get_users_Byusername_collections_Byid",
+        "tags": [
+          "ActivityPub"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/users/{username}/collections/featured": {
       "get": {
         "summary": "Get /users/{username}/collections/featured",
@@ -11301,6 +11334,40 @@
         }
       }
     },
+    "/users/{username}/collections": {
+      "get": {
+        "summary": "Get /users/{username}/collections",
+        "operationId": "get_users_Byusername_collections",
+        "tags": [
+          "ActivityPub"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page number."
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/users/{username}/collections/tags": {
       "get": {
         "summary": "Get /users/{username}/collections/tags",
@@ -11311,6 +11378,39 @@
         "parameters": [
           {
             "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
+    "/users/{username}/feature_authorizations/{itemId}": {
+      "get": {
+        "summary": "Get /users/{username}/feature_authorizations/{itemId}",
+        "operationId": "get_users_Byusername_feature_authorizations_ByitemId",
+        "tags": [
+          "ActivityPub"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
             "in": "path",
             "required": true,
             "schema": {
