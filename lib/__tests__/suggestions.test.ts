@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 
-import { getAccountSuggestions, dismissSuggestedAccount } from "@/lib/db";
+import { getAccountSuggestions, dismissSuggestedAccount, undismissSuggestedAccount } from "@/lib/db";
 
 class D1Adapter {
   private sql = new DatabaseSync(":memory:");
@@ -185,5 +185,9 @@ describe("getAccountSuggestions", () => {
 
     const after = await getAccountSuggestions(db, ME);
     expect(after.map((s) => s.actor.id)).not.toContain("https://local.example/users/a");
+
+    await undismissSuggestedAccount(db, ME, "https://local.example/users/a");
+    const restored = await getAccountSuggestions(db, ME);
+    expect(restored.map((s) => s.actor.id)).toContain("https://local.example/users/a");
   });
 });

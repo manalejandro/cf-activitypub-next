@@ -7,15 +7,15 @@ import { getActorById, dismissSuggestedAccount } from "@/lib/db";
 // viewer's suggestions. Idempotent.
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ accountId: string }> }
+  { params }: { params: Promise<{ account_id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  const { accountId } = await params;
+  const { account_id } = await params;
 
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
 
-  const target = await getActorById(env.DB, decodeURIComponent(accountId));
+  const target = await getActorById(env.DB, decodeURIComponent(account_id));
   if (!target) return notFound("Account not found");
 
   await dismissSuggestedAccount(env.DB, me.id, target.id);

@@ -1070,6 +1070,18 @@ export async function getAccountSuggestions(
     .filter((v): v is AccountSuggestion => v !== null);
 }
 
+/** Undo a previous suggestion dismissal, so the account can be suggested again. */
+export async function undismissSuggestedAccount(
+  db: D1Database,
+  actorId: string,
+  targetId: string
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM dismissed_suggestions WHERE actor_id = ? AND target_id = ?")
+    .bind(actorId, targetId)
+    .run();
+}
+
 /** Hide an account from this viewer's suggestions (Explore → Accounts). */
 export async function dismissSuggestedAccount(
   db: D1Database,

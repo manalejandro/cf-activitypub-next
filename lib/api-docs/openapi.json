@@ -9656,6 +9656,45 @@
         }
       }
     },
+    "/api/v1/suggestions/{account_id}/dismiss": {
+      "post": {
+        "summary": "Post /api/v1/suggestions/{account_id}/dismiss",
+        "operationId": "post_api_v1_suggestions_Byaccount_id_dismiss",
+        "tags": [
+          "Suggestions"
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/suggestions/{account_id}": {
       "delete": {
         "summary": "Delete /api/v1/suggestions/{account_id}",
@@ -10963,6 +11002,29 @@
         "operationId": "get_api_v2_suggestions",
         "tags": [
           "Suggestions"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 40,
+              "default": 20
+            },
+            "description": "Maximum number of results to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Skip the first N results."
+          }
         ],
         "security": [
           {
