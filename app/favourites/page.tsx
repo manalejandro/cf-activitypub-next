@@ -8,6 +8,7 @@ import { StatusCard } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
+import { updateStatusInCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
@@ -31,7 +32,22 @@ export default function FavouritesPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, limits.defaultTimelinePage]);
 
-  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage, { refetchOnMount: true });
+  const { statuses, setStatuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage, { refetchOnMount: true, replaceOnRefetch: true });
+
+  function handleFav(updated: Status) {
+    updateStatusInCache(updated);
+    // Unfavourited from this feed: drop the card instead of leaving it stale.
+    if (!updated.favourited) {
+      setStatuses((prev) => prev.filter((s) => s.id !== updated.id));
+      return;
+    }
+    setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+  }
+
+  function handleReblog(updated: Status) {
+    updateStatusInCache(updated);
+    setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+  }
 
   useEffect(() => {
     async function fetchMe() {
@@ -82,10 +98,11 @@ export default function FavouritesPage() {
                   filterContext="home"
                   status={s}
                   me={me}
-                  onFav={() => {}}
-                  onReblog={() => {}}
+                  onFav={handleFav}
+                  onReblog={handleReblog}
                   onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`)}
                   onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
+                  onBookmarkChange={updateStatusInCache}
                   onDelete={() => {}}
                   onEdit={() => {}}
                 />

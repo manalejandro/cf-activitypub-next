@@ -8,6 +8,7 @@ import { StatusCard } from "@/components/StatusCard";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
+import { updateStatusInCache } from "@/lib/streaming/timeline-cache";
 import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
@@ -31,7 +32,22 @@ export default function BookmarksPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, limits.defaultTimelinePage]);
 
-  const { statuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage, { refetchOnMount: true });
+  const { statuses, setStatuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage, { refetchOnMount: true, replaceOnRefetch: true });
+
+  /** Keep the card's own counters/state in sync and propagate to other caches. */
+  function applyUpdate(updated: Status) {
+    updateStatusInCache(updated);
+    setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+  }
+
+  function handleBookmarkChange(updated: Status) {
+    updateStatusInCache(updated);
+    // Unbookmarked from this feed: drop the card now instead of leaving a stale
+    // entry until the next reload.
+    if (!updated.bookmarked) {
+      setStatuses((prev) => prev.filter((s) => s.id !== updated.id));
+    }
+  }
 
   useEffect(() => {
     async function fetchMe() {
@@ -82,10 +98,11 @@ export default function BookmarksPage() {
                   filterContext="home"
                   status={s}
                   me={me}
-                  onFav={() => {}}
-                  onReblog={() => {}}
+                  onFav={applyUpdate}
+                  onReblog={applyUpdate}
                   onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`)}
                   onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
+                  onBookmarkChange={handleBookmarkChange}
                   onDelete={() => {}}
                   onEdit={() => {}}
                 />

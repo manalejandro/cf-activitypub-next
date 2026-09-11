@@ -31,6 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   return json(serializeStatus(obj, author, domain, {
     favourited: favourited !== null,
     reblogged: reblogged !== null,
+    bookmarked: false,
     attachments,
   }));
 }

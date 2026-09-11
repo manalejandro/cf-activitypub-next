@@ -460,6 +460,7 @@ export function StatusCard({
   onDelete,
   onEdit,
   onPin,
+  onBookmarkChange,
   forceDelete = false,
   hideActions = false,
   filterContext = "public",
@@ -474,6 +475,8 @@ export function StatusCard({
   onDelete?: (s: Status) => void;
   onEdit?: (s: Status) => void;
   onPin?: (s: Status) => void;
+  /** Called with the updated status after a bookmark/unbookmark succeeds. */
+  onBookmarkChange?: (s: Status) => void;
   forceDelete?: boolean;
   hideActions?: boolean;
   filterContext?: "home" | "notifications" | "public" | "thread" | "account";
@@ -661,7 +664,13 @@ export function StatusCard({
       method: "POST",
       credentials: "include",
     });
-    if (!res.ok) setBookmarked(wasBookmarked);
+    if (res.ok) {
+      const updated = await res.json() as Status;
+      setBookmarked(updated.bookmarked ?? !wasBookmarked);
+      onBookmarkChange?.(updated);
+    } else {
+      setBookmarked(wasBookmarked);
+    }
   }
 
   async function handlePin() {

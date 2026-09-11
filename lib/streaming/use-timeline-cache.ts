@@ -29,6 +29,13 @@ export interface UseTimelineCacheOptions {
    * fixes feeds (like home) that have no tab-switch to trigger a refresh.
    */
   refetchOnMount?: boolean;
+  /**
+   * Utility feeds (bookmarks/favourites) whose membership changes elsewhere:
+   * a background refetch replaces the first page instead of merging it, so
+   * items removed on another screen (unbookmarked/unfavourited) don't linger
+   * in the cached feed until a full reload.
+   */
+  replaceOnRefetch?: boolean;
 }
 
 // Set to true whenever the user traverses history (browser back/forward). The
@@ -258,8 +265,12 @@ export function useTimelineCache<T extends { id: string }>(
           setStatuses((prev) => {
             // Merge with the canonical newest-first order and never let an
             // empty result wipe a cached feed (a transient failure returns an
-            // empty page; the cached items must survive it).
-            const merged = mergeTimelineItems(result.items, prev);
+            // empty page; the cached items must survive it). Membership feeds
+            // (bookmarks/favourites) replace instead: the server page is
+            // authoritative for what still belongs to the feed.
+            const merged = optionsRef.current.replaceOnRefetch === true
+              ? result.items
+              : mergeTimelineItems(result.items, prev);
             setTimelineCache(key, {
               items: merged,
               hasMore: result.hasMore,

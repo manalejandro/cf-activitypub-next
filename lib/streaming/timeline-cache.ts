@@ -37,6 +37,21 @@ export function purgeStatusFromCache(statusId: string): void {
   }
 }
 
+/**
+ * Replace a status in every cached feed where it appears (e.g. its
+ * `bookmarked`/`favourited`/counters changed). Feeds where the status no
+ * longer belongs (bookmarks after unbookmark, favourites after unfavourite)
+ * are handled by the page that performed the change.
+ */
+export function updateStatusInCache<T extends { id: string }>(status: T): void {
+  for (const entry of entries.values()) {
+    const items = entry.items as T[];
+    if (items.some((s) => s.id === status.id)) {
+      entry.items = items.map((s) => (s.id === status.id ? { ...s, ...status } : s));
+    }
+  }
+}
+
 export function isTimelineCacheFresh<T>(entry: TimelineCacheEntry<T>): boolean {
   return entry.ready && Date.now() - entry.fetchedAt < TIMELINE_CACHE_TTL_MS;
 }
