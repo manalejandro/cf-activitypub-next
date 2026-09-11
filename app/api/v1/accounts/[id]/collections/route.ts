@@ -20,14 +20,15 @@ export async function GET(
   const actor = await getActorById(env.DB, accountId);
   if (!actor) return notFound("Account not found");
 
-  // Remote profiles: fetch and cache their FEP-7aa9 collections (throttled to
-  // once an hour per actor) so the profile's Collections tab and search work.
-  if (!actor.isLocal) {
-    await syncRemoteCollections(env.DB, env.KV, actor.id);
-  }
-
   const me = await getAuthenticatedActor(request, env.DB);
   const isOwner = me !== null && me.id === actor.id;
+
+  // Remote profiles: fetch and cache their FEP-7aa9 collections (throttled to
+  // once an hour per actor). That is an outbound request, so only authenticated
+  // visitors trigger it; anonymous visitors see whatever is already cached.
+  if (!actor.isLocal && me) {
+    await syncRemoteCollections(env.DB, env.KV, actor.id);
+  }
 
   const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
   const offset = Math.max(parseInt(request.nextUrl.searchParams.get("offset") ?? "0"), 0);

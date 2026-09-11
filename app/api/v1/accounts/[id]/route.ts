@@ -22,33 +22,29 @@ export async function GET(
 
   let actor = await getActorById(env.DB, rawId);
 
-  // For remote actors: always re-fetch from source to get up-to-date counts.
-  // For actors not yet in DB: fetch and cache first.
-  // Resolution is authenticated-only: an anonymous visitor must not be able to
-  // make the instance fetch (or serve) remote accounts.
+  // For remote actors: authenticated requests refresh from source to get
+  // up-to-date counts; anonymous visitors may only read the cached copy (never
+  // trigger an outbound resolution/fetch).
   if (rawId.startsWith("https://")) {
-    if (!me) return unauthorized();
-    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
-    if (refreshed) {
-      actor = await getActorById(env.DB, refreshed.id) ?? actor;
-      if (refreshed.domain !== domain) {
-        supportsCalls = await getDomainCallsSupport(env.DB, refreshed.domain);
+    if (me) {
+      const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
+      if (refreshed) {
+        actor = await getActorById(env.DB, refreshed.id) ?? actor;
+        if (refreshed.domain !== domain) {
+          supportsCalls = await getDomainCallsSupport(env.DB, refreshed.domain);
+        }
       }
+    } else if (!actor) {
+      return unauthorized();
     }
   }
 
   if (!actor) return notFound("Account not found");
-  if (!actor.isLocal && !me) return unauthorized();
 
-  // Remote accounts: keep their FEP-7aa9 collections cached (throttled) so the
-  // profile tab and search have something to show.
-  if (!actor.isLocal) {
+  // These do outbound requests (verification, FEP-7aa9 collection sync), so
+  // they only run for authenticated visitors.
+  if (!actor.isLocal && me) {
     await syncRemoteCollections(env.DB, env.KV, actor.id).catch(() => {});
-  }
-
-  // Remote accounts are verified on demand (cached in KV) so the badge shows
-  // without depending on the cron.
-  if (!actor.isLocal) {
     await maybeVerifyRemoteAccount(env.DB, env.KV, actor.id, domain);
   }
 

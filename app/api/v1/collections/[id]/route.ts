@@ -16,11 +16,18 @@ import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
 async function serializeWithAccounts(
   db: D1Database,
   collectionId: string,
-  domain: string
+  domain: string,
+  viewerId: string | null
 ) {
   const col = await getCollectionById(db, collectionId);
   if (!col) return null;
-  const items = await getCollectionItems(db, collectionId);
+  const isOwner = viewerId !== null && viewerId === col.account_id;
+  // Non-discoverable collections are private to their owner.
+  if (!isOwner && !col.discoverable) return null;
+  // Pending inclusion requests are only visible to the owner.
+  const items = (await getCollectionItems(db, collectionId)).filter(
+    (i) => isOwner || i.state === "accepted"
+  );
   const accountIds = [col.account_id, ...items.map((i) => i.accountId)];
   const accounts = [];
   const seen = new Set<string>();
@@ -34,6 +41,7 @@ async function serializeWithAccounts(
 }
 
 // GET /api/v1/collections/:id — get a single Collection with its accounts.
+// Public for discoverable collections; anonymous visitors can open shared links.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,8 +49,9 @@ export async function GET(
   const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
+  const me = await getAuthenticatedActor(request, env.DB);
 
-  const data = await serializeWithAccounts(env.DB, id, domain);
+  const data = await serializeWithAccounts(env.DB, id, domain, me?.id ?? null);
   if (!data) return notFound("Collection not found");
 
   return json({

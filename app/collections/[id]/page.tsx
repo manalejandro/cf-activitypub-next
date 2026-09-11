@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
@@ -44,7 +43,6 @@ interface Collection {
 }
 
 export default function CollectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [accounts, setAccounts] = useState<CollectionAccount[]>([]);
@@ -57,10 +55,10 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
   const { t } = useLocale();
 
   async function fetchCollection(collectionId: string) {
-    if (!token) return;
-    const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Public reading: shared/discoverable collections must be viewable without
+    // a session. Auth only adds the owner controls and pending items.
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}`, { headers });
     if (res.ok) {
       const data = await res.json() as { accounts: CollectionAccount[]; collection: Collection };
       setCollection(data.collection);
@@ -78,8 +76,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
       if (res.ok) setMe(await res.json() as Me);
     }
 
-    if (!token) { router.push("/login"); return; }
-    void fetchMe();
+    if (token) void fetchMe();
     void (async () => {
       const { id } = await params;
       await fetchCollection(id);
@@ -139,12 +136,22 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
 
   const members = collection ? accounts.filter((a) => a.id !== collection.account_id) : [];
   const isOwner = collection && me ? collection.account_id === me.id : false;
+  // Back link: owners return to their list, visitors go to the curator's
+  // profile (so a shared collection link is a useful entry point).
+  const ownerAccount = collection ? accounts.find((a) => a.id === collection.account_id) ?? null : null;
+  const backHref = isOwner
+    ? "/collections"
+    : ownerAccount
+      ? ownerAccount.acct.includes("@")
+        ? `/users/remote?url=${encodeURIComponent(ownerAccount.id)}`
+        : `/users/${ownerAccount.username}`
+      : "/explore";
 
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/collections" />}>
       <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "1rem", zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <Link href="/collections" aria-label={t.collections_title} className="btn btn-ghost btn-sm" style={{ padding: "0.35rem 0.5rem" }}>
+          <Link href={backHref} aria-label={t.collections_title} className="btn btn-ghost btn-sm" style={{ padding: "0.35rem 0.5rem" }}>
             <Icon name="arrow-left" />
           </Link>
           <h1 className="text-lg font-bold" style={{ margin: 0 }}>{collection?.name ?? ""}</h1>
