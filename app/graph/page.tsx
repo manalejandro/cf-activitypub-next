@@ -358,6 +358,11 @@ function GraphView() {
                       {t.graph_unreachable}
                     </span>
                   )}
+                  {selected.lastError && (
+                    <span style={{ width: "100%", fontSize: "0.72rem", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                      {selected.lastError}
+                    </span>
+                  )}
                 </div>
               </div>
             )}

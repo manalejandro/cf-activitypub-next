@@ -52,11 +52,11 @@ export async function GET(): Promise<Response> {
   // as their own nodes even without a follower connection.
   const rejectionRows = await env.DB
     .prepare(
-      `SELECT domain, status FROM delivery_rejections
+      `SELECT domain, status, last_error FROM delivery_rejections
        WHERE status IN (0, 403)
          AND (last_ok_at IS NULL OR last_at > last_ok_at)`
     )
-    .all<{ domain: string; status: number }>();
+    .all<{ domain: string; status: number; last_error: string | null }>();
   for (const row of rejectionRows.results) {
     nodeSet.add(row.domain);
     if (nodeSet.size >= maxNodes) break;
@@ -66,6 +66,9 @@ export async function GET(): Promise<Response> {
   );
   const unreachableSet = new Set(
     rejectionRows.results.filter((r) => r.status === 0).map((r) => r.domain)
+  );
+  const lastErrorByDomain = new Map(
+    rejectionRows.results.map((r) => [r.domain, r.last_error ?? null])
   );
   // D1 caps the number of bind variables (~100), so the IN lists are passed as
   // one JSON array and expanded with json_each instead of one placeholder per
@@ -130,6 +133,7 @@ export async function GET(): Promise<Response> {
       blocked: blockedSet.has(d),
       blockedBy: blockedBySet.has(d),
       unreachable: unreachableSet.has(d),
+      lastError: lastErrorByDomain.get(d) ?? null,
     })),
     edges: [...merged.values()].sort((a, b) => b.weight - a.weight).slice(0, MAX_EDGES),
   });

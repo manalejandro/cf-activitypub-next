@@ -13,6 +13,7 @@ export interface GraphNode {
   blocked: boolean;
   blockedBy: boolean;
   unreachable: boolean;
+  lastError?: string | null;
   // React Flow's Node<T> requires T to extend Record<string, unknown>.
   [key: string]: unknown;
 }

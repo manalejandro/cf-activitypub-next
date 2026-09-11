@@ -424,6 +424,12 @@ async function deliverOne(
         .catch(() => {});
     } else if (permanent) {
       await recordDeliveryFailure(env, inboxDomain, res.status, `HTTP ${res.status}`);
+    } else if (res.status >= 500) {
+      // Server-side error (e.g. the remote's Cloudflare 52x TLS handshake
+      // failure). Not a block, but the instance is unusable right now: record
+      // it as unreachable (status 0, actual status in last_error) so the graph
+      // reflects it instead of staying silent.
+      await recordDeliveryFailure(env, inboxDomain, 0, `HTTP ${res.status}`);
     }
     return { ok: res.ok, permanent, status: res.status };
   } catch (err) {
