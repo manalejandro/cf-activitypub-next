@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
+import { getAuthenticatedActor } from "@/lib/auth";
 
 // GET /api/v1/accounts/lookup?acct=username[@domain]
 export async function GET(request: NextRequest): Promise<Response> {
@@ -20,9 +21,12 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getActorByUsername(env.DB, username, actorDomain ?? domain);
   if (!actor) return notFound("Account not found");
 
-  // This endpoint only reads the local cache (never resolves remotely), so
-  // anonymous visitors may see remote accounts we already cached. Triggering a
-  // remote fetch is what requires authentication (see /accounts/:id).
+  // Remote accounts are only served to authenticated users (local profiles stay
+  // public). The endpoint never fetches remotely — it only reads the cache.
+  if (!actor.isLocal) {
+    const me = await getAuthenticatedActor(request, env.DB);
+    if (!me) return unauthorized();
+  }
 
   // Remote accounts are verified on demand (cached in KV) so the badge shows
   // without depending on the cron.

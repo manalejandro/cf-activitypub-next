@@ -297,6 +297,8 @@ function RemoteProfileInner() {
 
   useEffect(() => {
     if (!actorUrl) return;
+    // Remote profiles are only viewable by authenticated users.
+    if (!token) { router.replace("/login"); return; }
     void load(actorUrl);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actorUrl]);

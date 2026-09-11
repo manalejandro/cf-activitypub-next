@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -32,20 +32,20 @@ export async function GET(
   if (!actor) return notFound("Account not found");
 
   const me = await getAuthenticatedActor(request, env.DB);
+  // Remote profiles (and their on-demand outbox fetch) are authenticated-only.
+  if (!actor.isLocal && !me) return unauthorized();
   const isFollowing = me ? !!(await getFollow(env.DB, me.id, actor.id)) : false;
 
   // Remote accounts whose statuses were never federated here have nothing in
   // `objects`. On the first page of a remote profile, poll the actor's outbox
-  // and ingest the visible statuses so the timeline isn't empty. This is an
-  // outbound fetch, so it only runs for authenticated visitors — anonymous
-  // requests see whatever is already cached.
-  if (!actor.isLocal && me && !pinnedOnly && !onlyReplies && !maxId) {
+  // and ingest the visible statuses so the timeline isn't empty.
+  if (!actor.isLocal && !pinnedOnly && !onlyReplies && !maxId) {
     await fetchAndCacheRemoteActorStatuses(env.DB, actor.id, limit);
   }
 
   // Remote pinned posts come from the actor's `featured` collection, not the
   // local status_pins table — ingest them so the pinned tab shows content.
-  if (pinnedOnly && !actor.isLocal && me) {
+  if (pinnedOnly && !actor.isLocal) {
     await fetchAndCacheRemoteActorFeatured(env.DB, actor.id);
   }
 

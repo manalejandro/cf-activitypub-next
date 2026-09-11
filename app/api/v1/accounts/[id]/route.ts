@@ -22,28 +22,25 @@ export async function GET(
 
   let actor = await getActorById(env.DB, rawId);
 
-  // For remote actors: authenticated requests refresh from source to get
-  // up-to-date counts; anonymous visitors may only read the cached copy (never
-  // trigger an outbound resolution/fetch).
+  // Remote accounts require an authenticated session: refresh from source for
+  // up-to-date counts, then verify/ sync as below. Anonymous visitors only get
+  // local accounts (public profiles).
   if (rawId.startsWith("https://")) {
-    if (me) {
-      const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
-      if (refreshed) {
-        actor = await getActorById(env.DB, refreshed.id) ?? actor;
-        if (refreshed.domain !== domain) {
-          supportsCalls = await getDomainCallsSupport(env.DB, refreshed.domain);
-        }
+    if (!me) return unauthorized();
+    const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
+    if (refreshed) {
+      actor = await getActorById(env.DB, refreshed.id) ?? actor;
+      if (refreshed.domain !== domain) {
+        supportsCalls = await getDomainCallsSupport(env.DB, refreshed.domain);
       }
-    } else if (!actor) {
-      return unauthorized();
     }
   }
 
   if (!actor) return notFound("Account not found");
+  if (!actor.isLocal && !me) return unauthorized();
 
-  // These do outbound requests (verification, FEP-7aa9 collection sync), so
-  // they only run for authenticated visitors.
-  if (!actor.isLocal && me) {
+  // These do outbound requests (verification, FEP-7aa9 collection sync).
+  if (!actor.isLocal) {
     await syncRemoteCollections(env.DB, env.KV, actor.id).catch(() => {});
     await maybeVerifyRemoteAccount(env.DB, env.KV, actor.id, domain);
   }

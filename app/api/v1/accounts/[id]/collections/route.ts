@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, listCollectionsForAccount } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
@@ -21,12 +21,15 @@ export async function GET(
   if (!actor) return notFound("Account not found");
 
   const me = await getAuthenticatedActor(request, env.DB);
+  // Remote profiles require a session (their collections sync is an outbound
+  // request). Discoverable collection *pages* remain public via
+  // /api/v1/collections/:id.
+  if (!actor.isLocal && !me) return unauthorized();
   const isOwner = me !== null && me.id === actor.id;
 
   // Remote profiles: fetch and cache their FEP-7aa9 collections (throttled to
-  // once an hour per actor). That is an outbound request, so only authenticated
-  // visitors trigger it; anonymous visitors see whatever is already cached.
-  if (!actor.isLocal && me) {
+  // once an hour per actor).
+  if (!actor.isLocal) {
     await syncRemoteCollections(env.DB, env.KV, actor.id);
   }
 
