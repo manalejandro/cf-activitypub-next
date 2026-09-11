@@ -15,6 +15,7 @@ import { Icon, type IconName } from "@/components/Icon";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
+import { collectionHref, isExternalCollection } from "@/lib/collection-link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ interface Account {
 }
 
 interface TrendingTag { name: string; url: string; history: { day: string; uses: string; accounts: string }[]; }
-interface Collection { id: string; name: string; description: string | null; item_count: number; account_id: string; }
+interface Collection { id: string; name: string; description: string | null; url?: string | null; local?: boolean; item_count: number; account_id: string; }
 interface SearchResults { accounts: Account[]; statuses: Status[]; hashtags: TrendingTag[]; collections: Collection[]; }
 type Tab = "trending" | "trending_tags" | "accounts" | "hashtags" | "statuses" | "collections";
 
@@ -454,7 +455,9 @@ function AccountCard({ account }: { account: Account }) {
 function CollectionCard({ collection }: { collection: Collection }) {
   const { t } = useLocale();
   return (
-    <Link href={`/collections/${encodeURIComponent(collection.id)}`}
+    <Link href={collectionHref(collection)}
+      target={isExternalCollection(collection) ? "_blank" : undefined}
+      rel={isExternalCollection(collection) ? "noopener noreferrer" : undefined}
       style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}>
       <div style={{ width: 42, height: 42, flexShrink: 0, borderRadius: "var(--radius)", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
         <Icon name="users" size="1.1rem" />

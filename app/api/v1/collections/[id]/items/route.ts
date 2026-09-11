@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, addAccountToCollection } from "@/lib/db";
+import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
 
 // POST /api/v1/collections/:collection_id/items — add an account to a Collection.
 export async function POST(
@@ -31,6 +32,8 @@ export async function POST(
 
   const item = await addAccountToCollection(env.DB, id, accountId);
   if (!item) return badRequest("Could not add the given account");
+
+  await deliverCollectionUpdate(env, actor, col).catch(() => {});
 
   return json({
     collection_item: {

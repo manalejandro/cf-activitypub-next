@@ -5,6 +5,7 @@ import { createCollection, addAccountToCollection, getCollectionById } from "@/l
 import { serializeCollection } from "@/lib/mastodon/serializers";
 import { generateId } from "@/lib/activitypub/utils";
 import { resolveLimits } from "@/lib/constants";
+import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
 
 // POST /api/v1/collections — create a new Collection.
 export async function POST(request: NextRequest): Promise<Response> {
@@ -61,5 +62,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const col = await getCollectionById(env.DB, id);
   if (!col) return badRequest("Failed to create collection");
+  await deliverCollectionUpdate(env, actor, col).catch(() => {});
   return json({ collection: serializeCollection(col, domain) });
 }

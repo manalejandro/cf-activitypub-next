@@ -66,6 +66,8 @@ export interface APActor extends APObject {
   published?: string;
   alsoKnownAs?: string[];
   movedTo?: string;
+  /** FEP-7aa9: URI of the actor's featured collections listing. */
+  featuredCollections?: string;
   attachment?: APPropertyValue[];
   tag?: APTag[];
 }
@@ -206,6 +208,8 @@ export interface LocalActor {
   // account migration
   alsoKnownAs?: string[] | null;
   movedTo?: string | null;
+  // FEP-7aa9 — remote actor's featured collections listing URI
+  collectionsUrl?: string | null;
   // federation — stored for remote actors; computed for local
   inbox?: string;
   outbox?: string;

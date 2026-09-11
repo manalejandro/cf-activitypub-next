@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getMlsKeyPackagesByActor, countMlsMessagesByRecipient, getAllCustomEmojis } from "@/lib/db";
 import { buildActor } from "@/lib/activitypub/utils";
+import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { processStatusContent, localSummaryToPlain } from "@/lib/activitypub/content";
 
 // GET /users/:username
@@ -68,6 +69,13 @@ export async function GET(
 
   return activityJson({
     ...apActor,
+    // FEP-7aa9 federated collections: the listing endpoint plus the policy that
+    // lets remote instances include this account in their own collections
+    // without a manual approval round-trip.
+    featuredCollections: `${baseUrl}/users/${actor.username}/collections`,
+    interactionPolicy: {
+      canFeature: { automaticApproval: PUBLIC_ADDRESS },
+    },
     // MLS over ActivityPub (RFC 9420 draft) collections.
     keyPackages: {
       type: "Collection",

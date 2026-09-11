@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS actors (
   reserved           INTEGER NOT NULL DEFAULT 0,
   also_known_as      TEXT,                          -- JSON array of alias actor IRIs (account migration)
   moved_to           TEXT,                          -- actor IRI the account migrated to
+  collections_url    TEXT,                          -- remote actor's FEP-7aa9 featuredCollections URI
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   last_active_at     TEXT,
@@ -593,6 +594,7 @@ CREATE TABLE IF NOT EXISTS collections (
   account_id    TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   description   TEXT,
+  url           TEXT,                          -- remote: web URL from the AP object
   language      TEXT,
   tag_name      TEXT,
   sensitive     INTEGER NOT NULL DEFAULT 0,

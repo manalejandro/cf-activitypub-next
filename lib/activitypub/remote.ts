@@ -200,6 +200,9 @@ export async function fetchAndCacheRemoteActor(
     // account serializers can report the federated value.
     const lastStatusAtRaw = (p as unknown as Record<string, unknown>).last_status_at;
     const lastStatusAt = typeof lastStatusAtRaw === "string" && lastStatusAtRaw ? lastStatusAtRaw.slice(0, 10) : null;
+    // FEP-7aa9: URI of the actor's federated collections listing.
+    const featuredCollectionsRaw = (p as unknown as Record<string, unknown>).featuredCollections;
+    const featuredCollections = typeof featuredCollectionsRaw === "string" && featuredCollectionsRaw ? featuredCollectionsRaw : null;
     try {
       try {
         await db
@@ -208,8 +211,8 @@ export async function fetchAndCacheRemoteActor(
              (id, username, domain, display_name, summary, avatar_url, header_url,
               public_key_pem, private_key_pem, is_local, is_bot,
               manually_approves_followers, discoverable,
-              followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at)
-             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?)
+              followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at, collections_url)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                display_name = excluded.display_name,
                summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -226,6 +229,7 @@ export async function fetchAndCacheRemoteActor(
                last_status_at = CASE
                  WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
                  ELSE actors.last_status_at END,
+               collections_url = COALESCE(NULLIF(excluded.collections_url, ''), actors.collections_url),
                updated_at = datetime('now')
              WHERE actors.is_local = 0`
           )
@@ -244,6 +248,7 @@ export async function fetchAndCacheRemoteActor(
             inbox,
             alsoKnownAs,
             lastStatusAt,
+            featuredCollections,
           )
           .run();
       } catch {

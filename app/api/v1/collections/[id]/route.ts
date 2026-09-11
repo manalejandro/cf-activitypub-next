@@ -11,6 +11,7 @@ import {
   getActorById,
 } from "@/lib/db";
 import { serializeCollection, serializeAccount } from "@/lib/mastodon/serializers";
+import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
 
 async function serializeWithAccounts(
   db: D1Database,
@@ -91,6 +92,7 @@ export async function PATCH(
   const updated = await getCollectionById(env.DB, id);
   const items = await getCollectionItems(env.DB, id);
   if (!updated) return notFound("Collection not found");
+  await deliverCollectionUpdate(env, actor, updated).catch(() => {});
   return json({ collection: serializeCollection(updated, domain, items) });
 }
 
@@ -109,6 +111,7 @@ export async function DELETE(
   if (!col) return notFound("Collection not found");
   if (col.account_id !== actor.id) return json({ error: "This action is not allowed" }, 403);
 
+  await deliverCollectionUpdate(env, actor, col, "Delete").catch(() => {});
   await deleteCollection(env.DB, id);
   return json({});
 }

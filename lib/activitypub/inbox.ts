@@ -36,6 +36,8 @@ import {
   getLastStatusAtMap,
   isActorBlockedBy,
   getInstanceDomainBlock,
+  getCollectionById,
+  deleteCollection,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -47,6 +49,7 @@ import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
+import { syncRemoteCollections } from "./collections";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
@@ -1246,6 +1249,13 @@ async function handleDelete(activity: APActivity, ctx: InboxContext): Promise<vo
     return;
   }
 
+  // FEP-7aa9: a remote actor deleted one of its federated collections.
+  const cachedCollection = await getCollectionById(ctx.db, objectId);
+  if (cachedCollection && !cachedCollection.local && cachedCollection.account_id === actorId) {
+    await deleteCollection(ctx.db, objectId);
+    return;
+  }
+
   // MLS: delete a KeyPackage or a delivered message envelope. Deletions are
   // scoped to the signer so one actor cannot wipe another's stored objects.
   const kp = await getMlsKeyPackageByObjectId(ctx.db, objectId);
@@ -1453,6 +1463,18 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
   if (!obj || typeof obj !== "object") return;
 
   const actorId = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
+
+  // FEP-7aa9: a remote actor updated one of its federated collections. Refresh
+  // the cached copy immediately (the id must be on the signer's own domain,
+  // mirroring Mastodon's ProcessFeaturedCollectionService check).
+  if ((obj.type as string) === "FeaturedCollection") {
+    try {
+      if (obj.id && new URL(obj.id).hostname === new URL(actorId).hostname) {
+        await syncRemoteCollections(ctx.db, ctx.kv, actorId, { force: true });
+      }
+    } catch { /* ignore */ }
+    return;
+  }
 
   // Handle object/status edits (Mastodon 3.5.0+)
   if (obj.type === "Note" || isContentObjectType(typeof obj.type === "string" ? obj.type.split("/").pop() ?? "" : "")) {

@@ -23,6 +23,7 @@ import { EmojiInput } from "@/components/EmojiInput";
 import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { Loading } from "@/components/Loading";
+import { collectionHref, isExternalCollection } from "@/lib/collection-link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,8 @@ interface Collection {
   id: string;
   name: string;
   description: string | null;
+  url?: string | null;
+  local?: boolean;
   item_count: number;
 }
 
@@ -1213,7 +1216,9 @@ export default function ProfilePage() {
                   {collections.map((c) => (
                     <Link
                       key={c.id}
-                      href={`/collections/${encodeURIComponent(c.id)}`}
+                      href={collectionHref(c)}
+                      target={isExternalCollection(c) ? "_blank" : undefined}
+                      rel={isExternalCollection(c) ? "noopener noreferrer" : undefined}
                       style={{ display: "flex", alignItems: "center", gap: "0.875rem", padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "var(--text)" }}
                     >
                       <div style={{ width: 42, height: 42, flexShrink: 0, borderRadius: "var(--radius)", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>

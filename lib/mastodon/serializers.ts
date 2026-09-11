@@ -190,6 +190,7 @@ export interface CollectionInput {
   account_id: string;
   name: string;
   description: string | null;
+  url?: string | null;
   language: string | null;
   tag_name: string | null;
   sensitive: number;
@@ -207,11 +208,12 @@ export function serializeCollection(
 ): MastodonCollection {
   const baseUrl = `https://${localDomain}`;
   const tagName = col.tag_name ? col.tag_name.replace(/^#/, "") : null;
+  const isRemote = !col.local && /^https?:\/\//i.test(col.id);
   return {
     id: col.id,
     account_id: col.account_id,
-    uri: `${baseUrl}/collections/${col.id}`,
-    url: `${baseUrl}/collections/${col.id}`,
+    uri: isRemote ? col.id : `${baseUrl}/collections/${col.id}`,
+    url: isRemote ? (col.url ?? col.id) : `${baseUrl}/collections/${col.id}`,
     name: col.name,
     description: col.description,
     language: col.language,

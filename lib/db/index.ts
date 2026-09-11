@@ -89,6 +89,7 @@ function rowToActor(r: Row): LocalActor {
     verified: r.verified === undefined ? undefined : Boolean(r.verified),
     alsoKnownAs: r.also_known_as ? safeJsonParseArray(r.also_known_as) : null,
     movedTo: r.moved_to ?? null,
+    collectionsUrl: r.collections_url ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     inbox: r.inbox ?? null,
@@ -591,8 +592,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             id, username, domain, display_name, summary, avatar_url, header_url,
             public_key_pem, private_key_pem, is_local, is_bot,
             manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at
-          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
+            followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at, collections_url
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?,?)
           ON CONFLICT(id) DO UPDATE SET
             display_name = excluded.display_name,
             summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -607,6 +608,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             last_status_at = CASE
               WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
               ELSE actors.last_status_at END,
+            collections_url = COALESCE(NULLIF(excluded.collections_url, ''), actors.collections_url),
             updated_at = datetime('now')
           WHERE actors.is_local = 0`
         )
@@ -624,7 +626,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.discoverable !== false ? 1 : 0,
           actor.inbox,
           alsoKnownAs,
-          lastStatusAtStr
+          lastStatusAtStr,
+          actor.featuredCollections ?? null
         )
         .run();
     } catch {
@@ -953,6 +956,7 @@ export interface CollectionRow {
   account_id: string;
   name: string;
   description: string | null;
+  url: string | null;
   language: string | null;
   tag_name: string | null;
   sensitive: number;
@@ -969,6 +973,7 @@ function rowToCollection(r: Row): CollectionRow {
     account_id: r.account_id,
     name: r.name,
     description: r.description ?? null,
+    url: r.url ?? null,
     language: r.language ?? null,
     tag_name: r.tag_name ?? null,
     sensitive: r.sensitive,
@@ -1010,6 +1015,20 @@ export async function getCollectionById(db: D1Database, id: string): Promise<Col
     .bind(id)
     .first<Row>();
   return row ? rowToCollection(row) : null;
+}
+
+export async function countCollectionsForAccount(
+  db: D1Database,
+  accountId: string,
+  discoverableOnly = false
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM collections WHERE account_id = ?${discoverableOnly ? " AND discoverable = 1" : ""}`
+    )
+    .bind(accountId)
+    .first<{ c: number }>();
+  return Number(row?.c ?? 0);
 }
 
 export async function listCollectionsForAccount(
@@ -1094,6 +1113,90 @@ export async function updateCollection(
 
 export async function deleteCollection(db: D1Database, id: string): Promise<void> {
   await db.prepare("DELETE FROM collections WHERE id = ?").bind(id).run();
+}
+
+export interface RemoteCollectionInput {
+  id: string;
+  accountId: string;
+  name: string;
+  description: string | null;
+  url: string | null;
+  language: string | null;
+  tagName: string | null;
+  sensitive: boolean;
+  discoverable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Cache a collection discovered on a remote actor (FEP-7aa9). */
+export async function upsertRemoteCollection(db: D1Database, col: RemoteCollectionInput): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO collections
+         (id, account_id, name, description, url, language, tag_name, sensitive, discoverable, local, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,0,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         description = excluded.description,
+         url = excluded.url,
+         language = excluded.language,
+         tag_name = excluded.tag_name,
+         sensitive = excluded.sensitive,
+         discoverable = excluded.discoverable,
+         updated_at = excluded.updated_at`
+    )
+    .bind(
+      col.id,
+      col.accountId,
+      col.name,
+      col.description,
+      col.url,
+      col.language,
+      col.tagName,
+      col.sensitive ? 1 : 0,
+      col.discoverable ? 1 : 0,
+      col.createdAt,
+      col.updatedAt
+    )
+    .run();
+}
+
+/**
+ * Replace the cached items of a remote collection. Only accounts already in
+ * `actors` are linked (collection_items has an FK); uncached remote accounts
+ * are skipped rather than fetched in bulk.
+ */
+export async function replaceRemoteCollectionItems(
+  db: D1Database,
+  collectionId: string,
+  accountIds: string[]
+): Promise<void> {
+  const unique = [...new Set(accountIds)].slice(0, 150);
+  const known = new Set<string>();
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    try {
+      const rows = await db
+        .prepare(`SELECT id FROM actors WHERE id IN (${placeholders})`)
+        .bind(...chunk)
+        .all<{ id: string }>();
+      for (const r of rows.results ?? []) known.add(r.id);
+    } catch { /* keep the other chunks */ }
+  }
+  // Preserve the remote `orderedItems` order: SQL result order is not stable
+  // (the planner may scan an index), so filter the original list instead.
+  const ordered = unique.filter((id) => known.has(id));
+  await db.prepare("DELETE FROM collection_items WHERE collection_id = ? AND state = 'accepted'").bind(collectionId).run();
+  for (let i = 0; i < ordered.length; i++) {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO collection_items (id, collection_id, account_id, state, created_at) VALUES (?,?,?,'accepted',?)"
+      )
+      .bind(`${collectionId}:${ordered[i]}`, collectionId, ordered[i], new Date(Date.now() + i).toISOString())
+      .run();
+  }
 }
 
 export async function getCollectionItems(db: D1Database, collectionId: string): Promise<LocalCollectionItem[]> {

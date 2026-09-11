@@ -3,6 +3,7 @@ import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
+import { syncRemoteCollections } from "@/lib/activitypub/collections";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getAuthenticatedActor } from "@/lib/auth";
 
@@ -38,6 +39,12 @@ export async function GET(
 
   if (!actor) return notFound("Account not found");
   if (!actor.isLocal && !me) return unauthorized();
+
+  // Remote accounts: keep their FEP-7aa9 collections cached (throttled) so the
+  // profile tab and search have something to show.
+  if (!actor.isLocal) {
+    await syncRemoteCollections(env.DB, env.KV, actor.id).catch(() => {});
+  }
 
   // Remote accounts are verified on demand (cached in KV) so the badge shows
   // without depending on the cron.

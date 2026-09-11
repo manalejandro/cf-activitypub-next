@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, getCollectionItemById, deleteCollectionItem } from "@/lib/db";
+import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
 
 // DELETE /api/v1/collections/:collection_id/items/:item_id — remove an account
 // from a Collection (owner only).
@@ -23,6 +24,7 @@ export async function DELETE(
   if (!item || item.collectionId !== id) return notFound("Collection item not found");
 
   await deleteCollectionItem(env.DB, itemId);
+  await deliverCollectionUpdate(env, actor, col).catch(() => {});
 
   return json({});
 }
