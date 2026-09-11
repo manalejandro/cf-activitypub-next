@@ -892,5 +892,8 @@
   "a11y_language": "言語",
   "error_network": "ネットワークエラー",
   "graph_unreachable": "到達不能",
-  "graph_legend_unreachable": "到達できないインスタンス"
+  "graph_legend_unreachable": "到達できないインスタンス",
+  "redirect_title": "{instance} から離れようとしています。",
+  "redirect_hint": "このリンクを信頼できる場合は、クリックして続行してください。",
+  "redirect_invalid": "このリンクは有効ではありません。"
 }

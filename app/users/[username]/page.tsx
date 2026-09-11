@@ -16,6 +16,7 @@ import type { Status as SharedStatus } from "@/components/StatusCard";
 import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
+import { externalProfileUrl } from "@/lib/remote-link";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -377,6 +378,13 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!routeUsername) return;
+    // Direct /users/user@domain hits show Mastodon's leaving interstitial like
+    // /@user@domain — remote accounts are never resolved by URL.
+    const external = externalProfileUrl(routeUsername, "", window.location.hostname);
+    if (external) {
+      router.replace(`/redirect?url=${encodeURIComponent(external)}`);
+      return;
+    }
     Promise.resolve().then(() => void load(routeUsername));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeUsername]);

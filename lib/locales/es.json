@@ -892,5 +892,8 @@
   "a11y_language": "Idioma",
   "error_network": "Error de red",
   "graph_unreachable": "Inalcanzable",
-  "graph_legend_unreachable": "Instancia inalcanzable"
+  "graph_legend_unreachable": "Instancia inalcanzable",
+  "redirect_title": "Vas a salir de {instance}.",
+  "redirect_hint": "Si confías en este enlace, púlsalo para continuar.",
+  "redirect_invalid": "Este enlace no es válido."
 }

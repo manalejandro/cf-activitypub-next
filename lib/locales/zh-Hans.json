@@ -892,5 +892,8 @@
   "a11y_language": "语言",
   "error_network": "网络错误",
   "graph_unreachable": "无法访问",
-  "graph_legend_unreachable": "无法访问的实例"
+  "graph_legend_unreachable": "无法访问的实例",
+  "redirect_title": "你即将离开 {instance}。",
+  "redirect_hint": "如果你信任此链接，请点击继续。",
+  "redirect_invalid": "此链接无效。"
 }

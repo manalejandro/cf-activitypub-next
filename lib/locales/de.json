@@ -892,5 +892,8 @@
   "a11y_language": "Sprache",
   "error_network": "Netzwerkfehler",
   "graph_unreachable": "Nicht erreichbar",
-  "graph_legend_unreachable": "Nicht erreichbare Instanz"
+  "graph_legend_unreachable": "Nicht erreichbare Instanz",
+  "redirect_title": "Du verlässt gerade {instance}.",
+  "redirect_hint": "Wenn du diesem Link vertraust, klicke darauf, um fortzufahren.",
+  "redirect_invalid": "Dieser Link ist ungültig."
 }

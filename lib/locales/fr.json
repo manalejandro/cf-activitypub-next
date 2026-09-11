@@ -892,5 +892,8 @@
   "a11y_language": "Langue",
   "error_network": "Erreur réseau",
   "graph_unreachable": "Injoignable",
-  "graph_legend_unreachable": "Instance injoignable"
+  "graph_legend_unreachable": "Instance injoignable",
+  "redirect_title": "Vous allez quitter {instance}.",
+  "redirect_hint": "Si vous faites confiance à ce lien, cliquez dessus pour continuer.",
+  "redirect_invalid": "Ce lien n'est pas valide."
 }

@@ -892,5 +892,8 @@
   "a11y_language": "Idioma",
   "error_network": "Erro de rede",
   "graph_unreachable": "Inacessível",
-  "graph_legend_unreachable": "Instância inacessível"
+  "graph_legend_unreachable": "Instância inacessível",
+  "redirect_title": "Você está prestes a sair de {instance}.",
+  "redirect_hint": "Se você confia neste link, clique nele para continuar.",
+  "redirect_invalid": "Este link não é válido."
 }

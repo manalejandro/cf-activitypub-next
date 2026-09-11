@@ -892,5 +892,8 @@
   "a11y_language": "언어",
   "error_network": "네트워크 오류",
   "graph_unreachable": "연결 불가",
-  "graph_legend_unreachable": "연결할 수 없는 인스턴스"
+  "graph_legend_unreachable": "연결할 수 없는 인스턴스",
+  "redirect_title": "{instance}에서 나가려고 합니다.",
+  "redirect_hint": "이 링크를 신뢰한다면 클릭하여 계속하세요.",
+  "redirect_invalid": "유효하지 않은 링크입니다."
 }

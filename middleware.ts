@@ -5,6 +5,7 @@
 // so it is fully Edge-compatible.
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { externalProfileUrl } from "@/lib/remote-link";
 
 // CORS headers for all API routes (ActivityPub federation + Mastodon API)
 const CORS_HEADERS: Record<string, string> = {
@@ -103,6 +104,19 @@ export function middleware(request: NextRequest) {
     const username = atMatch[1];
     const rest = atMatch[2] ?? "";
     const url = request.nextUrl.clone();
+
+    // Remote handle (/@user@domain): Mastodon shows a "you are about to leave"
+    // interstitial pointing at the account's home instance instead of resolving
+    // it locally. Resolution happens only through the authenticated account
+    // endpoint (see /api/v1/accounts/:id).
+    const external = externalProfileUrl(username, rest, request.nextUrl.hostname);
+    if (external && !isAPRequest(request)) {
+      url.pathname = "/redirect";
+      url.search = `?url=${encodeURIComponent(external)}`;
+      const rewriteResponse = NextResponse.rewrite(url);
+      Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+      return rewriteResponse;
+    }
 
     // AP clients requesting /@username → serve actor JSON
     if (isAPRequest(request)) {

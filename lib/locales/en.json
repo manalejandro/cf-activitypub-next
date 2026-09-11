@@ -892,5 +892,8 @@
   "a11y_language": "Language",
   "error_network": "Network error",
   "graph_unreachable": "Unreachable",
-  "graph_legend_unreachable": "Unreachable instance"
+  "graph_legend_unreachable": "Unreachable instance",
+  "redirect_title": "You are about to leave {instance}.",
+  "redirect_hint": "If you trust this link, click it to continue.",
+  "redirect_invalid": "This link is not valid."
 }
