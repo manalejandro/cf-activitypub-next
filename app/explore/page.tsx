@@ -508,6 +508,11 @@ function AccountCard({ account, source, onDismiss }: { account: Account; source?
           <span><strong style={{ color: "var(--text)" }}>{account.statuses_count}</strong> {t.profile_posts_label}</span>
         </div>
       </div>
+      {isRemote && (
+        <a href={account.url ?? "#"} target="_blank" rel="noopener noreferrer"
+          style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}
+          title={t.a11y_view_remote_profile}><Icon name="globe" /></a>
+      )}
       {token && (
         <button
           className={following || requested ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"}
@@ -517,11 +522,6 @@ function AccountCard({ account, source, onDismiss }: { account: Account; source?
         >
           {busy ? "…" : following ? t.account_following : requested ? t.account_requested : t.account_follow}
         </button>
-      )}
-      {isRemote && (
-        <a href={account.url ?? "#"} target="_blank" rel="noopener noreferrer"
-          style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: "0.85rem", textDecoration: "none" }}
-          title={t.a11y_view_remote_profile}><Icon name="globe" /></a>
       )}
       {onDismiss && (
         <button
