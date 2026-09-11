@@ -770,28 +770,14 @@ async function executeScheduled(env: Env): Promise<void> {
   // Guard against overlapping cron invocations (slow runs or clock drift): only
   // one patrol runs at a time. The lock outlives the run (90s > the stage
   // budgets) so a slow stage can't start a second concurrent run; the per-stage
-  // KV throttles keep every run inside the overlap window. The lock stores the
-  // running stage + start time so a skip explains itself in the logs.
+  // KV throttles keep every run inside the overlap window. Overlapping ticks
+  // return silently — the cron stays quiet unless a stage fails.
   const existingLock = await env.KV.get("cron:lock").catch(() => null);
-  if (existingLock) {
-    let info = "";
-    try {
-      const parsed = JSON.parse(existingLock) as { startedAt?: string; stage?: string };
-      if (parsed.startedAt) {
-        const elapsed = Math.round((Date.now() - new Date(parsed.startedAt).getTime()) / 1000);
-        info = ` (stage=${parsed.stage ?? "?"} elapsed=${elapsed}s)`;
-      }
-    } catch { /* legacy lock value */ }
-    // Info-level: the guard is working as intended; with the per-task KV
-    // throttles the previous run should finish within the window, so this is
-    // rare and not an error condition.
-    console.log(`[cron] skipping overlapping run${info}`);
-    return;
-  }
+  if (existingLock) return;
   const runStartedAt = Date.now();
-  let currentStage = "start";
+  // The stage is stored in the lock (and refreshes its TTL) so a long run can't
+  // let a second one start while a stage is still executing.
   const setStage = async (name: string) => {
-    currentStage = name;
     await env.KV
       .put("cron:lock", JSON.stringify({ startedAt: new Date(runStartedAt).toISOString(), stage: name }), {
         expirationTtl: 90,
@@ -952,12 +938,6 @@ async function executeScheduled(env: Env): Promise<void> {
   } catch (err) {
     console.error("[cron] executeScheduled failed", err);
   } finally {
-    const elapsedSeconds = Math.round((Date.now() - runStartedAt) / 1000);
-    if (elapsedSeconds >= 55) {
-      console.warn(`[cron] run took ${elapsedSeconds}s (last stage: ${currentStage}) — overlaps are likely`);
-    } else {
-      console.log(`[cron] run completed in ${elapsedSeconds}s`);
-    }
     await env.KV.delete("cron:lock").catch(() => {});
   }
 }

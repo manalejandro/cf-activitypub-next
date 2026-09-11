@@ -64,7 +64,6 @@ async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
   const startedAt = Date.now();
   for (const row of rows.results) {
     if (budgetExceeded(startedAt, 25_000)) {
-      console.log("[moderation] status screen: time budget spent, continuing next run");
       return;
     }
     if (env.KV) {
@@ -141,7 +140,6 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
   const startedAt = Date.now();
   for (const { id } of candidates) {
     if (budgetExceeded(startedAt, 30_000)) {
-      console.log("[moderation] account scan: time budget spent, continuing next run");
       return;
     }
     if (env.KV && (await env.KV.get(`guardian:account:${id}`))) continue;
