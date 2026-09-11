@@ -7,7 +7,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, mergeTimelineItems } from "@/lib/streaming/timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
@@ -43,7 +43,7 @@ export default function TagPage() {
     const base = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url);
-    if (!res.ok) return { items: [], hasMore: true };
+    if (!res.ok) throw new Error(`tag timeline failed: ${res.status}`);
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [tagName, limits.defaultTimelinePage]);
@@ -63,9 +63,9 @@ export default function TagPage() {
     if (res.ok) {
       const data = await res.json() as Status[];
       const newStatuses = data.filter((s) => !seenIdsRef.current.has(s.id));
-      for (const s of newStatuses) seenIdsRef.current.add(s.id);
       if (newStatuses.length > 0) {
-        setStatuses((prev) => [...newStatuses, ...prev]);
+        // Canonical newest-first merge, same order a reload would show.
+        setStatuses((prev) => mergeTimelineItems(newStatuses, prev));
       }
     }
   }

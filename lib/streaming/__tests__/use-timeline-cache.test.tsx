@@ -13,8 +13,11 @@ let fetchResults: Record<string, S[]> = {
   federated: [{ id: "F1" }, { id: "F2" }],
 };
 
+let fetchShouldFail: Record<string, boolean> = {};
+
 function Feed({ feedKey }: { feedKey: string }) {
   const { statuses, setStatuses } = useTimelineCache<S>(feedKey, async () => {
+    if (fetchShouldFail[feedKey]) throw new Error("fetch failed");
     const items = fetchResults[feedKey] ?? [];
     return { items, hasMore: false };
   });
@@ -53,6 +56,7 @@ beforeEach(() => {
     local: [{ id: "L1" }, { id: "L2" }],
     federated: [{ id: "F1" }, { id: "F2" }],
   };
+  fetchShouldFail = {};
   scrollSpy.mockClear();
 });
 
@@ -67,7 +71,6 @@ function cacheLocal() {
   setTimelineCache("local", {
     items: [{ id: "L1" }, { id: "L2" }],
     hasMore: false,
-    seenIds: ["L1", "L2"],
     scrollY: 800,
     fetchedAt: Date.now(),
     ready: true,
@@ -78,7 +81,6 @@ function cacheFederated() {
   setTimelineCache("federated", {
     items: [{ id: "F1" }, { id: "F2" }],
     hasMore: false,
-    seenIds: ["F1", "F2"],
     scrollY: 200,
     fetchedAt: Date.now(),
     ready: true,
@@ -194,5 +196,27 @@ describe("useTimelineCache tab switching", () => {
     // The restore lands only on the feed's own offset (800) or the top (0).
     // A re-anchor to the first cached item would scroll somewhere in between.
     expect(scrollSpy.mock.calls.every(([, y]) => y === 0 || y === 800)).toBe(true);
+  });
+
+  it("a failed background refetch keeps the cached feed instead of wiping it", async () => {
+    cacheLocal();
+
+    render(<App />);
+    expect(await screen.findByTestId("st-L1")).toBeTruthy();
+
+    // Server request starts failing; switch away and back.
+    fetchShouldFail.local = true;
+    await act(async () => {
+      screen.getByText("go-federated").click();
+    });
+    await screen.findByTestId("st-F1");
+    await act(async () => {
+      screen.getByText("go-local").click();
+    });
+
+    // The cached items survive (they used to be replaced by the empty page).
+    expect(await screen.findByTestId("st-L1")).toBeTruthy();
+    expect(screen.getByTestId("st-L2")).toBeTruthy();
+    expect(getTimelineCache<{ id: string }>("local")?.items.map((s) => s.id)).toEqual(["L1", "L2"]);
   });
 });

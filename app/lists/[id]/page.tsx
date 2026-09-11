@@ -10,7 +10,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { useLimits } from "@/lib/limits-client";
@@ -62,35 +62,18 @@ export default function ListDetailPage() {
     const base = `/api/v1/timelines/list?list_id=${encodeURIComponent(listId)}&limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return { items: [], hasMore: true };
+    if (!res.ok) throw new Error(`list timeline failed: ${res.status}`);
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, listId, limits.defaultTimelinePage]);
 
-  const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, loadMore } = useTimelineCache(`list:${listId}`, fetchPage);
+  const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, seenIdsRef, loadMore, catchUp } = useTimelineCache(`list:${listId}`, fetchPage);
 
   // Live updates on list feeds: new statuses, deletions and counter/content
   // refreshes (edits, favs, reblogs, replies).
   useTimelineStream(`list:${listId}`, (event, payload) => {
-    if (event === "update") {
-      try {
-        const status = JSON.parse(payload) as Status;
-        setStatuses((prev) => {
-          if (prev.some((s) => s.id === status.id)) return prev;
-          return [status, ...prev];
-        });
-      } catch { /* ignore */ }
-    } else if (event === "delete") {
-      const deletedId = payload.replace(/^"|"$/g, "");
-      purgeStatusFromCache(deletedId);
-      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
-    } else if (event === "status.update") {
-      try {
-        const updated = JSON.parse(payload) as Status;
-        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
-      } catch { /* ignore */ }
-    }
-  });
+    handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current);
+  }, { onReconnect: () => { void catchUp(); } });
 
   useEffect(() => {
     if (!token || !params?.id) { router.push("/login"); return; }

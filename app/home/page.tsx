@@ -9,7 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -54,7 +54,8 @@ export default function HomePage() {
   const fetchPage = useCallback(async (maxId?: string) => {
     const url = maxId ? `/api/v1/timelines/home?max_id=${encodeURIComponent(maxId)}` : "/api/v1/timelines/home";
     const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) return { items: [], hasMore: true };
+    // Throw on failure: the cache hook keeps the current feed and retries later.
+    if (!res.ok) throw new Error(`home timeline failed: ${res.status}`);
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [limits.defaultTimelinePage]);
@@ -63,24 +64,8 @@ export default function HomePage() {
 
   // Real-time home feed streaming
   useTimelineStream("user", (event, payload) => {
-    if (event === "update") {
-      try {
-        const status = JSON.parse(payload) as Status;
-        if (seenIdsRef.current.has(status.id)) return;
-        seenIdsRef.current.add(status.id);
-        setStatuses((prev) => [status, ...prev]);
-      } catch { /* ignore */ }
-} else if (event === "delete") {
-      const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
-      seenIdsRef.current.delete(deletedId);
-      purgeStatusFromCache(deletedId);
-      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
-    } else if (event === "status.update") {
-      try {
-        const updated = JSON.parse(payload) as Status;
-        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
-      } catch { /* ignore */ }
-    } else if (event === "filters_changed") {
+    if (handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current)) return;
+    if (event === "filters_changed") {
       // Server filters changed: cached statuses embed the old `filtered`
       // results, so drop every cached feed and refetch with the new rules.
       clearAllTimelineCaches();

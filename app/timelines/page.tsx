@@ -8,7 +8,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
+import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
@@ -40,35 +40,19 @@ export default function TimelinesPage() {
     const limit = maxId ? limits.defaultTimelinePage : limits.pageSize;
     const url = `/api/v1/timelines/public?limit=${limit}${local ? "&local=true" : ""}${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ""}`;
     const res = await fetch(url);
-    if (!res.ok) return { items: [], hasMore: true };
+    // Throw on failure: the cache hook keeps the current feed and retries later.
+    if (!res.ok) throw new Error(`public timeline failed: ${res.status}`);
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limit };
   }, [view, limits.defaultTimelinePage, limits.pageSize]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
   useTimelineStream(streamName, (event, payload) => {
-    if (event === "update") {
-      try {
-        const status = JSON.parse(payload) as Status;
-        if (seenIdsRef.current.has(status.id)) return;
-        seenIdsRef.current.add(status.id);
-        setStatuses((prev) => [status, ...prev]);
-      } catch { /* ignore malformed payload */ }
-    } else if (event === "delete") {
-      const deletedId = payload.replace(/^"|"$/g, ""); // payload is a plain string ID
-      seenIdsRef.current.delete(deletedId);
-      purgeStatusFromCache(deletedId);
-      setStatuses((prev) => prev.filter((s) => s.id !== deletedId));
-    } else if (event === "status.update") {
-      try {
-        const updated = JSON.parse(payload) as Status;
-        setStatuses((prev) => prev.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
-      } catch { /* ignore */ }
-    }
-  });
+    handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current);
+  }, { onReconnect: () => { void catchUp(); } });
 
   async function fetchMe() {
     if (!token) return;

@@ -5,6 +5,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 import {
   getTimelineCache,
   isTimelineCacheFresh,
+  mergeTimelineItems,
   setTimelineCache,
 } from "./timeline-cache";
 
@@ -128,7 +129,7 @@ export function useTimelineCache<T extends { id: string }>(
   const [loading, setLoading] = useState(!initial?.ready);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(initial?.hasMore ?? true);
-  const seenIdsRef = useRef<Set<string>>(new Set(initial?.seenIds ?? []));
+  const seenIdsRef = useRef<Set<string>>(new Set(initial?.items.map((s) => s.id) ?? []));
 
   const keyRef = useRef(key);
   const prevKeyRef = useRef(key);
@@ -163,13 +164,21 @@ export function useTimelineCache<T extends { id: string }>(
       loadedKeyRef.current = key;
       const resetOnEntry = optionsRef.current.resetScrollOnEntry === true;
       const tabSwitch = prevKeyRef.current !== key;
-      // Persist the feed we are leaving right away: a fast tab switch can
-      // otherwise drop the last scroll event before it is written back. Skip
-      // when the window is still at the top — the scroll handler has nothing
-      // newer to report and we must not clobber a remembered offset with 0.
-      if (tabSwitch && window.scrollY > 0) {
-        const prevEntry = getTimelineCache(prevKeyRef.current);
-        if (prevEntry) prevEntry.scrollY = window.scrollY;
+      // Persist the feed we are leaving before switching keys: a fast switch
+      // could otherwise drop the last status/scroll update, and events that
+      // arrive during the transition would have nowhere to go. Skip the scroll
+      // write when the window is still at the top so we don't clobber a
+      // remembered offset with 0.
+      if (tabSwitch && loadedKeyRef.current === prevKeyRef.current) {
+        const prevEntry = getTimelineCache<T>(prevKeyRef.current);
+        if (prevEntry) {
+          setTimelineCache(prevKeyRef.current, {
+            ...prevEntry,
+            items: statusesRef.current,
+            hasMore: hasMoreRef.current,
+            scrollY: window.scrollY > 0 ? window.scrollY : prevEntry.scrollY,
+          });
+        }
       }
       prevKeyRef.current = key;
       const cached = getTimelineCache<T>(key);
@@ -209,7 +218,6 @@ export function useTimelineCache<T extends { id: string }>(
         // fresh mount so they catch up on posts that arrived while the page was
         // closed — but a history traversal (back from a status detail) restores
         // the exact scroll offset and must not refetch/re-anchor.
-        seenIdsRef.current = new Set(cached.seenIds);
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
         setLoading(false);
@@ -225,7 +233,6 @@ export function useTimelineCache<T extends { id: string }>(
       // Only a `ready` entry is safe to restore: a partially-initialized one
       // (e.g. written by a previous in-flight load) must not be shown.
       if (cached?.ready) {
-        seenIdsRef.current = new Set(cached.seenIds);
         setStatuses(cached.items);
         setHasMore(cached.hasMore);
         setLoading(false);
@@ -234,7 +241,6 @@ export function useTimelineCache<T extends { id: string }>(
           restoreScroll(targetY);
         }
       } else {
-        seenIdsRef.current = new Set();
         setStatuses([]);
         setHasMore(true);
         setLoading(true);
@@ -250,14 +256,13 @@ export function useTimelineCache<T extends { id: string }>(
           const result = await fetchPageRef.current();
           if (cancelled) return;
           setStatuses((prev) => {
-            const known = new Set(prev.map((s) => s.id));
-            const freshTop = result.items.filter((s) => !known.has(s.id));
-            const merged = prev.length > 0 && result.items.length > 0 ? [...freshTop, ...prev] : result.items;
-            seenIdsRef.current = new Set(merged.map((s) => s.id));
+            // Merge with the canonical newest-first order and never let an
+            // empty result wipe a cached feed (a transient failure returns an
+            // empty page; the cached items must survive it).
+            const merged = mergeTimelineItems(result.items, prev);
             setTimelineCache(key, {
               items: merged,
               hasMore: result.hasMore,
-              seenIds: [...seenIdsRef.current],
               scrollY: cached?.scrollY ?? 0,
               fetchedAt: Date.now(),
               ready: true,
@@ -295,6 +300,14 @@ useIsomorphicLayoutEffect(() => {
   };
 }, []);
 
+  // `seenIds` is always derived from the visible items: storing it separately
+  // let it drift from the feed (an id marked "seen" but absent from the items
+  // made streaming drop statuses). The merge helper dedupes by id anyway, so
+  // this set is only a fast-path filter for streamed events.
+  useEffect(() => {
+    seenIdsRef.current = new Set(statuses.map((s) => s.id));
+  }, [statuses]);
+
   // Keep the cache in sync with the live statuses (streaming, favs, edits…).
   // Skip while a tab switch is in flight: at that moment `statuses` still holds
   // the previous feed's items and writing them into the new key's entry would
@@ -305,7 +318,6 @@ useIsomorphicLayoutEffect(() => {
     setTimelineCache(key, {
       items: statuses,
       hasMore,
-      seenIds: [...seenIdsRef.current],
       scrollY: prev?.scrollY ?? 0,
       fetchedAt: prev?.fetchedAt ?? Date.now(),
       ready: prev?.ready ?? false,
@@ -326,13 +338,12 @@ useIsomorphicLayoutEffect(() => {
         setHasMore(result.hasMore);
         return;
       }
-      setStatuses((prev) => {
-        const known = new Set(prev.map((s) => s.id));
-        const fresh = result.items.filter((s) => !known.has(s.id));
-        for (const s of fresh) seenIdsRef.current.add(s.id);
-        return [...prev, ...fresh];
-      });
+      // Paged items are older than the feed tail; the canonical merge keeps
+      // them ordered even if a streamed status slipped in meanwhile.
+      setStatuses((prev) => mergeTimelineItems(prev, result.items));
       setHasMore(result.hasMore);
+    } catch {
+      // Keep the current page; the next sentinel hit retries.
     } finally {
       setLoadingMore(false);
     }
@@ -341,15 +352,13 @@ useIsomorphicLayoutEffect(() => {
   const refresh = useCallback(async () => {
     try {
       const result = await fetchPageRef.current();
-      seenIdsRef.current = new Set(result.items.map((s) => s.id));
       setStatuses(result.items);
       setHasMore(result.hasMore);
       setLoading(false);
       setTimelineCache(keyRef.current, {
         items: result.items,
         hasMore: result.hasMore,
-        seenIds: [...seenIdsRef.current],
-        scrollY: 0,
+        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
         fetchedAt: Date.now(),
         ready: true,
       });
@@ -366,15 +375,11 @@ useIsomorphicLayoutEffect(() => {
     try {
       const result = await fetchPageRef.current();
       setStatuses((prev) => {
-        const known = new Set(prev.map((s) => s.id));
-        const freshTop = result.items.filter((s) => !known.has(s.id));
-        const merged = prev.length > 0 && result.items.length > 0 ? [...freshTop, ...prev] : result.items;
-        seenIdsRef.current = new Set(merged.map((s) => s.id));
+        const merged = mergeTimelineItems(result.items, prev);
         setTimelineCache(keyRef.current, {
           items: merged,
           hasMore: result.hasMore,
-          seenIds: [...seenIdsRef.current],
-          scrollY: getTimelineCache(keyRef.current)?.scrollY ?? 0,
+          scrollY: getTimelineCache<T>(keyRef.current)?.scrollY ?? 0,
           fetchedAt: Date.now(),
           ready: true,
         });

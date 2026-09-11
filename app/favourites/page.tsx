@@ -26,7 +26,7 @@ export default function FavouritesPage() {
     const base = `/api/v1/favourites?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return { items: [], hasMore: true };
+    if (!res.ok) throw new Error("favourites fetch failed");
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, limits.defaultTimelinePage]);
