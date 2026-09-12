@@ -118,8 +118,8 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   useTimelineStream("user", (event) => {
     if (event === "notification") {
       setUnreadCount((c) => c + 1);
-      // Let the global notification handler play the sound + tab badge (this
-      // is the reliable real-time signal, unlike the push SW message).
+      // Let the global notification handler update the tab badge/unread state.
+      // The chime is reserved for Web Push (background tab) — see NotificationSound.
       window.dispatchEvent(new Event("cf-ap:notification-received"));
     }
   }, {
