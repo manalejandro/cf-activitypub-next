@@ -917,7 +917,7 @@
   "admin_instances_empty": "Keine Instanzen gefunden.",
   "admin_instances_col_software": "Software",
   "admin_instances_col_accounts": "Konten",
-  "admin_instances_col_follows": "Lokale Folgt",
+  "admin_instances_col_follows": "Gefolgt",
   "admin_instances_col_last_seen": "Zuletzt gesehen",
   "admin_instances_status_ok": "Verfügbar",
   "admin_instances_status_unavailable": "Nicht verfügbar",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Instanz hinzugefügt.",
   "pagination_prev": "Zurück",
   "pagination_next": "Weiter",
-  "pagination_page": "Seite {page} von {pages}"
+  "pagination_page": "Seite {page} von {pages}",
+  "admin_instances_col_followers": "Follower"
 }

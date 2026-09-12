@@ -52,6 +52,7 @@ export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation gr
 
 // Federation engine (instance registry)
 export const INSTANCE_FAILURE_DAYS = 7; // distinct UTC failure days → unavailable (Mastodon)
+export const SHARED_INBOX_BATCH = 5; // remote actor shared-inbox backfills per cron tick
 export const INSTANCE_REFRESH_BATCH = 3; // NodeInfo refreshes per cron tick
 export const INSTANCE_REFRESH_DAYS = 7; // re-fetch metadata after this many days
 export const INSTANCE_DORMANT_DAYS = 30; // no activity → stop refreshing, then expire metadata
@@ -110,6 +111,7 @@ export interface InstanceLimits {
   maxImageSize: number;
   maxVideoSize: number;
   imageMatrixLimit: number;
+  sharedInboxBatch: number;
   instanceRefreshBatch: number;
   instanceRefreshDays: number;
   instanceDormantDays: number;
@@ -151,6 +153,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxImageSize: MAX_IMAGE_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
+  sharedInboxBatch: SHARED_INBOX_BATCH,
   instanceRefreshBatch: INSTANCE_REFRESH_BATCH,
   instanceRefreshDays: INSTANCE_REFRESH_DAYS,
   instanceDormantDays: INSTANCE_DORMANT_DAYS,
@@ -208,6 +211,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     imageMatrixLimit: num(env, "IMAGE_MATRIX_LIMIT", DEFAULT_LIMITS.imageMatrixLimit),
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
     videoMatrixLimit: num(env, "VIDEO_MATRIX_LIMIT", DEFAULT_LIMITS.videoMatrixLimit),
+    sharedInboxBatch: num(env, "SHARED_INBOX_BATCH", DEFAULT_LIMITS.sharedInboxBatch),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
     instanceDormantDays: num(env, "INSTANCE_DORMANT_DAYS", DEFAULT_LIMITS.instanceDormantDays),

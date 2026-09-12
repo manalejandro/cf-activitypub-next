@@ -917,7 +917,7 @@
   "admin_instances_empty": "該当するインスタンスはありません。",
   "admin_instances_col_software": "ソフトウェア",
   "admin_instances_col_accounts": "アカウント",
-  "admin_instances_col_follows": "ローカルフォロー",
+  "admin_instances_col_follows": "フォロー中",
   "admin_instances_col_last_seen": "最終確認",
   "admin_instances_status_ok": "利用可能",
   "admin_instances_status_unavailable": "利用不可",
@@ -934,5 +934,6 @@
   "admin_instances_added": "インスタンスを追加しました。",
   "pagination_prev": "前へ",
   "pagination_next": "次へ",
-  "pagination_page": "{pages} ページ中 {page} ページ目"
+  "pagination_page": "{pages} ページ中 {page} ページ目",
+  "admin_instances_col_followers": "フォロワー"
 }

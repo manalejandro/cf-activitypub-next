@@ -94,6 +94,7 @@ function rowToActor(r: Row): LocalActor {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     inbox: r.inbox ?? null,
+    endpoints: r.shared_inbox ? { sharedInbox: r.shared_inbox as string } : undefined,
     autoDeleteAfter: r.auto_delete_after ?? null,
   };
 }
@@ -593,8 +594,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             id, username, domain, display_name, summary, avatar_url, header_url,
             public_key_pem, private_key_pem, is_local, is_bot,
             manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at, collections_url
-          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?,?)
+            followers_count, following_count, statuses_count, inbox, shared_inbox, also_known_as, last_status_at, collections_url
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?,?,?)
           ON CONFLICT(id) DO UPDATE SET
             display_name = excluded.display_name,
             summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -605,6 +606,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             manually_approves_followers = excluded.manually_approves_followers,
             discoverable = excluded.discoverable,
             inbox = excluded.inbox,
+            shared_inbox = COALESCE(NULLIF(excluded.shared_inbox, ''), actors.shared_inbox),
             also_known_as = excluded.also_known_as,
             last_status_at = CASE
               WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
@@ -626,6 +628,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.manuallyApprovesFollowers ? 1 : 0,
           actor.discoverable !== false ? 1 : 0,
           actor.inbox,
+          actor.endpoints?.sharedInbox ?? null,
           alsoKnownAs,
           lastStatusAtStr,
           actor.featuredCollections ?? null
@@ -640,8 +643,8 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             id, username, domain, display_name, summary, avatar_url, header_url,
             public_key_pem, private_key_pem, is_local, is_bot,
             manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, also_known_as
-          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?)
+            followers_count, following_count, statuses_count, inbox, shared_inbox, also_known_as
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?)
           ON CONFLICT(id) DO UPDATE SET
             display_name = excluded.display_name,
             summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -652,6 +655,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             manually_approves_followers = excluded.manually_approves_followers,
             discoverable = excluded.discoverable,
             inbox = excluded.inbox,
+            shared_inbox = COALESCE(NULLIF(excluded.shared_inbox, ''), actors.shared_inbox),
             also_known_as = excluded.also_known_as,
             updated_at = datetime('now')
           WHERE actors.is_local = 0`
@@ -669,6 +673,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.manuallyApprovesFollowers ? 1 : 0,
           actor.discoverable !== false ? 1 : 0,
           actor.inbox,
+          actor.endpoints?.sharedInbox ?? null,
           alsoKnownAs
         )
         .run();
@@ -685,7 +690,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
             avatar_url = CASE WHEN ? IS NOT NULL THEN ? ELSE avatar_url END,
             header_url = CASE WHEN ? IS NOT NULL THEN ? ELSE header_url END,
             public_key_pem = ?, is_bot = ?, manually_approves_followers = ?,
-            discoverable = ?, inbox = ?, also_known_as = ?, updated_at = datetime('now')
+            discoverable = ?, inbox = ?, shared_inbox = COALESCE(NULLIF(?, ''), shared_inbox), also_known_as = ?, updated_at = datetime('now')
           WHERE username = ? AND domain = ? AND is_local = 0`
         )
         .bind(
@@ -702,6 +707,7 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise
           actor.manuallyApprovesFollowers ? 1 : 0,
           actor.discoverable !== false ? 1 : 0,
           actor.inbox,
+          actor.endpoints?.sharedInbox ?? null,
           alsoKnownAs,
           username,
           domain
@@ -3630,7 +3636,10 @@ export async function getInstance(db: D1Database, domain: string): Promise<Local
 
 export interface InstanceAggregates {
   accounts: number;
+  /** Accepted follows local accounts hold on that domain's actors (outbound). */
   localFollows: number;
+  /** Accepted follows that domain's actors hold on local accounts (inbound). */
+  followers: number;
   blocked: boolean;
 }
 
@@ -3641,11 +3650,11 @@ export async function getInstanceAggregates(
 ): Promise<Map<string, InstanceAggregates>> {
   const out = new Map<string, InstanceAggregates>();
   const unique = [...new Set(domains.map((d) => d.toLowerCase()))].filter(Boolean);
-  for (const d of unique) out.set(d, { accounts: 0, localFollows: 0, blocked: false });
+  for (const d of unique) out.set(d, { accounts: 0, localFollows: 0, followers: 0, blocked: false });
   if (unique.length === 0) return out;
 
   const payload = JSON.stringify(unique);
-  const [accounts, follows, blocks] = await Promise.all([
+  const [accounts, follows, followers, blocks] = await Promise.all([
     db
       .prepare(
         `SELECT domain, COUNT(*) AS n FROM actors
@@ -3659,6 +3668,16 @@ export async function getInstanceAggregates(
         `SELECT a.domain AS domain, COUNT(*) AS n FROM follows f
          JOIN actors a ON a.id = f.target_id
          WHERE f.state = 'accepted' AND a.domain IN (SELECT value FROM json_each(?))
+         GROUP BY a.domain`
+      )
+      .bind(payload)
+      .all<{ domain: string; n: number }>(),
+    db
+      .prepare(
+        `SELECT a.domain AS domain, COUNT(*) AS n FROM actors a
+         JOIN follows f ON f.actor_id = a.id
+         WHERE a.is_local = 0 AND f.state = 'accepted'
+           AND a.domain IN (SELECT value FROM json_each(?))
          GROUP BY a.domain`
       )
       .bind(payload)
@@ -3679,6 +3698,10 @@ export async function getInstanceAggregates(
     const agg = out.get(row.domain.toLowerCase());
     if (agg) agg.localFollows = Number(row.n);
   }
+  for (const row of followers.results ?? []) {
+    const agg = out.get(row.domain.toLowerCase());
+    if (agg) agg.followers = Number(row.n);
+  }
   for (const row of blocks.results ?? []) {
     const agg = out.get(row.domain.toLowerCase());
     if (agg) agg.blocked = true;
@@ -3690,6 +3713,7 @@ export interface InstanceListItem {
   instance: LocalInstance;
   accounts: number;
   localFollows: number;
+  followers: number;
   blocked: boolean;
   /** No activity inside the dormancy window (computed server-side). */
   dormant: boolean;
@@ -3753,6 +3777,7 @@ export async function listInstances(
       instance,
       accounts: aggregates.get(instance.domain)?.accounts ?? 0,
       localFollows: aggregates.get(instance.domain)?.localFollows ?? 0,
+      followers: aggregates.get(instance.domain)?.followers ?? 0,
       blocked: aggregates.get(instance.domain)?.blocked ?? false,
       dormant: instance.lastSeenAt < dormantCutoff,
     })),

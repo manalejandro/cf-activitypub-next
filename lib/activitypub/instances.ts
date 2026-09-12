@@ -14,7 +14,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
+import { safeFetch, validateOutboundUrl, fetchRemoteObject } from "@/lib/activitypub/federation";
 import {
   getInstance,
   getActorIdsByDomain,
@@ -24,8 +24,10 @@ import {
   recordInstanceRefreshFailure,
   touchInstanceSeen,
   upsertInstanceMetadata,
+  upsertRemoteActor,
   type InstanceMetadataPatch,
 } from "@/lib/db";
+import type { APActor } from "@/lib/types";
 import { INSTANCE_FAILURE_DAYS } from "@/lib/constants";
 
 /** Minimal KV surface (the generated CloudflareEnv type varies across files). */
@@ -362,4 +364,64 @@ export async function purgeInstanceDomain(db: D1Database, domain: string): Promi
     db.prepare("DELETE FROM domain_capabilities WHERE domain = ?").bind(host),
   ]).catch(() => {});
   return actorIds.length;
+}
+
+/**
+ * Backfill `actors.shared_inbox` for the actors that matter for delivery:
+ * our followers first (they receive every post), then accounts local users
+ * follow (mentions/replies). Bounded per cron tick; failures are parked in KV
+ * for a week so one dead actor can't monopolize the batch. Without an
+ * advertised shared inbox `collectFollowerInboxes` falls back to the per-user
+ * inbox, which is noisier and times out on some implementations.
+ */
+export async function backfillRemoteSharedInboxes(
+  db: D1Database,
+  kv: InstanceKV | null | undefined,
+  limit = 5
+): Promise<number> {
+  const rows = await db
+    .prepare(
+      `SELECT a.id FROM actors a
+       WHERE a.is_local = 0 AND a.shared_inbox IS NULL AND a.inbox IS NOT NULL AND a.inbox != ''
+         AND (
+           EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = a.id AND f.state = 'accepted')
+           OR EXISTS (SELECT 1 FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted')
+         )
+       ORDER BY
+         EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = a.id AND f.state = 'accepted') DESC,
+         a.updated_at DESC
+       LIMIT ?`
+    )
+    .bind(Math.max(limit * 4, limit))
+    .all<{ id: string }>();
+  if (!rows.results?.length) return 0;
+
+  const signer = await db
+    .prepare("SELECT id, private_key_pem FROM actors WHERE is_local = 1 AND private_key_pem IS NOT NULL AND suspended = 0 LIMIT 1")
+    .bind()
+    .first<{ id: string; private_key_pem: string }>();
+  if (!signer?.private_key_pem) return 0;
+
+  let done = 0;
+  for (const row of rows.results) {
+    if (done >= limit) break;
+    const skipKey = `actor:shared:skip:${row.id}`;
+    try {
+      if (kv && (await kv.get(skipKey))) continue;
+    } catch { /* proceed without the marker */ }
+    try {
+      const doc = (await fetchRemoteObject(row.id, `${signer.id}#main-key`, signer.private_key_pem)) as APActor | null;
+      if (doc?.inbox) {
+        await upsertRemoteActor(db, doc);
+        done++;
+      } else if (kv?.put) {
+        await kv.put(skipKey, "1", { expirationTtl: 604_800 });
+      }
+    } catch {
+      try {
+        if (kv?.put) await kv.put(skipKey, "1", { expirationTtl: 604_800 });
+      } catch { /* best effort */ }
+    }
+  }
+  return done;
 }

@@ -917,7 +917,7 @@
   "admin_instances_empty": "Aucune instance ne correspond.",
   "admin_instances_col_software": "Logiciel",
   "admin_instances_col_accounts": "Comptes",
-  "admin_instances_col_follows": "Abonnements locaux",
+  "admin_instances_col_follows": "Abonnements",
   "admin_instances_col_last_seen": "Vu pour la dernière fois",
   "admin_instances_status_ok": "Disponible",
   "admin_instances_status_unavailable": "Indisponible",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Instance ajoutée.",
   "pagination_prev": "Précédent",
   "pagination_next": "Suivant",
-  "pagination_page": "Page {page} sur {pages}"
+  "pagination_page": "Page {page} sur {pages}",
+  "admin_instances_col_followers": "Abonnés"
 }

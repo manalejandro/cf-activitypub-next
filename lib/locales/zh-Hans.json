@@ -917,7 +917,7 @@
   "admin_instances_empty": "没有匹配的实例。",
   "admin_instances_col_software": "软件",
   "admin_instances_col_accounts": "账号",
-  "admin_instances_col_follows": "本地关注",
+  "admin_instances_col_follows": "关注",
   "admin_instances_col_last_seen": "最近活跃",
   "admin_instances_status_ok": "可用",
   "admin_instances_status_unavailable": "不可用",
@@ -934,5 +934,6 @@
   "admin_instances_added": "实例已添加。",
   "pagination_prev": "上一页",
   "pagination_next": "下一页",
-  "pagination_page": "第 {page} 页，共 {pages} 页"
+  "pagination_page": "第 {page} 页，共 {pages} 页",
+  "admin_instances_col_followers": "粉丝"
 }

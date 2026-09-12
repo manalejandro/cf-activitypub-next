@@ -917,7 +917,7 @@
   "admin_instances_empty": "Ninguna instancia coincide.",
   "admin_instances_col_software": "Software",
   "admin_instances_col_accounts": "Cuentas",
-  "admin_instances_col_follows": "Seguidos locales",
+  "admin_instances_col_follows": "Siguiendo",
   "admin_instances_col_last_seen": "Vista por última vez",
   "admin_instances_status_ok": "Disponible",
   "admin_instances_status_unavailable": "No disponible",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Instancia añadida.",
   "pagination_prev": "Anterior",
   "pagination_next": "Siguiente",
-  "pagination_page": "Página {page} de {pages}"
+  "pagination_page": "Página {page} de {pages}",
+  "admin_instances_col_followers": "Seguidores"
 }

@@ -32,6 +32,7 @@ import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import {
+  backfillRemoteSharedInboxes,
   deliveryRetryDelay,
   isInstancePaused,
   isInstanceUnavailable,
@@ -983,6 +984,8 @@ async function executeScheduled(env: Env): Promise<void> {
       await env.KV.put("cron:instances:expire", "1", { expirationTtl: 86400 });
       await expireDormantInstanceMetadata(env.DB, limits.instanceDormantDays);
     }
+    // Shared inboxes: deliver to endpoints.sharedInbox when the actor has one.
+    await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
   } catch (err) {
     console.error("[cron] federation instance refresh failed", err);
   }

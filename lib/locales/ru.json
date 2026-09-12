@@ -917,7 +917,7 @@
   "admin_instances_empty": "Нет подходящих инстансов.",
   "admin_instances_col_software": "Программа",
   "admin_instances_col_accounts": "Аккаунты",
-  "admin_instances_col_follows": "Локальные подписки",
+  "admin_instances_col_follows": "Подписки",
   "admin_instances_col_last_seen": "Последняя активность",
   "admin_instances_status_ok": "Доступен",
   "admin_instances_status_unavailable": "Недоступен",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Инстанс добавлен.",
   "pagination_prev": "Назад",
   "pagination_next": "Вперёд",
-  "pagination_page": "Страница {page} из {pages}"
+  "pagination_page": "Страница {page} из {pages}",
+  "admin_instances_col_followers": "Подписчики"
 }

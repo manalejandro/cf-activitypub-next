@@ -917,7 +917,7 @@
   "admin_instances_empty": "No instances match.",
   "admin_instances_col_software": "Software",
   "admin_instances_col_accounts": "Accounts",
-  "admin_instances_col_follows": "Local follows",
+  "admin_instances_col_follows": "Following",
   "admin_instances_col_last_seen": "Last seen",
   "admin_instances_status_ok": "Available",
   "admin_instances_status_unavailable": "Unavailable",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Instance added.",
   "pagination_prev": "Previous",
   "pagination_next": "Next",
-  "pagination_page": "Page {page} of {pages}"
+  "pagination_page": "Page {page} of {pages}",
+  "admin_instances_col_followers": "Followers"
 }

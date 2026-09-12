@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS actors (
   password_hash   TEXT,                      -- only for local accounts
   email_verified  INTEGER NOT NULL DEFAULT 0, -- 1 once the user clicks the verification link
   inbox              TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
+  shared_inbox       TEXT,                      -- remote endpoints.sharedInbox (preferred delivery target)
   auto_delete_after  INTEGER,                   -- auto-delete posts after N seconds (null = disabled)
   role               TEXT NOT NULL DEFAULT 'user', -- user, moderator, admin
   suspended          INTEGER NOT NULL DEFAULT 0,

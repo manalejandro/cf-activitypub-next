@@ -917,7 +917,7 @@
   "admin_instances_empty": "Nessuna istanza corrisponde.",
   "admin_instances_col_software": "Software",
   "admin_instances_col_accounts": "Account",
-  "admin_instances_col_follows": "Seguiti locali",
+  "admin_instances_col_follows": "Seguiti",
   "admin_instances_col_last_seen": "Vista l'ultima volta",
   "admin_instances_status_ok": "Disponibile",
   "admin_instances_status_unavailable": "Non disponibile",
@@ -934,5 +934,6 @@
   "admin_instances_added": "Istanza aggiunta.",
   "pagination_prev": "Precedente",
   "pagination_next": "Successiva",
-  "pagination_page": "Pagina {page} di {pages}"
+  "pagination_page": "Pagina {page} di {pages}",
+  "admin_instances_col_followers": "Follower"
 }

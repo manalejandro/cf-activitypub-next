@@ -28,6 +28,7 @@ interface AdminInstance {
   instance: InstanceMeta;
   accounts: number;
   localFollows: number;
+  followers: number;
   blocked: boolean;
   dormant: boolean;
 }
@@ -235,13 +236,14 @@ export default function AdminInstancesPage() {
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_instances_col_software}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_instances_col_accounts}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_instances_col_follows}</th>
+                <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_instances_col_followers}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_status}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_instances_col_last_seen}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_actions}</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ instance, accounts, localFollows, blocked, dormant }) => {
+              {rows.map(({ instance, accounts, localFollows, followers, blocked, dormant }) => {
                 const badge = statusOf(instance, dormant);
                 const busyRow = actionLoading === instance.domain;
                 return (
@@ -261,6 +263,7 @@ export default function AdminInstancesPage() {
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", textAlign: "right", color: "var(--text-secondary)" }}>{accounts}</td>
                     <td style={{ padding: "0.625rem 0.75rem", textAlign: "right", color: "var(--text-secondary)" }}>{localFollows}</td>
+                    <td style={{ padding: "0.625rem 0.75rem", textAlign: "right", color: "var(--text-secondary)" }}>{followers}</td>
                     <td style={{ padding: "0.625rem 0.75rem" }}>
                       <span className="badge" style={{ background: badge.bg, color: badge.color }}>
                         {t[badge.key as keyof typeof t] as string}

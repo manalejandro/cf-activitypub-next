@@ -8,11 +8,13 @@ import type { D1Database, D1Result } from "@cloudflare/workers-types";
 const federation = vi.hoisted(() => ({
   safeFetch: vi.fn(),
   validateOutboundUrl: vi.fn(() => ({ valid: true })),
+  fetchRemoteObject: vi.fn(),
 }));
 
 vi.mock("@/lib/activitypub/federation", () => federation);
 
 import {
+  backfillRemoteSharedInboxes,
   deliveryRetryDelay,
   fetchInstanceMetadata,
   instanceDownKey,
@@ -25,7 +27,9 @@ import {
 } from "@/lib/activitypub/instances";
 import {
   expireDormantInstanceMetadata,
+  getActorById,
   getInstance,
+  listInstances,
   listInstancesDueForRefresh,
   recordInstanceFailure,
   upsertInstanceMetadata,
@@ -338,5 +342,82 @@ describe("metadata refresh scheduling and expiry", () => {
     const kept = await getInstance(db, "liked.example");
     expect(kept?.software).toBe("mastodon");
     expect(kept?.nextRefreshAt).toBe(future);
+  });
+});
+
+describe("shared inbox backfill", () => {
+  async function seedDeliveryGraph() {
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local, inbox)
+       VALUES ('https://remote.example/users/fan', 'fan', 'remote.example', 'k', NULL, 0, 'https://remote.example/users/fan/inbox')`
+    ).bind().run();
+    // remote follows local (fan is a follower of ours)
+    await db.prepare(
+      "INSERT INTO follows (id, actor_id, target_id, state) VALUES ('f1', 'https://remote.example/users/fan', 'https://local.example/users/me', 'accepted')"
+    ).bind().run();
+  }
+
+  it("stores the advertised shared inbox on the cached actor", async () => {
+    await seedDeliveryGraph();
+    federation.fetchRemoteObject.mockResolvedValue({
+      id: "https://remote.example/users/fan",
+      type: "Person",
+      preferredUsername: "fan",
+      inbox: "https://remote.example/users/fan/inbox",
+      endpoints: { sharedInbox: "https://remote.example/inbox" },
+      publicKey: { id: "https://remote.example/users/fan#main-key", owner: "https://remote.example/users/fan", publicKeyPem: "k" },
+    });
+
+    const done = await backfillRemoteSharedInboxes(db, kv, 5);
+    expect(done).toBe(1);
+    const actor = await getActorById(db, "https://remote.example/users/fan");
+    expect(actor?.endpoints?.sharedInbox).toBe("https://remote.example/inbox");
+  });
+
+  it("parks a failing actor for a week instead of retrying every tick", async () => {
+    await seedDeliveryGraph();
+    federation.fetchRemoteObject.mockRejectedValue(new Error("boom"));
+
+    expect(await backfillRemoteSharedInboxes(db, kv, 5)).toBe(0);
+    expect(await kv.get("actor:shared:skip:https://remote.example/users/fan")).toBe("1");
+    // Second run skips it without calling the network again.
+    federation.fetchRemoteObject.mockClear();
+    expect(await backfillRemoteSharedInboxes(db, kv, 5)).toBe(0);
+    expect(federation.fetchRemoteObject).not.toHaveBeenCalled();
+  });
+});
+
+describe("instance aggregates", () => {
+  it("counts outbound local follows and inbound followers separately", async () => {
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://peer.example/users/them', 'them', 'peer.example', 'k', NULL, 0)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://peer.example/users/fan', 'fan', 'peer.example', 'k', NULL, 0)`
+    ).bind().run();
+    // We follow them.
+    await db.prepare(
+      "INSERT INTO follows (id, actor_id, target_id, state) VALUES ('out1', 'https://local.example/users/me', 'https://peer.example/users/them', 'accepted')"
+    ).bind().run();
+    // They follow us.
+    await db.prepare(
+      "INSERT INTO follows (id, actor_id, target_id, state) VALUES ('in1', 'https://peer.example/users/fan', 'https://local.example/users/me', 'accepted')"
+    ).bind().run();
+    await db.prepare("INSERT INTO instances (domain) VALUES ('peer.example')").bind().run();
+
+    const { instances } = await listInstances(db, { limit: 10 });
+    const peer = instances.find((i) => i.instance.domain === "peer.example");
+    expect(peer?.localFollows).toBe(1);
+    expect(peer?.followers).toBe(1);
   });
 });

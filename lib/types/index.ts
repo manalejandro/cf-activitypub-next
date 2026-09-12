@@ -212,6 +212,8 @@ export interface LocalActor {
   collectionsUrl?: string | null;
   // federation — stored for remote actors; computed for local
   inbox?: string;
+  /** Remote actor's advertised shared inbox (endsWith endpoints.sharedInbox). */
+  endpoints?: { sharedInbox?: string };
   outbox?: string;
   followers?: string;
   following?: string;
