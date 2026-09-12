@@ -131,3 +131,4 @@ const { env } = getCloudflareContext();
 - `getFollow` does **not** filter by state — use `isAcceptedFollower` for followers-only visibility.
 - Removing local accounts must clean `oauth_tokens`, `activities` and `moderation_log` (no FKs) and federate a `Delete` tombstone (see `app/api/v1/accounts/delete/route.ts` and the admin DELETE route).
 - Never re-ingest already-stored objects to change rendering — serializers read `objects.raw`, so rendering fixes are backward-compatible without migration.
+- Web Push is silenced while a focused tab reports presence: the client heartbeats `POST /api/v1/push/presence` (KV `push:presence:<actor>:<sha256(endpoint)>`, TTL 120s) and `deliverPushNotification` skips when the marker exists. Do **not** instead skip `showNotification` in `public/sw.js` — Chrome substitutes "This site has been updated in the background" and burns the per-origin push budget.

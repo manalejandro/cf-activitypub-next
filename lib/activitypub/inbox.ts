@@ -116,7 +116,7 @@ async function broadcastAndPush(ctx: InboxContext, notif: LocalNotification): Pr
     void broadcastNotificationEvent(ctx.timelineStream, notif.targetAccountId, payload).catch(() => {});
   }
   if (ctx.vapidPublicKey && ctx.vapidPrivateKey && ctx.vapidEmail) {
-    void deliverPushSafe(ctx.db, ctx.vapidPublicKey, ctx.vapidPrivateKey, ctx.vapidEmail, notif);
+    void deliverPushSafe(ctx.db, ctx.kv ?? null, ctx.vapidPublicKey, ctx.vapidPrivateKey, ctx.vapidEmail, notif);
   }
 }
 

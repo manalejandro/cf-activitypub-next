@@ -1,7 +1,14 @@
 // @vitest-environment node
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createECDH, generateKeyPairSync } from "node:crypto";
-import { importVapidPrivateKey, encryptPushNotification } from "@/lib/push";
+import type { D1Database, KVNamespace } from "@cloudflare/workers-types";
+import type { LocalNotification } from "@/lib/types";
+
+const dbMocks = vi.hoisted(() => ({ getPushSubscription: vi.fn() }));
+
+vi.mock("@/lib/db", () => ({ getPushSubscription: dbMocks.getPushSubscription }));
+
+import { importVapidPrivateKey, encryptPushNotification, deliverPushNotification, pushPresenceKey } from "@/lib/push";
 
 function base64url(bytes: Uint8Array): string {
   let bin = "";
@@ -101,5 +108,40 @@ describe("web push aes128gcm encryption", () => {
 
     expect(body.length).toBe(144);
     expect(base64url(body)).toBe(base64url(expected));
+  });
+});
+
+describe("push presence", () => {
+  it("hashes the subscription endpoint into the KV key", async () => {
+    const a = await pushPresenceKey("a1", "https://push.example/ep1");
+    const b = await pushPresenceKey("a1", "https://push.example/ep2");
+    expect(a).not.toBe(b);
+    expect(await pushPresenceKey("a1", "https://push.example/ep1")).toBe(a);
+    expect(a).not.toContain("push.example");
+    expect(a.startsWith("push:presence:a1:")).toBe(true);
+  });
+
+  it("skips delivery while the focused tab is present", async () => {
+    dbMocks.getPushSubscription.mockResolvedValue({
+      id: "s1", actorId: "a1", endpoint: "https://push.example/ep1",
+      p256dhKey: "x", authKey: "y", standard: true, policy: "all",
+      alerts: "{}", serverKey: "", sound: false, createdAt: "", updatedAt: "",
+    });
+    const get = vi.fn().mockResolvedValue("1");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const notif = {
+      id: "n1", type: "mention", targetAccountId: "a1", accountId: "b1", objectId: null,
+    } as unknown as LocalNotification;
+    await deliverPushNotification(
+      {} as D1Database,
+      { get } as unknown as KVNamespace,
+      "pub", "priv", "mailto:x", notif
+    );
+
+    expect(get).toHaveBeenCalledWith(await pushPresenceKey("a1", "https://push.example/ep1"));
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
