@@ -26,7 +26,7 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure } from "../lib/db";
 import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
@@ -966,7 +966,18 @@ async function executeScheduled(env: Env): Promise<void> {
     const limits = resolveLimits(env as unknown as Record<string, unknown>);
     const due = await listInstancesDueForRefresh(env.DB, limits.instanceRefreshBatch);
     for (const domain of due) {
-      await refreshInstance(env.DB, env.KV, domain, { refreshDays: limits.instanceRefreshDays });
+      try {
+        await refreshInstance(env.DB, env.KV, domain, { refreshDays: limits.instanceRefreshDays });
+      } catch (err) {
+        // Never let one broken host abort the batch or leave the schedule
+        // stuck in the past: record the backoff and move on.
+        console.error(`[cron] instance refresh failed for ${domain}`, err);
+        await recordInstanceRefreshFailure(
+          env.DB,
+          domain,
+          new Date(Date.now() + Math.min(6 * 3_600_000, 24 * 3_600_000)).toISOString()
+        ).catch(() => {});
+      }
     }
     if (!(await env.KV.get("cron:instances:expire"))) {
       await env.KV.put("cron:instances:expire", "1", { expirationTtl: 86400 });

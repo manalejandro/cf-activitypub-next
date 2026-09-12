@@ -122,14 +122,15 @@ export interface InstanceMetadata {
 }
 
 async function fetchJson(url: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
-  const res = await safeFetch(url, { headers: { Accept: "application/json" } }, timeoutMs);
-  if (!res || !res.ok) return null;
-  const text = await res.text().catch(() => "");
-  if (!text || text.length > 512 * 1024) return null;
   try {
+    const res = await safeFetch(url, { headers: { Accept: "application/json" } }, timeoutMs);
+    if (!res || !res.ok) return null;
+    const text = await res.text().catch(() => "");
+    if (!text || text.length > 512 * 1024) return null;
     const parsed: unknown = JSON.parse(text);
     return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   } catch {
+    // Timeout, DNS failure, TLS error, non-JSON body… all mean "no metadata".
     return null;
   }
 }
@@ -255,7 +256,12 @@ export async function refreshInstance(
       }
     }
 
-    const metadata = await fetchInstanceMetadata(host, opts.timeoutMs);
+    let metadata: InstanceMetadata | null = null;
+    try {
+      metadata = await fetchInstanceMetadata(host, opts.timeoutMs);
+    } catch {
+      metadata = null;
+    }
     if (!metadata) {
       const existing = await getInstance(db, host);
       await recordInstanceRefreshFailure(db, host, nextRefreshFailureAt((existing?.refreshFailures ?? 0) + 1));

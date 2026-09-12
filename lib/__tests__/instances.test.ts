@@ -18,6 +18,7 @@ import {
   instanceDownKey,
   normalizeDomain,
   parseRetryAfter,
+  refreshInstance,
   recordInstanceDeliveryFailure,
   recordInstanceDeliverySuccess,
   recordInstanceInboundActivity,
@@ -181,6 +182,49 @@ describe("fetchInstanceMetadata", () => {
   it("returns null when nothing answers", async () => {
     federation.safeFetch.mockResolvedValue(null);
     expect(await fetchInstanceMetadata("remote.example")).toBeNull();
+  });
+
+  it("returns null instead of throwing on timeout/DNS errors", async () => {
+    federation.safeFetch.mockRejectedValue(new Error("The operation was aborted due to timeout"));
+    expect(await fetchInstanceMetadata("remote.example")).toBeNull();
+  });
+});
+
+describe("refreshInstance", () => {
+  it("never throws on a failing fetch and schedules a backoff", async () => {
+    federation.safeFetch.mockRejectedValue(new Error("The operation was aborted due to timeout"));
+
+    const result = await refreshInstance(db, kv, "flaky.example", { force: true });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("unreachable");
+
+    const row = await getInstance(db, "flaky.example");
+    expect(row?.refreshFailures).toBe(1);
+    expect(new Date(row!.nextRefreshAt!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("stores metadata and schedules the next refresh on success", async () => {
+    federation.safeFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith("/.well-known/nodeinfo")) {
+        return jsonResponse({
+          links: [{ rel: "http://nodeinfo.diaspora.software/ns/schema/2.0", href: "https://good.example/nodeinfo/2.0" }],
+        });
+      }
+      if (url.endsWith("/nodeinfo/2.0")) {
+        return jsonResponse({ software: { name: "Mastodon", version: "4.3.1" }, metadata: { nodeName: "Good" } });
+      }
+      return null;
+    });
+
+    const result = await refreshInstance(db, kv, "good.example", { force: true, refreshDays: 7 });
+    expect(result.ok).toBe(true);
+
+    const row = await getInstance(db, "good.example");
+    expect(row?.software).toBe("mastodon");
+    expect(row?.version).toBe("4.3.1");
+    expect(row?.title).toBe("Good");
+    expect(row?.refreshFailures).toBe(0);
+    expect(new Date(row!.nextRefreshAt!).getTime()).toBeGreaterThan(Date.now() + 6 * DAY);
   });
 });
 
