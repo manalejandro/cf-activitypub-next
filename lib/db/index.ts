@@ -2011,6 +2011,87 @@ export async function getHomeTimeline(
   return rows.results.map(rowToObject);
 }
 
+/**
+ * List timeline (Mastodon lists). The member set is small, so blocked actors
+ * and blocked domains are resolved into it once; the objects query then only
+ * filters membership and reads one ordered index scan per visibility. The old
+ * JOIN + NOT IN + correlated NOT EXISTS plan scanned every public object and
+ * sorted it (8M+ rows per request in production analytics) because
+ * `visibility IN (...)` on the leading index column defeats the ordered scan.
+ */
+export async function getListTimeline(
+  db: D1Database,
+  listId: string,
+  viewerId: string,
+  limit = 20,
+  maxId?: string,
+  sinceId?: string
+): Promise<LocalObject[]> {
+  const memberRows = await db
+    .prepare("SELECT actor_id FROM list_accounts WHERE list_id = ?")
+    .bind(listId)
+    .all<{ actor_id: string }>();
+  let memberIds = (memberRows.results ?? []).map((r) => r.actor_id);
+  if (memberIds.length === 0) return [];
+
+  // Blocked accounts and accounts from domain-blocked instances are hidden.
+  const [blockedRows, domainRows] = await Promise.all([
+    db.prepare("SELECT target_id FROM blocks WHERE actor_id = ?").bind(viewerId).all<{ target_id: string }>(),
+    db.prepare("SELECT domain FROM domain_blocks WHERE actor_id = ?").bind(viewerId).all<{ domain: string }>(),
+  ]);
+  const blocked = new Set((blockedRows.results ?? []).map((r) => r.target_id));
+  if (blocked.size > 0) memberIds = memberIds.filter((id) => !blocked.has(id));
+
+  const blockedDomains = new Set((domainRows.results ?? []).map((r) => r.domain).filter(Boolean));
+  if (blockedDomains.size > 0 && memberIds.length > 0) {
+    const actorRows = await db
+      .prepare("SELECT id, domain FROM actors WHERE id IN (SELECT value FROM json_each(?))")
+      .bind(JSON.stringify(memberIds))
+      .all<{ id: string; domain: string }>();
+    const domainById = new Map((actorRows.results ?? []).map((r) => [r.id, r.domain]));
+    memberIds = memberIds.filter((id) => {
+      const memberDomain = domainById.get(id);
+      return memberDomain === undefined || !blockedDomains.has(memberDomain);
+    });
+  }
+  if (memberIds.length === 0) return [];
+
+  // Cursor resolved once from the pivot status (same semantics as the other
+  // timelines: the cursor advances with the last fetched row, visibility aside).
+  let publishedClause = "";
+  let cursorPublished: string | null = null;
+  const cursorId = maxId ?? sinceId;
+  if (cursorId) {
+    const pivot = await db
+      .prepare("SELECT published FROM objects WHERE id = ?")
+      .bind(cursorId)
+      .first<{ published: string }>();
+    if (!pivot) return [];
+    publishedClause = maxId ? "AND o.published < ?" : "AND o.published > ?";
+    cursorPublished = pivot.published;
+  }
+
+  const members = JSON.stringify(memberIds);
+  const branch = (visibility: string) => `
+    SELECT o.* FROM objects o INDEXED BY idx_objects_vis_published
+    WHERE o.visibility = '${visibility}'
+      AND o.actor_id IN (SELECT value FROM json_each(?))
+      ${publishedClause}
+    ORDER BY o.published DESC LIMIT ?`;
+  const branchBinds: unknown[] = cursorPublished ? [members, cursorPublished, limit] : [members, limit];
+  const rows = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM (${branch("public")})
+         UNION ALL
+         SELECT * FROM (${branch("unlisted")})
+       ) ORDER BY published DESC LIMIT ?`
+    )
+    .bind(...branchBinds, ...branchBinds, limit)
+    .all<Row>();
+  return rows.results.map(rowToObject);
+}
+
 export async function getHashtagTimeline(
   db: D1Database,
   hashtag: string,

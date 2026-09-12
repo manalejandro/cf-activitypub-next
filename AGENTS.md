@@ -80,6 +80,7 @@ const { env } = getCloudflareContext();
   - `idx_objects_url` backs the Like/Announce URL fallback.
 - **Correlated `MAX(published)` subqueries per row are a smell** — precompute on `actors` instead.
 - **D1 bind limit ≈ 100.** For long `IN` lists pass a JSON array and use `json_each(?)`.
+- **List timelines** (`getListTimeline`) prefilter the (small) member set minus blocked actors/domains, then run one ordered scan per visibility (`UNION ALL` + `INDEXED BY idx_objects_vis_published`). Never join `list_accounts` with `visibility IN (...)` + correlated `NOT EXISTS`: that plan scans every public object and sorts it (~8M rows/request in production analytics).
 - **Large backfills must be batched**: single full-table `UPDATE`s hit `SQLITE_NOMEM`. Walk an id cursor and chunk statements by bytes in `upgrade-schema.mjs`; guard one-shot migrations with `instance_settings` markers.
 - **Never `DROP` stateful tables in the upgrade script** (`delivery_rejections` was wiped every run once — don't repeat that).
 - Wrap queries in `try/catch` with a migration pointer when columns may be missing on old DBs (`last_status_at`, `quote_id`, …).

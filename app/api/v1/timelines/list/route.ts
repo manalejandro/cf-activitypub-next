@@ -20,53 +20,12 @@ export async function GET(request: NextRequest): Promise<Response> {
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
 
-  const where = `la.list_id = ?
-     AND o.visibility IN ('public', 'unlisted')
-     AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-     AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`;
-  let sql = `SELECT o.* FROM objects o
-     JOIN list_accounts la ON la.actor_id = o.actor_id
-     WHERE ${where}`;
-  const args: unknown[] = [listId, me.id, me.id];
-
-  if (maxId) {
-    sql += ` AND o.published < (SELECT published FROM objects WHERE id = ?)`;
-    args.push(maxId);
-  } else if (sinceId) {
-    sql += ` AND o.published > (SELECT published FROM objects WHERE id = ?)`;
-    args.push(sinceId);
-  }
-  sql += ` ORDER BY o.published DESC LIMIT ?`;
-  args.push(limit);
-
-  const rows = await env.DB
-    .prepare(sql)
-    .bind(...args)
-    .all<Record<string, unknown>>();
-  if (rows.results.length === 0) return json([]);
-  const { getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap, getActorFieldsMap, getMutedActorIds } = await import("@/lib/db");
+  const { getListTimeline, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap, getActorFieldsMap, getMutedActorIds } = await import("@/lib/db");
+  const objects = await getListTimeline(env.DB, listId, me.id, limit, maxId, sinceId);
+  if (objects.length === 0) return json([]);
   const { serializeStatus } = await import("@/lib/mastodon/serializers");
-  const objectIds = rows.results.map((r) => r.id as string);
-  const objs = rows.results.map((r) => ({
-    id: r.id as string,
-    type: r.type as string,
-    actorId: r.actor_id as string,
-    content: r.content as string | null,
-    contentWarning: r.content_warning as string | null,
-    sensitive: Boolean(r.sensitive),
-    visibility: r.visibility as "public" | "unlisted" | "private" | "direct",
-    inReplyToId: r.in_reply_to_id as string | null,
-    quoteId: (r.quote_id as string | null) ?? null,
-    language: r.language as string | null,
-    url: r.url as string,
-    repliesCount: Number(r.replies_count ?? 0),
-    reblogsCount: Number(r.reblogs_count ?? 0),
-    favouritesCount: Number(r.favourites_count ?? 0),
-    published: r.published as string,
-    updatedAt: r.updated_at as string,
-    local: Boolean(r.is_local),
-    raw: r.raw as string,
-  }));
+  const objectIds = objects.map((o) => o.id);
+  const objs = objects;
   const [attachmentMap, allEmojis, replyToMap, filteredMap, lastStatusAtMap, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objectIds),
     getAllCustomEmojis(env.DB),
