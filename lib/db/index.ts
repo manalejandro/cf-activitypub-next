@@ -3581,6 +3581,7 @@ function rowToPushSub(r: Row): LocalPushSubscription {
     alerts: r.alerts as string,
     serverKey: r.server_key as string,
     sound: Boolean(r.sound),
+    presentUntil: (r.present_until as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -3599,7 +3600,7 @@ export async function getPushSubscription(
 
 export async function upsertPushSubscription(
   db: D1Database,
-  sub: Omit<LocalPushSubscription, "createdAt" | "updatedAt">
+  sub: Omit<LocalPushSubscription, "createdAt" | "updatedAt" | "presentUntil">
 ): Promise<void> {
   await db
     .prepare(
@@ -3614,6 +3615,7 @@ export async function upsertPushSubscription(
          alerts = excluded.alerts,
          server_key = excluded.server_key,
          sound = excluded.sound,
+         present_until = NULL,
          updated_at = datetime('now')`
     )
     .bind(
@@ -3628,6 +3630,22 @@ export async function upsertPushSubscription(
       sub.serverKey,
       sub.sound ? 1 : 0
     )
+    .run();
+}
+
+/**
+ * Refresh (or clear) the focused-tab heartbeat for one device. `presentUntil`
+ * is an ISO timestamp in the future, or null when the tab lost focus.
+ */
+export async function updatePushPresence(
+  db: D1Database,
+  actorId: string,
+  endpoint: string,
+  presentUntil: string | null
+): Promise<void> {
+  await db
+    .prepare("UPDATE push_subscriptions SET present_until = ? WHERE actor_id = ? AND endpoint = ?")
+    .bind(presentUntil, actorId, endpoint)
     .run();
 }
 

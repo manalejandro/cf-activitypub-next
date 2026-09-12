@@ -3,11 +3,10 @@ import { createNotification, getActorById, getObjectById } from "@/lib/db";
 import type { LocalNotification } from "@/lib/types";
 import { broadcastNotificationEvent, type DONamespace } from "@/lib/streaming/broadcast";
 import { serializeNotification } from "@/lib/mastodon/serializers";
-import { deliverPushSafe, type PresenceKV } from "@/lib/push";
+import { deliverPushSafe } from "@/lib/push";
 
 export interface NotifyEnv {
   DB: D1Database;
-  KV?: PresenceKV;
   INSTANCE_URL?: string;
   TIMELINE_STREAM?: DONamespace;
   VAPID_PUBLIC_KEY?: string;
@@ -52,6 +51,6 @@ export async function notify(env: NotifyEnv, notif: LocalNotification): Promise<
     void broadcastNotificationEvent(env.TIMELINE_STREAM, notif.targetAccountId, payload).catch(() => {});
   }
   if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_EMAIL) {
-    void deliverPushSafe(env.DB, env.KV ?? null, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_EMAIL, notif);
+    void deliverPushSafe(env.DB, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, env.VAPID_EMAIL, notif);
   }
 }

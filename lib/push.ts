@@ -86,26 +86,8 @@ const TYPE_MAP: Record<string, string> = {
   direct: "direct", encrypted: "encrypted",
 };
 
-/**
- * Minimal KV surface used for presence markers — the exact shape of the
- * generated `CloudflareEnv.KV` (avoids clashing with @cloudflare/workers-types
- * across the two type definitions the app has).
- */
-export type PresenceKV = { get(key: string): Promise<string | null> };
-
-/**
- * KV key for one device's "tab is focused" marker. Keyed by subscription
- * endpoint hash so a focused tab only silences its own device.
- */
-export async function pushPresenceKey(actorId: string, endpoint: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint));
-  const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `push:presence:${actorId}:${hash}`;
-}
-
 export async function deliverPushNotification(
   db: D1Database,
-  kv: PresenceKV | null | undefined,
   vapidPub: string,
   vapidPriv: string,
   vapidEmail: string,
@@ -120,14 +102,10 @@ export async function deliverPushNotification(
   if (ak && alerts[ak] === false) return;
   if (sub.policy === "none") return;
 
-  // Presence heartbeat: the user is looking at the app, and the streaming
-  // event already updates the in-app UI. Showing the OS notification here
-  // would duplicate it (and beep while they are reading).
-  if (kv) {
-    try {
-      if (await kv.get(await pushPresenceKey(notif.targetAccountId, sub.endpoint))) return;
-    } catch { /* a KV hiccup must not block the push */ }
-  }
+  // Presence heartbeat from the focused tab (see /api/v1/push/presence). D1 is
+  // strongly consistent, so switching to another tab takes effect immediately.
+  // The in-app streaming event already updates the UI while the user is here.
+  if (sub.presentUntil && new Date(sub.presentUntil).getTime() > Date.now()) return;
 
   // Build a short body: the triggering account + (for content notifications) a
   // preview of the object. The title comes from the i18n dictionaries in the
@@ -275,14 +253,13 @@ function ab(bytes: Uint8Array): ArrayBuffer {
 
 export async function deliverPushSafe(
   db: D1Database,
-  kv: PresenceKV | null | undefined,
   vapidPub: string,
   vapidPriv: string,
   vapidEmail: string,
   notif: LocalNotification,
 ): Promise<void> {
   try {
-    await deliverPushNotification(db, kv, vapidPub, vapidPriv, vapidEmail, notif);
+    await deliverPushNotification(db, vapidPub, vapidPriv, vapidEmail, notif);
   } catch (err) {
     // Push delivery failures are non-critical, but log them so a broken VAPID
     // config / encryption bug is visible in the worker logs.

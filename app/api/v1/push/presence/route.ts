@@ -1,11 +1,10 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { pushPresenceKey } from "@/lib/push";
+import { updatePushPresence } from "@/lib/db";
 
-// How long a presence marker lives without a heartbeat. The client renews it
-// every 60s while the tab is focused, so a crashed tab stops silencing push
-// within two minutes.
+// How long a presence heartbeat is valid. The client renews it every 60s while
+// the tab is focused, so a crashed tab starts receiving push within two minutes.
 const PRESENCE_TTL_SECONDS = 120;
 
 // POST /api/v1/push/presence — the focused tab reports itself so the server
@@ -29,11 +28,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     return badRequest("Invalid endpoint");
   }
 
-  const key = await pushPresenceKey(me.id, endpoint);
-  if (body.active === true) {
-    await env.KV.put(key, "1", { expirationTtl: PRESENCE_TTL_SECONDS });
-  } else {
-    await env.KV.delete(key);
-  }
+  const presentUntil = body.active === true
+    ? new Date(Date.now() + PRESENCE_TTL_SECONDS * 1000).toISOString()
+    : null;
+  await updatePushPresence(env.DB, me.id, endpoint, presentUntil);
   return json({});
 }

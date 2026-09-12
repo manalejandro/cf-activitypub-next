@@ -510,6 +510,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   alerts        TEXT NOT NULL DEFAULT '{}',
   server_key    TEXT NOT NULL DEFAULT '',
   sound         INTEGER NOT NULL DEFAULT 0,
+  -- "Tab focused" heartbeat: while in the future, Web Push is skipped. D1
+  -- (not KV) so the unfocus taking effect is strongly consistent.
+  present_until TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id)

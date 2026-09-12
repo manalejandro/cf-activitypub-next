@@ -657,6 +657,8 @@ export interface LocalPushSubscription {
   alerts: string;
   serverKey: string;
   sound: boolean;
+  /** Focused-tab heartbeat: Web Push is skipped while this is in the future. */
+  presentUntil: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -94,6 +94,9 @@ export function NotificationSound() {
     const HEARTBEAT_MS = 60_000;
     let endpoint: string | null = null;
     let timer: number | null = null;
+    let desired: boolean | null = null;
+    let sent: boolean | null = null;
+    let inFlight = false;
 
     const send = async (active: boolean, keepalive = false) => {
       try {
@@ -112,20 +115,36 @@ export function NotificationSound() {
         });
       } catch {
         /* presence is best-effort */
+      } finally {
+        sent = active;
       }
     };
 
+    // Send at most one request at a time so a heartbeat that was in flight when
+    // the tab lost focus cannot land after (and override) the `active: false`.
+    const flush = (force = false) => {
+      if (inFlight) return;
+      if (!force && desired === sent) return;
+      const target = desired === true;
+      inFlight = true;
+      void send(target).finally(() => {
+        inFlight = false;
+        // The state changed while we were sending — correct it immediately.
+        if (desired !== sent) flush();
+      });
+    };
+
     const sync = () => {
-      const active = document.visibilityState === "visible" && document.hasFocus();
-      if (active) {
-        void send(true);
-        timer ??= window.setInterval(() => void send(true), HEARTBEAT_MS);
+      desired = document.visibilityState === "visible" && document.hasFocus();
+      if (desired) {
+        flush();
+        timer ??= window.setInterval(() => flush(true), HEARTBEAT_MS);
       } else {
         if (timer !== null) {
           clearInterval(timer);
           timer = null;
         }
-        void send(false);
+        flush();
       }
     };
 
@@ -138,6 +157,8 @@ export function NotificationSound() {
         clearInterval(timer);
         timer = null;
       }
+      desired = false;
+      // Bypass the queue: the page is going away, deliver the release now.
       void send(false, true);
     };
     window.addEventListener("pagehide", onPageHide);
