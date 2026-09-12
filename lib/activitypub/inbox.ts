@@ -50,6 +50,7 @@ import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { syncRemoteCollections } from "./collections";
+import { recordInstanceInboundActivity } from "./instances";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
@@ -200,6 +201,16 @@ export async function processInboxActivity(
           ctx = { ...ctx, rejectMedia: block.rejectMedia, rejectReports: block.rejectReports };
         }
       }
+    } catch { /* non-URL actor id */ }
+  }
+
+  // Federation engine: a signed activity proves this host is reachable. Clear
+  // an unavailable state (Mastodon's inbox-side track_success!) and refresh
+  // last_seen at most once per hour (KV-throttled to bound D1 writes).
+  if (blockedActorId) {
+    try {
+      const engineDomain = new URL(blockedActorId).hostname;
+      if (engineDomain) await recordInstanceInboundActivity(ctx.db, ctx.kv, engineDomain);
     } catch { /* non-URL actor id */ }
   }
 

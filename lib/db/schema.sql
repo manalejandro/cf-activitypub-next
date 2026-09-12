@@ -240,6 +240,41 @@ CREATE TABLE IF NOT EXISTS blocks (
 );
 
 -- ─────────────────────────────────────────
+-- Instances (federation engine)
+-- ─────────────────────────────────────────
+-- One row per remote domain. Metadata comes from NodeInfo (refreshed on a
+-- schedule); availability implements Mastodon's DeliveryFailureTracker: a host
+-- is "unavailable" after delivery failures on 7 distinct UTC days and is
+-- cleared by any success (outbound delivery or a signed inbound activity).
+CREATE TABLE IF NOT EXISTS instances (
+  domain              TEXT PRIMARY KEY,
+  software            TEXT,
+  version             TEXT,
+  title               TEXT,
+  description         TEXT,
+  open_registrations  INTEGER,           -- NULL = unknown
+  languages           TEXT,              -- JSON array
+  first_seen_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  metadata_updated_at TEXT,
+  next_refresh_at     TEXT,              -- NULL = never auto-refresh (dormant/expired)
+  refresh_failures    INTEGER NOT NULL DEFAULT 0,
+  failure_days        INTEGER NOT NULL DEFAULT 0,
+  last_failure_day    TEXT,              -- YYYY-MM-DD (UTC of the last counted failure day)
+  unavailable         INTEGER NOT NULL DEFAULT 0,
+  unavailable_at      TEXT,
+  last_failure_at     TEXT,
+  last_ok_at          TEXT,
+  last_status         INTEGER,           -- last HTTP status seen (0 = network error)
+  suspended           INTEGER NOT NULL DEFAULT 0, -- admin pause: stop delivering
+  note                TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_instances_next_refresh ON instances(next_refresh_at);
+CREATE INDEX IF NOT EXISTS idx_instances_last_seen    ON instances(last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_instances_unavailable  ON instances(unavailable);
+
+-- ─────────────────────────────────────────
 -- Domain blocks (instance-level)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS domain_blocks (

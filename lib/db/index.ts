@@ -14,6 +14,7 @@ import type {
   LocalCustomEmoji,
   LocalMarker,
   LocalPushSubscription,
+  LocalInstance,
   LocalCollection,
   LocalCollectionItem,
   OAuthApp,
@@ -3499,6 +3500,415 @@ export async function setDomainCallsSupport(db: D1Database, domain: string, supp
     )
     .bind(domain, supportsCalls ? 1 : 0)
     .run();
+}
+
+// ─────────────────────────────────────────
+// Instances (federation engine)
+// ─────────────────────────────────────────
+
+function rowToInstance(r: Row): LocalInstance {
+  let languages: string[] = [];
+  try {
+    const parsed = JSON.parse((r.languages as string) ?? "[]");
+    if (Array.isArray(parsed)) languages = parsed.filter((l): l is string => typeof l === "string");
+  } catch { /* corrupt JSON — treat as unknown */ }
+  return {
+    domain: r.domain as string,
+    software: (r.software as string | null) ?? null,
+    version: (r.version as string | null) ?? null,
+    title: (r.title as string | null) ?? null,
+    description: (r.description as string | null) ?? null,
+    openRegistrations: r.open_registrations === null || r.open_registrations === undefined
+      ? null
+      : Boolean(r.open_registrations),
+    languages,
+    firstSeenAt: r.first_seen_at as string,
+    lastSeenAt: r.last_seen_at as string,
+    metadataUpdatedAt: (r.metadata_updated_at as string | null) ?? null,
+    nextRefreshAt: (r.next_refresh_at as string | null) ?? null,
+    refreshFailures: Number(r.refresh_failures ?? 0),
+    failureDays: Number(r.failure_days ?? 0),
+    lastFailureDay: (r.last_failure_day as string | null) ?? null,
+    unavailable: Boolean(r.unavailable),
+    unavailableAt: (r.unavailable_at as string | null) ?? null,
+    lastFailureAt: (r.last_failure_at as string | null) ?? null,
+    lastOkAt: (r.last_ok_at as string | null) ?? null,
+    lastStatus: r.last_status === null || r.last_status === undefined ? null : Number(r.last_status),
+    suspended: Boolean(r.suspended),
+    note: (r.note as string | null) ?? null,
+  };
+}
+
+export async function getInstance(db: D1Database, domain: string): Promise<LocalInstance | null> {
+  const row = await db
+    .prepare("SELECT * FROM instances WHERE domain = ?")
+    .bind(domain.toLowerCase())
+    .first<Row>();
+  return row ? rowToInstance(row) : null;
+}
+
+export interface InstanceAggregates {
+  accounts: number;
+  localFollows: number;
+  blocked: boolean;
+}
+
+/** Per-domain aggregates for a page of instances (one batched query each). */
+export async function getInstanceAggregates(
+  db: D1Database,
+  domains: string[]
+): Promise<Map<string, InstanceAggregates>> {
+  const out = new Map<string, InstanceAggregates>();
+  const unique = [...new Set(domains.map((d) => d.toLowerCase()))].filter(Boolean);
+  for (const d of unique) out.set(d, { accounts: 0, localFollows: 0, blocked: false });
+  if (unique.length === 0) return out;
+
+  const payload = JSON.stringify(unique);
+  const [accounts, follows, blocks] = await Promise.all([
+    db
+      .prepare(
+        `SELECT domain, COUNT(*) AS n FROM actors
+         WHERE is_local = 0 AND domain IN (SELECT value FROM json_each(?))
+         GROUP BY domain`
+      )
+      .bind(payload)
+      .all<{ domain: string; n: number }>(),
+    db
+      .prepare(
+        `SELECT a.domain AS domain, COUNT(*) AS n FROM follows f
+         JOIN actors a ON a.id = f.target_id
+         WHERE f.state = 'accepted' AND a.domain IN (SELECT value FROM json_each(?))
+         GROUP BY a.domain`
+      )
+      .bind(payload)
+      .all<{ domain: string; n: number }>(),
+    db
+      .prepare(
+        `SELECT domain FROM instance_domain_blocks WHERE domain IN (SELECT value FROM json_each(?))`
+      )
+      .bind(payload)
+      .all<{ domain: string }>(),
+  ]);
+
+  for (const row of accounts.results ?? []) {
+    const agg = out.get(row.domain.toLowerCase());
+    if (agg) agg.accounts = Number(row.n);
+  }
+  for (const row of follows.results ?? []) {
+    const agg = out.get(row.domain.toLowerCase());
+    if (agg) agg.localFollows = Number(row.n);
+  }
+  for (const row of blocks.results ?? []) {
+    const agg = out.get(row.domain.toLowerCase());
+    if (agg) agg.blocked = true;
+  }
+  return out;
+}
+
+export interface InstanceListItem {
+  instance: LocalInstance;
+  accounts: number;
+  localFollows: number;
+  blocked: boolean;
+  /** No activity inside the dormancy window (computed server-side). */
+  dormant: boolean;
+}
+
+/** Admin list, newest availability problems first. */
+export async function listInstances(
+  db: D1Database,
+  opts: { limit?: number; offset?: number; query?: string; status?: string; dormantDays?: number } = {}
+): Promise<{ instances: InstanceListItem[]; total: number }> {
+  const { limit = 40, offset = 0, query = "", status = "all", dormantDays = 30 } = opts;
+  const where: string[] = [];
+  const binds: unknown[] = [];
+  if (query) {
+    where.push("i.domain LIKE ?");
+    binds.push(`%${query.toLowerCase()}%`);
+  }
+  const dormantCutoff = new Date(Date.now() - dormantDays * 86_400_000).toISOString();
+  switch (status) {
+    case "unavailable":
+      where.push("i.unavailable = 1");
+      break;
+    case "blocked":
+      where.push("EXISTS (SELECT 1 FROM instance_domain_blocks b WHERE b.domain = i.domain)");
+      break;
+    case "suspended":
+      where.push("i.suspended = 1");
+      break;
+    case "dormant":
+      where.push("i.last_seen_at < ? AND i.suspended = 0");
+      binds.push(dormantCutoff);
+      break;
+    case "ok":
+      where.push(
+        "i.unavailable = 0 AND i.suspended = 0 AND i.last_seen_at >= ?",
+        "NOT EXISTS (SELECT 1 FROM instance_domain_blocks b WHERE b.domain = i.domain)"
+      );
+      binds.push(dormantCutoff);
+      break;
+    default:
+      break;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const totalRow = await db
+    .prepare(`SELECT COUNT(*) AS n FROM instances i ${whereSql}`)
+    .bind(...binds)
+    .first<{ n: number }>();
+  const rows = await db
+    .prepare(
+      `SELECT i.* FROM instances i ${whereSql}
+       ORDER BY i.unavailable DESC, i.suspended DESC, i.last_seen_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...binds, limit, offset)
+    .all<Row>();
+  const instances = (rows.results ?? []).map(rowToInstance);
+  const aggregates = await getInstanceAggregates(db, instances.map((i) => i.domain));
+  return {
+    total: Number(totalRow?.n ?? 0),
+    instances: instances.map((instance) => ({
+      instance,
+      accounts: aggregates.get(instance.domain)?.accounts ?? 0,
+      localFollows: aggregates.get(instance.domain)?.localFollows ?? 0,
+      blocked: aggregates.get(instance.domain)?.blocked ?? false,
+      dormant: instance.lastSeenAt < dormantCutoff,
+    })),
+  };
+}
+
+export interface InstanceMetadataPatch {
+  software: string | null;
+  version: string | null;
+  title: string | null;
+  description: string | null;
+  openRegistrations: boolean | null;
+  languages: string[];
+  nextRefreshAt: string | null;
+}
+
+export async function upsertInstanceMetadata(
+  db: D1Database,
+  domain: string,
+  meta: InstanceMetadataPatch
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, software, version, title, description, open_registrations, languages, metadata_updated_at, next_refresh_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         software = excluded.software,
+         version = excluded.version,
+         title = excluded.title,
+         description = excluded.description,
+         open_registrations = excluded.open_registrations,
+         languages = excluded.languages,
+         metadata_updated_at = datetime('now'),
+         next_refresh_at = excluded.next_refresh_at,
+         refresh_failures = 0`
+    )
+    .bind(
+      domain.toLowerCase(),
+      meta.software,
+      meta.version,
+      meta.title,
+      meta.description,
+      meta.openRegistrations === null ? null : meta.openRegistrations ? 1 : 0,
+      JSON.stringify(meta.languages ?? []),
+      meta.nextRefreshAt
+    )
+    .run();
+}
+
+/** Metadata fetch failed: back off (6h × failures, capped at 24h). */
+export async function recordInstanceRefreshFailure(
+  db: D1Database,
+  domain: string,
+  nextRefreshAt: string
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, refresh_failures, next_refresh_at)
+       VALUES (?, 1, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         refresh_failures = instances.refresh_failures + 1,
+         next_refresh_at = excluded.next_refresh_at`
+    )
+    .bind(domain.toLowerCase(), nextRefreshAt)
+    .run();
+}
+
+/**
+ * Mastodon's DeliveryFailureTracker: failures on 7 distinct UTC days mark the
+ * host unavailable; a later success resets everything.
+ */
+export async function recordInstanceFailure(
+  db: D1Database,
+  domain: string,
+  status: number,
+  failureDaysThreshold: number,
+  now: Date = new Date()
+): Promise<LocalInstance | null> {
+  const host = domain.toLowerCase();
+  const day = now.toISOString().slice(0, 10);
+  const nowIso = now.toISOString();
+  const existing = await getInstance(db, host);
+  const failureDays = existing
+    ? existing.lastFailureDay === day
+      ? existing.failureDays
+      : existing.failureDays + 1
+    : 1;
+  const unavailable = failureDays >= failureDaysThreshold;
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, failure_days, last_failure_day, unavailable, unavailable_at, last_failure_at, last_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         failure_days = excluded.failure_days,
+         last_failure_day = excluded.last_failure_day,
+         unavailable = excluded.unavailable,
+         unavailable_at = CASE
+           WHEN excluded.unavailable = 1 AND instances.unavailable = 0 THEN excluded.unavailable_at
+           ELSE instances.unavailable_at END,
+         last_failure_at = excluded.last_failure_at,
+         last_status = excluded.last_status`
+    )
+    .bind(host, failureDays, day, unavailable ? 1 : 0, unavailable ? nowIso : null, nowIso, status)
+    .run();
+  return getInstance(db, host);
+}
+
+export async function recordInstanceSuccess(
+  db: D1Database,
+  domain: string,
+  now: Date = new Date()
+): Promise<void> {
+  const nowIso = now.toISOString();
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, last_seen_at, last_ok_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         failure_days = 0,
+         last_failure_day = NULL,
+         unavailable = 0,
+         unavailable_at = NULL,
+         last_status = NULL,
+         last_ok_at = excluded.last_ok_at,
+         last_seen_at = excluded.last_seen_at,
+         next_refresh_at = COALESCE(instances.next_refresh_at, excluded.next_refresh_at)`
+    )
+    .bind(host(domain), nowIso, nowIso)
+    .run();
+}
+
+/** First contact: create the row (metadata refresh scheduled) or bump last_seen. */
+export async function touchInstanceSeen(
+  db: D1Database,
+  domain: string,
+  nextRefreshAt: string | null,
+  now: Date = new Date()
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, last_seen_at, next_refresh_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         last_seen_at = excluded.last_seen_at,
+         next_refresh_at = COALESCE(instances.next_refresh_at, excluded.next_refresh_at)`
+    )
+    .bind(host(domain), now.toISOString(), nextRefreshAt)
+    .run();
+}
+
+export async function setInstanceSuspended(
+  db: D1Database,
+  domain: string,
+  suspended: boolean
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, suspended)
+       VALUES (?, ?)
+       ON CONFLICT(domain) DO UPDATE SET suspended = excluded.suspended`
+    )
+    .bind(host(domain), suspended ? 1 : 0)
+    .run();
+}
+
+export async function setInstanceNote(db: D1Database, domain: string, note: string | null): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO instances (domain, note) VALUES (?, ?)
+       ON CONFLICT(domain) DO UPDATE SET note = excluded.note`
+    )
+    .bind(host(domain), note)
+    .run();
+}
+
+export async function deleteInstance(db: D1Database, domain: string): Promise<void> {
+  await db.prepare("DELETE FROM instances WHERE domain = ?").bind(host(domain)).run();
+}
+
+export async function getActorIdsByDomain(db: D1Database, domain: string): Promise<string[]> {
+  const rows = await db
+    .prepare("SELECT id FROM actors WHERE is_local = 0 AND domain = ?")
+    .bind(host(domain))
+    .all<{ id: string }>();
+  return (rows.results ?? []).map((r) => r.id);
+}
+
+const host = (domain: string) => domain.toLowerCase();
+
+/** Instances whose metadata refresh is due (dormant ones are skipped by the NULL schedule). */
+export async function listInstancesDueForRefresh(
+  db: D1Database,
+  limit: number,
+  now: Date = new Date()
+): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT domain FROM instances
+       WHERE next_refresh_at IS NOT NULL AND next_refresh_at <= ? AND suspended = 0
+       ORDER BY next_refresh_at LIMIT ?`
+    )
+    .bind(now.toISOString(), limit)
+    .all<{ domain: string }>();
+  return (rows.results ?? []).map((r) => r.domain);
+}
+
+/**
+ * Metadata expiry: instances with no activity for `dormantDays` lose their
+ * cached NodeInfo (and stop being refreshed) unless someone here follows them.
+ * The row stays so availability/admin state is preserved.
+ */
+export async function expireDormantInstanceMetadata(
+  db: D1Database,
+  dormantDays: number,
+  limit = 200,
+  now: Date = new Date()
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - dormantDays * 86_400_000).toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE instances
+       SET software = NULL, version = NULL, title = NULL, description = NULL,
+           open_registrations = NULL, languages = NULL, metadata_updated_at = NULL,
+           next_refresh_at = NULL
+       WHERE domain IN (
+         SELECT i.domain FROM instances i
+         WHERE i.last_seen_at < ? AND i.next_refresh_at IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM follows f JOIN actors a ON a.id = f.target_id
+             WHERE a.domain = i.domain AND f.state = 'accepted'
+           )
+         LIMIT ?
+       )`
+    )
+    .bind(cutoff, limit)
+    .run();
+  return result.meta?.changes ?? 0;
 }
 
 // ─────────────────────────────────────────

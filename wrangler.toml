@@ -24,6 +24,12 @@ LIBRETRANSLATE_URL = ""
 AI_DAILY_BUDGET = "1000"
 # Max instances shown on the /graph federation graph
 GRAPH_MAX_NODES = "100"
+# Federation engine: NodeInfo refreshes per cron tick, refresh cadence (days),
+# dormancy window before metadata expires (days) and hard expiry (days).
+INSTANCE_REFRESH_BATCH = "3"
+INSTANCE_REFRESH_DAYS = "7"
+INSTANCE_DORMANT_DAYS = "30"
+INSTANCE_EXPIRE_DAYS = "90"
 # Secrets: set with wrangler secret put
 #   wrangler secret put TURNSTILE_SECRET
 #   wrangler secret put CALLS_TURN_KEY_ID
@@ -88,7 +94,7 @@ queue = "cf-activitypub-delivery"
 queue = "cf-activitypub-delivery"
 max_batch_size = 20
 max_batch_timeout = 5
-max_retries = 5
+max_retries = 16
 dead_letter_queue = "cf-activitypub-delivery-dlq"
 
 # Dead-letter queue: failures past max_retries land here. The worker records

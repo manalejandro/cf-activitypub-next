@@ -663,6 +663,33 @@ export interface LocalPushSubscription {
   updatedAt: string;
 }
 
+/** A remote instance (federation engine): NodeInfo metadata + availability. */
+export interface LocalInstance {
+  domain: string;
+  software: string | null;
+  version: string | null;
+  title: string | null;
+  description: string | null;
+  openRegistrations: boolean | null;
+  languages: string[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  metadataUpdatedAt: string | null;
+  nextRefreshAt: string | null;
+  refreshFailures: number;
+  /** Distinct UTC days with a delivery failure (Mastodon threshold: 7). */
+  failureDays: number;
+  lastFailureDay: string | null;
+  unavailable: boolean;
+  unavailableAt: string | null;
+  lastFailureAt: string | null;
+  lastOkAt: string | null;
+  lastStatus: number | null;
+  /** Admin pause: keep the record but stop outbound delivery. */
+  suspended: boolean;
+  note: string | null;
+}
+
 /** A curated collection of accounts a user recommends others to follow. */
 export interface LocalCollection {
   id: string;

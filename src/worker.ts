@@ -26,11 +26,20 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata } from "../lib/db";
 import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
+import {
+  deliveryRetryDelay,
+  isInstancePaused,
+  isInstanceUnavailable,
+  parseRetryAfter,
+  recordInstanceDeliveryFailure,
+  recordInstanceDeliverySuccess,
+  refreshInstance,
+} from "../lib/activitypub/instances";
 import { runModerationCycle } from "../lib/moderation/cycle";
 import type { APActor } from "../lib/types";
 
@@ -366,7 +375,7 @@ async function deliverOne(
   activityJson: string,
   actorId: string,
   env: Env
-): Promise<{ ok: boolean; permanent: boolean; status: number; error?: string }> {
+): Promise<{ ok: boolean; permanent: boolean; status: number; error?: string; retryAfter?: number }> {
   // SSRF guard: inbox URLs originate from remote actor documents / user input.
   // Never POST to non-HTTPS, private, or local addresses.
   const validation = validateOutboundUrl(inboxUrl);
@@ -404,6 +413,7 @@ async function deliverOne(
     if (!res) {
       const domain = new URL(inboxUrl).hostname.toLowerCase();
       await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");
+      await recordInstanceDeliveryFailure(env.DB, env.KV, domain, 0);
       return { ok: false, permanent: true, status: 0, error: "Blocked redirect or unreachable" };
     }
     // We only need the status; cancel the body so concurrent deliveries don't
@@ -422,7 +432,15 @@ async function deliverOne(
         .bind(inboxDomain)
         .run()
         .catch(() => {});
-    } else if (permanent) {
+      // Federation engine: a success clears the host's failure days / marker.
+      await recordInstanceDeliverySuccess(env.DB, env.KV, inboxDomain);
+      return { ok: true, permanent: false, status: res.status };
+    }
+    // Federation engine: Mastodon's DeliveryFailureTracker counts any failure
+    // (permanent or transient) on distinct UTC days, and marks the host
+    // unavailable after 7 of them.
+    await recordInstanceDeliveryFailure(env.DB, env.KV, inboxDomain, res.status);
+    if (permanent) {
       await recordDeliveryFailure(env, inboxDomain, res.status, `HTTP ${res.status}`);
     } else if (res.status >= 500) {
       // Server-side error (e.g. the remote's Cloudflare 52x TLS handshake
@@ -431,12 +449,19 @@ async function deliverOne(
       // reflects it instead of staying silent.
       await recordDeliveryFailure(env, inboxDomain, 0, `HTTP ${res.status}`);
     }
-    return { ok: res.ok, permanent, status: res.status };
+    return {
+      ok: res.ok,
+      permanent,
+      status: res.status,
+      retryAfter: parseRetryAfter(res.headers.get("Retry-After")) ?? undefined,
+    };
   } catch (err) {
     // Network / timeout error — transient, retry. Recorded with status 0 so the
     // graph can show the instance as unreachable if retries keep failing.
     try {
-      await recordDeliveryFailure(env, new URL(inboxUrl).hostname.toLowerCase(), 0, String(err));
+      const host = new URL(inboxUrl).hostname.toLowerCase();
+      await recordDeliveryFailure(env, host, 0, String(err));
+      await recordInstanceDeliveryFailure(env.DB, env.KV, host, 0);
     } catch { /* best-effort */ }
     return { ok: false, permanent: false, status: 0, error: String(err) };
   }
@@ -933,6 +958,24 @@ async function executeScheduled(env: Env): Promise<void> {
     console.error("[cron] runModerationCycle failed", err);
   }
 
+  // Federation engine: refresh NodeInfo metadata for due instances (a few per
+  // tick, staggered via next_refresh_at) and, once a day, expire the cached
+  // metadata of dormant instances so the registry doesn't accumulate stale data.
+  await setStage("instances");
+  try {
+    const limits = resolveLimits(env as unknown as Record<string, unknown>);
+    const due = await listInstancesDueForRefresh(env.DB, limits.instanceRefreshBatch);
+    for (const domain of due) {
+      await refreshInstance(env.DB, env.KV, domain, { refreshDays: limits.instanceRefreshDays });
+    }
+    if (!(await env.KV.get("cron:instances:expire"))) {
+      await env.KV.put("cron:instances:expire", "1", { expirationTtl: 86400 });
+      await expireDormantInstanceMetadata(env.DB, limits.instanceDormantDays);
+    }
+  } catch (err) {
+    console.error("[cron] federation instance refresh failed", err);
+  }
+
   // Account verification — periodically re-check rel="me" backlinks so the
   // verified badge stays accurate when an external site changes its markup.
   await setStage("verify");
@@ -1115,6 +1158,14 @@ const worker = {
             message.ack();
             continue;
           }
+          // Federation engine: instances unavailable for 7 distinct failure
+          // days are skipped entirely (Mastodon's DeliveryFailureTracker). The
+          // marker clears when the host reaches us or a delivery succeeds.
+          // Admin-suspended instances are skipped the same way.
+          if ((await isInstanceUnavailable(env.KV, host)) || (await isInstancePaused(env.KV, host))) {
+            message.ack();
+            continue;
+          }
 
           const result = await deliverOne(inboxUrl, activityJson, actorId, env);
           if (result.ok) {
@@ -1149,8 +1200,10 @@ const worker = {
             await env.KV
               .put(`dlq:last:${inboxUrl}`, JSON.stringify(detail), { expirationTtl: 86400 })
               .catch(() => {});
-            // Exponential-ish backoff capped at 5 minutes.
-            message.retry({ delaySeconds: Math.min(30 * message.attempts, 300) });
+            // Mastodon's schedule: (attempts^4) + 15 + jitter, capped at 24h.
+            // Cloudflare enforces max_retries = 16 (~2 days total, like Mastodon).
+            const backoff = deliveryRetryDelay(message.attempts);
+            message.retry({ delaySeconds: Math.max(backoff, result.retryAfter ?? 0) });
           }
         } catch (err) {
           console.error("[queue] Delivery threw", inboxUrl, err);

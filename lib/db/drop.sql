@@ -57,6 +57,7 @@ DROP TABLE IF EXISTS delivery_failures;
 DROP TABLE IF EXISTS delivery_rejections;
 DROP TABLE IF EXISTS domain_capabilities;
 DROP TABLE IF EXISTS instance_domain_blocks;
+DROP TABLE IF EXISTS instances;
 DROP TABLE IF EXISTS instance_settings;
 DROP TABLE IF EXISTS moderation_log;
 DROP TABLE IF EXISTS oauth_apps;

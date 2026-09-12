@@ -102,6 +102,13 @@ const { env } = getCloudflareContext();
 - **Scheduled statuses** publish through `createObject` + `enqueueDeliveries` + streaming (public/home) and link pending media (`pending_media:` KV, TTL extended at schedule time). Don't hand-roll inserts there.
 - **SSRF**: run `safeFetch` (or at least `validateOutboundUrl`) before every outbound request. `safeFetch` re-validates each redirect hop and bounds the whole exchange with a timeout; it blocks private/metadata/CGNAT/multicast ranges and internal suffixes (DNS rebinding is out of scope inside a Worker).
 
+### Federation engine (instances)
+
+- **Registry + metadata**: `instances` (one row per remote domain) stores NodeInfo metadata and availability. `lib/activitypub/instances.ts` fetches `/.well-known/nodeinfo` (2.1 → 2.0 → 1.0, SSRF-guarded) with a `/api/v2/instance` fallback; the cron refreshes due instances (`INSTANCE_REFRESH_BATCH`/`_DAYS`) and, daily, expires the metadata of dormant instances (`INSTANCE_DORMANT_DAYS`, kept if a local account follows them). `/api/v1/instance/peers` reads the registry.
+- **Availability (Mastodon `DeliveryFailureTracker`)**: failures on 7 distinct UTC days mark a host `unavailable` and set KV `inst:down:<domain>` (24h) so the queue consumer skips it without a D1 read; any success clears it — outbound delivery or a **signed inbound activity** (`recordInstanceInboundActivity`, KV-throttled last_seen). This is the only recovery path for hosts we stopped delivering to.
+- **Retries (Mastodon `ActivityPub::DeliveryWorker`)**: `max_retries = 16` in `wrangler.toml`, delay `(attempts^4)+15+jitter` capped at 24h (`deliveryRetryDelay`), `Retry-After` honored for 429/503; permanent 4xx ack; exhausted messages go to the DLQ.
+- **Admin**: `/admin/instances` + `/api/v1/admin/instances` (list/filter, add/refresh, reset availability, suspend/unsuspend, purge all cached actors of a domain). Suspend sets the KV `inst:paused:<domain>` marker that the queue consumer checks (delivery stops); purge uses `deleteRemoteActorData`; actions are written to `moderation_log` with `target_type = 'instance'`.
+
 ## Code conventions
 
 - **Path alias** `@/*` → repo root. Always import with `@/`.
@@ -131,4 +138,4 @@ const { env } = getCloudflareContext();
 - `getFollow` does **not** filter by state — use `isAcceptedFollower` for followers-only visibility.
 - Removing local accounts must clean `oauth_tokens`, `activities` and `moderation_log` (no FKs) and federate a `Delete` tombstone (see `app/api/v1/accounts/delete/route.ts` and the admin DELETE route).
 - Never re-ingest already-stored objects to change rendering — serializers read `objects.raw`, so rendering fixes are backward-compatible without migration.
-- Web Push is silenced while a focused tab reports presence: the client heartbeats `POST /api/v1/push/presence` (KV `push:presence:<actor>:<sha256(endpoint)>`, TTL 120s) and `deliverPushNotification` skips when the marker exists. Do **not** instead skip `showNotification` in `public/sw.js` — Chrome substitutes "This site has been updated in the background" and burns the per-origin push budget.
+- Web Push is silenced while a focused tab reports presence: the client heartbeats `POST /api/v1/push/presence` (D1 `push_subscriptions.present_until`, 120s — D1, not KV, so unfocusing is strongly consistent across colos) and `deliverPushNotification` skips while it is in the future. Do **not** instead skip `showNotification` in `public/sw.js` — Chrome substitutes "This site has been updated in the background" and burns the per-origin push budget.

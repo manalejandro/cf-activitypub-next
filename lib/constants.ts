@@ -50,6 +50,12 @@ export const ADMIN_LOG_PAGE_SIZE = 100;
 export const MLS_MESSAGES_PAGE_SIZE = 50; // AP /messages collection page size
 export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation graph
 
+// Federation engine (instance registry)
+export const INSTANCE_FAILURE_DAYS = 7; // distinct UTC failure days → unavailable (Mastodon)
+export const INSTANCE_REFRESH_BATCH = 3; // NodeInfo refreshes per cron tick
+export const INSTANCE_REFRESH_DAYS = 7; // re-fetch metadata after this many days
+export const INSTANCE_DORMANT_DAYS = 30; // no activity → stop refreshing, then expire metadata
+
 export const MAX_IMAGE_SIZE = 16 * 1024 * 1024; // 16 MB
 export const MAX_VIDEO_SIZE = 103_809_024; // ~99 MB
 export const IMAGE_MATRIX_LIMIT = 33_177_600;
@@ -104,6 +110,9 @@ export interface InstanceLimits {
   maxImageSize: number;
   maxVideoSize: number;
   imageMatrixLimit: number;
+  instanceRefreshBatch: number;
+  instanceRefreshDays: number;
+  instanceDormantDays: number;
   videoFrameRateLimit: number;
   videoMatrixLimit: number;
 }
@@ -142,6 +151,9 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxImageSize: MAX_IMAGE_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
+  instanceRefreshBatch: INSTANCE_REFRESH_BATCH,
+  instanceRefreshDays: INSTANCE_REFRESH_DAYS,
+  instanceDormantDays: INSTANCE_DORMANT_DAYS,
   videoFrameRateLimit: VIDEO_FRAME_RATE_LIMIT,
   videoMatrixLimit: VIDEO_MATRIX_LIMIT,
 };
@@ -196,5 +208,8 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     imageMatrixLimit: num(env, "IMAGE_MATRIX_LIMIT", DEFAULT_LIMITS.imageMatrixLimit),
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
     videoMatrixLimit: num(env, "VIDEO_MATRIX_LIMIT", DEFAULT_LIMITS.videoMatrixLimit),
+    instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
+    instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
+    instanceDormantDays: num(env, "INSTANCE_DORMANT_DAYS", DEFAULT_LIMITS.instanceDormantDays),
   };
 }
