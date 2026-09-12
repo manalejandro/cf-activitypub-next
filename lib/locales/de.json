@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Alle zwischengespeicherten Konten und Beiträge dieser Domain löschen? Nicht umkehrbar.",
   "admin_instances_refresh_ok": "Metadaten aktualisiert.",
   "admin_instances_refresh_fail": "Instanz nicht erreichbar.",
-  "admin_instances_added": "Instanz hinzugefügt."
+  "admin_instances_added": "Instanz hinzugefügt.",
+  "pagination_prev": "Zurück",
+  "pagination_next": "Weiter",
+  "pagination_page": "Seite {page} von {pages}"
 }

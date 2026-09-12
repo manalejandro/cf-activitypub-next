@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "このドメインのキャッシュされたアカウントと投稿をすべて削除しますか？元に戻せません。",
   "admin_instances_refresh_ok": "メタデータを更新しました。",
   "admin_instances_refresh_fail": "インスタンスに接続できませんでした。",
-  "admin_instances_added": "インスタンスを追加しました。"
+  "admin_instances_added": "インスタンスを追加しました。",
+  "pagination_prev": "前へ",
+  "pagination_next": "次へ",
+  "pagination_page": "{pages} ページ中 {page} ページ目"
 }

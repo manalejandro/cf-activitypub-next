@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Pagination } from "@/components/Pagination";
 
 interface InstanceMeta {
   domain: string;
@@ -44,6 +45,7 @@ export default function AdminInstancesPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
 
   const [adding, setAdding] = useState(false);
   const [newDomain, setNewDomain] = useState("");
@@ -54,7 +56,7 @@ export default function AdminInstancesPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: String(PAGE_LIMIT), status });
+      const params = new URLSearchParams({ limit: String(PAGE_LIMIT), status, page: String(page) });
       if (query.trim()) params.set("q", query.trim());
       const res = await fetch(`/api/v1/admin/instances?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -68,7 +70,7 @@ export default function AdminInstancesPage() {
     }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, query, status]);
+  }, [token, query, status, page]);
 
   useEffect(() => {
     Promise.resolve().then(() => void fetchInstances());
@@ -183,14 +185,14 @@ export default function AdminInstancesPage() {
           placeholder={t.admin_instances_search_ph}
           aria-label={t.admin_instances_search_ph}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
         />
         <select
           className="input"
           style={{ maxWidth: 200 }}
           aria-label={t.admin_col_status}
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
         >
           {statusFilters.map((f) => (
             <option key={f.value} value={f.value}>{t[f.key as keyof typeof t] as string}</option>
@@ -302,6 +304,7 @@ export default function AdminInstancesPage() {
           </table>
         </div>
       )}
+      {!loading && <Pagination page={page} pages={Math.max(1, Math.ceil(total / PAGE_LIMIT))} onPageChange={setPage} />}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
-import { useInstanceTitle } from "@/lib/instance-context";
+import { useInstanceTitle, useInstanceVersion } from "@/lib/instance-context";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon, type IconName } from "@/components/Icon";
 import { RichText } from "@/components/RichText";
@@ -19,22 +19,10 @@ interface InstanceSettings {
 
 export default function Home() {
   const brand = useInstanceTitle();
+  const version = useInstanceVersion();
   const { authenticated, loading } = useAuth();
   const { t } = useLocale();
-  const [version, setVersion] = useState<string | null>(null);
   const [settings, setSettings] = useState<InstanceSettings | null>(null);
-
-  useEffect(() => {
-    fetch("/api/v1/instance")
-      .then((res) => (res.ok ? res.json() as Promise<{ version?: string }> : null))
-      .then((data) => {
-        if (data?.version) {
-          const m = data.version.match(/^([^(]+?)\s*\(compatible/);
-          setVersion(m ? m[1].trim() : data.version);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     fetch("/api/v1/instance/settings")

@@ -108,7 +108,17 @@ const InstanceNode = memo(function InstanceNode({ data }: NodeProps<InstanceFlow
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 }}>
-        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+        <span
+          style={{
+            fontSize: "0.7rem",
+            color: "var(--text-muted)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
+            flexShrink: 1,
+          }}
+        >
           {data.accounts} {t.graph_accounts.toLowerCase()}
         </span>
         {data.local && (
@@ -339,7 +349,9 @@ function GraphView() {
                 </div>
                 <span style={{ fontWeight: 800, color: "var(--text-primary)", wordBreak: "break-word", fontSize: "0.95rem" }}>{selected.id}</span>
                 <div className="flex flex-wrap items-center gap-2" style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                  <span>{selected.accounts} {t.graph_accounts.toLowerCase()}</span>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                    {selected.accounts} {t.graph_accounts.toLowerCase()}
+                  </span>
                   <span>·</span>
                   <span>{selectedConnections} {t.graph_connections.toLowerCase()}</span>
                   {selected.local && <span className="badge badge-accent">{t.graph_you}</span>}

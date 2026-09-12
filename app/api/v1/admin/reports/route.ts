@@ -13,9 +13,16 @@ export async function GET(request: NextRequest): Promise<Response> {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const rows = await env.DB
-    .prepare("SELECT id, actor_id, target_id, status_ids, comment, category, rule_ids, forwarded, action_taken, created_at FROM reports ORDER BY created_at DESC LIMIT 40")
-    .all<{ id: string; actor_id: string; target_id: string; status_ids: string | null; comment: string; category: string; rule_ids: string | null; forwarded: number; action_taken: number; created_at: string }>();
+  const params = new URL(request.url).searchParams;
+  const limit = Math.min(Math.max(parseInt(params.get("limit") ?? "40", 10), 1), 100);
+  const offset = Math.max(parseInt(params.get("offset") ?? "0", 10), 0);
+  const [rows, totalRow] = await Promise.all([
+    env.DB
+      .prepare("SELECT id, actor_id, target_id, status_ids, comment, category, rule_ids, forwarded, action_taken, created_at FROM reports ORDER BY created_at DESC LIMIT ? OFFSET ?")
+      .bind(limit, offset)
+      .all<{ id: string; actor_id: string; target_id: string; status_ids: string | null; comment: string; category: string; rule_ids: string | null; forwarded: number; action_taken: number; created_at: string }>(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM reports").first<{ n: number }>(),
+  ]);
 
   const result = await Promise.all(
     rows.results.map(async (r) => {
@@ -47,7 +54,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     })
   );
 
-  return json(result);
+  return json({ reports: result, total: Number(totalRow?.n ?? 0) });
 }
 
 async function getReportStatuses(db: D1Database, statusIdsRaw: string | null, domain: string): Promise<{ id: string; content: string; created_at: string | null; account: { id: string; username: string; acct: string; display_name: string; avatar: string } | null }[]> {

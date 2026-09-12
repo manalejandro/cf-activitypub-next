@@ -7,6 +7,7 @@ import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
+import { Pagination } from "@/components/Pagination";
 
 interface LogEntry {
   id: string;
@@ -26,6 +27,7 @@ interface LogEntry {
 
 interface LogResponse {
   log: LogEntry[];
+  total: number;
 }
 
 const SOURCE_MAP: Record<string, string> = {
@@ -63,23 +65,27 @@ export default function AdminModerationLogPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
 
   const fetchLog = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/admin/moderation_log?limit=${limits.adminLogPageSize}`, {
+      const offset = (page - 1) * limits.adminLogPageSize;
+      const res = await fetch(`/api/v1/admin/moderation_log?limit=${limits.adminLogPageSize}&offset=${offset}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) { router.push("/login"); return; }
       const data = await res.json() as LogResponse;
       setEntries(data.log);
+      setTotal(data.total);
     } catch {
       router.push("/login");
     }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, page, limits.adminLogPageSize]);
 
   useEffect(() => {
     Promise.resolve().then(() => void fetchLog());
@@ -109,6 +115,7 @@ export default function AdminModerationLogPage() {
       });
       if (!res.ok) { router.push("/login"); return; }
       setEntries([]);
+      setTotal(0);
     } catch { /* ignore */ }
     setClearingAll(false);
   }
@@ -226,6 +233,13 @@ export default function AdminModerationLogPage() {
             </tbody>
           </table>
         </div>
+      )}
+      {!loading && (
+        <Pagination
+          page={page}
+          pages={Math.max(1, Math.ceil(total / limits.adminLogPageSize))}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

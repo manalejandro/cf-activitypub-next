@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "删除该域名下所有缓存的账号和帖子？此操作无法撤销。",
   "admin_instances_refresh_ok": "元数据已刷新。",
   "admin_instances_refresh_fail": "无法连接到该实例。",
-  "admin_instances_added": "实例已添加。"
+  "admin_instances_added": "实例已添加。",
+  "pagination_prev": "上一页",
+  "pagination_next": "下一页",
+  "pagination_page": "第 {page} 页，共 {pages} 页"
 }

@@ -66,6 +66,26 @@ export interface LogQuery {
 
 const LOG_SELECT = "id, created_at, source, target_type, target_id, action, reason, confidence, model, details, email_sent, email_to, related_id";
 
+/** Total rows matching the same filters as getModerationLog (admin pagination). */
+export async function countModerationLog(db: D1Database, query: LogQuery = {}): Promise<number> {
+  let sql = "SELECT COUNT(*) AS n FROM moderation_log WHERE 1=1";
+  const binds: unknown[] = [];
+  if (query.targetType) {
+    sql += " AND target_type = ?";
+    binds.push(query.targetType);
+  }
+  if (query.action) {
+    sql += " AND action = ?";
+    binds.push(query.action);
+  }
+  if (query.targetId) {
+    sql += " AND target_id = ?";
+    binds.push(query.targetId);
+  }
+  const row = await db.prepare(sql).bind(...binds).first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
 export async function getModerationLog(db: D1Database, query: LogQuery = {}): Promise<ModerationLogEntry[]> {
   const limit = Math.min(query.limit ?? 50, 200);
   const offset = query.offset ?? 0;

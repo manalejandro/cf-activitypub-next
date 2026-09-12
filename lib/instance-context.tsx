@@ -3,26 +3,42 @@
 import { createContext, useContext } from "react";
 
 /**
- * Instance brand name (INSTANCE_TITLE), provided by the root layout from the
- * server env. Falls back to the project default so components/tests that render
- * outside the provider keep working.
+ * Instance brand (INSTANCE_TITLE) and version, provided by the root layout
+ * from the server env. Passing the version here avoids every page re-fetching
+ * `/api/v1/instance` just to show it in a footer or sidebar caption. Falls
+ * back to the project defaults so components/tests rendered outside the
+ * provider keep working.
  */
-const InstanceTitleContext = createContext("CF ActivityPub");
+interface InstanceBrand {
+  title: string;
+  version: string;
+}
+
+const InstanceContext = createContext<InstanceBrand>({
+  title: "CF ActivityPub",
+  version: "",
+});
 
 export function InstanceTitleProvider({
   title,
+  version,
   children,
 }: {
   title?: string;
+  version?: string;
   children: React.ReactNode;
 }) {
   return (
-    <InstanceTitleContext.Provider value={title || "CF ActivityPub"}>
+    <InstanceContext.Provider value={{ title: title || "CF ActivityPub", version: version || "" }}>
       {children}
-    </InstanceTitleContext.Provider>
+    </InstanceContext.Provider>
   );
 }
 
 export function useInstanceTitle(): string {
-  return useContext(InstanceTitleContext);
+  return useContext(InstanceContext).title;
+}
+
+export function useInstanceVersion(): string {
+  return useContext(InstanceContext).version;
 }

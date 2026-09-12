@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Supprimer tous les comptes et publications en cache de ce domaine ? Action irréversible.",
   "admin_instances_refresh_ok": "Métadonnées actualisées.",
   "admin_instances_refresh_fail": "Impossible de joindre l'instance.",
-  "admin_instances_added": "Instance ajoutée."
+  "admin_instances_added": "Instance ajoutée.",
+  "pagination_prev": "Précédent",
+  "pagination_next": "Suivant",
+  "pagination_page": "Page {page} sur {pages}"
 }

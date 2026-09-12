@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { getModerationLog } from "@/lib/moderation/log";
+import { countModerationLog, getModerationLog } from "@/lib/moderation/log";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
 
@@ -19,15 +19,19 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const params = request.nextUrl.searchParams;
-  const entries = await getModerationLog(env.DB, {
+  const query = {
     limit: parseInt(params.get("limit") ?? String(limits.adminLogPageSize), 10),
     offset: parseInt(params.get("offset") ?? "0", 10),
     targetType: params.get("target_type") ?? undefined,
     action: params.get("action") ?? undefined,
     targetId: params.get("target_id") ?? undefined,
-  });
+  };
+  const [entries, total] = await Promise.all([
+    getModerationLog(env.DB, query),
+    countModerationLog(env.DB, query),
+  ]);
 
-  return json({ log: entries });
+  return json({ log: entries, total });
 }
 
 /**

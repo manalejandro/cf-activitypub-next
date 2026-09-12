@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Delete every cached actor and post from this domain? This cannot be undone.",
   "admin_instances_refresh_ok": "Metadata refreshed.",
   "admin_instances_refresh_fail": "Could not reach the instance.",
-  "admin_instances_added": "Instance added."
+  "admin_instances_added": "Instance added.",
+  "pagination_prev": "Previous",
+  "pagination_next": "Next",
+  "pagination_page": "Page {page} of {pages}"
 }

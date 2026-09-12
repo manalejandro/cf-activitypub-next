@@ -8,6 +8,9 @@ import { RichText } from "@/components/RichText";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
+import { Pagination } from "@/components/Pagination";
+
+const REPORTS_PAGE_LIMIT = 40;
 
 interface Report {
   id: string;
@@ -60,23 +63,27 @@ export default function AdminReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
 
   const fetchReports = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/admin/reports", {
+      const offset = (page - 1) * REPORTS_PAGE_LIMIT;
+      const res = await fetch(`/api/v1/admin/reports?limit=${REPORTS_PAGE_LIMIT}&offset=${offset}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) { router.push("/login"); return; }
-      const data = await res.json() as Report[];
-      setReports(data);
+      const data = await res.json() as { reports: Report[]; total: number };
+      setReports(data.reports);
+      setTotal(data.total);
     } catch {
       router.push("/login");
     }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, page]);
 
   useEffect(() => {
     Promise.resolve().then(() => void fetchReports());
@@ -192,6 +199,13 @@ export default function AdminReportsPage() {
             </Section>
           )}
         </>
+      )}
+      {!loading && (
+        <Pagination
+          page={page}
+          pages={Math.max(1, Math.ceil(total / REPORTS_PAGE_LIMIT))}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

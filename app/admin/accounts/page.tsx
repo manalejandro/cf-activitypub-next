@@ -7,6 +7,7 @@ import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
+import { Pagination } from "@/components/Pagination";
 
 interface AdminAccount {
   id: string;
@@ -35,6 +36,8 @@ interface ListResponse {
   total: number;
 }
 
+const PAGE_LIMIT = 80;
+
 export default function AdminAccountsPage() {
   const router = useRouter();
   const { t } = useLocale();
@@ -47,6 +50,7 @@ export default function AdminAccountsPage() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const fetchAccounts = useCallback(async () => {
     if (!token) return;
@@ -56,7 +60,8 @@ export default function AdminAccountsPage() {
     if (roleFilter !== "all") params.set("role", roleFilter);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (search) params.set("q", search);
-    params.set("limit", "80");
+    params.set("limit", String(PAGE_LIMIT));
+    params.set("page", String(page));
 
     try {
       const res = await fetch(`/api/v1/admin/accounts?${params}`, {
@@ -71,7 +76,7 @@ export default function AdminAccountsPage() {
     }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, search, roleFilter, statusFilter]);
+  }, [token, search, roleFilter, statusFilter, page]);
 
   useEffect(() => {
     Promise.resolve().then(() => void fetchAccounts());
@@ -128,14 +133,14 @@ export default function AdminAccountsPage() {
           placeholder={t.admin_search_username}
           aria-label={t.admin_search_username}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           style={{ maxWidth: 280, padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
         />
         <select
           className="input"
           aria-label={t.admin_all_roles}
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
           style={{ width: "auto", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
         >
           <option value="all">{t.admin_all_roles}</option>
@@ -147,7 +152,7 @@ export default function AdminAccountsPage() {
           className="input"
           aria-label={t.admin_all_status}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
           style={{ width: "auto", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
         >
           <option value="all">{t.admin_all_status}</option>
@@ -271,6 +276,7 @@ export default function AdminAccountsPage() {
           </table>
         </div>
       )}
+      {!loading && <Pagination page={page} pages={Math.max(1, Math.ceil(total / PAGE_LIMIT))} onPageChange={setPage} />}
     </div>
   );
 }

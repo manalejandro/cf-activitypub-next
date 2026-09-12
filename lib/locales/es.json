@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "¿Eliminar todas las cuentas y publicaciones en caché de este dominio? No se puede deshacer.",
   "admin_instances_refresh_ok": "Metadatos actualizados.",
   "admin_instances_refresh_fail": "No se pudo contactar con la instancia.",
-  "admin_instances_added": "Instancia añadida."
+  "admin_instances_added": "Instancia añadida.",
+  "pagination_prev": "Anterior",
+  "pagination_next": "Siguiente",
+  "pagination_page": "Página {page} de {pages}"
 }

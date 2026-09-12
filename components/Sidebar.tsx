@@ -6,7 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
-import { useInstanceTitle } from "@/lib/instance-context";
+import { useInstanceTitle, useInstanceVersion } from "@/lib/instance-context";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
 import { DisplayName } from "@/components/DisplayName";
@@ -31,8 +31,8 @@ interface SidebarProps {
 export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const { t } = useLocale();
   const brand = useInstanceTitle();
+  const version = useInstanceVersion() || null;
   const [unreadCount, setUnreadCount] = useState(0);
-  const [version, setVersion] = useState<string | null>(null);
   const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
   const me = propMe ?? localMe;
   const isStaff = me?.roles?.some((r) => r.name.toLowerCase() === "admin" || r.name.toLowerCase() === "moderator") ?? false;
@@ -81,18 +81,6 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     }).catch(() => {});
   }, []);
 
-  // Fetch the instance version for the logo caption.
-  useEffect(() => {
-    fetch("/api/v1/instance").then(async (res) => {
-      if (res.ok) {
-        const data = await res.json() as { version?: string };
-        if (data.version) {
-          const m = data.version.match(/^([^(]+?)\s*\(compatible/);
-          setVersion(m ? m[1].trim() : data.version);
-        }
-      }
-    }).catch(() => {});
-  }, []);
 
   // Self-fetch current user info when page doesn't pass `me` prop
   useEffect(() => {

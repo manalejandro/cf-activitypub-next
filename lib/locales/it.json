@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Eliminare tutti gli account e i post in cache di questo dominio? L'operazione è irreversibile.",
   "admin_instances_refresh_ok": "Metadati aggiornati.",
   "admin_instances_refresh_fail": "Impossibile contattare l'istanza.",
-  "admin_instances_added": "Istanza aggiunta."
+  "admin_instances_added": "Istanza aggiunta.",
+  "pagination_prev": "Precedente",
+  "pagination_next": "Successiva",
+  "pagination_page": "Pagina {page} di {pages}"
 }

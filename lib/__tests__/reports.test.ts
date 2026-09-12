@@ -294,7 +294,7 @@ describe("GET /api/v1/admin/reports", () => {
     const { GET } = await importRoute();
     const res = await GET(makeRequest("GET", "https://example.test/api/v1/admin/reports"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
+    expect(await res.json()).toEqual({ reports: [], total: 0 });
   });
 
   it("includes notes and serialized accounts in each report", async () => {
@@ -308,17 +308,20 @@ describe("GET /api/v1/admin/reports", () => {
     const { GET } = await importRoute();
     const res = await GET(makeRequest("GET", "https://example.test/api/v1/admin/reports"));
     expect(res.status).toBe(200);
-    const body = await res.json() as Array<{
-      id: string;
-      target_account: { username: string };
-      reporter_account: { username: string };
-      notes: Array<{ id: string; content: string; created_at: string }>;
-    }>;
-    expect(body).toHaveLength(1);
-    expect(body[0].id).toBe("r1");
-    expect(body[0].target_account.username).toBe("spammer");
-    expect(body[0].reporter_account.username).toBe("reporter");
-    expect(body[0].notes).toEqual([
+    const body = await res.json() as {
+      reports: Array<{
+        id: string;
+        target_account: { username: string };
+        reporter_account: { username: string };
+        notes: Array<{ id: string; content: string; created_at: string }>;
+      }>;
+      total: number;
+    };
+    expect(body.reports).toHaveLength(1);
+    expect(body.reports[0].id).toBe("r1");
+    expect(body.reports[0].target_account.username).toBe("spammer");
+    expect(body.reports[0].reporter_account.username).toBe("reporter");
+    expect(body.reports[0].notes).toEqual([
       { id: "n1", content: "noted", created_at: "2026-01-02T00:00:00.000Z" },
     ]);
     expect(mockGetReportNotes).toHaveBeenCalledWith(mockDb, "r1");

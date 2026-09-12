@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { Pagination } from "@/components/Pagination";
 
 interface SuspendedAccount {
   id: string;
@@ -28,6 +29,8 @@ interface ListResponse {
   total: number;
 }
 
+const PAGE_LIMIT = 80;
+
 export default function AdminSuspendedPage() {
   const router = useRouter();
   const { t } = useLocale();
@@ -38,6 +41,7 @@ export default function AdminSuspendedPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const fetchAccounts = useCallback(async () => {
     if (!token) return;
@@ -45,7 +49,8 @@ export default function AdminSuspendedPage() {
     const params = new URLSearchParams();
     params.set("status", "suspended");
     if (search) params.set("q", search);
-    params.set("limit", "80");
+    params.set("limit", String(PAGE_LIMIT));
+    params.set("page", String(page));
 
     try {
       const res = await fetch(`/api/v1/admin/accounts?${params}`, {
@@ -60,7 +65,7 @@ export default function AdminSuspendedPage() {
     }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, search]);
+  }, [token, search, page]);
 
   useEffect(() => {
     Promise.resolve().then(() => void fetchAccounts());
@@ -98,7 +103,7 @@ export default function AdminSuspendedPage() {
           placeholder={t.admin_search_username}
           aria-label={t.admin_search_username}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           style={{ maxWidth: 280, padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
         />
       </div>
@@ -163,6 +168,7 @@ export default function AdminSuspendedPage() {
           </table>
         </div>
       )}
+      {!loading && <Pagination page={page} pages={Math.max(1, Math.ceil(total / PAGE_LIMIT))} onPageChange={setPage} />}
     </div>
   );
 }

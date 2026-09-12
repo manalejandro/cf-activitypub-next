@@ -73,9 +73,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   let instanceTitle = "CF ActivityPub";
+  let instanceVersion = "";
   try {
     const { env } = getCloudflareContext();
     if (env.INSTANCE_TITLE) instanceTitle = env.INSTANCE_TITLE;
+    if (env.INSTANCE_VERSION) instanceVersion = env.INSTANCE_VERSION;
   } catch { /* local next dev / build without a Cloudflare context */ }
 
   return (
@@ -95,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full flex flex-col pb-14 md:pb-0">
-        <InstanceTitleProvider title={instanceTitle}>
+        <InstanceTitleProvider title={instanceTitle} version={instanceVersion}>
           <LocaleProvider>
             {children}
             <CallOverlayWrapper />

@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Удалить все кэшированные аккаунты и посты этого домена? Действие необратимо.",
   "admin_instances_refresh_ok": "Метаданные обновлены.",
   "admin_instances_refresh_fail": "Не удалось связаться с инстансом.",
-  "admin_instances_added": "Инстанс добавлен."
+  "admin_instances_added": "Инстанс добавлен.",
+  "pagination_prev": "Назад",
+  "pagination_next": "Вперёд",
+  "pagination_page": "Страница {page} из {pages}"
 }

@@ -931,5 +931,8 @@
   "admin_instances_purge_confirm": "Apagar todas as contas e publicações em cache deste domínio? Não pode ser desfeito.",
   "admin_instances_refresh_ok": "Metadados atualizados.",
   "admin_instances_refresh_fail": "Não foi possível contactar a instância.",
-  "admin_instances_added": "Instância adicionada."
+  "admin_instances_added": "Instância adicionada.",
+  "pagination_prev": "Anterior",
+  "pagination_next": "Seguinte",
+  "pagination_page": "Página {page} de {pages}"
 }
