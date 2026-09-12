@@ -27,6 +27,7 @@ GRAPH_MAX_NODES = "100"
 # Federation engine: NodeInfo refreshes per cron tick, refresh cadence (days),
 # dormancy window before metadata expires (days) and hard expiry (days).
 INSTANCE_REFRESH_BATCH = "3"
+SHARED_INBOX_BATCH = "5"
 INSTANCE_REFRESH_DAYS = "7"
 INSTANCE_DORMANT_DAYS = "30"
 INSTANCE_EXPIRE_DAYS = "90"
