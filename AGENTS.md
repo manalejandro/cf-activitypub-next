@@ -88,7 +88,7 @@ const { env } = getCloudflareContext();
 
 ## Federation rules
 
-- **All outbound delivery goes through the queue** (`enqueueDeliveries`). `deliverToInbox` is only reachable from `lib/activitypub/queue.ts` (fallback when no binding/`sendBatch` throws) and the worker's `deliverOne` consumer. Never call it from a handler. The DLQ (`cf-ap-delivery-dlq`) has its own consumer that records failures in KV (`dlq:delivery:*`, 30 days) and acks.
+- **All outbound delivery goes through the queue** (`enqueueDeliveries`; fan-outs larger than 100 are chunked by count *and* byte budget, each chunk is retried and only a persistently failing chunk falls back to direct delivery — never the whole recipient list). `deliverToInbox` is only reachable from `lib/activitypub/queue.ts` (fallback when no binding/`sendBatch` throws) and the worker's `deliverOne` consumer. Never call it from a handler. The DLQ (`cf-ap-delivery-dlq`) has its own consumer that records failures in KV (`dlq:delivery:*`, 30 days) and acks.
 - **Inbound signatures**: `verifySignature` requires `(request-target)` and, when there is a body, `digest` **inside the signed-headers list**; the inbox routes also require a valid `Date` (12h window). Only RSA/hs2019 is accepted.
 - **Actor id binding**: never cache an actor document whose `id` differs from the URL that was fetched; `upsertRemoteActor` must never update `is_local = 1` rows (cache-poisoning guard).
 - **Domain blocks** (`instance_domain_blocks`): `severity = 'suspend'` drops the activity; `'silence'` processes it but strips media (`reject_media`) and ignores forwarded Flags (`reject_reports`).
