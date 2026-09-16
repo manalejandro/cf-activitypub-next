@@ -11532,6 +11532,15 @@
         "tags": [
           "OAuth"
         ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "security": [],
         "requestBody": {
           "required": true,
