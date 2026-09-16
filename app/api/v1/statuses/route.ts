@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
 import {
   getActorById,
   getObjectById,
@@ -16,7 +16,8 @@ import {
   upsertDirectConversation,
   getActorPreference,
   isActorBlockedBy,
-  getFollow,
+  isAcceptedFollower,
+  canViewStatus,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -99,9 +100,9 @@ async function quoteAllowed(
     case "public":
       return true;
     case "followers":
-      return !!(await getFollow(db, actor.id, author.id));
+      return isAcceptedFollower(db, actor.id, author.id);
     case "followed":
-      return !!(await getFollow(db, author.id, actor.id));
+      return isAcceptedFollower(db, author.id, actor.id);
     default:
       return false; // nobody
   }
@@ -129,7 +130,7 @@ async function remoteQuoteAllowed(
   } catch { /* ignore malformed */ }
 
   if (!canQuote || !Array.isArray(canQuote.automaticApproval)) {
-    return !!(await getFollow(db, actorId, author.id)); // conservative: followers
+    return isAcceptedFollower(db, actorId, author.id); // conservative: followers
   }
 
   const auto = canQuote.automaticApproval.map((v) => String(v));
@@ -138,10 +139,10 @@ async function remoteQuoteAllowed(
   const followersIri = `https://${author.domain}/users/${author.username}/followers`;
   const followingIri = `https://${author.domain}/users/${author.username}/following`;
   if (auto.includes(followersIri) || auto.some((v) => /followers/i.test(v))) {
-    return !!(await getFollow(db, actorId, author.id));
+    return isAcceptedFollower(db, actorId, author.id);
   }
   if (auto.includes(followingIri) || auto.some((v) => /following/i.test(v))) {
-    return !!(await getFollow(db, author.id, actorId));
+    return isAcceptedFollower(db, author.id, actorId);
   }
   if (auto.includes(actorId)) return true;
   return false;
@@ -156,6 +157,11 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
+
+  // Posting fans out to every follower plus mentions (and can trigger signed
+  // outbound fetches): bound the rate per account.
+  const { allowed: canPost } = await checkRateLimit(env.KV, `post:${actor.id}`, 30, 60);
+  if (!canPost) return json({ error: "Too many requests. Please try again later." }, 429);
   if (!actor.privateKeyPem) return json({ error: "Account misconfigured" }, 500);
 
   // Idempotency-Key: prevent duplicate status submissions within 1 hour.
@@ -233,6 +239,15 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (resolved.object) quoted = resolved.object;
     }
     if (!quoted) return json({ error: "Validation failed: Quoted status not found" }, 422);
+    // You cannot quote something you are not allowed to see.
+    const quotedVisible = canViewStatus(
+      quoted,
+      actor.id,
+      quoted.actorId === actor.id ? false : await isAcceptedFollower(env.DB, actor.id, quoted.actorId)
+    );
+    if (!quotedVisible) {
+      return json({ error: "Validation failed: Quoted status not found" }, 422);
+    }
     if (quoted.visibility === "direct") {
       return json({ error: "Validation failed: Cannot quote a direct message" }, 422);
     }
@@ -278,6 +293,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (scheduledAt) {
     const schedDate = new Date(scheduledAt);
     if (schedDate > new Date()) {
+      const pendingScheduled = await env.DB
+        .prepare("SELECT COUNT(*) AS n FROM scheduled_statuses WHERE actor_id = ?")
+        .bind(actor.id)
+        .first<{ n: number }>();
+      if (Number(pendingScheduled?.n ?? 0) >= 100) {
+        return json({ error: "Too many scheduled statuses (max 100)" }, 422);
+      }
       const schedId = generateId();
       const mediaIds = (body.media_ids as string[] | undefined) ?? [];
       const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
@@ -286,7 +308,12 @@ export async function POST(request: NextRequest): Promise<Response> {
       // the pending uploads alive until the cron publishes them.
       for (const mediaId of mediaIds) {
         const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
-        if (pendingRaw) await env.KV.put(`pending_media:${mediaId}`, pendingRaw, { expirationTtl: 30 * 86400 }).catch(() => {});
+        if (!pendingRaw) continue;
+        try {
+          const pending = JSON.parse(pendingRaw) as { actorId?: string };
+          if (pending.actorId && pending.actorId !== actor.id) continue;
+        } catch { continue; }
+        await env.KV.put(`pending_media:${mediaId}`, pendingRaw, { expirationTtl: 30 * 86400 }).catch(() => {});
       }
       return json({
         id: schedId,
@@ -471,6 +498,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (!pendingRaw) continue;
     try {
       const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+      // Only the uploader can attach a pending upload (guessing an id must not
+      // let someone else's media be attached to your status).
+      if (pending.actorId && pending.actorId !== actor.id) continue;
       // A CW/sensitive status blurs its media by default.
       const mediaSensitive = sensitive || pending.sensitive === true;
       const att = {

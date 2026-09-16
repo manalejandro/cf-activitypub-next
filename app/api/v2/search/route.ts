@@ -3,6 +3,7 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
+import { safeFetch } from "@/lib/activitypub/federation";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -121,11 +122,8 @@ export async function GET(request: NextRequest): Promise<Response> {
           if (!val.valid) {
             return json({ accounts: [], statuses: [], hashtags: [], collections: [] });
           }
-          const wfRes = await fetch(webfingerUrl, {
-            headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (wfRes.ok) {
+          const wfRes = await safeFetch(webfingerUrl, { headers: { Accept: "application/json" } }, 5000);
+          if (wfRes?.ok) {
             const wf = await wfRes.json() as { links?: { rel: string; href: string }[] };
             const selfLink = wf.links?.find((l) => l.rel === "self");
             if (selfLink?.href) {

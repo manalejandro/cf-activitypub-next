@@ -85,14 +85,24 @@ function parseAttrs(raw: string): Map<string, string> {
   return attrs;
 }
 
-function isAllowedHref(href: string): boolean {
-  const trimmed = href.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith("/") || trimmed.startsWith("#")) return true;
-  const match = trimmed.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
-  if (!match) return true;
-  return LINK_PROTOCOLS.has(match[1].toLowerCase());
+/**
+ * Normalize a URL and reject dangerous schemes. Control characters (tab, LF,
+ * CR…) are stripped first: browsers ignore them inside schemes, so
+ * `java\tscript:` would otherwise slip past the scheme check while still
+ * executing as `javascript:` for consumers that set the HTML directly.
+ * Returns the cleaned URL, or null when it must be dropped.
+ */
+function sanitizeUrl(raw: string, protocols: Set<string> = LINK_PROTOCOLS): string | null {
+  const cleaned = raw.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  if (!cleaned) return null;
+  if (cleaned.startsWith("/") || cleaned.startsWith("#")) return cleaned;
+  const match = cleaned.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  if (!match) return cleaned;
+  return protocols.has(match[1].toLowerCase()) ? cleaned : null;
 }
+
+/** Only http(s) (and data images) may be embedded as media sources. */
+const MEDIA_PROTOCOLS = new Set(["http", "https"]);
 
 function serializeAttrs(tag: string, attrs: Map<string, string>): string {
   const allowed = TAG_ATTRS[tag] ?? new Set<string>();
@@ -107,8 +117,15 @@ function serializeAttrs(tag: string, attrs: Map<string, string>): string {
     }
     if (key === "translate" && value !== "no") continue;
     if (key === "href") {
-      if (!isAllowedHref(value)) continue;
-      parts.push(`href="${escapeHtml(value)}"`);
+      const safe = sanitizeUrl(value);
+      if (!safe) continue;
+      parts.push(`href="${escapeHtml(safe)}"`);
+      continue;
+    }
+    if (key === "src") {
+      const safe = sanitizeUrl(value, MEDIA_PROTOCOLS);
+      if (!safe) continue;
+      parts.push(`src="${escapeHtml(safe)}"`);
       continue;
     }
     parts.push(`${key}="${escapeHtml(value)}"`);
@@ -204,7 +221,11 @@ export function sanitizeFediverseHtml(input: string | null | undefined): string 
 
     const attrs = parseAttrs(attrRaw);
 
-    if (rawTag === "a" && attrs.has("href") && !isAllowedHref(attrs.get("href")!)) {
+    if (rawTag === "a" && attrs.has("href") && !sanitizeUrl(attrs.get("href")!)) {
+      continue;
+    }
+    if ((rawTag === "img" || rawTag === "video" || rawTag === "audio" || rawTag === "source") &&
+        attrs.has("src") && !sanitizeUrl(attrs.get("src")!, MEDIA_PROTOCOLS)) {
       continue;
     }
 

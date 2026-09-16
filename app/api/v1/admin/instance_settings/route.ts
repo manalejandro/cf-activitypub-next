@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireFullAdmin } from "@/lib/admin-auth";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
@@ -8,7 +8,7 @@ const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_requ
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 export async function PUT(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 

@@ -14,32 +14,50 @@ export interface AdminAuthEnv {
   DB: D1Database;
 }
 
-export async function requireAdmin(request: Request, env: AdminAuthEnv): Promise<boolean> {
+/**
+ * Resolved admin role for the request: `admin` (or the shared ADMIN_TOKEN, which
+ * implies full admin), `moderator`, or null when unauthorized.
+ */
+export async function getAdminRole(request: Request, env: AdminAuthEnv): Promise<"admin" | "moderator" | null> {
   // Fallback: shared operator secret. When set, a matching bearer token grants
-  // access regardless of the actor's role.
+  // full admin access regardless of the actor's role.
   const expected = env.ADMIN_TOKEN;
   if (expected) {
     const auth = request.headers.get("Authorization") ?? "";
     if (auth.startsWith("Bearer ")) {
       const token = auth.slice(7).trim();
-      if (token && token.length === expected.length && token === expected) return true;
+      if (token && token.length === expected.length && token === expected) return "admin";
     }
   }
 
   // Primary path: the authenticated user must hold an admin/moderator role.
   const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return false;
-  if (actor.role === "admin" || actor.role === "moderator") return true;
+  if (!actor) return null;
+  if (actor.role === "admin") return "admin";
+  if (actor.role === "moderator") return "moderator";
 
   try {
     const row = await env.DB
       .prepare("SELECT role FROM actors WHERE id = ?")
       .bind(actor.id)
       .first<{ role: string }>();
-    if (row && (row.role === "admin" || row.role === "moderator")) return true;
+    if (row?.role === "admin") return "admin";
+    if (row?.role === "moderator") return "moderator";
   } catch {
     // Missing role column — treat as non-admin.
   }
 
-  return false;
+  return null;
+}
+
+export async function requireAdmin(request: Request, env: AdminAuthEnv): Promise<boolean> {
+  return (await getAdminRole(request, env)) !== null;
+}
+
+/**
+ * Full administrator only. Moderators cannot manage roles, instance settings,
+ * federation rules or wipe audit logs — those change who controls the instance.
+ */
+export async function requireFullAdmin(request: Request, env: AdminAuthEnv): Promise<boolean> {
+  return (await getAdminRole(request, env)) === "admin";
 }

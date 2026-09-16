@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, badRequest } from "@/lib/cf";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireFullAdmin } from "@/lib/admin-auth";
 import {
   getInstanceDomainBlocks,
   createInstanceDomainBlock,
@@ -11,7 +11,7 @@ import {
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 export async function DELETE(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 

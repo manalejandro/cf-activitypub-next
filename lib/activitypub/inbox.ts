@@ -414,7 +414,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     // Use inline actor data if the sender embedded the full actor in the activity
     const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
     if (inlineActor?.publicKey?.publicKeyPem) {
-      try { await upsertRemoteActor(ctx.db, inlineActor); } catch { /* ignore */ }
+      try { await upsertRemoteActor(ctx.db, inlineActor, actorId); } catch { /* ignore */ }
     } else {
       // Fall back to fetching from the network — sign the request when possible
       try {
@@ -424,7 +424,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           signingKey?.privateKeyPem
         ) as APActor | null;
         if (fetched?.publicKey?.publicKeyPem) {
-          await upsertRemoteActor(ctx.db, fetched);
+          await upsertRemoteActor(ctx.db, fetched, actorId);
         }
       } catch { /* ignore */ }
     }
@@ -433,6 +433,11 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   if (!author) {
     return;
   }
+
+  // Anti-forgery: a remote Create may only store objects hosted on the
+  // signer's own domain (same rule as persistRemoteNote). Anything else is a
+  // remote instance trying to author content on someone else's behalf.
+  if (!sameHost(obj.id, actorId)) return;
 
   const existing = await getObjectById(ctx.db, obj.id);
   if (existing) {
@@ -495,7 +500,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   await ensurePollRowsForQuestion(ctx, obj);
 
   const storedAttachments: LocalAttachment[] = [];
-  if (Array.isArray(obj.attachment)) {
+  if (!ctx.rejectMedia && Array.isArray(obj.attachment)) {
     for (const attachment of obj.attachment as APAttachment[]) {
       if (!attachment?.url) continue;
       const localAttachment: LocalAttachment = {
@@ -546,8 +551,8 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           }
         }
       }
-      // Cache federated custom emoji
-      if (tag.type === "Emoji" && tag.name && tag.icon?.url) {
+      // Cache federated custom emoji (silence-level blocks strip media).
+      if (!ctx.rejectMedia && tag.type === "Emoji" && tag.name && tag.icon?.url) {
         const shortcode = tag.name.replace(/^:|:$/g, "");
         if (shortcode) {
           try {
@@ -1015,7 +1020,12 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
           const noteActorId = typeof fetched.attributedTo === "string"
             ? fetched.attributedTo
             : (fetched.attributedTo as APActor | undefined)?.id;
-          if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+          // Anti-forgery: the object must be hosted on its author's domain and
+          // the author must be remote — a Like cannot inject a local post.
+          if (!noteActorId || !sameHost(fetched.id, noteActorId) || noteActorId.startsWith(ctx.baseUrl + "/")) {
+            throw new Error("forged object attribution");
+          }
+          await ensureActorCached(ctx.db, noteActorId);
           const { content, contentWarning } = sanitizeRemoteNoteContent(
             fetched.content,
             fetched.summary,
@@ -1314,11 +1324,11 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
   if (!reporter) {
     const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
     if (inlineActor?.publicKey?.publicKeyPem) {
-      try { await upsertRemoteActor(ctx.db, inlineActor); } catch { /* ignore */ }
+      try { await upsertRemoteActor(ctx.db, inlineActor, reporterId); } catch { /* ignore */ }
     } else {
       try {
         const fetched = await fetchRemoteObject(reporterId) as APActor | null;
-        if (fetched?.publicKey?.publicKeyPem) await upsertRemoteActor(ctx.db, fetched);
+        if (fetched?.publicKey?.publicKeyPem) await upsertRemoteActor(ctx.db, fetched, reporterId);
       } catch { /* ignore */ }
     }
     reporter = await getActorById(ctx.db, reporterId);
@@ -1365,6 +1375,12 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
     try {
       const fetched = await fetchRemoteObject(uri) as APNote | null;
       if (fetched?.id) {
+        const ownerId = (typeof fetched.attributedTo === "string"
+          ? fetched.attributedTo
+          : (fetched.attributedTo as { id?: string })?.id) ?? "";
+        // Anti-forgery: evidence must live on its author's host and the author
+        // must be remote — a remote cannot fabricate a local account's post.
+        if (!ownerId || !sameHost(fetched.id, ownerId) || ownerId.startsWith(ctx.baseUrl + "/")) continue;
         const { content, contentWarning } = sanitizeRemoteNoteContent(
           fetched.content,
           fetched.summary,
@@ -1374,9 +1390,7 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
         await createObject(ctx.db, {
           id: fetched.id,
           type: String(fetched.type ?? "Note").split("/").pop() || "Note",
-          actorId: fetched.attributedTo && typeof fetched.attributedTo === "string"
-            ? fetched.attributedTo
-            : (fetched.attributedTo as { id?: string })?.id ?? "",
+          actorId: ownerId,
           content,
           contentWarning,
           sensitive: fetched.sensitive ?? false,
@@ -1392,9 +1406,6 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
           local: false,
           raw: JSON.stringify(fetched),
         });
-        const ownerId = (typeof fetched.attributedTo === "string"
-          ? fetched.attributedTo
-          : (fetched.attributedTo as { id?: string })?.id) ?? "";
         if (!targets.has(ownerId)) targets.set(ownerId, { id: ownerId, statusUris: [] });
         if (!seenStatuses.has(uri)) {
           seenStatuses.add(uri);
@@ -1850,13 +1861,22 @@ async function ensureActorCached(db: import("@cloudflare/workers-types").D1Datab
   if (!actor) {
     try {
       const fetched = await fetchRemoteObject(actorId) as APActor | null;
-      if (fetched?.publicKey?.publicKeyPem) {
-        await upsertRemoteActor(db, fetched);
+      if (fetched?.publicKey?.publicKeyPem && fetched.id === actorId) {
+        await upsertRemoteActor(db, fetched, actorId);
         actor = await getActorById(db, actorId);
       }
     } catch { /* ignore network errors */ }
   }
   return actor;
+}
+
+/** An IRI may only be attributed to an author on the same host (anti-forgery). */
+function sameHost(a: string, b: string): boolean {
+  try {
+    return new URL(a).hostname.toLowerCase() === new URL(b).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 /** Normalize any ISO8601 date string (including tz-offset variants) to UTC Z format. */

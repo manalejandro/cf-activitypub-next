@@ -174,6 +174,18 @@ describe("hashPassword / verifyPassword", () => {
   });
 });
 
+describe("scopesAllow", () => {
+  it("treats a missing scope (legacy tokens) as full access but an empty one as none", async () => {
+    const { scopesAllow } = await getAuthModule();
+    expect(scopesAllow(null, "write")).toBe(true);
+    expect(scopesAllow(undefined, "write")).toBe(true);
+    expect(scopesAllow("", "write")).toBe(false);
+    expect(scopesAllow("read", "write")).toBe(false);
+    expect(scopesAllow("read write", "write")).toBe(true);
+    expect(scopesAllow("write", "follow")).toBe(true);
+  });
+});
+
 describe("getAuthenticatedActor", () => {
   const fakeDb = {
     prepare: () => ({ bind: () => ({ run: async () => ({}) }) }),

@@ -176,9 +176,16 @@ export async function fetchRemoteObject(
     if (!contentType.includes("json")) return null;
 
     // The timeout signal stays armed while the body is read, so a slow body
-    // can't hang the request past REQUEST_TIMEOUT_MS.
-    const data = await res.json();
-    return data as APActor | APObject | APActivity;
+    // can't hang the request past REQUEST_TIMEOUT_MS. Read as text first and
+    // cap the size: res.json() on a malicious multi-hundred-MB body would
+    // exhaust the Worker's memory before any check could run.
+    const text = await res.text();
+    if (!text || text.length > 2_000_000) return null;
+    try {
+      return JSON.parse(text) as APActor | APObject | APActivity;
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }

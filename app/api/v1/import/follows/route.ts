@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getFollow, createFollow } from "@/lib/db";
 import { buildFollow, generateId } from "@/lib/activitypub/utils";
@@ -20,11 +20,19 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
 
+  // Each handle triggers WebFinger + actor fetch + a queued Follow: bound both
+  // the request rate and the batch size so one request can't amplify at will.
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `import:${actor.id}:${clientIp}`, 3, 60);
+  if (!allowed) return json({ error: "Too many requests. Please try again later." }, 429);
+
   const body = await request.text();
   const handles = parseFollowingCsv(body);
   if (handles.length === 0) {
     return json({ error: "No valid account addresses found in CSV" }, 422);
   }
+  const MAX_IMPORT = 500;
+  if (handles.length > MAX_IMPORT) handles.length = MAX_IMPORT;
 
   const results: { acct: string; status: "followed" | "already_following" | "not_found" | "error"; error?: string }[] = [];
 

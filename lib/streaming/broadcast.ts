@@ -223,6 +223,11 @@ export async function broadcastObjectDelete(
 
   // List timelines containing the author.
   try {
+    // List timelines only ever show public/unlisted posts (getListTimeline).
+    // Broadcasting private/direct payloads to list channels leaked them to
+    // anyone able to subscribe to a list channel.
+    const visibility = (status as { visibility?: string } | null)?.visibility;
+    if (visibility !== "public" && visibility !== "unlisted") return;
     const listRows = await db
       .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
       .bind(obj.actorId)
@@ -297,6 +302,11 @@ export async function broadcastStatusInteractionToLists(
   status: unknown
 ): Promise<void> {
   try {
+    // List timelines only ever show public/unlisted posts (getListTimeline).
+    // Broadcasting private/direct payloads to list channels leaked them to
+    // anyone able to subscribe to a list channel.
+    const visibility = (status as { visibility?: string } | null)?.visibility;
+    if (visibility !== "public" && visibility !== "unlisted") return;
     const listRows = await db
       .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
       .bind(authorId)

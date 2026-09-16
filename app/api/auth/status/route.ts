@@ -14,6 +14,12 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const actor = await getActorById(env.DB, tokenRow.actorId);
   if (!actor) return json({ authenticated: false }, 200);
+  // Mirror getAuthenticatedActor: a suspended, unconfirmed or pending-approval
+  // account is not authenticated, whatever token it holds.
+  if (actor.suspended) return json({ authenticated: false }, 200);
+  if (actor.isLocal && (!actor.emailVerified || actor.approved === false)) {
+    return json({ authenticated: false }, 200);
+  }
 
   return json({
     authenticated: true,

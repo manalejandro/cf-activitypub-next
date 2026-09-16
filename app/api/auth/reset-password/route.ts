@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
 import { getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
@@ -28,6 +28,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const { env } = getCloudflareContext();
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `reset:${clientIp}`, 10, 60);
+  if (!allowed) {
+    return json({ error: "Too many requests. Please try again later." }, 429);
+  }
 
   const record = await getPasswordResetByToken(env.DB, token);
   if (!record) {

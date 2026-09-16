@@ -9,7 +9,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { getActorById, getActorFields, setActorFieldVerified } from "@/lib/db";
-import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 
 const FETCH_TIMEOUT_MS = 8000;
 // Only the first bytes of the linked page matter for finding rel="me" links.
@@ -128,20 +128,12 @@ export async function verifyAccountFields(
 
     let ok = false;
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      try {
-        const res = await fetch(url, {
-          headers: { Accept: "text/html, application/xhtml+xml" },
-          redirect: "follow",
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          const html = await readBoundedText(res);
-          ok = extractMeLinks(html).map(normalizeUrl).some((href) => profileUrls.includes(href));
-        }
-      } finally {
-        clearTimeout(timer);
+      // safeFetch re-validates every redirect hop (a raw fetch would follow a
+      // 302 into private space) and bounds the exchange.
+      const res = await safeFetch(url, { headers: { Accept: "text/html, application/xhtml+xml" } }, FETCH_TIMEOUT_MS);
+      if (res?.ok) {
+        const html = await readBoundedText(res);
+        ok = extractMeLinks(html).map(normalizeUrl).some((href) => profileUrls.includes(href));
       }
     } catch {
       ok = false;

@@ -349,14 +349,23 @@ export class TimelineStreamDO extends CFDurableObject {
       }
 
       const attachment = ((ws.deserializeAttachment() ?? {}) as SocketAttachment);
+      // List channels are only authorized through the worker (it checks the
+      // list owner), so dynamic subscribe can only re-join the socket's own
+      // initial list channel.
+      if (channel.startsWith("list:") && attachment.initialChannel !== channel) {
+        ws.send(JSON.stringify({ error: "Not authorized for this stream", status: 403 }));
+        return;
+      }
       const channels = new Set(attachment.channels ?? []);
 
       if (msg.type === "subscribe") {
         channels.add(channel);
-        ws.serializeAttachment({ channels: Array.from(channels) } satisfies SocketAttachment);
+        // Merge: replacing the attachment dropped ip/socketId/anon/anonCreatedAt
+        // and defeated the anonymous TTL and the per-IP connection caps.
+        ws.serializeAttachment({ ...attachment, channels: Array.from(channels) } satisfies SocketAttachment);
       } else if (msg.type === "unsubscribe") {
         channels.delete(channel);
-        ws.serializeAttachment({ channels: Array.from(channels) } satisfies SocketAttachment);
+        ws.serializeAttachment({ ...attachment, channels: Array.from(channels) } satisfies SocketAttachment);
       }
     } catch {
       // Not valid JSON — ignore silently

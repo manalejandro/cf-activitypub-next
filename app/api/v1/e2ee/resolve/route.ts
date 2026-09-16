@@ -1,7 +1,7 @@
 import { getBaseUrl, json, getCloudflareContext, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getActorById } from "@/lib/db";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
-import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { NextRequest } from "next/server";
@@ -59,11 +59,8 @@ async function resolveActorIri(
   const val = validateOutboundUrl(webfingerUrl);
   if (!val.valid) return null;
   try {
-    const res = await fetch(webfingerUrl, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return null;
+    const res = await safeFetch(webfingerUrl, { headers: { Accept: "application/json" } }, 6000);
+    if (!res?.ok) return null;
     const wf = await res.json() as { links?: { rel: string; href: string }[] };
     const selfLink = wf.links?.find((l) => l.rel === "self");
     if (!selfLink?.href) return null;

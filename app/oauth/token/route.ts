@@ -1,8 +1,25 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
+import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+
+/**
+ * Intersect the requested scopes with the app's registered scopes so a
+ * read-only client cannot obtain a write token. No app scopes / no app means
+ * the fallback applies.
+ */
+function clampScope(
+  requested: string | undefined,
+  appScopes: string | undefined,
+  fallback: string
+): string {
+  const allowed = (appScopes ?? "").split(/[\s,]+/).filter(Boolean);
+  const asked = (requested ?? "").split(/[\s,]+/).filter(Boolean);
+  if (allowed.length === 0) return asked.length ? asked.join(" ") : fallback;
+  const granted = asked.length ? asked.filter((sc) => allowed.includes(sc)) : allowed;
+  return (granted.length ? granted : allowed).join(" ");
+}
 
 // POST /oauth/token — standard Mastodon OAuth token endpoint (also used by the
 // web login form). External clients call this path directly.
@@ -40,7 +57,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       const valid = await verifyTurnstileToken(turnstileToken, {
         secret: env.TURNSTILE_SECRET,
         remoteIp,
-        expectedHostname: new URL(request.url).hostname,
+        expectedHostname: new URL(getBaseUrl(env)).hostname,
         expectedAction: "login",
       });
       if (!valid.success) {
@@ -73,6 +90,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
     }
 
+    const grantedScope = clampScope(body.scope, app?.scopes, "read write follow push");
+
     const accessToken = generateSecureToken();
     const refreshToken = generateSecureToken();
     const now = Math.floor(Date.now() / 1000);
@@ -84,24 +103,24 @@ export async function POST(request: NextRequest): Promise<Response> {
       actorId: actor.id,
       accessToken,
       refreshToken,
-      scope: body.scope ?? "read write follow push",
+      scope: grantedScope,
       expiresAt: new Date((now + expiresIn) * 1000).toISOString(),
       createdAt: new Date().toISOString(),
     });
 
-    const cookie = setAuthCookie(accessToken);
+    // Only browsers on this origin get a session cookie: a cross-site form can
+    // POST credentials but must not be able to log the victim into the
+    // attacker's account (login CSRF). Native API clients send no Origin.
+    const originHeader = request.headers.get("Origin");
+    const sameOrigin = !originHeader || originHeader === new URL(request.url).origin;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sameOrigin) headers["Set-Cookie"] = setAuthCookie(accessToken);
     return new Response(JSON.stringify({
       access_token: accessToken,
       token_type: "Bearer",
-      scope: body.scope ?? "read write follow push",
+      scope: grantedScope,
       created_at: now,
-    }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": cookie,
-      },
-    });
+    }), { status: 200, headers });
   }
 
   if (grantType === "client_credentials") {
@@ -124,7 +143,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       actorId: null,
       accessToken,
       refreshToken: null,
-      scope: body.scope ?? "read",
+      scope: clampScope(body.scope, app.scopes, "read"),
       expiresAt: new Date((now + 3600) * 1000).toISOString(),
       createdAt: new Date().toISOString(),
     });
@@ -132,20 +151,19 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({
       access_token: accessToken,
       token_type: "Bearer",
-      scope: body.scope ?? "read",
+      scope: clampScope(body.scope, app.scopes, "read"),
       created_at: now,
     });
   }
 
   if (grantType === "authorization_code") {
-    const { code, redirect_uri } = body;
+    const { code, redirect_uri, client_id } = body;
     if (!code) return json({ error: "invalid_request", error_description: "code is required" }, 400);
 
-    // Retrieve and consume the auth code from KV
+    // Retrieve the auth code — consumed only after every check passes, so a
+    // failed attempt cannot DoS the legitimate exchange.
     const raw = await env.KV.get(`oauth_code:${code}`);
     if (!raw) return json({ error: "invalid_grant", error_description: "Invalid or expired authorization code" }, 400);
-
-    await env.KV.delete(`oauth_code:${code}`);
 
     let payload: {
       actorId: string;
@@ -161,23 +179,34 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "invalid_grant" }, 400);
     }
 
-    // Validate redirect_uri if provided
-    if (redirect_uri && redirect_uri !== payload.redirectUri) {
+    // The code was issued to one client: require that exact client_id and the
+    // registered redirect_uri, so a leaked code alone is useless.
+    if (client_id && client_id !== payload.appId) {
+      return json({ error: "invalid_client", error_description: "client_id mismatch" }, 400);
+    }
+    if (redirect_uri !== payload.redirectUri) {
       return json({ error: "invalid_grant", error_description: "redirect_uri mismatch" }, 400);
     }
 
-    // PKCE verification (S256)
-    if (payload.codeChallenge && payload.codeChallengeMethod === "S256") {
+    // PKCE: verify whenever the code was issued with a challenge (S256 by
+    // default; plain is only accepted when the client explicitly asked).
+    if (payload.codeChallenge) {
       const verifier = body.code_verifier;
       if (!verifier) return json({ error: "invalid_grant", error_description: "code_verifier required" }, 400);
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-      const computed = btoa(String.fromCharCode(...new Uint8Array(hash)))
-        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      let computed = verifier;
+      if (payload.codeChallengeMethod !== "plain") {
+        const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+        computed = btoa(String.fromCharCode(...new Uint8Array(hash)))
+          .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      }
       if (computed !== payload.codeChallenge) {
         return json({ error: "invalid_grant", error_description: "PKCE verification failed" }, 400);
       }
     }
 
+    await env.KV.delete(`oauth_code:${code}`);
+
+    const codeApp = await getOAuthAppByClientId(env.DB, payload.appId);
     const accessToken = generateSecureToken();
     const refreshToken = generateSecureToken();
     const now = Math.floor(Date.now() / 1000);
@@ -189,23 +218,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       actorId: payload.actorId,
       accessToken,
       refreshToken,
-      scope: payload.scope,
+      scope: clampScope(payload.scope, codeApp?.scopes, "read"),
       expiresAt: new Date((now + expiresIn) * 1000).toISOString(),
       createdAt: new Date().toISOString(),
     });
 
-    const cookie = setAuthCookie(accessToken);
-    return new Response(JSON.stringify({
+    return json({
       access_token: accessToken,
       token_type: "Bearer",
-      scope: payload.scope,
+      scope: clampScope(payload.scope, codeApp?.scopes, "read"),
       created_at: now,
-    }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": cookie,
-      },
     });
   }
 

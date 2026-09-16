@@ -21,6 +21,13 @@ export async function POST(
   if (!me) return unauthorized();
   const obj = await getObjectById(env.DB, id);
   if (!obj) return notFound();
+  // Only your own public/unlisted statuses can be pinned (Mastodon behaviour).
+  // Without this, anyone could pin someone else's private/DM status and read it
+  // back through the public ?pinned=true listing.
+  if (obj.actorId !== me.id) return notFound();
+  if (obj.visibility !== "public" && obj.visibility !== "unlisted") {
+    return json({ error: "Validation failed: You cannot pin this status" }, 422);
+  }
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound();
   const existing = await env.DB

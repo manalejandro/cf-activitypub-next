@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     sensitive: false,
     createdAt: new Date().toISOString(),
   };
-  await env.KV.put(`pending_media:${id}`, JSON.stringify({ ...att, r2Key: key }), { expirationTtl: 3600 });
+  await env.KV.put(`pending_media:${id}`, JSON.stringify({ ...att, r2Key: key, actorId: me.id }), { expirationTtl: 3600 });
 
   return json(serializeAttachment(att));
 }

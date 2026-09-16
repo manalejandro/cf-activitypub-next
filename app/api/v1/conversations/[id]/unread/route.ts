@@ -11,8 +11,8 @@ export async function POST(
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
   await env.DB
-    .prepare("UPDATE conversations SET unread = 1, updated_at = datetime('now') WHERE id = ?")
-    .bind(id)
+    .prepare("UPDATE conversations SET unread = 1, updated_at = datetime('now') WHERE id = ? AND actor_id = ?")
+    .bind(id, me.id)
     .run();
   return json({
     id,

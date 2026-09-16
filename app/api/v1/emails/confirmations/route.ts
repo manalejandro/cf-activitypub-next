@@ -1,9 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `confemail:${clientIp}`, 10, 60);
+  if (!allowed) {
+    return json({ error: "Too many requests. Please try again later." }, 429);
+  }
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();
   const body = await request.json() as { email?: string };

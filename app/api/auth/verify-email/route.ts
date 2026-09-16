@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getCloudflareContext } from "@/lib/cf";
+import { getCloudflareContext, getBaseUrl } from "@/lib/cf";
 import {
   getEmailVerificationByToken,
   deleteEmailVerification,
@@ -16,25 +16,26 @@ import {
 export async function GET(request: NextRequest): Promise<Response> {
   const token = request.nextUrl.searchParams.get("token");
 
-  if (!token) {
-    return NextResponse.redirect(new URL("/login?error=verify_failed", request.url));
-  }
-
   const { env } = getCloudflareContext();
+  const baseUrl = getBaseUrl(env);
+
+  if (!token) {
+    return NextResponse.redirect(new URL("/login?error=verify_failed", baseUrl));
+  }
 
   const record = await getEmailVerificationByToken(env.DB, token);
   if (!record) {
-    return NextResponse.redirect(new URL("/login?error=verify_failed", request.url));
+    return NextResponse.redirect(new URL("/login?error=verify_failed", baseUrl));
   }
 
   // Check expiry
   if (new Date(record.expiresAt) < new Date()) {
     await deleteEmailVerification(env.DB, token);
-    return NextResponse.redirect(new URL("/login?error=verify_expired", request.url));
+    return NextResponse.redirect(new URL("/login?error=verify_expired", baseUrl));
   }
 
   await markEmailVerified(env.DB, record.actorId);
   await deleteEmailVerification(env.DB, token);
 
-  return NextResponse.redirect(new URL("/login?verified=true", request.url));
+  return NextResponse.redirect(new URL("/login?verified=true", baseUrl));
 }

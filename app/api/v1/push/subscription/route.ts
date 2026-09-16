@@ -13,7 +13,7 @@ import { generateId } from "@/lib/activitypub/utils";
 export async function GET(_request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const actor = await getAuthenticatedActor(_request, env.DB);
+  const actor = await getAuthenticatedActor(_request, env.DB, "push");
   if (!actor) return unauthorized();
 
   const sub = await getPushSubscription(env.DB, actor.id);
@@ -36,7 +36,7 @@ export async function GET(_request: NextRequest): Promise<Response> {
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const actor = await getAuthenticatedActor(request, env.DB);
+  const actor = await getAuthenticatedActor(request, env.DB, "push");
   if (!actor) return unauthorized();
 
   const contentType = request.headers.get("Content-Type") ?? "";
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 export async function PUT(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const actor = await getAuthenticatedActor(request, env.DB);
+  const actor = await getAuthenticatedActor(request, env.DB, "push");
   if (!actor) return unauthorized();
 
   const existing = await getPushSubscription(env.DB, actor.id);
@@ -179,7 +179,7 @@ export async function PUT(request: NextRequest): Promise<Response> {
 export async function DELETE(_request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const actor = await getAuthenticatedActor(_request, env.DB);
+  const actor = await getAuthenticatedActor(_request, env.DB, "push");
   if (!actor) return unauthorized();
 
   await deletePushSubscription(env.DB, actor.id);

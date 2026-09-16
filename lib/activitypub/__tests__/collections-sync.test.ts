@@ -127,10 +127,11 @@ describe("syncRemoteCollections", () => {
       .prepare("SELECT account_id FROM collection_items WHERE collection_id = ? ORDER BY created_at ASC")
       .bind(col!.id as string)
       .all<{ account_id: string }>();
-    // unknown.example is not cached locally → skipped (FK on actors)
+    // unknown.example is not cached locally → skipped (FK on actors); the
+    // local account is skipped too — remote collections may not feature local
+    // accounts without an explicit featureAuthorization.
     expect(items.results.map((r) => r.account_id)).toEqual([
       "https://remote.example/users/bob",
-      "https://local.example/users/me",
     ]);
   });
 

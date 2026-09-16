@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, getInstanceTitle, json, notFound } from "@/lib/cf";
-import { getObjectById } from "@/lib/db";
+import { getObjectById, isAcceptedFollower, canViewStatus } from "@/lib/db";
+import { getAuthenticatedActor } from "@/lib/auth";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 
 export async function GET(
@@ -13,6 +14,9 @@ export async function GET(
   const id = decodeStatusId(rawId, domain);
   const obj = await getObjectById(env.DB, id);
   if (!obj) return notFound();
+  const me = await getAuthenticatedActor(_request, env.DB);
+  const isFollowing = me ? await isAcceptedFollower(env.DB, me.id, obj.actorId) : false;
+  if (!canViewStatus(obj, me?.id ?? null, isFollowing)) return notFound();
   return json({
     id,
     text: (obj.content ?? "").replace(/<[^>]*>/g, ""),

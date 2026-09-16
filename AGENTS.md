@@ -111,6 +111,17 @@ const { env } = getCloudflareContext();
 - **Retries (Mastodon `ActivityPub::DeliveryWorker`)**: `max_retries = 16` in `wrangler.toml`, delay `(attempts^4)+15+jitter` capped at 24h (`deliveryRetryDelay`), `Retry-After` honored for 429/503; permanent 4xx ack; exhausted messages go to the DLQ.
 - **Admin**: `/admin/instances` + `/api/v1/admin/instances` (list/filter, add/refresh, reset availability, suspend/unsuspend, purge all cached actors of a domain). Suspend sets the KV `inst:paused:<domain>` marker that the queue consumer checks (delivery stops); purge uses `deleteRemoteActorData`; actions are written to `moderation_log` with `target_type = 'instance'`.
 
+### Security invariants (audited)
+
+- **Actor trust**: never cache a fetched actor document whose `id` differs from the URL fetched — call `upsertRemoteActor(db, doc, expectedId)` at every fetch site. Server-side fetch helpers must check before upserting.
+- **Object attribution**: remote objects may only be stored when `attributedTo` shares the object IRI's host and is not a local actor (`handleCreate`, `handleLike`, `handleFlag`, `fetchAndCacheRemoteStatus`, `persistRemoteNote`).
+- **Visibility**: every route reading an object by id gates with `canViewStatus(obj, viewerId, isAcceptedFollower(db, viewerId, obj.actorId))` — including source/history/translate/favourited_by/reblogged_by/pin/account statuses. `getFollow` ignores state and must never be used for visibility.
+- **Registration**: always `email_verified = 0` + confirmation email (web and API); the API still returns a Mastodon-shaped token but it is unusable until confirmed. Local actor ids come from `getBaseUrl(env)`, never the request Host.
+- **OAuth**: authorization codes require matching `client_id` + `redirect_uri` and PKCE whenever a challenge was issued; scopes are clamped to the app's registered scopes; an empty scope is not full access; a session cookie is only set for same-origin logins.
+- **Admin roles**: `requireFullAdmin` guards role changes, instance settings, federation rules, audit-log wipes and instance mutations; never demote/delete the last admin.
+- **Streaming**: list channels are owner-checked in the worker (dynamic re-subscribe limited to the socket's initial list) and only public/unlisted statuses are broadcast to them; streaming tokens honor the same suspension/verification gates as REST.
+- **Remote HTML** goes through `sanitizeFediverseHtml` (control chars stripped, http(s)-only media `src`); remote bodies are size-capped (2 MB) before parsing.
+
 ## Code conventions
 
 - **Path alias** `@/*` → repo root. Always import with `@/`.

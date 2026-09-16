@@ -236,7 +236,10 @@ async function resolveToken(
   const nowIso = new Date().toISOString();
   const row = await env.DB
     .prepare(
-      "SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)"
+      `SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id
+       WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)
+         AND a.suspended = 0
+         AND (a.is_local = 0 OR (a.email_verified = 1 AND (a.approved IS NULL OR a.approved = 1)))`
     )
     .bind(token, nowIso)
     .first<{ actor_id: string; username: string }>();
@@ -330,6 +333,15 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     if (!token) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
     const row = await resolveToken(env, token);
     if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+    // Only the list owner may subscribe to `list:<id>`.
+    const list = await env.DB
+      .prepare("SELECT actor_id FROM lists WHERE id = ?")
+      .bind(listId)
+      .first<{ actor_id: string }>()
+      .catch(() => null);
+    if (!list || list.actor_id !== row.actor_id) {
+      return new Response(JSON.stringify({ error: "Not authorized for this list" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }
     return forwardToTimelineDO(env, request, `list:${listId}`, true);
   }
 
@@ -577,7 +589,7 @@ async function handleCallSignalingUpgrade(
 
 async function publishDueScheduled(env: Env): Promise<{ published: number; failed: number }> {
   const dueScheduled = await env.DB
-    .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now') OR replace(scheduled_at, 'T', ' ') <= datetime('now')")
+    .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now') OR replace(scheduled_at, 'T', ' ') <= datetime('now') LIMIT 100")
     .all<{ id: string; actor_id: string; scheduled_at: string; params: string; media_ids: string | null }>();
 
   let publishedCount = 0;

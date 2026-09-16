@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { countModerationLog, getModerationLog } from "@/lib/moderation/log";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireFullAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
 
 /**
@@ -14,7 +14,7 @@ import { resolveLimits } from "@/lib/constants";
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest): Promise<Response> {
  */
 export async function DELETE(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireAdmin(request, env))) {
+  if (!(await requireFullAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 

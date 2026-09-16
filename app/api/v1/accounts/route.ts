@@ -16,8 +16,11 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  const domain = new URL(request.url).hostname;
-  const baseUrl = `https://${domain}`;
+  // Canonical instance URL: local actor ids must never be derived from the
+  // request Host (workers.dev alias / host-header poisoning would create
+  // actors whose id/inbox point at a foreign host).
+  const baseUrl = getBaseUrl(env);
+  const domain = new URL(baseUrl).hostname;
 
   let body: Record<string, string> = {};
   const contentType = request.headers.get("Content-Type") ?? "";

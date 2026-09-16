@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById } from "@/lib/db";
+import { getObjectById, getActorById, isAcceptedFollower, canViewStatus } from "@/lib/db";
+import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
@@ -18,6 +19,9 @@ export async function GET(
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
+  const me = await getAuthenticatedActor(request, env.DB);
+  const isFollowing = me ? await isAcceptedFollower(env.DB, me.id, obj.actorId) : false;
+  if (!canViewStatus(obj, me?.id ?? null, isFollowing)) return notFound("Status not found");
 
   const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
 

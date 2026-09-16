@@ -1,13 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getAuthenticatedActor } from "@/lib/auth";
+import { getCloudflareContext, json } from "@/lib/cf";
+import { requireAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  const me = await getAuthenticatedActor(request, env.DB);
-  if (!me) return unauthorized();
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
+  }
   const rows = await env.DB
     .prepare(
       `SELECT a.* FROM actors a

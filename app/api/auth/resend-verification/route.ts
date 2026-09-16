@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
+import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, createEmailVerification } from "@/lib/db";
 import { generateSecureToken } from "@/lib/auth";
 import { sendVerificationEmail } from "@/lib/email";
@@ -28,6 +28,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const { env } = getCloudflareContext();
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `resend:${clientIp}`, 5, 60);
+  if (!allowed) {
+    return json({ error: "Too many requests. Please try again later." }, 429);
+  }
 
   // Silently succeed if account not found — prevents email enumeration
   const actor = await getActorByEmail(env.DB, email);

@@ -55,10 +55,12 @@ function isAllowedClass(name: string): boolean {
 }
 
 function isSafeHref(href: string): boolean {
-  const trimmed = href.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith("/") || trimmed.startsWith("#")) return true;
-  const match = trimmed.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  // Strip control characters before the scheme check: browsers ignore them
+  // inside schemes, so `java\tscript:` must be treated as javascript:.
+  const cleaned = href.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  if (!cleaned) return false;
+  if (cleaned.startsWith("/") || cleaned.startsWith("#")) return true;
+  const match = cleaned.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
   if (!match) return true;
   return LINK_PROTOCOLS.has(match[1].toLowerCase());
 }

@@ -28,6 +28,7 @@ import {
 import {
   expireDormantInstanceMetadata,
   getActorById,
+  upsertRemoteActor,
   getInstance,
   listInstances,
   listInstancesDueForRefresh,
@@ -419,5 +420,28 @@ describe("instance aggregates", () => {
     const peer = instances.find((i) => i.instance.domain === "peer.example");
     expect(peer?.localFollows).toBe(1);
     expect(peer?.followers).toBe(1);
+  });
+});
+
+describe("actor id binding (cache poisoning guard)", () => {
+  const doc = (id: string) => ({
+    id,
+    type: "Person",
+    preferredUsername: "x",
+    inbox: "https://attacker.example/inbox",
+    outbox: "https://attacker.example/outbox",
+    followers: "https://attacker.example/followers",
+    following: "https://attacker.example/following",
+    publicKey: { id: `${id}#main-key`, owner: id, publicKeyPem: "attacker-key" },
+  }) as unknown as import("@/lib/types").APActor;
+
+  it("refuses a document that claims a different id than the fetched URL", async () => {
+    await upsertRemoteActor(db, doc("https://victim.example/users/victim"), "https://attacker.example/x");
+    expect(await getActorById(db, "https://victim.example/users/victim")).toBeNull();
+  });
+
+  it("stores the document when id and fetched URL match", async () => {
+    await upsertRemoteActor(db, doc("https://attacker.example/x"), "https://attacker.example/x");
+    expect((await getActorById(db, "https://attacker.example/x"))?.publicKeyPem).toBe("attacker-key");
   });
 });

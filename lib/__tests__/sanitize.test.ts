@@ -64,3 +64,24 @@ describe("sanitizeFediversePlain", () => {
     expect(out).toBe("„hola“");
   });
 });
+describe("URL protocol hardening", () => {
+  it("drops javascript: hrefs even with embedded control characters", () => {
+    const out = sanitizeFediverseHtml('<p><a href="java\tscript:alert(1)">x</a></p>')!;
+    expect(out).not.toContain("javascript:");
+    expect(out).not.toContain("java	script:");
+    expect(out).not.toContain("<a");
+  });
+
+  it("keeps https and relative hrefs", () => {
+    const out = sanitizeFediverseHtml('<p><a href="https://example.com">x</a> <a href="/local">y</a></p>')!;
+    expect(out).toContain('href="https://example.com"');
+    expect(out).toContain('href="/local"');
+  });
+
+  it("drops non-http(s) image sources (data:, javascript:)", () => {
+    const out = sanitizeFediverseHtml('<p><img src="javascript:alert(1)" alt="x"><img src="data:text/html;base64,AA" alt="y"><img src="https://example.com/a.png" alt="z"></p>')!;
+    expect(out).not.toContain("javascript:");
+    expect(out).not.toContain("data:");
+    expect(out).toContain('src="https://example.com/a.png"');
+  });
+});

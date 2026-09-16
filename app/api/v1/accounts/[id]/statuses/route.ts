@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getFollow, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -34,7 +34,7 @@ export async function GET(
   const me = await getAuthenticatedActor(request, env.DB);
   // Remote profiles (and their on-demand outbox fetch) are authenticated-only.
   if (!actor.isLocal && !me) return unauthorized();
-  const isFollowing = me ? !!(await getFollow(env.DB, me.id, actor.id)) : false;
+  const isFollowing = me ? await isAcceptedFollower(env.DB, me.id, actor.id) : false;
 
   // Remote accounts whose statuses were never federated here have nothing in
   // `objects`. On the first page of a remote profile, poll the actor's outbox
@@ -79,7 +79,11 @@ export async function GET(
       .prepare(`SELECT * FROM objects WHERE id IN (${placeholders})`)
       .bind(...[...pinnedSet])
       .all<Record<string, unknown>>();
-    allObjects = rowObjs.results.map(rowToObject);
+    // Pinned statuses obey the same visibility rules as any other status:
+    // a direct/private pin must never leak to anonymous or non-followers.
+    allObjects = rowObjs.results
+      .map(rowToObject)
+      .filter((o) => canViewStatus(o, me?.id ?? null, isFollowing));
   }
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([

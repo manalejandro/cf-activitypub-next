@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext } from "@/lib/cf";
+import { getCloudflareContext, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId } from "@/lib/db";
 import { verifyPassword, generateSecureToken } from "@/lib/auth";
 
@@ -40,6 +40,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (action === "deny") {
     const dest = buildRedirect(redirect_uri, null, "access_denied", state);
     return Response.redirect(dest, 302);
+  }
+
+  // Throttle credential checks: this form verifies passwords and has no captcha.
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed } = await checkRateLimit(env.KV, `authorize:${clientIp}`, 20, 60);
+  if (!allowed) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Too many attempts, please try again later");
   }
 
   // Authenticate user

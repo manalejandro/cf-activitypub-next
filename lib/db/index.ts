@@ -576,7 +576,11 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
  * Upsert a remote actor — inserts on first encounter, updates on subsequent
  * fetches (e.g. key rotation, profile changes). Preserves local-only fields.
  */
-export async function upsertRemoteActor(db: D1Database, actor: APActor): Promise<void> {
+export async function upsertRemoteActor(db: D1Database, actor: APActor, expectedId?: string): Promise<void> {
+  // Cache-poisoning guard: never store a fetched document under an id other
+  // than the URL it was fetched from. Callers that fetched `actor.id` from the
+  // network must pass the URL they requested.
+  if (expectedId && actor.id !== expectedId) return;
   const domain = new URL(actor.id).hostname;
   const username = (actor.preferredUsername ?? "").toLowerCase();
   const displayName = sanitizeFediversePlain(actor.name ?? null);
@@ -1319,8 +1323,11 @@ export async function replaceRemoteCollectionItems(
     const chunk = unique.slice(i, i + 50);
     const placeholders = chunk.map(() => "?").join(",");
     try {
+      // Only cached REMOTE actors: a remote instance must not be able to
+      // feature local accounts in a public collection (FEP-7aa9 requires the
+      // featured account's authorization, which we don't ingest for locals).
       const rows = await db
-        .prepare(`SELECT id FROM actors WHERE id IN (${placeholders})`)
+        .prepare(`SELECT id FROM actors WHERE is_local = 0 AND id IN (${placeholders})`)
         .bind(...chunk)
         .all<{ id: string }>();
       for (const r of rows.results ?? []) known.add(r.id);
@@ -2748,6 +2755,10 @@ export async function listOAuthTokensForActor(db: D1Database, actorId: string): 
     createdAt: r.created_at,
     expiresAt: r.expires_at ?? null,
   }));
+}
+
+export async function deleteOAuthTokenByAccessToken(db: D1Database, accessToken: string): Promise<void> {
+  await db.prepare("DELETE FROM oauth_tokens WHERE access_token = ?").bind(accessToken).run();
 }
 
 export async function deleteOAuthToken(db: D1Database, id: string): Promise<void> {

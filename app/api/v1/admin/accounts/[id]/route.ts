@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import type { D1Database } from "@cloudflare/workers-types";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, setActorApproval } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -125,6 +126,9 @@ export async function DELETE(
   const { id } = await params;
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
+  if (actor.role === "admin" && (await wouldRemoveLastAdmin(env.DB, id))) {
+    return json({ error: "Cannot delete the last administrator" }, 422);
+  }
 
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
@@ -175,4 +179,13 @@ export async function DELETE(
   });
 
   return json({ ok: true });
+}
+
+/** Refuse to demote/delete the instance's last full administrator. */
+async function wouldRemoveLastAdmin(db: D1Database, actorId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM actors WHERE is_local = 1 AND role = 'admin' AND id != ?")
+    .bind(actorId)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0) === 0;
 }

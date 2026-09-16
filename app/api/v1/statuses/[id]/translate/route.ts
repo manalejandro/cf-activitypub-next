@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById } from "@/lib/db";
+import { getObjectById, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 
 export async function POST(
@@ -15,6 +15,8 @@ export async function POST(
   if (!me) return unauthorized();
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound();
+  const isFollowing = await isAcceptedFollower(env.DB, me.id, obj.actorId);
+  if (!canViewStatus(obj, me.id, isFollowing)) return notFound();
   const text = (obj.content ?? "").replace(/<[^>]*>/g, "");
   let targetLang = "en";
   try {

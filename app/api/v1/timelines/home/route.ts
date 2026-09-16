@@ -56,8 +56,8 @@ export async function GET(request: NextRequest): Promise<Response> {
           const { fetchRemoteObject } = await import("@/lib/activitypub/federation");
           const { upsertRemoteActor } = await import("@/lib/db");
           const fetched = await fetchRemoteObject(obj.actorId) as import("@/lib/types").APActor | null;
-          if (fetched?.publicKey?.publicKeyPem) {
-            await upsertRemoteActor(env.DB, fetched);
+          if (fetched?.publicKey?.publicKeyPem && fetched.id === obj.actorId) {
+            await upsertRemoteActor(env.DB, fetched, obj.actorId);
             author = await getActorById(env.DB, obj.actorId);
           }
         } catch { /* ignore */ }

@@ -148,7 +148,14 @@ export async function fetchAndCacheRemoteActor(
     });
     if (!res?.ok) return null;
     const p = await res.json() as Record<string, unknown>;
-    const id = (p.id as string) ?? actorUrl;
+    // Cache-poisoning guard: the document fetched from `actorUrl` must claim
+    // exactly that id. A host answering with another actor's id (key/inbox
+    // swap) is rejected, never cached.
+    const id = typeof p.id === "string" ? p.id : "";
+    if (!id || id !== actorUrl) {
+      console.warn(`[remote] Refusing actor document: fetched ${actorUrl} claims id ${id || "(none)"}`);
+      return null;
+    }
     const username = (p.preferredUsername as string) ?? "unknown";
     const urlObj = new URL(id);
     const domain = urlObj.hostname;
@@ -632,6 +639,15 @@ export async function fetchAndCacheRemoteStatus(
 
     const attributedTo = (obj.attributedTo as string) ?? (obj.actor as string);
     if (!attributedTo) return { object: null, actor: null };
+    // Anti-forgery: the status must live on its author's host, and the author
+    // must be remote — a fetched document cannot author local content.
+    let sameHost = false;
+    try {
+      sameHost = new URL(oid).hostname.toLowerCase() === new URL(attributedTo).hostname.toLowerCase();
+    } catch { sameHost = false; }
+    if (!sameHost) return { object: null, actor: null };
+    const localAuthor = await getActorById(db, attributedTo);
+    if (localAuthor?.isLocal) return { object: null, actor: null };
     const cachedActor = await fetchAndCacheRemoteActor(db, attributedTo);
     if (!cachedActor) return { object: null, actor: null };
 
@@ -833,6 +849,9 @@ export async function fetchProfileHtmlFallback(
       Accept: "text/html,application/xhtml+xml",
     });
     if (!res?.ok) return {};
+    // Cap by content-length when present, and by the actual body otherwise.
+    const declared = Number(res.headers.get("content-length") ?? "0");
+    if (declared > 2_000_000) return {};
     const html = await res.text();
     if (html.length > 2_000_000) return {};
 

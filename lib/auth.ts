@@ -8,7 +8,8 @@ import type { LocalActor } from "@/lib/types";
 
 export async function getAuthenticatedActor(
   request: Request,
-  db: D1Database
+  db: D1Database,
+  requiredScope?: "push"
 ): Promise<LocalActor | null> {
   const token = extractBearerToken(request);
   if (!token) return null;
@@ -37,6 +38,8 @@ export async function getAuthenticatedActor(
   const method = request.method.toUpperCase();
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (mutating && !scopesAllow(tokenRow.scope, "write")) return null;
+  // A write-only posting client must not hijack the account's push endpoint.
+  if (requiredScope && !scopesAllow(tokenRow.scope, requiredScope)) return null;
 
   // Throttled last-access tracking (at most one write per actor per hour).
   try {
@@ -59,9 +62,11 @@ export async function getAuthenticatedActor(
  */
 export function scopesAllow(
   scope: string | null | undefined,
-  required: "read" | "write" | "follow"
+  required: "read" | "write" | "follow" | "push"
 ): boolean {
-  if (!scope) return true;
+  // Legacy rows predate the scope column (NULL) and keep full access; an empty
+  // string is a real (useless) scope and must not be treated as full access.
+  if (scope === null || scope === undefined) return true;
   const parts = scope.split(/[\s,]+/).filter(Boolean);
   if (parts.includes(required)) return true;
   if (required === "follow" && parts.includes("write")) return true;

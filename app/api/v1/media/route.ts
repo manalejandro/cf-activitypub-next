@@ -98,7 +98,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   };
 
   // Store in KV temporarily (keyed by attachment id) so statuses route can link it
-  await env.KV.put(`pending_media:${id}`, JSON.stringify({ ...att, r2Key: key }), { expirationTtl: 3600 });
+  await env.KV.put(`pending_media:${id}`, JSON.stringify({ ...att, r2Key: key, actorId: actor.id }), { expirationTtl: 3600 });
 
   return json({
     id,

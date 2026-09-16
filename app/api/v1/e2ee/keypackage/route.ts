@@ -1,6 +1,7 @@
-import { getCloudflareContext, json, getBaseUrl } from "@/lib/cf";
+import { getCloudflareContext, json, getBaseUrl, unauthorized } from "@/lib/cf";
+import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getMlsKeyPackagesByActor } from "@/lib/db";
-import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { NextRequest } from "next/server";
 
 // GET /api/v1/e2ee/keypackage?iri=<actorIri>
@@ -14,6 +15,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!iri) return json({ error: "iri parameter required" }, 422);
 
   const { env } = getCloudflareContext();
+  // Resolving remote key packages triggers outbound fetches — require a session.
+  const me = await getAuthenticatedActor(request, env.DB);
+  if (!me) return unauthorized();
   const baseUrl = getBaseUrl(env);
 
   // Local actor → read its keyPackages collection from the database.
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       `${origin}/api/v1/e2ee/keypackage?iri=${encodeURIComponent(iri)}`,
       { Accept: "application/json" }
     );
-    if (apiRes.ok) {
+    if (apiRes?.ok) {
       const parsed = (await apiRes.json()) as {
         objectId?: string | null;
         ciphersuite?: string | null;
@@ -69,14 +73,14 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     // 2. Draft keyPackages collection.
     const kpRes = await fetchWithTimeout(`${iri.replace(/\/$/, "")}/keyPackages?page=true`, headers);
-    if (kpRes.ok) {
+    if (kpRes?.ok) {
       const found = await parseKeyPackageCollection(kpRes);
       if (found) return found;
     }
 
     // 3. Actor document's advertised keyPackages relation.
     const actorRes = await fetchWithTimeout(iri, headers);
-    if (actorRes.ok) {
+    if (actorRes?.ok) {
       const actor = (await actorRes.json()) as { keyPackages?: unknown } | null;
       const kpRel = actor?.keyPackages;
       if (kpRel && typeof kpRel === "object" && (kpRel as { content?: string }).content) {
@@ -90,7 +94,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         if (val.valid) {
           relUrl = `${relUrl.replace(/\/$/, "")}?page=true`;
           const relRes = await fetchWithTimeout(relUrl, headers);
-          if (relRes.ok) {
+          if (relRes?.ok) {
             const found = await parseKeyPackageCollection(relRes);
             if (found) return found;
           }
@@ -103,8 +107,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 }
 
-async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response> {
-  return await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
+async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response | null> {
+  // safeFetch re-validates every redirect hop (SSRF) and bounds the exchange.
+  return await safeFetch(url, { headers }, 6000);
 }
 
 async function parseKeyPackageCollection(res: Response): Promise<Response | null> {

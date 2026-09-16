@@ -411,8 +411,8 @@ export async function backfillRemoteSharedInboxes(
     } catch { /* proceed without the marker */ }
     try {
       const doc = (await fetchRemoteObject(row.id, `${signer.id}#main-key`, signer.private_key_pem)) as APActor | null;
-      if (doc?.inbox) {
-        await upsertRemoteActor(db, doc);
+      if (doc?.inbox && doc.id === row.id) {
+        await upsertRemoteActor(db, doc, row.id);
         done++;
       } else if (kv?.put) {
         await kv.put(skipKey, "1", { expirationTtl: 604_800 });
