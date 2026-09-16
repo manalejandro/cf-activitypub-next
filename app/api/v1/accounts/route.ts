@@ -101,8 +101,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   const passwordHash = await hashPassword(password);
   const actorId = actorIRI(baseUrl, username);
 
-  // Web registrations require email verification; API registrations are auto-verified.
-  const emailVerified = !webRegistration;
+  // Every self-service registration must confirm its email. A missing Turnstile
+  // token means "API client" (apps can't solve a captcha), never "skip
+  // verification" — that was letting bots create verified accounts.
+  const emailVerified = false;
 
   await createActor(env.DB, {
     id: actorId,
@@ -184,8 +186,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       .run();
   }
 
-  if (webRegistration) {
-    // Send verification email; do not issue a token yet.
+  // Always send the confirmation email: web forms and third-party apps alike.
+  {
     const token = generateSecureToken();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await createEmailVerification(env.DB, actorId, token, expiresAt);
@@ -205,15 +207,26 @@ export async function POST(request: NextRequest): Promise<Response> {
       // Continue — don't fail registration if email sending fails.
       // The user can request a resend from the login page.
     }
+  }
 
-    return json({ pending_verification: true }, 200);
+  if (webRegistration) {
+    // The web form waits for the user to open the link (and, when the instance
+    // requires it, for an admin to approve the account).
+    return json(
+      regs.approvalRequired
+        ? { pending_verification: true, pending_approval: true }
+        : { pending_verification: true },
+      200
+    );
   }
   if (regs.approvalRequired) {
     // Approval-required instances don't issue tokens at registration time;
     // the account can log in once an admin approves it.
     return json({ pending_approval: true }, 200);
   }
-  // API registration: auto-create access token (Mastodon clients expect it on registration)
+  // API registration: issue the access token like Mastodon does. It stays
+  // unusable until the address is confirmed (getAuthenticatedActor rejects
+  // unverified accounts), so clients must wait for the user to click the link.
   const { client_id } = body;
   const app = client_id ? await getOAuthAppByClientId(env.DB, client_id) : null;
   const accessToken = generateSecureToken();

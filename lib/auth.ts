@@ -26,6 +26,11 @@ export async function getAuthenticatedActor(
   // Suspended accounts cannot authenticate (Guardian / admin suspension).
   if (actor.suspended) return null;
 
+  // Local accounts must confirm their email and be approved before any API
+  // access. Registration issues a token before confirmation (Mastodon
+  // behaviour), so this is what keeps an unconfirmed account unusable.
+  if (actor.isLocal && (!actor.emailVerified || actor.approved === false)) return null;
+
   // OAuth scope enforcement: read-only tokens must not mutate state. The web
   // session token is always issued with the full "read write follow push"
   // scope, so this only affects third-party clients that asked for `read`.

@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { D1Database } from "@cloudflare/workers-types";
 import type { LocalActor } from "@/lib/types";
+
+const dbMocks = vi.hoisted(() => ({
+  getTokenByAccessToken: vi.fn(),
+  getActorById: vi.fn(),
+}));
+
+vi.mock("@/lib/db", () => ({
+  getTokenByAccessToken: dbMocks.getTokenByAccessToken,
+  getActorById: dbMocks.getActorById,
+}));
 
 // Mock crypto for auth tests
 const mockCrypto = {
@@ -160,5 +171,55 @@ describe("hashPassword / verifyPassword", () => {
     const { verifyPassword } = await getAuthModule();
     const result = await verifyPassword("hunter2", "bcrypt:...");
     expect(result).toBe(false);
+  });
+});
+
+describe("getAuthenticatedActor", () => {
+  const fakeDb = {
+    prepare: () => ({ bind: () => ({ run: async () => ({}) }) }),
+  } as unknown as D1Database;
+
+  const request = () =>
+    new Request("https://local.example/api/v1/accounts/verify_credentials", {
+      headers: { Authorization: "Bearer tok" },
+    });
+
+  const actor = (over: Partial<LocalActor> = {}): LocalActor =>
+    ({
+      id: "https://local.example/users/me",
+      username: "me",
+      domain: "local.example",
+      isLocal: true,
+      emailVerified: true,
+      approved: true,
+      suspended: false,
+      ...over,
+    }) as LocalActor;
+
+  beforeEach(() => {
+    dbMocks.getTokenByAccessToken.mockResolvedValue({
+      actorId: "https://local.example/users/me",
+      scope: "read write follow push",
+      expiresAt: null,
+    });
+    dbMocks.getActorById.mockResolvedValue(actor());
+  });
+
+  it("rejects a local account that has not confirmed its email", async () => {
+    dbMocks.getActorById.mockResolvedValue(actor({ emailVerified: false }));
+    const { getAuthenticatedActor } = await getAuthModule();
+    expect(await getAuthenticatedActor(request(), fakeDb)).toBeNull();
+  });
+
+  it("rejects a local account pending admin approval", async () => {
+    dbMocks.getActorById.mockResolvedValue(actor({ approved: false }));
+    const { getAuthenticatedActor } = await getAuthModule();
+    expect(await getAuthenticatedActor(request(), fakeDb)).toBeNull();
+  });
+
+  it("allows a verified and approved local account", async () => {
+    const { getAuthenticatedActor } = await getAuthModule();
+    const result = await getAuthenticatedActor(request(), fakeDb);
+    expect(result?.id).toBe("https://local.example/users/me");
   });
 });
