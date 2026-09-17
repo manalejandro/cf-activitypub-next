@@ -25,7 +25,6 @@ import {
   applyMediaCacheToAttachment,
   enqueueMediaCache,
   deleteMediaCacheRows,
-  deletePendingMediaCache,
   getMediaCacheStats,
   listExpiredMediaCache,
   listMediaCacheKeys,
@@ -70,6 +69,31 @@ export interface MediaCacheLimits {
   maxObjectBytes: number;
   fetchBatch: number;
   userAgents: string[];
+}
+
+/**
+ * The limits object may be partial (an older `resolveLimits` build, a rolled
+ * back constants module): undefined fields must mean "enabled with defaults",
+ * never "disabled" — an undefined `enabled` previously fell into the disabled
+ * branch and deleted the whole pending queue every tick.
+ */
+function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
+  const days = Number(limits.days);
+  const profileDays = Number(limits.profileDays);
+  const maxBytes = Number(limits.maxBytes);
+  const maxObjectBytes = Number(limits.maxObjectBytes);
+  const fetchBatch = Number(limits.fetchBatch);
+  return {
+    enabled: limits.enabled !== false,
+    days: days > 0 ? days : 7,
+    profileDays: profileDays > 0 ? profileDays : 30,
+    maxBytes: maxBytes > 0 ? maxBytes : 10 * 1024 * 1024 * 1024,
+    maxObjectBytes: maxObjectBytes > 0 ? maxObjectBytes : 40 * 1024 * 1024,
+    fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
+    userAgents: Array.isArray(limits.userAgents) && limits.userAgents.length > 0
+      ? limits.userAgents
+      : ["cf-activitypub/0.1.0 (+https://localhost; federated media cache)"],
+  };
 }
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -276,12 +300,14 @@ async function cacheOne(
  */
 export async function processMediaCacheQueue(
   bindings: MediaCacheBindings,
-  limits: MediaCacheLimits,
+  rawLimits: MediaCacheLimits,
   baseUrl: string,
   limit?: number
 ): Promise<number> {
+  const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) {
-    await deletePendingMediaCache(bindings.DB).catch(() => 0);
+    // Leave queued rows alone: they are tiny metadata and will be processed if
+    // the cache is re-enabled. (Deleting here used to wipe the queue silently.)
     return 0;
   }
   const jobs = await listMediaCacheQueue(bindings.DB, limit ?? limits.fetchBatch);
@@ -316,9 +342,10 @@ async function deleteEntries(
  */
 export async function backfillMediaCache(
   bindings: MediaCacheBindings,
-  limits: MediaCacheLimits,
+  rawLimits: MediaCacheLimits,
   batch = 20
 ): Promise<number> {
+  const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) return 0;
   let queued = 0;
 
@@ -392,11 +419,11 @@ export async function backfillMediaCache(
  */
 export async function maintainMediaCache(
   bindings: MediaCacheBindings,
-  limits: MediaCacheLimits,
+  rawLimits: MediaCacheLimits,
   batch = 50
 ): Promise<{ expired: number; evicted: number }> {
+  const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) {
-    await deletePendingMediaCache(bindings.DB).catch(() => 0);
     return { expired: 0, evicted: 0 };
   }
 

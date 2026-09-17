@@ -285,6 +285,25 @@ describe("remote media cache", () => {
     expect(actor?.avatar_cache_url).toContain("/api/media/cache/media/");
   });
 
+  it("treats a partial limits object as enabled with defaults (never wipes the queue)", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([5]), "image/png"));
+
+    // A stale/rolled-back build may pass an empty limits object: this must mean
+    // "enabled with defaults", not "disabled, delete everything".
+    const cached = await processMediaCacheQueue(bindings, {} as MediaCacheLimits, "https://local.example");
+    expect(cached).toBe(1);
+    expect((await getMediaCacheStats(db)).ready).toBe(1);
+  });
+
+  it("keeps queued rows when the cache is explicitly disabled", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    const cached = await processMediaCacheQueue(bindings, { ...LIMITS, enabled: false }, "https://local.example");
+    expect(cached).toBe(0);
+    const rows = await db.prepare("SELECT COUNT(*) AS n FROM media_cache").bind().first<{ n: number }>();
+    expect(rows?.n).toBe(1);
+  });
+
   it("purges every cached object and row", async () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
