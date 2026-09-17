@@ -455,7 +455,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const visibility = resolveVisibility(obj.to, obj.cc);
 
-  await createObject(ctx.db, {
+  const inserted = await createObject(ctx.db, {
     id: obj.id,
     type: objType,
     actorId,
@@ -474,6 +474,13 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     local: false,
     raw: JSON.stringify(obj),
   });
+
+  // Lost a concurrent insert race (shared inbox + user inbox, retry): the
+  // object already exists, so no counters/notifications must be duplicated.
+  if (!inserted) {
+    await ensurePollRowsForQuestion(ctx, obj);
+    return;
+  }
 
   // Direct messages create an unread conversation for the local recipient
   // and show up in the notifications column. Blocked (or domain-blocked)

@@ -1811,11 +1811,11 @@ function extractObjectTags(raw: string | undefined | null): string[] {
   return [];
 }
 
-export async function createObject(db: D1Database, obj: Omit<LocalObject, "updatedAt">): Promise<void> {
+export async function createObject(db: D1Database, obj: Omit<LocalObject, "updatedAt">): Promise<boolean> {
   const statements = [
     db
       .prepare(
-        `INSERT INTO objects (
+        `INSERT OR IGNORE INTO objects (
           id, type, actor_id, content, content_warning, sensitive,
           visibility, in_reply_to_id, quote_id, language, url,
           replies_count, reblogs_count, favourites_count, engagement,
@@ -1858,7 +1858,11 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         .bind(date, obj.actorId, date)
     );
   }
-  await db.batch(statements);
+  const results = await db.batch(statements);
+  // A concurrent delivery of the same object (shared inbox + user inbox, a
+  // retry…) must not throw: the first writer wins and callers skip their
+  // side effects (counters, notifications) when nothing was inserted.
+  return (results[0]?.meta?.changes ?? 0) > 0;
 }
 
 /**
@@ -2507,7 +2511,7 @@ export async function getLike(db: D1Database, actorId: string, objectId: string)
 
 export async function createLike(db: D1Database, like: LocalLike): Promise<void> {
   await db
-    .prepare("INSERT INTO likes (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
+    .prepare("INSERT OR IGNORE INTO likes (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
     .bind(like.id, like.actorId, like.objectId, like.activityId)
     .run();
   await db
@@ -2562,7 +2566,7 @@ export async function getAnnounce(
 
 export async function createAnnounce(db: D1Database, announce: LocalAnnounce): Promise<void> {
   await db
-    .prepare("INSERT INTO announces (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
+    .prepare("INSERT OR IGNORE INTO announces (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
     .bind(announce.id, announce.actorId, announce.objectId, announce.activityId)
     .run();
   await db
@@ -2797,7 +2801,7 @@ export async function deleteOAuthToken(db: D1Database, id: string): Promise<void
 export async function createAttachment(db: D1Database, att: LocalAttachment): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO attachments (id, object_id, type, url, remote_url, description, blurhash, width, height, file_size, mime_type, sensitive)
+      `INSERT OR IGNORE INTO attachments (id, object_id, type, url, remote_url, description, blurhash, width, height, file_size, mime_type, sensitive)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
