@@ -388,6 +388,50 @@ describe("remote media cache", () => {
     expect(left?.n).toBe(3);
   });
 
+  it("rewrites every attachment that shares the cached source URL", async () => {
+    // A second post (repost/quote) referencing the exact same file.
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, visibility, is_local)
+       VALUES ('https://remote.example/objects/2', 'Note', 'https://remote.example/users/fan', 'public', 0)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO attachments (id, object_id, type, url, remote_url, mime_type)
+       VALUES ('att-2', 'https://remote.example/objects/2', 'image', ?, ?, NULL)`
+    ).bind(SRC, SRC).run();
+
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1, 2]), "image/png"));
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+
+    const rows = await db
+      .prepare("SELECT id, url FROM attachments WHERE id IN ('att-1','att-2') ORDER BY id")
+      .bind()
+      .all<{ id: string; url: string }>();
+    expect(rows.results.map((r) => r.url.startsWith("https://local.example/api/media/cache/media/"))).toEqual([true, true]);
+  });
+
+  it("serves an already-cached URL immediately on a new reference", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
+    await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
+
+    // New post referencing the same file: enqueue must rewrite it on the spot.
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, visibility, is_local)
+       VALUES ('https://remote.example/objects/3', 'Note', 'https://remote.example/users/fan', 'public', 0)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO attachments (id, object_id, type, url, remote_url, mime_type)
+       VALUES ('att-3', 'https://remote.example/objects/3', 'image', ?, ?, NULL)`
+    ).bind(SRC, SRC).run();
+    federation.safeFetch.mockClear();
+
+    await enqueueMediaCache(db, SRC, "attachment", "att-3");
+    expect(federation.safeFetch).not.toHaveBeenCalled();
+    const row = await db.prepare("SELECT url FROM attachments WHERE id = 'att-3'").bind().first<{ url: string }>();
+    expect(row?.url).toContain("/api/media/cache/media/");
+  });
+
   it("purges every cached object and row", async () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));

@@ -60,7 +60,7 @@ export const MEDIA_CACHE_DAYS = 7;
 export const MEDIA_CACHE_PROFILE_DAYS = 30;
 export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
 export const MEDIA_CACHE_MAX_OBJECT_BYTES = 40 * 1024 * 1024; // 40 MB
-export const MEDIA_CACHE_FETCH_BATCH = 25;
+export const MEDIA_CACHE_FETCH_BATCH = 50;
 // Maintenance never takes the cache below this many entries: reaching a limit
 // replaces the OLDEST entries (FIFO), it never wipes the cache.
 export const MEDIA_CACHE_MIN_ENTRIES = 20;

@@ -3656,6 +3656,7 @@ function rowToMediaCache(r: Row): MediaCacheEntry {
     targetId: (r.target_id as string | null) ?? null,
     status: (r.status as MediaCacheEntry["status"]) ?? "pending",
     r2Key: (r.r2_key as string | null) ?? null,
+    cachedUrl: (r.cached_url as string | null) ?? null,
     size: Number(r.size ?? 0),
     contentType: (r.content_type as string | null) ?? null,
     attempts: Number(r.attempts ?? 0),
@@ -3670,6 +3671,43 @@ function rowToMediaCache(r: Row): MediaCacheEntry {
 export async function mediaCacheId(url: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Rewrite every attachment that references `sourceUrl` to the cached copy —
+ * the same file can back several posts (reposts, quotes), and only rewriting
+ * the trigger target left the others on the origin.
+ */
+export async function applyMediaCacheToAttachmentsByUrl(
+  db: D1Database,
+  sourceUrl: string,
+  cachedUrl: string,
+  size: number,
+  contentType: string | null
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE attachments
+       SET url = ?, file_size = COALESCE(file_size, ?), mime_type = COALESCE(mime_type, ?)
+       WHERE remote_url = ? OR url = ?`
+    )
+    .bind(cachedUrl, size, contentType, sourceUrl, sourceUrl)
+    .run();
+}
+
+/** Point every actor using `sourceUrl` as avatar/header at the cached copy. */
+export async function applyMediaCacheToActorsByUrl(
+  db: D1Database,
+  kind: "avatar" | "header",
+  sourceUrl: string,
+  cachedUrl: string
+): Promise<void> {
+  const column = kind === "avatar" ? "avatar_cache_url" : "header_cache_url";
+  const sourceColumn = kind === "avatar" ? "avatar_url" : "header_url";
+  await db
+    .prepare(`UPDATE actors SET ${column} = ? WHERE ${sourceColumn} = ?`)
+    .bind(cachedUrl, sourceUrl)
+    .run();
 }
 
 /**
@@ -3690,6 +3728,19 @@ export async function enqueueMediaCache(
   if (!/^https:\/\//i.test(sourceUrl)) return;
   const id = await mediaCacheId(sourceUrl);
   const delay = Math.max(0, Math.floor(delaySeconds));
+  const ready = await db
+    .prepare("SELECT cached_url, content_type, size FROM media_cache WHERE source_url = ? AND status = 'ready'")
+    .bind(sourceUrl)
+    .first<{ cached_url: string | null; content_type: string | null; size: number }>();
+  if (ready?.cached_url) {
+    // Already cached: point every new reference at the copy immediately, no
+    // need to wait for the cron.
+    await applyMediaCacheToAttachmentsByUrl(db, sourceUrl, ready.cached_url, Number(ready.size ?? 0), ready.content_type ?? null);
+    await applyMediaCacheToActorsByUrl(db, "avatar", sourceUrl, ready.cached_url);
+    await applyMediaCacheToActorsByUrl(db, "header", sourceUrl, ready.cached_url);
+    return;
+  }
+
   await db
     .prepare(
       `INSERT INTO media_cache (id, source_url, target_type, target_id, next_attempt_at)
@@ -3722,16 +3773,16 @@ export async function listMediaCacheQueue(db: D1Database, limit: number): Promis
 export async function markMediaCacheReady(
   db: D1Database,
   id: string,
-  patch: { r2Key: string; size: number; contentType: string | null }
+  patch: { r2Key: string; cachedUrl: string; size: number; contentType: string | null }
 ): Promise<void> {
   await db
     .prepare(
       `UPDATE media_cache
-       SET status = 'ready', r2_key = ?, size = ?, content_type = ?, fetched_at = datetime('now'),
+       SET status = 'ready', r2_key = ?, cached_url = ?, size = ?, content_type = ?, fetched_at = datetime('now'),
            attempts = attempts + 1, last_error = NULL
        WHERE id = ?`
     )
-    .bind(patch.r2Key, patch.size, patch.contentType, id)
+    .bind(patch.r2Key, patch.cachedUrl, patch.size, patch.contentType, id)
     .run();
 }
 
@@ -3749,44 +3800,6 @@ export async function markMediaCacheFailed(
        WHERE id = ?`
     )
     .bind(status, error.slice(0, 300), nextAttemptAt, id)
-    .run();
-}
-
-/** Point an attachment at its cached copy (remote_url keeps the origin). */
-export async function applyMediaCacheToAttachment(
-  db: D1Database,
-  attachmentId: string,
-  sourceUrl: string,
-  cachedUrl: string,
-  size: number,
-  contentType: string | null
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE attachments
-       SET url = ?, file_size = COALESCE(file_size, ?), mime_type = COALESCE(mime_type, ?)
-       WHERE id = ? AND (remote_url = ? OR url = ?)`
-    )
-    .bind(cachedUrl, size, contentType, attachmentId, sourceUrl, sourceUrl)
-    .run();
-}
-
-/** Point a remote actor's avatar/header at the cached copy. */
-export async function applyMediaCacheToActor(
-  db: D1Database,
-  actorId: string,
-  kind: "avatar" | "header",
-  sourceUrl: string,
-  cachedUrl: string
-): Promise<void> {
-  const column = kind === "avatar" ? "avatar_cache_url" : "header_cache_url";
-  const sourceColumn = kind === "avatar" ? "avatar_url" : "header_url";
-  await db
-    .prepare(
-      `UPDATE actors SET ${column} = ?, updated_at = updated_at
-       WHERE id = ? AND ${sourceColumn} = ?`
-    )
-    .bind(cachedUrl, actorId, sourceUrl)
     .run();
 }
 

@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS media_cache (
   target_id       TEXT,                           -- attachments.id | actors.id
   status          TEXT NOT NULL DEFAULT 'pending',-- pending | ready | failed
   r2_key          TEXT,
+  cached_url      TEXT,                           -- public URL served for the cached copy
   size            INTEGER NOT NULL DEFAULT 0,
   content_type    TEXT,
   attempts        INTEGER NOT NULL DEFAULT 0,

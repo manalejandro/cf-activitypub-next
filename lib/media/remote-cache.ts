@@ -21,8 +21,8 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import {
-  applyMediaCacheToActor,
-  applyMediaCacheToAttachment,
+  applyMediaCacheToActorsByUrl,
+  applyMediaCacheToAttachmentsByUrl,
   enqueueMediaCache,
   deleteMediaCacheRows,
   getMediaCacheStats,
@@ -102,8 +102,9 @@ function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
 }
 
 const FETCH_TIMEOUT_MS = 15_000;
-// Old content queued by the backfill waits behind fresh ingests.
-const BACKFILL_DELAY_SECONDS = 1_800;
+// Old content queued by the backfill waits briefly behind fresh ingests (a
+// long delay left the backlog unattended — the queue must keep draining).
+const BACKFILL_DELAY_SECONDS = 300;
 const MAX_ATTEMPTS = 3;
 const BYTES_KEY = "mediacache:bytes";
 const RECOUNT_KEY = "mediacache:recount";
@@ -273,11 +274,11 @@ async function cacheOne(
         customMetadata: { sourceUrl: job.sourceUrl.slice(0, 900) },
       });
       const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
-      await markMediaCacheReady(bindings.DB, job.id, { r2Key, size: bytes.byteLength, contentType });
-      if (job.targetType === "attachment" && job.targetId) {
-        await applyMediaCacheToAttachment(bindings.DB, job.targetId, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
-      } else if ((job.targetType === "avatar" || job.targetType === "header") && job.targetId) {
-        await applyMediaCacheToActor(bindings.DB, job.targetId, job.targetType, job.sourceUrl, cachedUrl);
+      await markMediaCacheReady(bindings.DB, job.id, { r2Key, cachedUrl, size: bytes.byteLength, contentType });
+      // Rewrite every reference to this URL, not just the trigger target.
+      await applyMediaCacheToAttachmentsByUrl(bindings.DB, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
+      if (job.targetType === "avatar" || job.targetType === "header") {
+        await applyMediaCacheToActorsByUrl(bindings.DB, job.targetType, job.sourceUrl, cachedUrl);
       }
       await adjustBytes(bindings.KV, bytes.byteLength);
       return true;
@@ -355,6 +356,26 @@ export async function backfillMediaCache(
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) return 0;
   let queued = 0;
+
+  // Heal references that were left on the origin before the URL-based
+  // rewrite existed (or when the same file backs several posts).
+  try {
+    const stale = await bindings.DB
+      .prepare(
+        `SELECT DISTINCT a.remote_url AS source_url, mc.cached_url, mc.size, mc.content_type
+         FROM attachments a
+         JOIN media_cache mc ON mc.source_url = a.remote_url AND mc.status = 'ready'
+         WHERE mc.cached_url IS NOT NULL
+           AND a.url NOT LIKE '%/api/media/cache/media/%' AND a.url = a.remote_url
+         LIMIT ?`
+      )
+      .bind(batch)
+      .all<{ source_url: string; cached_url: string; size: number; content_type: string | null }>();
+    for (const row of stale.results ?? []) {
+      await applyMediaCacheToAttachmentsByUrl(bindings.DB, row.source_url, row.cached_url, Number(row.size ?? 0), row.content_type ?? null);
+      queued++;
+    }
+  } catch { /* best-effort */ }
 
   try {
     const attachments = await bindings.DB

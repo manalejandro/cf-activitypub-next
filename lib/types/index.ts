@@ -676,6 +676,7 @@ export interface MediaCacheEntry {
   targetId: string | null;
   status: "pending" | "ready" | "failed";
   r2Key: string | null;
+  cachedUrl: string | null;
   size: number;
   contentType: string | null;
   attempts: number;

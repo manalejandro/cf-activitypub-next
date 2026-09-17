@@ -1020,7 +1020,7 @@ async function executeScheduled(env: Env): Promise<void> {
   try {
     const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
     const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
-    await backfillMediaCache(bindings, limits, Math.max(limits.mediaCacheFetchBatch * 2, 20));
+    await backfillMediaCache(bindings, limits, limits.mediaCacheFetchBatch);
     await processMediaCacheQueue(bindings, limits, instanceBaseUrl, limits.mediaCacheFetchBatch);
     await maintainMediaCache(bindings, limits);
   } catch (err) {
