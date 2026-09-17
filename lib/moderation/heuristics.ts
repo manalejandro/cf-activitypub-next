@@ -151,6 +151,8 @@ export function computeRegistrationSignals(input: {
   username: string;
   email: string;
   ipSuspicious: boolean;
+  /** Another account (or a previous attempt) exists for the same mailbox. */
+  canonicalVariant?: boolean;
 }): RegistrationSignals {
   const flags: string[] = [];
   const emailDomain = input.email.split("@")[1]?.toLowerCase() ?? "";
@@ -158,6 +160,9 @@ export function computeRegistrationSignals(input: {
   if (input.ipSuspicious) flags.push("ip_sospechosa");
   if (DISPOSABLE_EMAIL_HINTS.some((h) => emailDomain.includes(h))) flags.push("email_desechable");
   if (SUSPICIOUS_USERNAME_RE.test(input.username)) flags.push("username_sospechoso");
+  // `user+tag@domain` / dotted variants of a mailbox that already registered
+  // (or is being farmed) are the signature of bulk account creation.
+  if (input.canonicalVariant) flags.push("variante_de_correo");
 
   return { flags };
 }

@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, translateKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 
@@ -175,11 +175,12 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
         pending_approval?: boolean;
         access_token?: string;
         error?: string;
+        error_code?: string;
       };
 
       if (!res.ok) {
         resetTurnstile();
-        setError(data.error ?? "Registration failed");
+        setError(translateKey(t, data.error_code, data.error) ?? "Registration failed");
         return;
       }
 

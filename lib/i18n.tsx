@@ -53,6 +53,20 @@ i18next.use(initReactI18next).init({
   returnEmptyString: false,
 });
 
+/** Translate an API `error_code` with the client dictionaries, falling back
+ * to the server's English `error` message. */
+export function translateKey(
+  t: Translations,
+  key: string | null | undefined,
+  fallback?: string | null
+): string | null {
+  if (key) {
+    const value = (t as unknown as Record<string, string>)[key];
+    if (typeof value === "string" && value !== key) return value;
+  }
+  return fallback ?? null;
+}
+
 const LocaleContext = createContext<{
   t: Translations;
   locale: Locale;

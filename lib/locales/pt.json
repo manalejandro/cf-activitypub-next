@@ -935,5 +935,17 @@
   "pagination_prev": "Anterior",
   "pagination_next": "Seguinte",
   "pagination_page": "Página {page} de {pages}",
-  "admin_instances_col_followers": "Seguidores"
+  "admin_instances_col_followers": "Seguidores",
+  "register_error_email_taken": "E-mail já está em uso",
+  "register_error_username_taken": "Nome de usuário já está em uso",
+  "register_error_fields_required": "nome de usuário, e-mail e senha são obrigatórios",
+  "register_error_username_invalid": "O nome de usuário deve ter 1 a 30 caracteres alfanuméricos ou sublinhados",
+  "register_error_password_short": "A senha deve ter pelo menos {min} caracteres",
+  "register_error_rate_limited": "Demasiadas tentativas de registro. Tente novamente mais tarde.",
+  "register_error_not_approved": "Registro não aprovado: a sua conta não cumpre as diretrizes da comunidade.",
+  "login_error_invalid_credentials": "Credenciais inválidas",
+  "login_error_unverified_email": "Verifique o seu e-mail antes de iniciar sessão.",
+  "login_error_rate_limited": "Demasiados pedidos. Tente novamente mais tarde.",
+  "register_error_reason_required": "É necessário um motivo de registo",
+  "login_error_fields_required": "nome de usuário e senha são obrigatórios"
 }

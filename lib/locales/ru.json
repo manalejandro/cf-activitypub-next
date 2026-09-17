@@ -935,5 +935,17 @@
   "pagination_prev": "Назад",
   "pagination_next": "Вперёд",
   "pagination_page": "Страница {page} из {pages}",
-  "admin_instances_col_followers": "Подписчики"
+  "admin_instances_col_followers": "Подписчики",
+  "register_error_email_taken": "Email уже используется",
+  "register_error_username_taken": "Имя пользователя уже занято",
+  "register_error_fields_required": "требуются имя пользователя, email и пароль",
+  "register_error_username_invalid": "Имя пользователя должно содержать от 1 до 30 букв, цифр или подчёркиваний",
+  "register_error_password_short": "Пароль должен содержать не менее {min} символов",
+  "register_error_rate_limited": "Слишком много попыток регистрации. Повторите попытку позже.",
+  "register_error_not_approved": "Регистрация не одобрена: ваша учётная запись не соответствует правилам сообщества.",
+  "login_error_invalid_credentials": "Неверные учётные данные",
+  "login_error_unverified_email": "Подтвердите адрес электронной почты перед входом.",
+  "login_error_rate_limited": "Слишком много запросов. Повторите попытку позже.",
+  "register_error_reason_required": "Требуется причина регистрации",
+  "login_error_fields_required": "требуются имя пользователя и пароль"
 }

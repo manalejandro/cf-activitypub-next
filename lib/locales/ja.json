@@ -935,5 +935,17 @@
   "pagination_prev": "前へ",
   "pagination_next": "次へ",
   "pagination_page": "{pages} ページ中 {page} ページ目",
-  "admin_instances_col_followers": "フォロワー"
+  "admin_instances_col_followers": "フォロワー",
+  "register_error_email_taken": "メールアドレスは既に使用されています",
+  "register_error_username_taken": "ユーザー名は既に使用されています",
+  "register_error_fields_required": "ユーザー名、メールアドレス、パスワードが必要です",
+  "register_error_username_invalid": "ユーザー名は1〜30文字の英数字またはアンダースコアで入力してください",
+  "register_error_password_short": "パスワードは{min}文字以上で入力してください",
+  "register_error_rate_limited": "登録の試行が多すぎます。しばらくしてからお試しください。",
+  "register_error_not_approved": "登録が承認されませんでした。アカウントがコミュニティガイドラインに適合していません。",
+  "login_error_invalid_credentials": "認証情報が無効です",
+  "login_error_unverified_email": "ログインする前にメールアドレスを確認してください。",
+  "login_error_rate_limited": "リクエストが多すぎます。しばらくしてからお試しください。",
+  "register_error_reason_required": "登録理由が必要です",
+  "login_error_fields_required": "ユーザー名とパスワードが必要です"
 }

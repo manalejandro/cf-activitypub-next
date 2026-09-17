@@ -935,5 +935,17 @@
   "pagination_prev": "Previous",
   "pagination_next": "Next",
   "pagination_page": "Page {page} of {pages}",
-  "admin_instances_col_followers": "Followers"
+  "admin_instances_col_followers": "Followers",
+  "register_error_email_taken": "Email already taken",
+  "register_error_username_taken": "Username already taken",
+  "register_error_fields_required": "username, email and password are required",
+  "register_error_username_invalid": "Username must be 1-30 alphanumeric characters or underscores",
+  "register_error_password_short": "Password must be at least {min} characters",
+  "register_error_rate_limited": "Too many registration attempts. Please try again later.",
+  "register_error_not_approved": "Registration not approved: your account does not meet the community guidelines.",
+  "login_error_invalid_credentials": "Invalid credentials",
+  "login_error_unverified_email": "Please verify your email address before signing in.",
+  "login_error_rate_limited": "Too many requests. Please try again later.",
+  "register_error_reason_required": "A registration reason is required",
+  "login_error_fields_required": "username and password are required"
 }

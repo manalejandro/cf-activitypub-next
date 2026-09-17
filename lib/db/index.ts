@@ -80,6 +80,7 @@ function rowToActor(r: Row): LocalActor {
     followingCount: r.following_count ?? 0,
     statusesCount: r.statuses_count ?? 0,
     email: r.email ?? null,
+    canonicalEmailHash: (r.canonical_email_hash as string | null) ?? null,
     passwordHash: r.password_hash ?? null,
     emailVerified: Boolean(r.email_verified),
     role: r.role ?? undefined,
@@ -547,8 +548,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
         public_key_pem, private_key_pem, is_local, is_bot,
         manually_approves_followers, discoverable,
         followers_count, following_count, statuses_count,
-        email, password_hash, email_verified, inbox
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        email, password_hash, email_verified, inbox, canonical_email_hash
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       actor.id,
@@ -570,7 +571,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
       actor.email ?? null,
       actor.passwordHash ?? null,
       actor.emailVerified ? 1 : 0,
-      inbox
+      inbox,
+      actor.canonicalEmailHash ?? null
     )
     .run();
 }
@@ -3646,6 +3648,86 @@ export async function setDomainCallsSupport(db: D1Database, domain: string, supp
     )
     .bind(domain, supportsCalls ? 1 : 0)
     .run();
+}
+
+// ─────────────────────────────────────────
+// Canonical email (anti-abuse)
+// ─────────────────────────────────────────
+
+/** A local account already registered with the same canonical mailbox. */
+export async function getActorByCanonicalEmailHash(
+  db: D1Database,
+  hash: string
+): Promise<LocalActor | null> {
+  const row = await db
+    .prepare("SELECT * FROM actors WHERE canonical_email_hash = ? AND is_local = 1 LIMIT 1")
+    .bind(hash)
+    .first<Row>();
+  return row ? rowToActor(row) : null;
+}
+
+/** Number of local accounts sharing a canonical mailbox (farm detection). */
+export async function countActorsByCanonicalEmailHash(db: D1Database, hash: string): Promise<number> {
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM actors WHERE canonical_email_hash = ? AND is_local = 1")
+    .bind(hash)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+export interface CanonicalEmailBlock {
+  hash: string;
+  referenceEmail: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+function rowToCanonicalEmailBlock(r: Row): CanonicalEmailBlock {
+  return {
+    hash: r.hash as string,
+    referenceEmail: (r.reference_email as string | null) ?? null,
+    reason: (r.reason as string | null) ?? null,
+    createdAt: r.created_at as string,
+  };
+}
+
+export async function getCanonicalEmailBlock(
+  db: D1Database,
+  hash: string
+): Promise<CanonicalEmailBlock | null> {
+  const row = await db
+    .prepare("SELECT * FROM canonical_email_blocks WHERE hash = ?")
+    .bind(hash)
+    .first<Row>();
+  return row ? rowToCanonicalEmailBlock(row) : null;
+}
+
+export async function createCanonicalEmailBlock(
+  db: D1Database,
+  hash: string,
+  referenceEmail: string | null,
+  reason: string | null
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO canonical_email_blocks (hash, reference_email, reason)
+       VALUES (?, ?, ?)`
+    )
+    .bind(hash, referenceEmail, reason)
+    .run();
+}
+
+export async function deleteCanonicalEmailBlock(db: D1Database, hash: string): Promise<boolean> {
+  const res = await db.prepare("DELETE FROM canonical_email_blocks WHERE hash = ?").bind(hash).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function listCanonicalEmailBlocks(db: D1Database): Promise<CanonicalEmailBlock[]> {
+  const rows = await db
+    .prepare("SELECT * FROM canonical_email_blocks ORDER BY created_at DESC LIMIT 500")
+    .bind()
+    .all<Row>();
+  return (rows.results ?? []).map(rowToCanonicalEmailBlock);
 }
 
 // ─────────────────────────────────────────

@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, translateKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 
@@ -116,14 +116,15 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
         access_token?: string;
         error?: string;
         error_description?: string;
+        error_code?: string;
       };
 
       if (!res.ok || !data.access_token) {
         resetTurnstile();
         if (data.error === "unverified_email") {
-          setError(t.login_unverified);
+          setError(translateKey(t, data.error_code, t.login_unverified));
         } else {
-          setError(data.error_description ?? data.error ?? "Invalid credentials");
+          setError(translateKey(t, data.error_code, data.error_description ?? data.error) ?? "Invalid credentials");
         }
         return;
       }

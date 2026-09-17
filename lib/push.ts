@@ -117,7 +117,7 @@ export async function deliverPushNotification(
       : Promise.resolve(null),
     db.prepare("SELECT value FROM preferences WHERE actor_id = ? AND key = 'ui:locale'").bind(notif.targetAccountId).first<{ value: string }>(),
   ]);
-  const dict = LOCALE_DICTS[localeRow?.value ?? "en"] ?? en;
+  const dict = LOCALE_DICTS[localeRow?.value ?? "en"] ?? LOCALE_DICTS.en;
   const who = actorRow ? (actorRow.domain ? `@${actorRow.username}@${actorRow.domain}` : `@${actorRow.username}`) : "";
   const preview = snippet(objectRow?.content ?? null);
   const bodyText = preview ? `${who ? `${who} · ` : ""}${preview}` : who;

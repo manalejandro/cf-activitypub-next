@@ -1,8 +1,18 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, createActor, createOAuthToken, getOAuthAppByClientId, createEmailVerification, getRegistrationSettings } from "@/lib/db";
+import {
+  getActorByEmail,
+  getActorByCanonicalEmailHash,
+  createCanonicalEmailBlock,
+  getCanonicalEmailBlock,
+  createActor,
+  createOAuthToken,
+  getOAuthAppByClientId,
+  createEmailVerification,
+  getRegistrationSettings,
+} from "@/lib/db";
 import { generateKeyPair } from "@/lib/activitypub/security";
-import { actorIRI } from "@/lib/activitypub/utils";
+import { actorIRI, generateId } from "@/lib/activitypub/utils";
 import { hashPassword, generateSecureToken } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendVerificationEmail } from "@/lib/email";
@@ -11,6 +21,8 @@ import { rejectAccount, approveAccount, GUARDIAN_MODEL } from "@/lib/moderation/
 import { runWithTimeout } from "@/lib/moderation/util";
 import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
+import { canonicalEmailHash } from "@/lib/canonical-email";
+import { recordModeration } from "@/lib/moderation/log";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 import { clampScope } from "@/lib/oauth-scopes";
 
@@ -44,32 +56,32 @@ export async function POST(request: NextRequest): Promise<Response> {
   // registrations.enabled / approval_required / reason_required / min_age).
   const regs = await getRegistrationSettings(env.DB);
   if (!regs.enabled) {
-    return json({ error: "Registrations are not open on this server" }, 422);
+    return json({ error: "Registrations are not open on this server", error_code: "register_closed" }, 422);
   }
   if (regs.reasonRequired && !(body.reason ?? "").trim()) {
-    return json({ error: "A registration reason is required" }, 422);
+    return json({ error: "A registration reason is required", error_code: "register_error_reason_required" }, 422);
   }
   if (regs.minAge && body.age_confirmed !== "true") {
-    return json({ error: `You must be at least ${regs.minAge} years old to register` }, 422);
+    return json({ error: `You must be at least ${regs.minAge} years old to register`, error_code: "register_age_required" }, 422);
   }
 
   // Rate limit: 5 registration attempts per IP per 60s window
   const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { allowed, remaining } = await checkRateLimit(env.KV, `register:${remoteIp}`, 5, 60);
   if (!allowed) {
-    return json({ error: "Too many registration attempts. Please try again later." }, 429);
+    return json({ error: "Too many registration attempts. Please try again later.", error_code: "register_error_rate_limited" }, 429);
   }
 
   if (!username || !email || !password) {
-    return json({ error: "username, email and password are required" }, 422);
+    return json({ error: "username, email and password are required", error_code: "register_error_fields_required" }, 422);
   }
 
   if (!/^[a-zA-Z0-9_]{1,30}$/.test(username)) {
-    return json({ error: "Username must be 1-30 alphanumeric characters or underscores" }, 422);
+    return json({ error: "Username must be 1-30 alphanumeric characters or underscores", error_code: "register_error_username_invalid" }, 422);
   }
 
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return json({ error: "Password must be at least 8 characters" }, 422);
+    return json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, error_code: "register_error_password_short" }, 422);
   }
 
   // If a Turnstile token is provided (web form), verify it.
@@ -84,21 +96,71 @@ export async function POST(request: NextRequest): Promise<Response> {
       expectedAction: "register",
     });
     if (!valid.success) {
-      return json({ error: "Security check failed. Please try again." }, 422);
+      return json({ error: "Security check failed. Please try again.", error_code: "turnstile_error" }, 422);
     }
   }
 
   const existing = await getActorByEmail(env.DB, email);
   if (existing) {
-    return json({ error: "Email already taken" }, 422);
+    return json({ error: "Email already taken", error_code: "register_error_email_taken" }, 422);
   }
+
+  // ── Canonical mailbox checks (anti-abuse) ────────────────────────────────
+  // `user+tag@domain` and dotted variants of one mailbox must not mint a farm
+  // of accounts: the mailbox is identified by sha256(canonical address),
+  // blocked mailboxes are rejected, and a mailbox that already registered (or
+  // keeps trying) is blocked and audited.
+  const canonHash = await canonicalEmailHash(email);
+  const attemptsKey = `canonical:reg:${canonHash}`;
+  let priorAttempts = 0;
+  try {
+    priorAttempts = Number((await env.KV.get(attemptsKey)) ?? 0) || 0;
+  } catch { /* KV hiccup must not break registration */ }
+
+  const canonicalBlock = await getCanonicalEmailBlock(env.DB, canonHash);
+  const canonicalOwner = canonHash ? await getActorByCanonicalEmailHash(env.DB, canonHash) : null;
+  const farmAttempt = priorAttempts >= 2;
+
+  if (canonicalBlock || canonicalOwner || farmAttempt) {
+    if (!canonicalBlock) {
+      await createCanonicalEmailBlock(
+        env.DB,
+        canonHash,
+        email.toLowerCase(),
+        canonicalOwner
+          ? `Duplicate canonical email of @${canonicalOwner.username} (registration farm)`
+          : "Repeated registrations from the same mailbox"
+      ).catch(() => {});
+    }
+    await recordModeration(env, {
+      id: generateId(),
+      source: "heuristic",
+      targetType: "email",
+      targetId: canonHash.slice(0, 12),
+      action: "registration_blocked",
+      reason: canonicalOwner
+        ? `Canonical email already registered as @${canonicalOwner.username}.`
+        : "Registration attempts from a blocked or abused mailbox.",
+      confidence: "high",
+      model: "heuristic",
+      details: { existing: canonicalOwner?.username ?? null, attempts: priorAttempts + 1 },
+      emailSent: false,
+      emailTo: null,
+      relatedId: null,
+    });
+    return json({ error: "Email already taken", error_code: "register_error_email_taken" }, 422);
+  }
+
+  try {
+    await env.KV.put(attemptsKey, String(priorAttempts + 1), { expirationTtl: 86400 });
+  } catch { /* best-effort */ }
 
   const existingUsername = await env.DB
     .prepare("SELECT id FROM actors WHERE username = ? AND domain = ?")
     .bind(username.toLowerCase(), domain)
     .first();
   if (existingUsername) {
-    return json({ error: "Username already taken" }, 422);
+    return json({ error: "Username already taken", error_code: "register_error_username_taken" }, 422);
   }
 
   const { publicKeyPem, privateKeyPem } = await generateKeyPair();
@@ -128,6 +190,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     followingCount: 0,
     statusesCount: 0,
     email: email.toLowerCase(),
+    canonicalEmailHash: canonHash,
     passwordHash,
     emailVerified,
     autoDeleteAfter: null,
@@ -142,6 +205,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     username: username.toLowerCase(),
     email: email.toLowerCase(),
     ipSuspicious: remaining <= 2,
+    canonicalVariant: priorAttempts > 0,
   });
 
   if (registrationSignals.flags.length > 0 && env.AI && (await chargeGlobalAI(env, AI_UNITS_REASON))) {
@@ -166,7 +230,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         model: GUARDIAN_MODEL,
         details: { stage: "registration", username: username.toLowerCase(), source: webRegistration ? "web" : "api", flags: registrationSignals.flags },
       });
-      return json({ error: "Registration not approved: your account does not meet the community guidelines." }, 422);
+      return json({ error: "Registration not approved: your account does not meet the community guidelines.", error_code: "register_error_not_approved" }, 422);
     }
 
     if (review?.action === "approve" && review.confidence === "high") {

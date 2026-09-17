@@ -193,6 +193,8 @@ export interface LocalActor {
   updatedAt: string;
   // auth
   email: string | null;
+  /** sha256(canonical email) — one identity per mailbox (anti-abuse). */
+  canonicalEmailHash?: string | null;
   passwordHash: string | null;
   emailVerified: boolean;
   // moderation — populated when the query selects these columns

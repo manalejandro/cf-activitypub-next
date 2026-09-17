@@ -935,5 +935,17 @@
   "pagination_prev": "Precedente",
   "pagination_next": "Successiva",
   "pagination_page": "Pagina {page} di {pages}",
-  "admin_instances_col_followers": "Follower"
+  "admin_instances_col_followers": "Follower",
+  "register_error_email_taken": "Email già in uso",
+  "register_error_username_taken": "Nome utente già in uso",
+  "register_error_fields_required": "nome utente, email e password sono obbligatori",
+  "register_error_username_invalid": "Il nome utente deve contenere 1-30 caratteri alfanumerici o underscore",
+  "register_error_password_short": "La password deve contenere almeno {min} caratteri",
+  "register_error_rate_limited": "Troppi tentativi di registrazione. Riprova più tardi.",
+  "register_error_not_approved": "Registrazione non approvata: il tuo account non rispetta le linee guida della community.",
+  "login_error_invalid_credentials": "Credenziali non valide",
+  "login_error_unverified_email": "Verifica il tuo indirizzo email prima di accedere.",
+  "login_error_rate_limited": "Troppe richieste. Riprova più tardi.",
+  "register_error_reason_required": "È richiesto un motivo di registrazione",
+  "login_error_fields_required": "nome utente e password sono obbligatori"
 }

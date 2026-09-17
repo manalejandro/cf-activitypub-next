@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS actors (
   following_count INTEGER NOT NULL DEFAULT 0,
   statuses_count  INTEGER NOT NULL DEFAULT 0,
   email           TEXT UNIQUE,               -- only for local accounts
+  canonical_email_hash TEXT,                 -- sha256(canonical email); one identity per mailbox
   password_hash   TEXT,                      -- only for local accounts
   email_verified  INTEGER NOT NULL DEFAULT 0, -- 1 once the user clicks the verification link
   inbox              TEXT,                      -- AP inbox URL (null for local actors using /users/:u/inbox)
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS actors (
   UNIQUE (username, domain)
 );
 
+CREATE INDEX IF NOT EXISTS idx_actors_canonical_email ON actors(canonical_email_hash);
 CREATE INDEX IF NOT EXISTS idx_actors_domain       ON actors(domain);
 CREATE INDEX IF NOT EXISTS idx_actors_is_local     ON actors(is_local);
 CREATE INDEX IF NOT EXISTS idx_actors_email        ON actors(email);
@@ -269,6 +271,18 @@ CREATE TABLE IF NOT EXISTS media_cache (
 CREATE INDEX IF NOT EXISTS idx_media_cache_queue  ON media_cache(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_expiry ON media_cache(status, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_target ON media_cache(target_type, target_id);
+
+-- ─────────────────────────────────────────
+-- Canonical email blocks (anti-abuse)
+-- ─────────────────────────────────────────
+-- sha256(canonical email) of mailboxes that may not register. Created by
+-- admins or automatically when one mailbox tries to farm multiple accounts.
+CREATE TABLE IF NOT EXISTS canonical_email_blocks (
+  hash            TEXT PRIMARY KEY,
+  reference_email TEXT,
+  reason          TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- ─────────────────────────────────────────
 -- Instances (federation engine)

@@ -4,9 +4,12 @@ import type { D1Database } from "@cloudflare/workers-types";
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
+  getActorByCanonicalEmailHash: vi.fn(),
+  getCanonicalEmailBlock: vi.fn(),
+  createCanonicalEmailBlock: vi.fn(),
   getBaseUrl: vi.fn(() => "https://local.example"),
   checkRateLimit: vi.fn(async () => ({ allowed: true, remaining: 10 })),
-  getActorByEmail: vi.fn(async () => null),
+  getActorByEmail: vi.fn(),
   createActor: vi.fn(async () => {}),
   createOAuthToken: vi.fn(async () => {}),
   getOAuthAppByClientId: vi.fn(async () => null),
@@ -42,6 +45,9 @@ vi.mock("@/lib/cf", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
+  getActorByCanonicalEmailHash: mocks.getActorByCanonicalEmailHash,
+  getCanonicalEmailBlock: mocks.getCanonicalEmailBlock,
+  createCanonicalEmailBlock: mocks.createCanonicalEmailBlock,
   createActor: mocks.createActor,
   createOAuthToken: mocks.createOAuthToken,
   getOAuthAppByClientId: mocks.getOAuthAppByClientId,
@@ -49,7 +55,8 @@ vi.mock("@/lib/db", () => ({
   getRegistrationSettings: mocks.getRegistrationSettings,
 }));
 vi.mock("@/lib/activitypub/security", () => ({ generateKeyPair: mocks.generateKeyPair }));
-vi.mock("@/lib/activitypub/utils", () => ({ actorIRI: mocks.actorIRI }));
+vi.mock("@/lib/activitypub/utils", () => ({ actorIRI: mocks.actorIRI, generateId: () => "test-id" }));
+vi.mock("@/lib/moderation/log", () => ({ recordModeration: vi.fn(async () => {}) }));
 vi.mock("@/lib/auth", () => ({
   hashPassword: mocks.hashPassword,
   generateSecureToken: mocks.generateSecureToken,
@@ -80,7 +87,7 @@ const fakeDb = {
   }),
 } as unknown as D1Database;
 
-type RegisterBody = { access_token?: string; pending_verification?: boolean; pending_approval?: boolean; error?: string };
+type RegisterBody = { access_token?: string; pending_verification?: boolean; pending_approval?: boolean; error?: string; error_code?: string };
 
 function registerRequest(body: Record<string, unknown>): Request {
   return new Request("https://local.example/api/v1/accounts", {
@@ -117,6 +124,9 @@ beforeEach(() => {
     url: null,
   });
   mocks.getActorByEmail.mockResolvedValue(null);
+  mocks.getActorByCanonicalEmailHash.mockResolvedValue(null);
+  mocks.getCanonicalEmailBlock.mockResolvedValue(null);
+  mocks.createCanonicalEmailBlock.mockResolvedValue(undefined);
   mocks.verifyTurnstileToken.mockResolvedValue({ success: true });
 });
 
@@ -153,6 +163,29 @@ describe("POST /api/v1/accounts", () => {
       expect.objectContaining({ emailVerified: false })
     );
     expect(mocks.sendVerificationEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a plus-variant of a mailbox that already registered (and blocks it)", async () => {
+    mocks.getActorByCanonicalEmailHash.mockResolvedValue({
+      id: "https://local.example/users/other",
+      username: "other",
+      isLocal: true,
+    });
+
+    const { status, body } = await post({ username: "newbie", email: "a544049483+b1r2@gmail.com", password: "password123" });
+
+    expect(status).toBe(422);
+    expect(body.error_code).toBe("register_error_email_taken");
+    expect(mocks.createActor).not.toHaveBeenCalled();
+    // The mailbox is blocked so future variants are rejected immediately.
+    expect(mocks.createCanonicalEmailBlock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns error codes the web form can translate", async () => {
+    mocks.getActorByEmail.mockResolvedValue({ id: "https://local.example/users/taken" });
+    const { status, body } = await post({ username: "newbie", email: "taken@example.com", password: "password123" });
+    expect(status).toBe(422);
+    expect(body.error_code).toBe("register_error_email_taken");
   });
 
   it("still sends the email when the instance requires admin approval", async () => {

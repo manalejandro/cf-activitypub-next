@@ -935,5 +935,17 @@
   "pagination_prev": "Zurück",
   "pagination_next": "Weiter",
   "pagination_page": "Seite {page} von {pages}",
-  "admin_instances_col_followers": "Follower"
+  "admin_instances_col_followers": "Follower",
+  "register_error_email_taken": "E-Mail bereits vergeben",
+  "register_error_username_taken": "Benutzername bereits vergeben",
+  "register_error_fields_required": "Benutzername, E-Mail und Passwort sind erforderlich",
+  "register_error_username_invalid": "Der Benutzername darf 1–30 alphanumerische Zeichen oder Unterstriche enthalten",
+  "register_error_password_short": "Das Passwort muss mindestens {min} Zeichen lang sein",
+  "register_error_rate_limited": "Zu viele Registrierungsversuche. Bitte später erneut versuchen.",
+  "register_error_not_approved": "Registrierung nicht genehmigt: Dein Konto entspricht nicht den Community-Richtlinien.",
+  "login_error_invalid_credentials": "Ungültige Anmeldedaten",
+  "login_error_unverified_email": "Bitte bestätige deine E-Mail-Adresse, bevor du dich anmeldest.",
+  "login_error_rate_limited": "Zu viele Anfragen. Bitte später erneut versuchen.",
+  "register_error_reason_required": "Ein Registrierungsgrund ist erforderlich",
+  "login_error_fields_required": "Benutzername und Passwort sind erforderlich"
 }

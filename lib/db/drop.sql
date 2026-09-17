@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS announces;
 DROP TABLE IF EXISTS blocks;
 DROP TABLE IF EXISTS bookmarks;
 DROP TABLE IF EXISTS collection_items;
+DROP TABLE IF EXISTS canonical_email_blocks;
 DROP TABLE IF EXISTS collections;
 DROP TABLE IF EXISTS conversations;
 DROP TABLE IF EXISTS custom_emojis;

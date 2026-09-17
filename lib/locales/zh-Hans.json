@@ -935,5 +935,17 @@
   "pagination_prev": "上一页",
   "pagination_next": "下一页",
   "pagination_page": "第 {page} 页，共 {pages} 页",
-  "admin_instances_col_followers": "粉丝"
+  "admin_instances_col_followers": "粉丝",
+  "register_error_email_taken": "电子邮件已被使用",
+  "register_error_username_taken": "用户名已被占用",
+  "register_error_fields_required": "需要用户名、电子邮件和密码",
+  "register_error_username_invalid": "用户名必须为 1-30 个字母、数字或下划线",
+  "register_error_password_short": "密码至少需要 {min} 个字符",
+  "register_error_rate_limited": "注册尝试次数过多，请稍后再试。",
+  "register_error_not_approved": "注册未获批准：你的账号不符合社区准则。",
+  "login_error_invalid_credentials": "凭据无效",
+  "login_error_unverified_email": "登录前请先验证你的电子邮箱地址。",
+  "login_error_rate_limited": "请求过多，请稍后再试。",
+  "register_error_reason_required": "需要填写注册理由",
+  "login_error_fields_required": "需要用户名和密码"
 }

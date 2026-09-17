@@ -25,13 +25,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { allowed } = await checkRateLimit(env.KV, `token:${remoteIp}`, 10, 60);
   if (!allowed) {
-    return json({ error: "invalid_grant", error_description: "Too many requests. Please try again later." }, 429);
+    return json({ error: "invalid_grant", error_description: "Too many requests. Please try again later.", error_code: "login_error_rate_limited" }, 429);
   }
 
   if (grantType === "password") {
     const { username, password, client_id, client_secret } = body;
     if (!username || !password) {
-      return json({ error: "username and password are required" }, 400);
+      return json({ error: "username and password are required", error_code: "login_error_fields_required" }, 400);
     }
 
     // If a Turnstile token is included (web form login), verify it.
@@ -45,18 +45,18 @@ export async function POST(request: NextRequest): Promise<Response> {
         expectedAction: "login",
       });
       if (!valid.success) {
-        return json({ error: "invalid_grant", error_description: "Security check failed. Please try again." }, 401);
+        return json({ error: "invalid_grant", error_description: "Security check failed. Please try again.", error_code: "turnstile_error" }, 401);
       }
     }
 
     const actor = await getActorByEmail(env.DB, username.toLowerCase());
     if (!actor || !actor.passwordHash) {
-      return json({ error: "invalid_grant", error_description: "Invalid credentials" }, 401);
+      return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
 
     const valid = await verifyPassword(password, actor.passwordHash);
     if (!valid) {
-      return json({ error: "invalid_grant", error_description: "Invalid credentials" }, 401);
+      return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
 
     // Block login for accounts that registered via the web form but haven't verified their email.
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({
         error: "unverified_email",
         error_description: "Please verify your email address before signing in.",
+        error_code: "login_error_unverified_email",
       }, 403);
     }
 
