@@ -14,6 +14,7 @@ import {
   createPoll,
   getPollByObjectId,
   upsertCustomEmoji,
+  enqueueMediaCache,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
@@ -601,6 +602,7 @@ async function storeObjectAttachments(
         sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       });
+      await enqueueMediaCache(db, att.url, "attachment", att.id || "");
     } catch { /* ignore duplicate/conflict */ }
   }
 }
@@ -775,7 +777,10 @@ export async function fetchAndCacheRemoteActorFeatured(
               sensitive: item.sensitive === true || (attachment as { sensitive?: boolean }).sensitive === true,
               createdAt: new Date().toISOString(),
             };
-            try { await createAttachment(db, localAttachment); } catch { /* ignore */ }
+            try {
+              await createAttachment(db, localAttachment);
+              await enqueueMediaCache(db, localAttachment.url, "attachment", localAttachment.id);
+            } catch { /* ignore */ }
           }
         }
       } catch {

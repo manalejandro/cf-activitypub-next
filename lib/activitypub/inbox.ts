@@ -44,7 +44,7 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { upsertCustomEmoji } from "@/lib/db";
+import { upsertCustomEmoji, enqueueMediaCache } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
@@ -523,6 +523,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       try {
         await createAttachment(ctx.db, localAttachment);
         storedAttachments.push(localAttachment);
+        await enqueueMediaCache(ctx.db, localAttachment.url, "attachment", localAttachment.id);
       } catch { /* ignore */ }
     }
   }
@@ -2185,6 +2186,7 @@ async function saveObjectAttachments(
         sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       });
+      await enqueueMediaCache(db, att.url, "attachment", att.id || "");
     } catch { /* ignore */ }
   }
 }

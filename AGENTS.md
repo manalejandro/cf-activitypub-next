@@ -111,6 +111,12 @@ const { env } = getCloudflareContext();
 - **Retries (Mastodon `ActivityPub::DeliveryWorker`)**: `max_retries = 16` in `wrangler.toml`, delay `(attempts^4)+15+jitter` capped at 24h (`deliveryRetryDelay`), `Retry-After` honored for 429/503; permanent 4xx ack; exhausted messages go to the DLQ.
 - **Admin**: `/admin/instances` + `/api/v1/admin/instances` (list/filter, add/refresh, reset availability, suspend/unsuspend, purge all cached actors of a domain). Suspend sets the KV `inst:paused:<domain>` marker that the queue consumer checks (delivery stops); purge uses `deleteRemoteActorData`; actions are written to `moderation_log` with `target_type = 'instance'`.
 
+### Remote media cache (R2)
+
+- Federated resources (status attachments, profile avatars/headers) are cached in R2 (`media_cache` table, `cache/media/<sha256>.<ext>` keys) and served from `/api/media/...`, so clients stop hitting the origin server. `attachments.remote_url` / `actors.avatar_url` keep the origin; the served `url` / `avatar_cache_url` point at the cached copy (serializers prefer the cache URL).
+- Config (all env vars, cache ON by default): `MEDIA_CACHE_ENABLED`, `MEDIA_CACHE_DAYS` (7, attachments), `MEDIA_CACHE_PROFILE_DAYS` (30, profiles of accounts with a local follow relation are kept), `MEDIA_CACHE_MAX_BYTES` (10 GiB, oldest evicted first), `MEDIA_CACHE_MAX_OBJECT_BYTES` (40 MB), `MEDIA_CACHE_FETCH_BATCH` (5/tick), `MEDIA_CACHE_USER_AGENTS` (overrides the whole list; by default the bot UA — built from `INSTANCE_VERSION`/`INSTANCE_URL` — is tried first, then browser UAs; non-media types, SVG and oversized bodies are rejected).
+- Hooks: `enqueueMediaCache` in `handleCreate`/`saveObjectAttachments`/`storeObjectAttachments`/remote featured items and in `upsertRemoteActor` for avatars/headers. Cron runs `processMediaCacheQueue` (concurrent) + `maintainMediaCache` (expiry + byte-budget eviction, daily byte recount in KV `mediacache:bytes`). Admin API: `GET/DELETE /api/v1/admin/media_cache`.
+
 ### Security invariants (audited)
 
 - **Actor trust**: never cache a fetched actor document whose `id` differs from the URL fetched — call `upsertRemoteActor(db, doc, expectedId)` at every fetch site. Server-side fetch helpers must check before upserting.

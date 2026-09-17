@@ -50,6 +50,36 @@ export const ADMIN_LOG_PAGE_SIZE = 100;
 export const MLS_MESSAGES_PAGE_SIZE = 50; // AP /messages collection page size
 export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation graph
 
+// Remote media cache (R2). User agents are tried in order: the Mastodon-style
+// bot UA first (well-behaved crawlers are welcome), then common browser UAs for
+// origins that block bots outright. The bot UA is built from the instance's own
+// INSTANCE_VERSION / INSTANCE_URL so it always identifies this deployment;
+// MEDIA_CACHE_USER_AGENTS overrides the whole list when set.
+export const MEDIA_CACHE_ENABLED = true;
+export const MEDIA_CACHE_DAYS = 7;
+export const MEDIA_CACHE_PROFILE_DAYS = 30;
+export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
+export const MEDIA_CACHE_MAX_OBJECT_BYTES = 40 * 1024 * 1024; // 40 MB
+export const MEDIA_CACHE_FETCH_BATCH = 5;
+export const MEDIA_CACHE_BROWSER_USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+];
+
+/**
+ * Default UA list: this instance's bot UA (version + URL from the env) followed
+ * by the browser fallbacks.
+ */
+export function defaultMediaCacheUserAgents(env: Record<string, unknown>): string[] {
+  const version = typeof env.INSTANCE_VERSION === "string" && env.INSTANCE_VERSION.trim()
+    ? env.INSTANCE_VERSION.trim()
+    : "0.1.0";
+  const url = typeof env.INSTANCE_URL === "string" && env.INSTANCE_URL.trim()
+    ? env.INSTANCE_URL.trim()
+    : "https://localhost";
+  return [`cf-activitypub/${version} (+${url}; federated media cache)`, ...MEDIA_CACHE_BROWSER_USER_AGENTS];
+}
+
 // Federation engine (instance registry)
 export const INSTANCE_FAILURE_DAYS = 7; // distinct UTC failure days → unavailable (Mastodon)
 export const SHARED_INBOX_BATCH = 5; // remote actor shared-inbox backfills per cron tick
@@ -112,6 +142,13 @@ export interface InstanceLimits {
   maxVideoSize: number;
   imageMatrixLimit: number;
   sharedInboxBatch: number;
+  mediaCacheEnabled: boolean;
+  mediaCacheDays: number;
+  mediaCacheProfileDays: number;
+  mediaCacheMaxBytes: number;
+  mediaCacheMaxObjectBytes: number;
+  mediaCacheFetchBatch: number;
+  mediaCacheUserAgents: string[];
   instanceRefreshBatch: number;
   instanceRefreshDays: number;
   instanceDormantDays: number;
@@ -154,12 +191,32 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxVideoSize: MAX_VIDEO_SIZE,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
   sharedInboxBatch: SHARED_INBOX_BATCH,
+  mediaCacheEnabled: MEDIA_CACHE_ENABLED,
+  mediaCacheDays: MEDIA_CACHE_DAYS,
+  mediaCacheProfileDays: MEDIA_CACHE_PROFILE_DAYS,
+  mediaCacheMaxBytes: MEDIA_CACHE_MAX_BYTES,
+  mediaCacheMaxObjectBytes: MEDIA_CACHE_MAX_OBJECT_BYTES,
+  mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
+  mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
   instanceRefreshBatch: INSTANCE_REFRESH_BATCH,
   instanceRefreshDays: INSTANCE_REFRESH_DAYS,
   instanceDormantDays: INSTANCE_DORMANT_DAYS,
   videoFrameRateLimit: VIDEO_FRAME_RATE_LIMIT,
   videoMatrixLimit: VIDEO_MATRIX_LIMIT,
 };
+
+function bool(env: Record<string, unknown>, name: string, fallback: boolean): boolean {
+  const raw = env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  return !["false", "0", "no", "off"].includes(String(raw).trim().toLowerCase());
+}
+
+function list(env: Record<string, unknown>, name: string, fallback: string[]): string[] {
+  const raw = env[name];
+  if (typeof raw !== "string" || !raw.trim()) return fallback;
+  const values = raw.split(",").map((v) => v.trim()).filter(Boolean);
+  return values.length ? values : fallback;
+}
 
 function num(env: Record<string, unknown>, name: string, fallback: number): number {
   const raw = env[name];
@@ -212,6 +269,13 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
     videoMatrixLimit: num(env, "VIDEO_MATRIX_LIMIT", DEFAULT_LIMITS.videoMatrixLimit),
     sharedInboxBatch: num(env, "SHARED_INBOX_BATCH", DEFAULT_LIMITS.sharedInboxBatch),
+    mediaCacheEnabled: bool(env, "MEDIA_CACHE_ENABLED", DEFAULT_LIMITS.mediaCacheEnabled),
+    mediaCacheDays: num(env, "MEDIA_CACHE_DAYS", DEFAULT_LIMITS.mediaCacheDays),
+    mediaCacheProfileDays: num(env, "MEDIA_CACHE_PROFILE_DAYS", DEFAULT_LIMITS.mediaCacheProfileDays),
+    mediaCacheMaxBytes: num(env, "MEDIA_CACHE_MAX_BYTES", DEFAULT_LIMITS.mediaCacheMaxBytes),
+    mediaCacheMaxObjectBytes: num(env, "MEDIA_CACHE_MAX_OBJECT_BYTES", DEFAULT_LIMITS.mediaCacheMaxObjectBytes),
+    mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
+    mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
     instanceDormantDays: num(env, "INSTANCE_DORMANT_DAYS", DEFAULT_LIMITS.instanceDormantDays),

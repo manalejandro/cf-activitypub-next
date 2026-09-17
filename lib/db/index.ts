@@ -15,6 +15,7 @@ import type {
   LocalMarker,
   LocalPushSubscription,
   LocalInstance,
+  MediaCacheEntry,
   LocalCollection,
   LocalCollectionItem,
   OAuthApp,
@@ -94,6 +95,8 @@ function rowToActor(r: Row): LocalActor {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     inbox: r.inbox ?? null,
+    avatarCacheUrl: (r.avatar_cache_url as string | null) ?? null,
+    headerCacheUrl: (r.header_cache_url as string | null) ?? null,
     endpoints: r.shared_inbox ? { sharedInbox: r.shared_inbox as string } : undefined,
     autoDeleteAfter: r.auto_delete_after ?? null,
   };
@@ -719,6 +722,28 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
         .run();
     } catch { /* ignore */ }
   }
+
+  // Queue the profile images for the R2 media cache (deduped by source URL);
+  // the cron downloads them so clients render profiles from our own domain.
+  try {
+    const images: [string, "avatar" | "header"][] = [
+      [actor.icon?.url ?? "", "avatar"],
+      [actor.image?.url ?? "", "header"],
+    ];
+    const statements = [];
+    for (const [url, kind] of images) {
+      if (!/^https:\/\//i.test(url)) continue;
+      statements.push(
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO media_cache (id, source_url, target_type, target_id)
+             VALUES (?, ?, ?, ?)`
+          )
+          .bind(await mediaCacheId(url), url, kind, actor.id)
+      );
+    }
+    if (statements.length > 0) await db.batch(statements);
+  } catch { /* caching is best-effort */ }
 }
 
 // ─────────────────────────────────────────
@@ -3598,6 +3623,246 @@ export async function setDomainCallsSupport(db: D1Database, domain: string, supp
     )
     .bind(domain, supportsCalls ? 1 : 0)
     .run();
+}
+
+// ─────────────────────────────────────────
+// Remote media cache (R2)
+// ─────────────────────────────────────────
+
+function rowToMediaCache(r: Row): MediaCacheEntry {
+  return {
+    id: r.id as string,
+    sourceUrl: r.source_url as string,
+    targetType: (r.target_type as MediaCacheEntry["targetType"]) ?? "attachment",
+    targetId: (r.target_id as string | null) ?? null,
+    status: (r.status as MediaCacheEntry["status"]) ?? "pending",
+    r2Key: (r.r2_key as string | null) ?? null,
+    size: Number(r.size ?? 0),
+    contentType: (r.content_type as string | null) ?? null,
+    attempts: Number(r.attempts ?? 0),
+    lastError: (r.last_error as string | null) ?? null,
+    nextAttemptAt: r.next_attempt_at as string,
+    fetchedAt: (r.fetched_at as string | null) ?? null,
+    createdAt: r.created_at as string,
+  };
+}
+
+/** SHA-256 of a URL, hex encoded (stable cache id). */
+export async function mediaCacheId(url: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Queue a remote resource for caching. No-op for non-HTTPS URLs. */
+export async function enqueueMediaCache(
+  db: D1Database,
+  sourceUrl: string,
+  targetType: MediaCacheEntry["targetType"],
+  targetId: string | null
+): Promise<void> {
+  if (!/^https:\/\//i.test(sourceUrl)) return;
+  const id = await mediaCacheId(sourceUrl);
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO media_cache (id, source_url, target_type, target_id)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(id, sourceUrl, targetType, targetId)
+    .run();
+}
+
+/** Due cache jobs, oldest attempt first. */
+export async function listMediaCacheQueue(db: D1Database, limit: number): Promise<MediaCacheEntry[]> {
+  const rows = await db
+    .prepare(
+      `SELECT * FROM media_cache
+       WHERE status IN ('pending', 'failed') AND next_attempt_at <= datetime('now')
+       ORDER BY next_attempt_at ASC LIMIT ?`
+    )
+    .bind(limit)
+    .all<Row>();
+  return (rows.results ?? []).map(rowToMediaCache);
+}
+
+export async function markMediaCacheReady(
+  db: D1Database,
+  id: string,
+  patch: { r2Key: string; size: number; contentType: string | null }
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_cache
+       SET status = 'ready', r2_key = ?, size = ?, content_type = ?, fetched_at = datetime('now'),
+           attempts = attempts + 1, last_error = NULL
+       WHERE id = ?`
+    )
+    .bind(patch.r2Key, patch.size, patch.contentType, id)
+    .run();
+}
+
+export async function markMediaCacheFailed(
+  db: D1Database,
+  id: string,
+  error: string,
+  nextAttemptAt: string,
+  status: "pending" | "failed" = "pending"
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_cache
+       SET status = ?, attempts = attempts + 1, last_error = ?, next_attempt_at = ?
+       WHERE id = ?`
+    )
+    .bind(status, error.slice(0, 300), nextAttemptAt, id)
+    .run();
+}
+
+/** Point an attachment at its cached copy (remote_url keeps the origin). */
+export async function applyMediaCacheToAttachment(
+  db: D1Database,
+  attachmentId: string,
+  sourceUrl: string,
+  cachedUrl: string,
+  size: number,
+  contentType: string | null
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE attachments
+       SET url = ?, file_size = COALESCE(file_size, ?), mime_type = COALESCE(mime_type, ?)
+       WHERE id = ? AND (remote_url = ? OR url = ?)`
+    )
+    .bind(cachedUrl, size, contentType, attachmentId, sourceUrl, sourceUrl)
+    .run();
+}
+
+/** Point a remote actor's avatar/header at the cached copy. */
+export async function applyMediaCacheToActor(
+  db: D1Database,
+  actorId: string,
+  kind: "avatar" | "header",
+  sourceUrl: string,
+  cachedUrl: string
+): Promise<void> {
+  const column = kind === "avatar" ? "avatar_cache_url" : "header_cache_url";
+  const sourceColumn = kind === "avatar" ? "avatar_url" : "header_url";
+  await db
+    .prepare(
+      `UPDATE actors SET ${column} = ?, updated_at = updated_at
+       WHERE id = ? AND ${sourceColumn} = ?`
+    )
+    .bind(cachedUrl, actorId, sourceUrl)
+    .run();
+}
+
+export interface MediaCacheStats {
+  ready: number;
+  pending: number;
+  failed: number;
+  bytes: number;
+  oldestFetchedAt: string | null;
+}
+
+export async function getMediaCacheStats(db: D1Database): Promise<MediaCacheStats> {
+  const [counts, totals] = await Promise.all([
+    db
+      .prepare("SELECT status, COUNT(*) AS n FROM media_cache GROUP BY status")
+      .bind()
+      .all<{ status: string; n: number }>(),
+    db
+      .prepare("SELECT COALESCE(SUM(size), 0) AS bytes, MIN(fetched_at) AS oldest FROM media_cache WHERE status = 'ready'")
+      .bind()
+      .first<{ bytes: number; oldest: string | null }>(),
+  ]);
+  const byStatus = new Map((counts.results ?? []).map((r) => [r.status, Number(r.n)]));
+  return {
+    ready: byStatus.get("ready") ?? 0,
+    pending: byStatus.get("pending") ?? 0,
+    failed: byStatus.get("failed") ?? 0,
+    bytes: Number(totals?.bytes ?? 0),
+    oldestFetchedAt: totals?.oldest ?? null,
+  };
+}
+
+/** Ready entries whose attachment/profile retention window has passed. */
+export async function listExpiredMediaCache(
+  db: D1Database,
+  attachmentDays: number,
+  profileDays: number,
+  limit = 50
+): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+  const attachments = await db
+    .prepare(
+      `SELECT id, r2_key, size FROM media_cache
+       WHERE status = 'ready' AND target_type = 'attachment'
+         AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
+       LIMIT ?`
+    )
+    .bind(`-${Math.max(1, Math.floor(attachmentDays))} days`, limit)
+    .all<{ id: string; r2_key: string | null; size: number }>();
+
+  const profiles = await db
+    .prepare(
+      `SELECT id, r2_key, size FROM media_cache
+       WHERE status = 'ready' AND target_type IN ('avatar', 'header')
+         AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM follows f
+           WHERE f.state = 'accepted'
+             AND (f.actor_id = media_cache.target_id OR f.target_id = media_cache.target_id)
+         )
+       LIMIT ?`
+    )
+    .bind(`-${Math.max(1, Math.floor(profileDays))} days`, limit)
+    .all<{ id: string; r2_key: string | null; size: number }>();
+
+  return [...(attachments.results ?? []), ...(profiles.results ?? [])].slice(0, limit);
+}
+
+/** Oldest ready entries first (space-limit eviction). */
+export async function listOldestMediaCache(
+  db: D1Database,
+  limit = 50
+): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT id, r2_key, size FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
+       ORDER BY fetched_at ASC LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ id: string; r2_key: string | null; size: number }>();
+  return rows.results ?? [];
+}
+
+/** Delete cache rows by id (the caller removes the R2 objects first). */
+export async function deleteMediaCacheRows(db: D1Database, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const json = JSON.stringify(ids);
+  await db.prepare("DELETE FROM media_cache WHERE id IN (SELECT value FROM json_each(?))").bind(json).run();
+}
+
+/** Drop queued rows when the cache is disabled (keeps metadata from piling up). */
+export async function deletePendingMediaCache(db: D1Database): Promise<number> {
+  const res = await db.prepare("DELETE FROM media_cache WHERE status != 'ready'").run();
+  return res.meta?.changes ?? 0;
+}
+
+/** R2 keys currently referenced by cache rows (purge enumeration). */
+export async function listMediaCacheKeys(
+  db: D1Database,
+  limit = 100
+): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+  const rows = await db
+    .prepare("SELECT id, r2_key, size FROM media_cache WHERE r2_key IS NOT NULL LIMIT ?")
+    .bind(limit)
+    .all<{ id: string; r2_key: string | null; size: number }>();
+  return rows.results ?? [];
+}
+
+/** Remove every cached resource (admin purge). */
+export async function deleteAllMediaCache(db: D1Database): Promise<number> {
+  const res = await db.prepare("DELETE FROM media_cache").run();
+  return res.meta?.changes ?? 0;
 }
 
 // ─────────────────────────────────────────

@@ -117,10 +117,12 @@ export function serializeAccount(
     note,
     url: isLocal ? `https://${localDomain}/users/${actor.username}` : actor.id,
     uri: actor.id,
-    avatar: actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
-    avatar_static: actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
-    header: actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
-    header_static: actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
+    // Remote profiles render from the R2 media cache when available (the
+    // original URL stays in avatar_url/header_url for federation).
+    avatar: actor.avatarCacheUrl ?? actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
+    avatar_static: actor.avatarCacheUrl ?? actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
+    header: actor.headerCacheUrl ?? actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
+    header_static: actor.headerCacheUrl ?? actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
     followers_count: actor.followersCount,
     following_count: actor.followingCount,
     statuses_count: actor.statusesCount,

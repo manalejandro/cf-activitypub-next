@@ -31,6 +31,7 @@ import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
+import { processMediaCacheQueue, maintainMediaCache } from "../lib/media/remote-cache";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -998,6 +999,17 @@ async function executeScheduled(env: Env): Promise<void> {
     }
     // Shared inboxes: deliver to endpoints.sharedInbox when the actor has one.
     await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
+
+    // Remote media cache: fetch a few queued resources per tick and keep the
+    // R2 copy within its retention window and byte budget.
+    try {
+      const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
+      const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
+      await processMediaCacheQueue(bindings, limits, instanceBaseUrl, limits.mediaCacheFetchBatch);
+      await maintainMediaCache(bindings, limits);
+    } catch (err) {
+      console.error("[cron] media cache maintenance failed", err);
+    }
   } catch (err) {
     console.error("[cron] federation instance refresh failed", err);
   }

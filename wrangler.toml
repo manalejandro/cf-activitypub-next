@@ -28,6 +28,20 @@ GRAPH_MAX_NODES = "100"
 # dormancy window before metadata expires (days) and hard expiry (days).
 INSTANCE_REFRESH_BATCH = "3"
 SHARED_INBOX_BATCH = "5"
+# Remote media cache (R2): enabled by default. Cached copies of remote status
+# media and profile avatars/headers are served from R2 so clients don't hit the
+# origin server. Entries expire after MEDIA_CACHE_DAYS (attachments) or
+# MEDIA_CACHE_PROFILE_DAYS (profiles), and the cache is trimmed to
+# MEDIA_CACHE_MAX_BYTES (oldest first). MEDIA_CACHE_USER_AGENTS overrides
+# the whole UA list; unset, it is built as
+# "cf-activitypub/$INSTANCE_VERSION (+$INSTANCE_URL; federated media cache)"
+# followed by browser fallbacks.
+MEDIA_CACHE_ENABLED = "true"
+MEDIA_CACHE_DAYS = "7"
+MEDIA_CACHE_PROFILE_DAYS = "30"
+MEDIA_CACHE_MAX_BYTES = "10737418240"
+MEDIA_CACHE_MAX_OBJECT_BYTES = "41943040"
+MEDIA_CACHE_FETCH_BATCH = "5"
 INSTANCE_REFRESH_DAYS = "7"
 INSTANCE_DORMANT_DAYS = "30"
 INSTANCE_EXPIRE_DAYS = "90"

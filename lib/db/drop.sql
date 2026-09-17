@@ -32,6 +32,7 @@ DROP TABLE IF EXISTS follows;
 DROP TABLE IF EXISTS likes;
 DROP TABLE IF EXISTS list_accounts;
 DROP TABLE IF EXISTS lists;
+DROP TABLE IF EXISTS media_cache;
 DROP TABLE IF EXISTS markers;
 DROP TABLE IF EXISTS mls_key_packages;
 DROP TABLE IF EXISTS mls_messages;

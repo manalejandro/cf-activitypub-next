@@ -212,6 +212,9 @@ export interface LocalActor {
   collectionsUrl?: string | null;
   // federation — stored for remote actors; computed for local
   inbox?: string;
+  /** R2-cached avatar/header URLs (the *_url fields keep the origin). */
+  avatarCacheUrl?: string | null;
+  headerCacheUrl?: string | null;
   /** Remote actor's advertised shared inbox (endsWith endpoints.sharedInbox). */
   endpoints?: { sharedInbox?: string };
   outbox?: string;
@@ -663,6 +666,23 @@ export interface LocalPushSubscription {
   presentUntil: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A queued/cached remote resource (R2 media cache). */
+export interface MediaCacheEntry {
+  id: string;
+  sourceUrl: string;
+  targetType: "attachment" | "avatar" | "header";
+  targetId: string | null;
+  status: "pending" | "ready" | "failed";
+  r2Key: string | null;
+  size: number;
+  contentType: string | null;
+  attempts: number;
+  lastError: string | null;
+  nextAttemptAt: string;
+  fetchedAt: string | null;
+  createdAt: string;
 }
 
 /** A remote instance (federation engine): NodeInfo metadata + availability. */

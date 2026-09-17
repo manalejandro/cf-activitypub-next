@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS actors (
   also_known_as      TEXT,                          -- JSON array of alias actor IRIs (account migration)
   moved_to           TEXT,                          -- actor IRI the account migrated to
   collections_url    TEXT,                          -- remote actor's FEP-7aa9 featuredCollections URI
+  avatar_cache_url   TEXT,                          -- R2-cached avatar (media cache); avatar_url keeps the origin
+  header_cache_url   TEXT,                          -- R2-cached header (media cache); header_url keeps the origin
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
   last_active_at     TEXT,
@@ -239,6 +241,33 @@ CREATE TABLE IF NOT EXISTS blocks (
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id, target_id)
 );
+
+-- ─────────────────────────────────────────
+-- Remote media cache (R2)
+-- ─────────────────────────────────────────
+-- Locally cached copies of remote resources (status attachments, avatars,
+-- headers) so clients don't hit the origin server. Rows are queued at ingest,
+-- fetched by the cron with bot/browser user agents, then served from R2.
+CREATE TABLE IF NOT EXISTS media_cache (
+  id              TEXT PRIMARY KEY,               -- sha256(target URL)
+  source_url      TEXT NOT NULL,
+  target_type     TEXT NOT NULL DEFAULT 'attachment', -- attachment | avatar | header
+  target_id       TEXT,                           -- attachments.id | actors.id
+  status          TEXT NOT NULL DEFAULT 'pending',-- pending | ready | failed
+  r2_key          TEXT,
+  size            INTEGER NOT NULL DEFAULT 0,
+  content_type    TEXT,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+  fetched_at      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_cache_queue  ON media_cache(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_media_cache_expiry ON media_cache(status, fetched_at);
+CREATE INDEX IF NOT EXISTS idx_media_cache_target ON media_cache(target_type, target_id);
 
 -- ─────────────────────────────────────────
 -- Instances (federation engine)
