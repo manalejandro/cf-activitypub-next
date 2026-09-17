@@ -3672,21 +3672,37 @@ export async function mediaCacheId(url: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Queue a remote resource for caching. No-op for non-HTTPS URLs. */
+/**
+ * Queue a remote resource for caching. No-op for non-HTTPS URLs.
+ *
+ * `delaySeconds` lets the backfill enqueue old content behind fresh ingests;
+ * calling without a delay on an already-queued row pulls it forward (priority
+ * bump) so a just-federated post is processed within the next tick instead of
+ * waiting behind the whole backlog.
+ */
 export async function enqueueMediaCache(
   db: D1Database,
   sourceUrl: string,
   targetType: MediaCacheEntry["targetType"],
-  targetId: string | null
+  targetId: string | null,
+  delaySeconds = 0
 ): Promise<void> {
   if (!/^https:\/\//i.test(sourceUrl)) return;
   const id = await mediaCacheId(sourceUrl);
+  const delay = Math.max(0, Math.floor(delaySeconds));
   await db
     .prepare(
-      `INSERT OR IGNORE INTO media_cache (id, source_url, target_type, target_id)
-       VALUES (?, ?, ?, ?)`
+      `INSERT INTO media_cache (id, source_url, target_type, target_id, next_attempt_at)
+       VALUES (?, ?, ?, ?, datetime('now', ?))
+       ON CONFLICT(source_url) DO UPDATE SET
+         target_type = excluded.target_type,
+         target_id = excluded.target_id,
+         next_attempt_at = CASE
+           WHEN media_cache.status = 'ready' THEN media_cache.next_attempt_at
+           WHEN excluded.next_attempt_at < media_cache.next_attempt_at THEN excluded.next_attempt_at
+           ELSE media_cache.next_attempt_at END`
     )
-    .bind(id, sourceUrl, targetType, targetId)
+    .bind(id, sourceUrl, targetType, targetId, `+${delay} seconds`)
     .run();
 }
 
@@ -3846,7 +3862,7 @@ export async function listOldestMediaCache(
   const rows = await db
     .prepare(
       `SELECT id, r2_key, size FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
-       ORDER BY fetched_at ASC LIMIT ?`
+       ORDER BY fetched_at ASC, rowid ASC LIMIT ?`
     )
     .bind(limit)
     .all<{ id: string; r2_key: string | null; size: number }>();

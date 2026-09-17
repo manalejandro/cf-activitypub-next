@@ -92,6 +92,7 @@ const LIMITS: MediaCacheLimits = {
   maxBytes: 10 * 1024 * 1024,
   maxObjectBytes: 1024 * 1024,
   fetchBatch: 5,
+  minEntries: 0,
   userAgents: ["bot-agent", "browser-agent"],
 };
 
@@ -271,6 +272,9 @@ describe("remote media cache", () => {
     const queued = await backfillMediaCache(bindings, LIMITS);
     expect(queued).toBe(2); // attachment + avatar
 
+    // The backfill queues behind fresh ingests (30 min); simulate time passing.
+    await db.prepare("UPDATE media_cache SET next_attempt_at = datetime('now', '-1 second')").bind().run();
+
     const cachedCount = await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
     expect(cachedCount).toBe(2);
 
@@ -283,6 +287,27 @@ describe("remote media cache", () => {
       .bind()
       .first<{ avatar_cache_url: string }>();
     expect(actor?.avatar_cache_url).toContain("/api/media/cache/media/");
+  });
+
+  it("lets a fresh ingest jump the backfill queue", async () => {
+    // Backfill queued the URL 30 minutes into the future…
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH, 1_800);
+    let due = await db
+      .prepare("SELECT COUNT(*) AS n FROM media_cache WHERE next_attempt_at <= datetime('now')")
+      .bind()
+      .first<{ n: number }>();
+    expect(due?.n).toBe(0);
+
+    // …a fresh ingest of the same URL pulls it to "now".
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    due = await db
+      .prepare("SELECT COUNT(*) AS n FROM media_cache WHERE next_attempt_at <= datetime('now')")
+      .bind()
+      .first<{ n: number }>();
+    expect(due?.n).toBe(1);
+
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([3]), "image/png"));
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
   });
 
   it("treats a partial limits object as enabled with defaults (never wipes the queue)", async () => {
@@ -302,6 +327,65 @@ describe("remote media cache", () => {
     expect(cached).toBe(0);
     const rows = await db.prepare("SELECT COUNT(*) AS n FROM media_cache").bind().first<{ n: number }>();
     expect(rows?.n).toBe(1);
+  });
+
+  it("evicts FIFO and never shrinks below the floor (keeps the newest)", async () => {
+    // Three ready entries, oldest first, over a tiny byte budget.
+    for (const [url, ageDays] of [
+      ["https://remote.example/old.png", 3],
+      ["https://remote.example/mid.png", 2],
+      ["https://remote.example/new.png", 1],
+    ] as const) {
+      await enqueueMediaCache(db, url, "attachment", ATTACH);
+      await db.prepare(
+        "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 600000, fetched_at = datetime('now', ?) WHERE source_url = ?"
+      ).bind(`-${ageDays} days`, url).run();
+    }
+    await kv.put("mediacache:bytes", String(1_800_000));
+
+    // Budget 700 KB but keep at least 2 entries: only the OLDEST is evicted.
+    const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 700_000, minEntries: 2 });
+    expect(result.evicted).toBe(1);
+    const left = await db
+      .prepare("SELECT source_url FROM media_cache WHERE status='ready' ORDER BY fetched_at ASC")
+      .bind()
+      .all<{ source_url: string }>();
+    expect(left.results.map((r) => r.source_url)).toEqual([
+      "https://remote.example/mid.png",
+      "https://remote.example/new.png",
+    ]);
+  });
+
+  it("caps eviction per tick so a lowered size shrinks progressively", async () => {
+    for (let i = 0; i < 5; i++) {
+      const url = `https://remote.example/p${i}.png`;
+      await enqueueMediaCache(db, url, "attachment", ATTACH);
+      await db.prepare(
+        "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 600000, fetched_at = datetime('now', ?) WHERE source_url = ?"
+      ).bind(`-${5 - i} days`, url).run();
+    }
+    await kv.put("mediacache:bytes", String(3_000_000));
+
+    // Only 2 deletions per run, floor of 1: the rest happens on later ticks.
+    const first = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 600_000, minEntries: 1 }, 2);
+    expect(first.evicted).toBe(2);
+    const count = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
+    expect(count?.n).toBe(3);
+  });
+
+  it("never wipes the cache through age-based expiry alone", async () => {
+    for (let i = 0; i < 4; i++) {
+      const url = `https://remote.example/x${i}.png`;
+      await enqueueMediaCache(db, url, "attachment", ATTACH);
+      await db.prepare(
+        "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 10, fetched_at = datetime('now', ?) WHERE source_url = ?"
+      ).bind(`-${40 + i} days`, url).run();
+    }
+    // The whole cache is expired, but a floor of 3 keeps the newest entries.
+    const result = await maintainMediaCache(bindings, { ...LIMITS, minEntries: 3 });
+    expect(result.expired).toBe(1);
+    const left = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
+    expect(left?.n).toBe(3);
   });
 
   it("purges every cached object and row", async () => {

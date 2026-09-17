@@ -41,7 +41,10 @@ MEDIA_CACHE_DAYS = "7"
 MEDIA_CACHE_PROFILE_DAYS = "30"
 MEDIA_CACHE_MAX_BYTES = "10737418240"
 MEDIA_CACHE_MAX_OBJECT_BYTES = "41943040"
-MEDIA_CACHE_FETCH_BATCH = "10"
+MEDIA_CACHE_FETCH_BATCH = "25"
+# Maintenance never shrinks the cache below this many entries (FIFO eviction:
+# the oldest are replaced first when a limit is reached).
+MEDIA_CACHE_MIN_ENTRIES = "20"
 INSTANCE_REFRESH_DAYS = "7"
 INSTANCE_DORMANT_DAYS = "30"
 INSTANCE_EXPIRE_DAYS = "90"

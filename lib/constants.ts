@@ -60,7 +60,10 @@ export const MEDIA_CACHE_DAYS = 7;
 export const MEDIA_CACHE_PROFILE_DAYS = 30;
 export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
 export const MEDIA_CACHE_MAX_OBJECT_BYTES = 40 * 1024 * 1024; // 40 MB
-export const MEDIA_CACHE_FETCH_BATCH = 10;
+export const MEDIA_CACHE_FETCH_BATCH = 25;
+// Maintenance never takes the cache below this many entries: reaching a limit
+// replaces the OLDEST entries (FIFO), it never wipes the cache.
+export const MEDIA_CACHE_MIN_ENTRIES = 20;
 export const MEDIA_CACHE_BROWSER_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
   "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
@@ -148,6 +151,7 @@ export interface InstanceLimits {
   mediaCacheMaxBytes: number;
   mediaCacheMaxObjectBytes: number;
   mediaCacheFetchBatch: number;
+  mediaCacheMinEntries: number;
   mediaCacheUserAgents: string[];
   instanceRefreshBatch: number;
   instanceRefreshDays: number;
@@ -197,6 +201,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheMaxBytes: MEDIA_CACHE_MAX_BYTES,
   mediaCacheMaxObjectBytes: MEDIA_CACHE_MAX_OBJECT_BYTES,
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
+  mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
   instanceRefreshBatch: INSTANCE_REFRESH_BATCH,
   instanceRefreshDays: INSTANCE_REFRESH_DAYS,
@@ -275,6 +280,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheMaxBytes: num(env, "MEDIA_CACHE_MAX_BYTES", DEFAULT_LIMITS.mediaCacheMaxBytes),
     mediaCacheMaxObjectBytes: num(env, "MEDIA_CACHE_MAX_OBJECT_BYTES", DEFAULT_LIMITS.mediaCacheMaxObjectBytes),
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
+    mediaCacheMinEntries: num(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),

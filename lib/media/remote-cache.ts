@@ -68,6 +68,8 @@ export interface MediaCacheLimits {
   maxBytes: number;
   maxObjectBytes: number;
   fetchBatch: number;
+  /** Maintenance never shrinks the cache below this many entries. */
+  minEntries: number;
   userAgents: string[];
 }
 
@@ -83,6 +85,7 @@ function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
   const maxBytes = Number(limits.maxBytes);
   const maxObjectBytes = Number(limits.maxObjectBytes);
   const fetchBatch = Number(limits.fetchBatch);
+  const minEntries = Number(limits.minEntries);
   return {
     enabled: limits.enabled !== false,
     days: days > 0 ? days : 7,
@@ -90,6 +93,8 @@ function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
     maxBytes: maxBytes > 0 ? maxBytes : 10 * 1024 * 1024 * 1024,
     maxObjectBytes: maxObjectBytes > 0 ? maxObjectBytes : 40 * 1024 * 1024,
     fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
+    // 0 is a valid floor (used by tests); anything invalid falls back to 20.
+    minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
     userAgents: Array.isArray(limits.userAgents) && limits.userAgents.length > 0
       ? limits.userAgents
       : ["cf-activitypub/0.1.0 (+https://localhost; federated media cache)"],
@@ -97,6 +102,8 @@ function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
 }
 
 const FETCH_TIMEOUT_MS = 15_000;
+// Old content queued by the backfill waits behind fresh ingests.
+const BACKFILL_DELAY_SECONDS = 1_800;
 const MAX_ATTEMPTS = 3;
 const BYTES_KEY = "mediacache:bytes";
 const RECOUNT_KEY = "mediacache:recount";
@@ -361,7 +368,7 @@ export async function backfillMediaCache(
       .bind(batch)
       .all<{ id: string; url: string }>();
     for (const row of attachments.results ?? []) {
-      await enqueueMediaCache(bindings.DB, row.url, "attachment", row.id);
+      await enqueueMediaCache(bindings.DB, row.url, "attachment", row.id, BACKFILL_DELAY_SECONDS);
       queued++;
     }
   } catch { /* the table may be missing pre-migration */ }
@@ -384,11 +391,11 @@ export async function backfillMediaCache(
       .all<{ id: string; avatar_url: string | null; header_url: string | null }>();
     for (const row of followed.results ?? []) {
       if (row.avatar_url) {
-        await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id);
+        await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id, BACKFILL_DELAY_SECONDS);
         queued++;
       }
       if (row.header_url) {
-        await enqueueMediaCache(bindings.DB, row.header_url, "header", row.id);
+        await enqueueMediaCache(bindings.DB, row.header_url, "header", row.id, BACKFILL_DELAY_SECONDS);
         queued++;
       }
     }
@@ -403,7 +410,7 @@ export async function backfillMediaCache(
       .bind(batch)
       .all<{ id: string; avatar_url: string }>();
     for (const row of recent.results ?? []) {
-      await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id);
+      await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id, BACKFILL_DELAY_SECONDS);
       queued++;
     }
   } catch { /* best-effort */ }
@@ -427,21 +434,37 @@ export async function maintainMediaCache(
     return { expired: 0, evicted: 0 };
   }
 
-  const expiredRows = await listExpiredMediaCache(bindings.DB, limits.days, limits.profileDays, batch);
-  await deleteEntries(bindings, expiredRows);
-
   let stats = await getMediaCacheStats(bindings.DB);
+  let remaining = stats.ready;
+  const floor = Math.max(0, Math.min(limits.minEntries, remaining));
+  // Hard cap of deletions per tick: lowering MEDIA_CACHE_MAX_BYTES (or a long
+  // dormancy) shrinks the cache progressively instead of mass-deleting, and
+  // the floor guarantees it is never wiped.
+  let deletionsLeft = Math.max(1, batch);
+
+  // 1) Age-based expiry, oldest first, never below the floor.
+  const expiredRows = await listExpiredMediaCache(bindings.DB, limits.days, limits.profileDays, batch);
+  const expirable = expiredRows.slice(0, Math.min(Math.max(0, remaining - floor), deletionsLeft));
+  await deleteEntries(bindings, expirable);
+  remaining -= expirable.length;
+  deletionsLeft -= expirable.length;
+
+  // 2) Byte-budget eviction: FIFO (oldest `fetched_at` first). Everything just
+  // fetched stays; the budget is adapted to gradually when it is reduced.
   let bytes = await currentBytes(bindings.KV, stats);
   let evicted = 0;
-  while (bytes > limits.maxBytes) {
-    const oldest = await listOldestMediaCache(bindings.DB, batch);
+  const budget = Math.max(1, limits.maxBytes);
+  while (bytes > budget && remaining > floor && deletionsLeft > 0) {
+    const room = Math.max(1, Math.min(deletionsLeft, remaining - floor));
+    const oldest = await listOldestMediaCache(bindings.DB, room);
     if (oldest.length === 0) break;
-    // Delete only as many entries as needed to get back under the budget.
     const doomed: typeof oldest = [];
     for (const entry of oldest) {
-      if (bytes <= limits.maxBytes) break;
+      if (bytes <= budget || remaining <= floor || deletionsLeft <= 0) break;
       doomed.push(entry);
       bytes -= Number(entry.size ?? 0);
+      remaining -= 1;
+      deletionsLeft -= 1;
     }
     if (doomed.length === 0) break;
     const freed = await deleteEntries(bindings, doomed);
@@ -458,7 +481,7 @@ export async function maintainMediaCache(
     }
   } catch { /* best-effort */ }
 
-  return { expired: expiredRows.length, evicted };
+  return { expired: expirable.length, evicted };
 }
 
 /** Remove every cached object and row (admin purge). */
