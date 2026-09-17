@@ -31,7 +31,7 @@ import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
-import { processMediaCacheQueue, maintainMediaCache } from "../lib/media/remote-cache";
+import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache } from "../lib/media/remote-cache";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -976,8 +976,13 @@ async function executeScheduled(env: Env): Promise<void> {
   // tick, staggered via next_refresh_at) and, once a day, expire the cached
   // metadata of dormant instances so the registry doesn't accumulate stale data.
   await setStage("instances");
+  const limits = resolveLimits(env as unknown as Record<string, unknown>);
+
+  // Each federation stage is isolated: a failure in one (a broken remote, a
+  // D1 hiccup) must never skip the others — the media cache and shared-inbox
+  // stages were previously nested behind the instance refresh and silently
+  // stopped running when that stage threw.
   try {
-    const limits = resolveLimits(env as unknown as Record<string, unknown>);
     const due = await listInstancesDueForRefresh(env.DB, limits.instanceRefreshBatch);
     for (const domain of due) {
       try {
@@ -997,21 +1002,29 @@ async function executeScheduled(env: Env): Promise<void> {
       await env.KV.put("cron:instances:expire", "1", { expirationTtl: 86400 });
       await expireDormantInstanceMetadata(env.DB, limits.instanceDormantDays);
     }
-    // Shared inboxes: deliver to endpoints.sharedInbox when the actor has one.
-    await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
-
-    // Remote media cache: fetch a few queued resources per tick and keep the
-    // R2 copy within its retention window and byte budget.
-    try {
-      const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
-      const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
-      await processMediaCacheQueue(bindings, limits, instanceBaseUrl, limits.mediaCacheFetchBatch);
-      await maintainMediaCache(bindings, limits);
-    } catch (err) {
-      console.error("[cron] media cache maintenance failed", err);
-    }
   } catch (err) {
     console.error("[cron] federation instance refresh failed", err);
+  }
+
+  // Shared inboxes: deliver to endpoints.sharedInbox when the actor has one.
+  await setStage("shared-inbox");
+  try {
+    await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
+  } catch (err) {
+    console.error("[cron] shared inbox backfill failed", err);
+  }
+
+  // Remote media cache: queue what is missing, fetch a few per tick and keep
+  // the R2 copy within its retention window and byte budget.
+  await setStage("media-cache");
+  try {
+    const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
+    const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
+    await backfillMediaCache(bindings, limits, Math.max(limits.mediaCacheFetchBatch * 2, 20));
+    await processMediaCacheQueue(bindings, limits, instanceBaseUrl, limits.mediaCacheFetchBatch);
+    await maintainMediaCache(bindings, limits);
+  } catch (err) {
+    console.error("[cron] media cache maintenance failed", err);
   }
 
   // Account verification — periodically re-check rel="me" backlinks so the

@@ -13,6 +13,7 @@ const federation = vi.hoisted(() => ({
 vi.mock("@/lib/activitypub/federation", () => federation);
 
 import {
+  backfillMediaCache,
   maintainMediaCache,
   processMediaCacheQueue,
   purgeMediaCache,
@@ -255,6 +256,33 @@ describe("remote media cache", () => {
     expect(result.evicted).toBe(1);
     const left = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
     expect(left?.n).toBe(1);
+  });
+
+  it("backfills existing attachments and avatars, then serves them from the cache", async () => {
+    // The local account follows the remote actor so its profile is a priority.
+    await db.prepare(
+      "INSERT INTO follows (id, actor_id, target_id, state) VALUES ('f1', 'https://local.example/users/me', 'https://remote.example/users/fan', 'accepted')"
+    ).bind().run();
+    // Attachment ingested before the cache existed: no media_cache row.
+    const before = await db.prepare("SELECT COUNT(*) AS n FROM media_cache").bind().first<{ n: number }>();
+    expect(before?.n).toBe(0);
+
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([7, 7]), "image/webp"));
+    const queued = await backfillMediaCache(bindings, LIMITS);
+    expect(queued).toBe(2); // attachment + avatar
+
+    const cachedCount = await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
+    expect(cachedCount).toBe(2);
+
+    const att = await db.prepare("SELECT url, remote_url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string; remote_url: string }>();
+    expect(att?.url).toContain("/api/media/cache/media/");
+    expect(att?.remote_url).toBe(SRC);
+
+    const actor = await db
+      .prepare("SELECT avatar_cache_url FROM actors WHERE id = 'https://remote.example/users/fan'")
+      .bind()
+      .first<{ avatar_cache_url: string }>();
+    expect(actor?.avatar_cache_url).toContain("/api/media/cache/media/");
   });
 
   it("purges every cached object and row", async () => {

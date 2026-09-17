@@ -60,7 +60,7 @@ export const MEDIA_CACHE_DAYS = 7;
 export const MEDIA_CACHE_PROFILE_DAYS = 30;
 export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
 export const MEDIA_CACHE_MAX_OBJECT_BYTES = 40 * 1024 * 1024; // 40 MB
-export const MEDIA_CACHE_FETCH_BATCH = 5;
+export const MEDIA_CACHE_FETCH_BATCH = 10;
 export const MEDIA_CACHE_BROWSER_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
   "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",

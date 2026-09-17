@@ -23,6 +23,7 @@ import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import {
   applyMediaCacheToActor,
   applyMediaCacheToAttachment,
+  enqueueMediaCache,
   deleteMediaCacheRows,
   deletePendingMediaCache,
   getMediaCacheStats,
@@ -240,20 +241,21 @@ async function cacheOne(
         httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
         customMetadata: { sourceUrl: job.sourceUrl.slice(0, 900) },
       });
+      const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
+      await markMediaCacheReady(bindings.DB, job.id, { r2Key, size: bytes.byteLength, contentType });
+      if (job.targetType === "attachment" && job.targetId) {
+        await applyMediaCacheToAttachment(bindings.DB, job.targetId, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
+      } else if ((job.targetType === "avatar" || job.targetType === "header") && job.targetId) {
+        await applyMediaCacheToActor(bindings.DB, job.targetId, job.targetType, job.sourceUrl, cachedUrl);
+      }
+      await adjustBytes(bindings.KV, bytes.byteLength);
+      return true;
     } catch (err) {
-      lastError = `R2 put failed: ${String(err)}`;
-      continue;
+      // Storage/bookkeeping failure: count the attempt so the row backs off
+      // instead of being retried on every single tick.
+      lastError = `store failed: ${String(err)}`;
+      break;
     }
-
-    const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
-    await markMediaCacheReady(bindings.DB, job.id, { r2Key, size: bytes.byteLength, contentType });
-    if (job.targetType === "attachment" && job.targetId) {
-      await applyMediaCacheToAttachment(bindings.DB, job.targetId, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
-    } else if ((job.targetType === "avatar" || job.targetType === "header") && job.targetId) {
-      await applyMediaCacheToActor(bindings.DB, job.targetId, job.targetType, job.sourceUrl, cachedUrl);
-    }
-    await adjustBytes(bindings.KV, bytes.byteLength);
-    return true;
   }
 
   const attempts = job.attempts + 1;
@@ -304,6 +306,82 @@ async function deleteEntries(
   await deleteMediaCacheRows(bindings.DB, entries.map((e) => e.id));
   await adjustBytes(bindings.KV, -freed);
   return freed;
+}
+
+/**
+ * Queue federated resources that were ingested before the cache existed (or
+ * were never queued): recent remote attachments plus avatars/headers of
+ * accounts followed locally, then recently active remote accounts. Bounded per
+ * tick so the D1 write budget stays small.
+ */
+export async function backfillMediaCache(
+  bindings: MediaCacheBindings,
+  limits: MediaCacheLimits,
+  batch = 20
+): Promise<number> {
+  if (!limits.enabled) return 0;
+  let queued = 0;
+
+  try {
+    const attachments = await bindings.DB
+      .prepare(
+        `SELECT a.id, a.url FROM attachments a
+         JOIN objects o ON o.id = a.object_id
+         WHERE o.is_local = 0 AND a.url LIKE 'https://%' AND a.url NOT LIKE '%/api/media/cache/media/%'
+           AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.source_url = a.url)
+         ORDER BY o.published DESC LIMIT ?`
+      )
+      .bind(batch)
+      .all<{ id: string; url: string }>();
+    for (const row of attachments.results ?? []) {
+      await enqueueMediaCache(bindings.DB, row.url, "attachment", row.id);
+      queued++;
+    }
+  } catch { /* the table may be missing pre-migration */ }
+
+  // Profiles of accounts with a local follow relation first (small set),
+  // then recently active remote accounts.
+  try {
+    const followed = await bindings.DB
+      .prepare(
+        `SELECT a.id, a.avatar_url, a.header_url FROM actors a
+         WHERE a.is_local = 0 AND a.avatar_url LIKE 'https://%'
+           AND (a.avatar_cache_url IS NULL OR a.header_cache_url IS NULL)
+           AND EXISTS (
+             SELECT 1 FROM follows f
+             WHERE f.state = 'accepted' AND (f.actor_id = a.id OR f.target_id = a.id)
+           )
+         LIMIT ?`
+      )
+      .bind(batch)
+      .all<{ id: string; avatar_url: string | null; header_url: string | null }>();
+    for (const row of followed.results ?? []) {
+      if (row.avatar_url) {
+        await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id);
+        queued++;
+      }
+      if (row.header_url) {
+        await enqueueMediaCache(bindings.DB, row.header_url, "header", row.id);
+        queued++;
+      }
+    }
+
+    const recent = await bindings.DB
+      .prepare(
+        `SELECT a.id, a.avatar_url FROM actors a
+         WHERE a.is_local = 0 AND a.avatar_url LIKE 'https://%' AND a.avatar_cache_url IS NULL
+           AND a.last_status_at IS NOT NULL AND a.last_status_at >= datetime('now', '-14 days')
+         ORDER BY a.last_status_at DESC LIMIT ?`
+      )
+      .bind(batch)
+      .all<{ id: string; avatar_url: string }>();
+    for (const row of recent.results ?? []) {
+      await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id);
+      queued++;
+    }
+  } catch { /* best-effort */ }
+
+  return queued;
 }
 
 /**
