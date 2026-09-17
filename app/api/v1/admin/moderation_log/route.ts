@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { countModerationLog, getModerationLog } from "@/lib/moderation/log";
-import { requireFullAdmin } from "@/lib/admin-auth";
+import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
 
 /**
@@ -14,7 +14,7 @@ import { resolveLimits } from "@/lib/constants";
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  if (!(await requireFullAdmin(request, env))) {
+  if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -40,8 +40,11 @@ export async function GET(request: NextRequest): Promise<Response> {
  */
 export async function DELETE(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    // Authenticated moderators get a 403 (the admin UI shows the section but
+    // writes need a full administrator); anonymous callers get 401.
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const res = await env.DB.prepare("DELETE FROM moderation_log").run();

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
-import { requireFullAdmin } from "@/lib/admin-auth";
+import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
@@ -8,7 +8,7 @@ const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_requ
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
+  if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -42,8 +42,11 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 export async function PUT(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    // Authenticated moderators get a 403 (the admin UI shows the section but
+    // writes need a full administrator); anonymous callers get 401.
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const body = await request.json() as Record<string, unknown>;

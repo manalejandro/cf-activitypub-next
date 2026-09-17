@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, badRequest } from "@/lib/cf";
-import { requireFullAdmin } from "@/lib/admin-auth";
+import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import {
   getInstance,
   listInstances,
@@ -15,7 +15,7 @@ import { generateId } from "@/lib/activitypub/utils";
 // GET /api/v1/admin/instances — federation registry (search/filter/paginate).
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
+  if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
@@ -40,8 +40,11 @@ export async function GET(request: NextRequest): Promise<Response> {
 // body: { domain, action?: "add" | "refresh" | "reset" | "suspend" | "unsuspend" }
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    // Authenticated moderators get a 403 (the admin UI shows the section but
+    // writes need a full administrator); anonymous callers get 401.
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   let body: { domain?: unknown; action?: unknown };
@@ -99,8 +102,11 @@ export async function POST(request: NextRequest): Promise<Response> {
 // DELETE /api/v1/admin/instances?domain= — purge every cached actor/post.
 export async function DELETE(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    // Authenticated moderators get a 403 (the admin UI shows the section but
+    // writes need a full administrator); anonymous callers get 401.
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
   const host = normalizeDomain(request.nextUrl.searchParams.get("domain"));
   if (!host) return badRequest("domain is required");
