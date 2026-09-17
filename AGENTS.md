@@ -120,6 +120,7 @@ const { env } = getCloudflareContext();
 - **OAuth**: authorization codes require matching `client_id` + `redirect_uri` and PKCE whenever a challenge was issued; scopes are clamped to the app's registered scopes; an empty scope is not full access; a session cookie is only set for same-origin logins.
 - **Admin roles**: `requireFullAdmin` guards role changes, instance settings, federation rules, audit-log wipes and instance mutations; never demote/delete the last admin.
 - **Streaming**: list channels are owner-checked in the worker (dynamic re-subscribe limited to the socket's initial list) and only public/unlisted statuses are broadcast to them; streaming tokens honor the same suspension/verification gates as REST.
+- **Profile-field verification** is HTTPS-only and KV-throttled: `verifyAccountFields` skips plain-http field values silently, remote accounts are retried at most every 6h and re-verified after 30 days (badge revocation). An `https` field whose page redirects to plain HTTP is blocked by `safeFetch` (`[federation] Blocked outbound request …` in the logs) — expected, not an attack.
 - **Remote HTML** goes through `sanitizeFediverseHtml` (control chars stripped, http(s)-only media `src`); remote bodies are size-capped (2 MB) before parsing.
 
 ## Code conventions

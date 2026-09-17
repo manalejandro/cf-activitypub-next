@@ -121,7 +121,14 @@ export async function verifyAccountFields(
   let verified = 0;
   for (const field of fields) {
     const url = fieldUrl(field.value);
-    if (!url || !validateOutboundUrl(url).valid) {
+    // Plain-http fields can never verify (the verification fetch is HTTPS-only)
+    // and `validateOutboundUrl` would log a blocked-request warning on every
+    // check, so drop them quietly here.
+    if (!url || !/^https:\/\//i.test(url)) {
+      await setActorFieldVerified(db, field.id, null);
+      continue;
+    }
+    if (!validateOutboundUrl(url).valid) {
       await setActorFieldVerified(db, field.id, null);
       continue;
     }

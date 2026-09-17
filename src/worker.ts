@@ -1064,6 +1064,13 @@ const localRows = await env.DB
     // Remote accounts — verify those with unverified link fields (or never
     // checked), bounded to a few per run so the cron stays under the memory
     // and time budget (each check fetches an external page).
+    // Remote accounts: retry fields that never verified at most once every 6h
+    // (KV marker), and re-check previously verified ones after 30 days so a
+    // removed rel="me" backlink can revoke the badge. Without the marker, an
+    // actor with a permanently failing field (e.g. an https page that redirects
+    // to plain HTTP and gets blocked by the HTTPS policy) was re-fetched on
+    // every cron tick forever. The candidate query overfetches because the KV
+    // marker can only skip after the row is selected.
     const remoteRows = await env.DB
       .prepare(
         `SELECT DISTINCT af.actor_id FROM actor_fields af
@@ -1071,14 +1078,26 @@ const localRows = await env.DB
          WHERE a.is_local = 0 AND (af.value LIKE 'http%' OR af.value LIKE '%href=%')
            AND NOT EXISTS (
              SELECT 1 FROM actor_fields f2
-             WHERE f2.actor_id = af.actor_id AND f2.verified_at IS NOT NULL
+             WHERE f2.actor_id = af.actor_id
+               AND f2.verified_at IS NOT NULL
+               AND f2.verified_at > datetime('now', '-30 days')
            )
-         LIMIT 5`
+         LIMIT 50`
       )
       .all<{ actor_id: string }>();
+    const remotePicked: string[] = [];
+    for (const row of remoteRows.results) {
+      if (remotePicked.length >= 5) break;
+      const marker = `verify:remote:${row.actor_id}`;
+      if (await env.KV.get(marker).catch(() => null)) continue;
+      remotePicked.push(row.actor_id);
+      // Stamp before fetching so a slow/failing actor is not re-picked while
+      // this run is still in flight.
+      await env.KV.put(marker, "1", { expirationTtl: 6 * 3600 }).catch(() => {});
+    }
     await Promise.allSettled(
-      remoteRows.results.map(async (row) => {
-        const actor = await getActorById(env.DB, row.actor_id);
+      remotePicked.map(async (actorId) => {
+        const actor = await getActorById(env.DB, actorId);
         if (!actor) return;
         await verifyAccountFields(env.DB, actor.id, actor.domain);
       })
