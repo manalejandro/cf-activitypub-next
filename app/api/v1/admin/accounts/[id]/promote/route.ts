@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById } from "@/lib/db";
-import { requireFullAdmin } from "@/lib/admin-auth";
+import { getAdminRole } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 
@@ -14,8 +14,9 @@ import { generateId } from "@/lib/activitypub/utils";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const { id } = await params;

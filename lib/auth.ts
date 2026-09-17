@@ -38,6 +38,9 @@ export async function getAuthenticatedActor(
   const method = request.method.toUpperCase();
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (mutating && !scopesAllow(tokenRow.scope, "write")) return null;
+  // Reads require the read scope too: a write-only token must not be able to
+  // fetch the account's conversations, notifications, timelines, etc.
+  if (!mutating && !scopesAllow(tokenRow.scope, "read")) return null;
   // A write-only posting client must not hijack the account's push endpoint.
   if (requiredScope && !scopesAllow(tokenRow.scope, requiredScope)) return null;
 

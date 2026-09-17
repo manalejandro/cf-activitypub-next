@@ -234,4 +234,24 @@ describe("getAuthenticatedActor", () => {
     const result = await getAuthenticatedActor(request(), fakeDb);
     expect(result?.id).toBe("https://local.example/users/me");
   });
+
+  it("rejects a write-only token on reads (no read scope)", async () => {
+    dbMocks.getTokenByAccessToken.mockResolvedValue({
+      actorId: "https://local.example/users/me",
+      scope: "write",
+      expiresAt: null,
+    });
+    const { getAuthenticatedActor } = await getAuthModule();
+    expect(await getAuthenticatedActor(request(), fakeDb)).toBeNull();
+  });
+
+  it("still treats a NULL scope (legacy token) as full access", async () => {
+    dbMocks.getTokenByAccessToken.mockResolvedValue({
+      actorId: "https://local.example/users/me",
+      scope: null,
+      expiresAt: null,
+    });
+    const { getAuthenticatedActor } = await getAuthModule();
+    expect((await getAuthenticatedActor(request(), fakeDb))?.id).toBe("https://local.example/users/me");
+  });
 });

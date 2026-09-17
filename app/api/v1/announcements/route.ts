@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { getAdminRole } from "@/lib/admin-auth";
 import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
 import { linkifyHtmlText, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
 
@@ -65,17 +66,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
-
-  const roleRow = await env.DB
-    .prepare("SELECT role FROM actors WHERE id = ?")
-    .bind(actor.id)
-    .first<{ role: string }>();
-  const role = roleRow?.role ?? "user";
-  if (role !== "admin" && role !== "moderator") {
-    return json({ error: "Only admins can create announcements" }, 403);
-  }
+  // getAdminRole also accepts ADMIN_TOKEN operators (the old inline role
+  // lookup silently rejected them).
+  const role = await getAdminRole(request, env);
+  if (role === null) return unauthorized();
 
   let body: Record<string, unknown> = {};
   try {

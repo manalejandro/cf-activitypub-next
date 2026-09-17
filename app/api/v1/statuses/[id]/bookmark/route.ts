@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, getActorById, getAttachmentsByObjectId, getLike, getAnnounce, getBookmark, createBookmark,
-  getLastStatusAtMap} from "@/lib/db";
+  getLastStatusAtMap, canViewStatus, isAcceptedFollower } from "@/lib/db";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { generateId } from "@/lib/activitypub/utils";
@@ -17,8 +17,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!actor) return unauthorized();
 
   const objectId = decodeStatusId(id, domain);
-  const obj = await getObjectById(env.DB, objectId);
+  const obj = await getObjectById(env.DB, decodeURIComponent(objectId));
   if (!obj) return notFound();
+  const isFollowing = obj.actorId === actor.id ? false : await isAcceptedFollower(env.DB, actor.id, obj.actorId);
+  if (!canViewStatus(obj, actor.id, isFollowing)) return notFound();
 
   const existing = await getBookmark(env.DB, actor.id, obj.id);
   if (!existing) {

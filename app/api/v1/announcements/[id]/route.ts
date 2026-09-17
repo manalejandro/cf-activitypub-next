@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getAuthenticatedActor } from "@/lib/auth";
+import { getAdminRole } from "@/lib/admin-auth";
 
 // DELETE /api/v1/announcements/:id — Delete an announcement (admin/moderator only).
 export async function DELETE(
@@ -9,17 +9,8 @@ export async function DELETE(
 ): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const actor = await getAuthenticatedActor(request, env.DB);
-  if (!actor) return unauthorized();
-
-  const roleRow = await env.DB
-    .prepare("SELECT role FROM actors WHERE id = ?")
-    .bind(actor.id)
-    .first<{ role: string }>();
-  const role = roleRow?.role ?? "user";
-  if (role !== "admin" && role !== "moderator") {
-    return json({ error: "Only admins can delete announcements" }, 403);
-  }
+  const role = await getAdminRole(request, env);
+  if (role === null) return unauthorized();
 
   const { id } = await params;
   const existing = await env.DB

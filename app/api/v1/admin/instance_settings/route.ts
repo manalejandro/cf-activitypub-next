@@ -1,6 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
+import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
@@ -79,6 +81,21 @@ export async function PUT(request: NextRequest): Promise<Response> {
       await setInstanceSetting(env.DB, key, body[key]);
     }
   }
+
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "instance",
+    targetId: "instance_settings",
+    action: "settings_changed",
+    reason: "Instance settings updated by an administrator.",
+    confidence: null,
+    model: "admin",
+    details: { keys: Object.keys(body).slice(0, 30) },
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
+  });
 
   // Registrations are part of the cached instance payload — invalidate it.
   await Promise.all([

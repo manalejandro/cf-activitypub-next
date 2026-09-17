@@ -3235,6 +3235,25 @@ export async function getRegistrationSettings(db: D1Database): Promise<Registrat
   };
 }
 
+/**
+ * Admins that can actually log in: excludes the reserved instance/Guardian
+ * actor (no password/email) so the "last administrator" guard is real.
+ */
+export async function countUsableAdmins(db: D1Database, excludeId?: string): Promise<number> {
+  const row = await db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM actors WHERE is_local = 1 AND role = 'admin' AND COALESCE(reserved, 0) = 0 AND id != ?"
+    )
+    .bind(excludeId ?? "")
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+/** Revoke every session/token of an actor (logout-everywhere, password reset). */
+export async function deleteOAuthTokensForActor(db: D1Database, actorId: string): Promise<void> {
+  await db.prepare("DELETE FROM oauth_tokens WHERE actor_id = ?").bind(actorId).run();
+}
+
 /** Set a local account's registration approval state (approve or pend). */
 export async function setActorApproval(db: D1Database, actorId: string, approved: boolean): Promise<void> {
   await db

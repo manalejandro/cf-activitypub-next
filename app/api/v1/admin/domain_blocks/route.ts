@@ -6,6 +6,9 @@ import {
   createInstanceDomainBlock,
   deleteInstanceDomainBlock,
 } from "@/lib/db";
+import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
+import { normalizeDomain } from "@/lib/activitypub/instances";
 
 // GET /api/v1/admin/domain_blocks — list instance-wide domain blocks.
 export async function GET(request: NextRequest): Promise<Response> {
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const body = await request.json() as Record<string, unknown>;
-  const domain = typeof body.domain === "string" ? body.domain.trim().toLowerCase() : "";
+  const domain = normalizeDomain(typeof body.domain === "string" ? body.domain : null);
   if (!domain) return badRequest("domain is required");
 
   await createInstanceDomainBlock(env.DB, {
@@ -54,6 +57,21 @@ export async function POST(request: NextRequest): Promise<Response> {
     publicComment: typeof body.public_comment === "string" ? body.public_comment : null,
     obfuscate: body.obfuscate === true,
     createdAt: new Date().toISOString(),
+  });
+
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "domain",
+    targetId: domain,
+    action: "blocked",
+    reason: `Domain blocked by an administrator (${body.severity === "silence" ? "silence" : "suspend"}).`,
+    confidence: null,
+    model: "admin",
+    details: { severity: body.severity === "silence" ? "silence" : "suspend" },
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
   });
 
   return json({ ok: true });
@@ -70,9 +88,23 @@ export async function DELETE(request: NextRequest): Promise<Response> {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
-  const domain = request.nextUrl.searchParams.get("domain")?.trim().toLowerCase();
+  const domain = normalizeDomain(request.nextUrl.searchParams.get("domain"));
   if (!domain) return badRequest("domain is required");
 
   await deleteInstanceDomainBlock(env.DB, domain);
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "domain",
+    targetId: domain,
+    action: "unblocked",
+    reason: "Domain unblocked by an administrator.",
+    confidence: null,
+    model: "admin",
+    details: {},
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
+  });
   return json({ ok: true });
 }

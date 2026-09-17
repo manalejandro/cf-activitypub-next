@@ -25,7 +25,10 @@ export async function GET(
   // Remote accounts require an authenticated session: refresh from source for
   // up-to-date counts, then verify/ sync as below. Anonymous visitors only get
   // local accounts (public profiles).
-  if (rawId.startsWith("https://")) {
+  // Remote actor IRIs require a session; a bare local IRI does not (local
+  // profiles are public — the anonymous client just addressed the account by
+  // its serialized `id` instead of `acct`).
+  if (rawId.startsWith("https://") && !rawId.startsWith(`https://${domain}/`)) {
     if (!me) return unauthorized();
     const refreshed = await fetchAndCacheRemoteActor(env.DB, rawId, env.KV);
     if (refreshed) {

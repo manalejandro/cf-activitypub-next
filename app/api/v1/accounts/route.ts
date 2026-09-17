@@ -12,6 +12,7 @@ import { runWithTimeout } from "@/lib/moderation/util";
 import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
+import { clampScope } from "@/lib/oauth-scopes";
 
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
@@ -242,7 +243,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     actorId,
     accessToken,
     refreshToken: null,
-    scope: body.scope ?? "read write follow push",
+    scope: clampScope(body.scope, app?.scopes, "read write follow push"),
     expiresAt: new Date((now + expiresIn) * 1000).toISOString(),
     createdAt: new Date().toISOString(),
   });
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   return json({
     access_token: accessToken,
     token_type: "Bearer",
-    scope: body.scope ?? "read write follow push",
+    scope: clampScope(body.scope, app?.scopes, "read write follow push"),
     created_at: now,
   }, 200);
 }

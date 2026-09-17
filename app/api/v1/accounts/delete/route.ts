@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor, clearAuthCookie } from "@/lib/auth";
-import { getActorById } from "@/lib/db";
+import { countUsableAdmins, getActorById } from "@/lib/db";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -19,6 +19,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
+  // The instance must keep a reachable administrator (the reserved Guardian
+  // actor has no credentials and does not count).
+  if (actor.role === "admin" && (await countUsableAdmins(env.DB, actor.id)) === 0) {
+    return json({ error: "The last administrator cannot delete their account" }, 422);
+  }
 
   // Federate a Delete(actor) tombstone before the actor row disappears.
   if (env.DELIVERY_QUEUE) {
@@ -42,6 +47,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM oauth_tokens WHERE actor_id = ?").bind(actor.id),
     env.DB.prepare("DELETE FROM activities WHERE actor_id = ?").bind(actor.id),
+    env.DB.prepare("DELETE FROM moderation_log WHERE target_id = ?").bind(actor.id),
     env.DB.prepare("DELETE FROM actors WHERE id = ?").bind(actor.id),
   ]);
 

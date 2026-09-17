@@ -220,7 +220,7 @@ export async function fetchAndCacheRemoteActor(
               public_key_pem, private_key_pem, is_local, is_bot,
               manually_approves_followers, discoverable,
               followers_count, following_count, statuses_count, inbox, also_known_as, last_status_at, collections_url)
-             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?,?,?)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                display_name = excluded.display_name,
                summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -250,6 +250,7 @@ export async function fetchAndCacheRemoteActor(
             pubKey,
             (p.type as string) === "Service" ? 1 : 0,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            p.discoverable !== false ? 1 : 0,
             followersCount,
             followingCount,
             statusesCount,
@@ -269,7 +270,7 @@ export async function fetchAndCacheRemoteActor(
               public_key_pem, private_key_pem, is_local, is_bot,
               manually_approves_followers, discoverable,
               followers_count, following_count, statuses_count, inbox, also_known_as)
-             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,1,?,?,?,?,?)
+             VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                display_name = excluded.display_name,
                summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -295,6 +296,7 @@ export async function fetchAndCacheRemoteActor(
             pubKey,
             (p.type as string) === "Service" ? 1 : 0,
             (p.manuallyApprovesFollowers as boolean) ? 1 : 0,
+            p.discoverable !== false ? 1 : 0,
             followersCount,
             followingCount,
             statusesCount,
@@ -338,7 +340,7 @@ export async function fetchAndCacheRemoteActor(
             followingCount,
             statusesCount,
             statusesCount,
-            1,
+            p.discoverable !== false ? 1 : 0,
             inbox,
             alsoKnownAs,
             usernameNorm,

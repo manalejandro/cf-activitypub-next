@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
-import { getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
+import { deleteOAuthTokensForActor, getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
@@ -46,6 +46,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const passwordHash = await hashPassword(password);
   await updatePassword(env.DB, record.actorId, passwordHash);
+  // A password reset must evict every existing session/token (the usual
+  // incident response when a session may have leaked).
+  await deleteOAuthTokensForActor(env.DB, record.actorId);
   await markPasswordResetUsed(env.DB, token);
 
   return json({ ok: true });

@@ -3,23 +3,7 @@ import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf
 import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-
-/**
- * Intersect the requested scopes with the app's registered scopes so a
- * read-only client cannot obtain a write token. No app scopes / no app means
- * the fallback applies.
- */
-function clampScope(
-  requested: string | undefined,
-  appScopes: string | undefined,
-  fallback: string
-): string {
-  const allowed = (appScopes ?? "").split(/[\s,]+/).filter(Boolean);
-  const asked = (requested ?? "").split(/[\s,]+/).filter(Boolean);
-  if (allowed.length === 0) return asked.length ? asked.join(" ") : fallback;
-  const granted = asked.length ? asked.filter((sc) => allowed.includes(sc)) : allowed;
-  return (granted.length ? granted : allowed).join(" ");
-}
+import { clampScope } from "@/lib/oauth-scopes";
 
 // POST /oauth/token — standard Mastodon OAuth token endpoint (also used by the
 // web login form). External clients call this path directly.

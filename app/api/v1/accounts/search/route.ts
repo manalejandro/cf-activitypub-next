@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getActorById, getAllCustomEmojis, getLastStatusAt } from "@/lib/db";
+import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 
@@ -23,7 +24,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const userPart = atIdx > 0 ? q.slice(0, atIdx) : "";
   const domainPart = atIdx >= 0 ? q.slice(atIdx + 1) : "";
 
-  let sql = `SELECT * FROM actors WHERE suspended = 0 AND (`;
+  // Cached remote accounts are only exposed to authenticated callers (same
+  // policy as lookup / :id / :id/statuses).
+  const me = await getAuthenticatedActor(request, env.DB);
+  let sql = `SELECT * FROM actors WHERE suspended = 0${me ? "" : " AND is_local = 1"} AND (`;
   const params: string[] = [];
   if (userPart && domainPart) {
     sql += `(username LIKE ? ESCAPE '\\' AND domain LIKE ? ESCAPE '\\') OR `;

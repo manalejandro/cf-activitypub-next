@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server";
-import type { D1Database } from "@cloudflare/workers-types";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, setActorApproval } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { requireAdmin } from "@/lib/admin-auth";
+import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
+import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
@@ -72,6 +72,13 @@ export async function PATCH(
   }
   const approved = body.action === "approve";
 
+  // Unapproving removes the account's access (getAuthenticatedActor rejects
+  // pending accounts): never the reserved actor, yourself or the last admin.
+  if (!approved) {
+    const denied = await accountActionGuard(request, env, actor, { removesAccess: true });
+    if (denied) return denied;
+  }
+
   await setActorApproval(env.DB, id, approved);
 
   let emailSent = false;
@@ -119,16 +126,16 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  if (!(await requireAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const { id } = await params;
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
-  if (actor.role === "admin" && (await wouldRemoveLastAdmin(env.DB, id))) {
-    return json({ error: "Cannot delete the last administrator" }, 422);
-  }
+  const denied = await accountActionGuard(request, env, actor, { removesAccess: true });
+  if (denied) return denied;
 
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
@@ -179,13 +186,4 @@ export async function DELETE(
   });
 
   return json({ ok: true });
-}
-
-/** Refuse to demote/delete the instance's last full administrator. */
-async function wouldRemoveLastAdmin(db: D1Database, actorId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM actors WHERE is_local = 1 AND role = 'admin' AND id != ?")
-    .bind(actorId)
-    .first<{ n: number }>();
-  return Number(row?.n ?? 0) === 0;
 }

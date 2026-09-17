@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getPollById, getPollOptions, getPollVotesByActor, createPollVotes } from "@/lib/db";
+import { canViewStatus, getObjectById, getPollById, getPollOptions, getPollVotesByActor, createPollVotes, isAcceptedFollower } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializePoll } from "@/lib/mastodon/serializers";
 
@@ -16,6 +16,11 @@ export async function POST(
 
   const poll = await getPollById(env.DB, id);
   if (!poll) return notFound("Poll not found");
+  // A poll can only be voted while its underlying status is visible.
+  const pollObject = await getObjectById(env.DB, poll.objectId);
+  if (!pollObject) return notFound("Poll not found");
+  const isFollowing = pollObject.actorId === actor.id ? false : await isAcceptedFollower(env.DB, actor.id, pollObject.actorId);
+  if (!canViewStatus(pollObject, actor.id, isFollowing)) return notFound("Poll not found");
 
   if (new Date(poll.expiresAt) < new Date()) {
     return json({ error: "Poll has expired" }, 422);

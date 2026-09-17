@@ -2,6 +2,8 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { countModerationLog, getModerationLog } from "@/lib/moderation/log";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
+import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
 import { resolveLimits } from "@/lib/constants";
 
 /**
@@ -42,11 +44,23 @@ export async function DELETE(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
-    // Authenticated moderators get a 403 (the admin UI shows the section but
-    // writes need a full administrator); anonymous callers get 401.
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const res = await env.DB.prepare("DELETE FROM moderation_log").run();
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "instance",
+    targetId: "moderation_log",
+    action: "log_cleared",
+    reason: "Audit log wiped by an administrator.",
+    confidence: null,
+    model: "admin",
+    details: { removed: res.meta.changes },
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
+  });
   return json({ ok: true, removed: res.meta.changes });
 }

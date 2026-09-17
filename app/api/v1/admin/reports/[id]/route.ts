@@ -4,6 +4,8 @@ import { getReportById, getActorById, getObjectById, getReportNotes } from "@/li
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { requireAdmin } from "@/lib/admin-auth";
+import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -86,6 +88,21 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     env.DB.prepare("DELETE FROM report_notes WHERE report_id = ?").bind(id),
     env.DB.prepare("DELETE FROM reports WHERE id = ?").bind(id),
   ]);
+
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "report",
+    targetId: id,
+    action: "deleted",
+    reason: "Report deleted by an administrator.",
+    confidence: null,
+    model: "admin",
+    details: { target_id: report.target_id },
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
+  });
 
   return json({ id, deleted: true });
 }

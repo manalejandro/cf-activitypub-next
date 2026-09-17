@@ -1,8 +1,7 @@
 import { type NextRequest } from "next/server";
-import type { D1Database } from "@cloudflare/workers-types";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById } from "@/lib/db";
-import { requireFullAdmin } from "@/lib/admin-auth";
+import { countUsableAdmins, getActorById } from "@/lib/db";
+import { getAdminRole } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 
@@ -14,8 +13,9 @@ import { generateId } from "@/lib/activitypub/utils";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  if (!(await requireFullAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
   }
 
   const { id } = await params;
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (current !== "moderator" && current !== "admin") {
     return json({ error: "Account is not a moderator or administrator" }, 422);
   }
-  if (current === "admin" && (await wouldRemoveLastAdmin(env.DB, id))) {
+  if (current === "admin" && (await countUsableAdmins(env.DB, id)) === 0) {
     return json({ error: "Cannot demote the last administrator" }, 422);
   }
   const target = current === "admin" ? "moderator" : "user";
@@ -56,13 +56,4 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
 
   return json({ id, role: target, changed: true });
-}
-
-/** Refuse to demote/delete the instance's last full administrator. */
-async function wouldRemoveLastAdmin(db: D1Database, actorId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM actors WHERE is_local = 1 AND role = 'admin' AND id != ?")
-    .bind(actorId)
-    .first<{ n: number }>();
-  return Number(row?.n ?? 0) === 0;
 }

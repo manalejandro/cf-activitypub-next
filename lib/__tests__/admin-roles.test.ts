@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { LocalActor } from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
+  getAdminRole: vi.fn(),
   requireFullAdmin: vi.fn(),
   getActorById: vi.fn(),
+  countUsableAdmins: vi.fn(),
   recordModeration: vi.fn(),
   run: vi.fn(),
   first: vi.fn(),
@@ -24,8 +26,8 @@ vi.mock("@/lib/cf", () => ({
   notFound: (message = "Not found") =>
     new Response(JSON.stringify({ error: message }), { status: 404, headers: { "Content-Type": "application/json" } }),
 }));
-vi.mock("@/lib/admin-auth", () => ({ requireFullAdmin: mocks.requireFullAdmin }));
-vi.mock("@/lib/db", () => ({ getActorById: mocks.getActorById }));
+vi.mock("@/lib/admin-auth", () => ({ getAdminRole: mocks.getAdminRole, requireFullAdmin: mocks.requireFullAdmin }));
+vi.mock("@/lib/db", () => ({ getActorById: mocks.getActorById, countUsableAdmins: mocks.countUsableAdmins }));
 vi.mock("@/lib/moderation/log", () => ({ recordModeration: mocks.recordModeration }));
 
 type Role = "user" | "moderator" | "admin";
@@ -46,7 +48,9 @@ async function call(route: "promote" | "demote", id = "https://local.example/use
 }
 
 beforeEach(() => {
+  mocks.getAdminRole.mockReset().mockResolvedValue("admin");
   mocks.requireFullAdmin.mockReset().mockResolvedValue(true);
+  mocks.countUsableAdmins.mockReset().mockResolvedValue(1);
   mocks.getActorById.mockReset();
   mocks.recordModeration.mockReset().mockResolvedValue(undefined);
   mocks.run.mockReset().mockResolvedValue({ meta: { changes: 1 } });
@@ -84,9 +88,9 @@ describe("role promotion", () => {
   });
 
   it("requires a full administrator", async () => {
-    mocks.requireFullAdmin.mockResolvedValue(false);
+    mocks.getAdminRole.mockResolvedValue("moderator");
     mocks.getActorById.mockResolvedValue(actor("user"));
-    expect((await call("promote")).status).toBe(401);
+    expect((await call("promote")).status).toBe(403);
   });
 });
 
@@ -98,7 +102,7 @@ describe("role demotion", () => {
     expect(mocks.run).toHaveBeenCalledWith("user", "https://local.example/users/x");
 
     mocks.getActorById.mockResolvedValue(actor("admin"));
-    mocks.first.mockResolvedValue({ n: 1 }); // another admin exists
+    mocks.countUsableAdmins.mockResolvedValue(1); // another admin exists
     result = await call("demote");
     expect(result.body.role).toBe("moderator");
     expect(mocks.run).toHaveBeenCalledWith("moderator", "https://local.example/users/x");
@@ -106,7 +110,7 @@ describe("role demotion", () => {
 
   it("protects the last administrator", async () => {
     mocks.getActorById.mockResolvedValue(actor("admin"));
-    mocks.first.mockResolvedValue({ n: 0 });
+    mocks.countUsableAdmins.mockResolvedValue(0);
     const result = await call("demote");
     expect(result.status).toBe(422);
     expect(result.body.error).toMatch(/last administrator/);

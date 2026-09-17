@@ -68,7 +68,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         source: "user",
         targetType: "instance",
         targetId: host,
-        action: suspended ? "suspend" : "unsuspend",
+        action: suspended ? "suspended" : "unsuspended",
         reason: suspended
           ? "Instance suspended by an administrator."
           : "Instance suspension lifted by an administrator.",
@@ -84,12 +84,40 @@ export async function POST(request: NextRequest): Promise<Response> {
     case "reset": {
       // Clear the DeliveryFailureTracker state so deliveries resume at once.
       await recordInstanceSuccess(env.DB, host);
+      await recordModeration(env, {
+        id: generateId(),
+        source: "user",
+        targetType: "instance",
+        targetId: host,
+        action: "instance_reset",
+        reason: "Instance availability reset by an administrator.",
+        confidence: null,
+        model: "admin",
+        details: {},
+        emailSent: false,
+        emailTo: null,
+        relatedId: null,
+      });
       return json({ ok: true, instance: await getInstance(env.DB, host) });
     }
     case "refresh":
     case "add":
     default: {
       const result = await refreshInstance(env.DB, env.KV, host, { force: true });
+      await recordModeration(env, {
+        id: generateId(),
+        source: "user",
+        targetType: "instance",
+        targetId: host,
+        action: "instance_refresh",
+        reason: "Instance metadata refreshed by an administrator.",
+        confidence: null,
+        model: "admin",
+        details: { reachable: result.ok },
+        emailSent: false,
+        emailTo: null,
+        relatedId: null,
+      });
       return json({
         ok: result.ok,
         reason: result.reason ?? null,

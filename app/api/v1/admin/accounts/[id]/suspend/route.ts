@@ -2,6 +2,9 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { accountActionGuard } from "@/lib/admin/account-guards";
+import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -14,11 +17,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
 
-  try {
-    await env.DB.prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?").bind(id).run();
-  } catch {
-    return json({ error: "Missing suspended column — run migration: npx wrangler d1 execute cf-ap --remote --file=lib/db/migrations/007-admin-columns.sql" }, 500);
-  }
+  const denied = await accountActionGuard(request, env, actor, { removesAccess: true });
+  if (denied) return denied;
+
+  await env.DB
+    .prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?")
+    .bind(id)
+    .run();
+
+  await recordModeration(env, {
+    id: generateId(),
+    source: "user",
+    targetType: "account",
+    targetId: id,
+    action: "suspended",
+    reason: "Account suspended by an administrator.",
+    confidence: null,
+    model: "admin",
+    details: { username: actor.username, domain: actor.domain },
+    emailSent: false,
+    emailTo: null,
+    relatedId: null,
+  });
 
   return json({ id, suspended: true });
 }
