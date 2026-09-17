@@ -254,7 +254,7 @@ export default function AdminAccountsPage() {
                             </button>
                           </>
                         )}
-                        {a.role === "user" && (
+                        {(a.role === "user" || a.role === "moderator") && (
                           <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "promote")}>
                             {isBusy && actionLoading === `${a.id}:promote` ? "..." : t.admin_btn_promote}
                           </button>
