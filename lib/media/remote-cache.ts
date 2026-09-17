@@ -19,6 +19,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { resolveLimits, type InstanceLimits } from "@/lib/constants";
 import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import {
   applyMediaCacheToActorsByUrl,
@@ -60,16 +61,42 @@ export interface MediaCacheBindings {
   KV: MediaCacheKV;
 }
 
-export interface MediaCacheLimits {
+/**
+ * Limits for the cache. Every field is optional so the object can be built in
+ * one place (tests, admin endpoint) — and the `mediaCache*` variants are
+ * accepted too: the cron used to hand this module the raw `resolveLimits()`
+ * object (whose fields are prefixed) and the mismatch silently fell back to the
+ * 10 GiB default, so `MEDIA_CACHE_MAX_BYTES` was never applied.
+ */
+export interface NormalizedMediaCacheLimits {
   enabled: boolean;
   days: number;
   profileDays: number;
   maxBytes: number;
   maxObjectBytes: number;
   fetchBatch: number;
-  /** Maintenance never shrinks the cache below this many entries. */
   minEntries: number;
   userAgents: string[];
+}
+
+export interface MediaCacheLimits {
+  enabled?: boolean;
+  days?: number;
+  profileDays?: number;
+  maxBytes?: number;
+  maxObjectBytes?: number;
+  fetchBatch?: number;
+  /** Maintenance never shrinks the cache below this many entries. */
+  minEntries?: number;
+  userAgents?: string[];
+  mediaCacheEnabled?: boolean;
+  mediaCacheDays?: number;
+  mediaCacheProfileDays?: number;
+  mediaCacheMaxBytes?: number;
+  mediaCacheMaxObjectBytes?: number;
+  mediaCacheFetchBatch?: number;
+  mediaCacheMinEntries?: number;
+  mediaCacheUserAgents?: string[];
 }
 
 /**
@@ -78,15 +105,43 @@ export interface MediaCacheLimits {
  * never "disabled" — an undefined `enabled` previously fell into the disabled
  * branch and deleted the whole pending queue every tick.
  */
-function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
-  const days = Number(limits.days);
-  const profileDays = Number(limits.profileDays);
-  const maxBytes = Number(limits.maxBytes);
-  const maxObjectBytes = Number(limits.maxObjectBytes);
-  const fetchBatch = Number(limits.fetchBatch);
-  const minEntries = Number(limits.minEntries);
+/**
+ * Build the cache limits from the instance limits object. The cron used to pass
+ * `resolveLimits()` straight in and every field was read with the wrong name,
+ * so the defaults (10 GiB!) silently won. Keep the mapping in a typechecked
+ * file so a rename is a compile error, not a runtime fallback.
+ */
+export function mediaCacheLimitsFrom(limits: InstanceLimits): MediaCacheLimits {
   return {
-    enabled: limits.enabled !== false,
+    enabled: limits.mediaCacheEnabled,
+    days: limits.mediaCacheDays,
+    profileDays: limits.mediaCacheProfileDays,
+    maxBytes: limits.mediaCacheMaxBytes,
+    maxObjectBytes: limits.mediaCacheMaxObjectBytes,
+    fetchBatch: limits.mediaCacheFetchBatch,
+    minEntries: limits.mediaCacheMinEntries,
+    userAgents: limits.mediaCacheUserAgents,
+  };
+}
+
+/** Convenience for callers that only hold the raw env. */
+export function resolveMediaCacheLimits(env: Record<string, unknown>): MediaCacheLimits {
+  return mediaCacheLimitsFrom(resolveLimits(env));
+}
+
+function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
+  const pick = <T>(plain: T | undefined, prefixed: T | undefined): T | undefined =>
+    plain !== undefined ? plain : prefixed;
+  const days = Number(pick(limits.days, limits.mediaCacheDays));
+  const profileDays = Number(pick(limits.profileDays, limits.mediaCacheProfileDays));
+  const maxBytes = Number(pick(limits.maxBytes, limits.mediaCacheMaxBytes));
+  const maxObjectBytes = Number(pick(limits.maxObjectBytes, limits.mediaCacheMaxObjectBytes));
+  const fetchBatch = Number(pick(limits.fetchBatch, limits.mediaCacheFetchBatch));
+  const minEntries = Number(pick(limits.minEntries, limits.mediaCacheMinEntries));
+  const userAgents = pick(limits.userAgents, limits.mediaCacheUserAgents);
+  const enabled = pick(limits.enabled, limits.mediaCacheEnabled);
+  return {
+    enabled: enabled !== false,
     days: days > 0 ? days : 7,
     profileDays: profileDays > 0 ? profileDays : 30,
     maxBytes: maxBytes > 0 ? maxBytes : 10 * 1024 * 1024 * 1024,
@@ -94,8 +149,8 @@ function normalizeLimits(limits: MediaCacheLimits): MediaCacheLimits {
     fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
     // 0 is a valid floor (used by tests); anything invalid falls back to 20.
     minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
-    userAgents: Array.isArray(limits.userAgents) && limits.userAgents.length > 0
-      ? limits.userAgents
+    userAgents: Array.isArray(userAgents) && userAgents.length > 0
+      ? userAgents
       : ["cf-activitypub/0.1.0 (+https://localhost; federated media cache)"],
   };
 }
@@ -191,7 +246,7 @@ async function readBoundedBytes(res: Response, max: number): Promise<Uint8Array 
 /** Download one queued resource and point its target at the cached copy. */
 async function cacheOne(
   bindings: MediaCacheBindings,
-  limits: MediaCacheLimits,
+  limits: NormalizedMediaCacheLimits,
   job: MediaCacheEntry,
   baseUrl: string
 ): Promise<boolean> {
@@ -448,10 +503,10 @@ export async function maintainMediaCache(
   bindings: MediaCacheBindings,
   rawLimits: MediaCacheLimits,
   batch = 50
-): Promise<{ expired: number; evicted: number }> {
+): Promise<{ expired: number; evicted: number; bytesBefore: number; bytesAfter: number; overBudget: boolean }> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) {
-    return { expired: 0, evicted: 0 };
+    return { expired: 0, evicted: 0, bytesBefore: 0, bytesAfter: 0, overBudget: false };
   }
 
   const stats = await getMediaCacheStats(bindings.DB);
@@ -469,6 +524,7 @@ export async function maintainMediaCache(
   // MEDIA_CACHE_MAX_BYTES) is actually drained instead of being outpaced by
   // new fetches. The floor still guarantees the cache is never wiped.
   const expiredBytes = expirable.reduce((sum, e) => sum + Number(e.size ?? 0), 0);
+  const bytesBefore = stats.bytes;
   let bytes = Math.max(0, stats.bytes - expiredBytes);
   let evicted = 0;
   let evictedBytes = 0;
@@ -492,7 +548,15 @@ export async function maintainMediaCache(
     if (freed === 0) break;
   }
 
-  return { expired: expirable.length, evicted };
+  if (bytes > budget) {
+    // Surface it: the cache is over its limit and this run could not finish
+    // the job (deadline, delete failures…). The next tick continues.
+    console.error(
+      `[media-cache] still over budget after maintenance: ${Math.round(bytes / 1048576)} MB > ${Math.round(budget / 1048576)} MB (evicted ${evicted}, expired ${expirable.length})`
+    );
+  }
+
+  return { expired: expirable.length, evicted, bytesBefore, bytesAfter: bytes, overBudget: bytes > budget };
 }
 
 /** Remove every cached object and row (admin purge). */
@@ -505,4 +569,35 @@ export async function purgeMediaCache(bindings: MediaCacheBindings): Promise<num
     removed += entries.length;
   }
   return removed;
+}
+
+/**
+ * Run maintenance repeatedly (bounded by `maxMs`) until the cache is under
+ * `MEDIA_CACHE_MAX_BYTES`. Used by the admin endpoint to enforce a lowered
+ * limit immediately and to surface per-iteration results when debugging.
+ */
+export async function enforceMediaCacheBudget(
+  bindings: MediaCacheBindings,
+  rawLimits: MediaCacheLimits,
+  maxMs = 60_000
+): Promise<{ iterations: number; expired: number; evicted: number; bytesBefore: number; bytesAfter: number }> {
+  const limits = normalizeLimits(rawLimits);
+  const statsBefore = await getMediaCacheStats(bindings.DB);
+  let expired = 0;
+  let evicted = 0;
+  let iterations = 0;
+  const deadline = Date.now() + maxMs;
+  let bytes = statsBefore.bytes;
+
+  while (bytes > limits.maxBytes && Date.now() < deadline) {
+    const result = await maintainMediaCache(bindings, limits);
+    iterations += 1;
+    expired += result.expired;
+    evicted += result.evicted;
+    bytes = (await getMediaCacheStats(bindings.DB)).bytes;
+    // No progress (nothing deletable / deletes failing): stop instead of looping.
+    if (result.evicted === 0 && result.expired === 0) break;
+  }
+
+  return { iterations, expired, evicted, bytesBefore: statsBefore.bytes, bytesAfter: bytes };
 }

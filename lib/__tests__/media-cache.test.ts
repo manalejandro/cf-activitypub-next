@@ -14,13 +14,16 @@ vi.mock("@/lib/activitypub/federation", () => federation);
 
 import {
   backfillMediaCache,
+  enforceMediaCacheBudget,
   maintainMediaCache,
+  mediaCacheLimitsFrom,
   processMediaCacheQueue,
   purgeMediaCache,
   type MediaCacheBindings,
   type MediaCacheLimits,
 } from "@/lib/media/remote-cache";
 import { enqueueMediaCache, getMediaCacheStats } from "@/lib/db";
+import { resolveLimits } from "@/lib/constants";
 
 class D1Adapter {
   private sql = new DatabaseSync(":memory:");
@@ -255,6 +258,50 @@ describe("remote media cache", () => {
     expect(result.evicted).toBe(1);
     const left = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
     expect(left?.n).toBe(1);
+  });
+
+  it("honors the configured byte budget when handed the raw instance limits", async () => {
+    // Production regression: the cron passed resolveLimits() (whose fields are
+    // mediaCache*) straight in. The unrecognized names fell back to the 10 GiB
+    // default, so MEDIA_CACHE_MAX_BYTES was silently ignored and the cache
+    // hovered at 10 GiB instead of draining to the configured limit.
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    await enqueueMediaCache(db, "https://remote.example/other.png", "attachment", ATTACH);
+    await db.prepare("UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = ?, fetched_at = datetime('now', ?)")
+      .bind(600_000, "-2 days").run();
+    await db.prepare("UPDATE media_cache SET fetched_at = datetime('now', '-1 day') WHERE source_url = ?")
+      .bind("https://remote.example/other.png").run();
+
+    const instanceLimits = resolveLimits({ MEDIA_CACHE_MAX_BYTES: "700000", MEDIA_CACHE_MIN_ENTRIES: "0" });
+    const result = await maintainMediaCache(bindings, instanceLimits);
+    expect(result.evicted).toBe(1);
+    expect(result.overBudget).toBe(false);
+    expect((await getMediaCacheStats(db)).bytes).toBeLessThanOrEqual(700_000);
+  });
+
+  it("maps the prefixed instance limits to the cache limit names", () => {
+    const limits = mediaCacheLimitsFrom(resolveLimits({ MEDIA_CACHE_MAX_BYTES: "12345", MEDIA_CACHE_DAYS: "3" }));
+    expect(limits.maxBytes).toBe(12345);
+    expect(limits.days).toBe(3);
+  });
+
+  it("enforceMediaCacheBudget drains a lowered limit and reports what it did", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    await enqueueMediaCache(db, "https://remote.example/other.png", "attachment", ATTACH);
+    await db.prepare("UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = ?, fetched_at = datetime('now', ?)")
+      .bind(600_000, "-2 days").run();
+    await db.prepare("UPDATE media_cache SET fetched_at = datetime('now', '-1 day') WHERE source_url = ?")
+      .bind("https://remote.example/other.png").run();
+
+    const result = await enforceMediaCacheBudget(
+      bindings,
+      resolveLimits({ MEDIA_CACHE_MAX_BYTES: "700000", MEDIA_CACHE_MIN_ENTRIES: "0" }),
+      5_000
+    );
+    expect(result.evicted).toBe(1);
+    expect(result.bytesBefore).toBe(1_200_000);
+    expect(result.bytesAfter).toBeLessThanOrEqual(700_000);
+    expect(result.bytesAfter).toBe((await getMediaCacheStats(db)).bytes);
   });
 
   it("backfills existing attachments and avatars, then serves them from the cache", async () => {

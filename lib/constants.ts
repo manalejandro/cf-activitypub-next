@@ -230,6 +230,14 @@ function num(env: Record<string, unknown>, name: string, fallback: number): numb
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/** Like `num` but zero is a valid value (e.g. MEDIA_CACHE_MIN_ENTRIES=0). */
+function nonNegativeNum(env: Record<string, unknown>, name: string, fallback: number): number {
+  const raw = env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
 /**
  * Effective limits for a given environment. Reads each limit's homonymous
  * Cloudflare var (e.g. `MAX_STATUS_CHARS`) and falls back to the default.
@@ -280,7 +288,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheMaxBytes: num(env, "MEDIA_CACHE_MAX_BYTES", DEFAULT_LIMITS.mediaCacheMaxBytes),
     mediaCacheMaxObjectBytes: num(env, "MEDIA_CACHE_MAX_OBJECT_BYTES", DEFAULT_LIMITS.mediaCacheMaxObjectBytes),
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
-    mediaCacheMinEntries: num(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
+    mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
