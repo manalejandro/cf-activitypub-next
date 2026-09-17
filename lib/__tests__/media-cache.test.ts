@@ -176,7 +176,6 @@ describe("remote media cache", () => {
     expect(att?.url).toBe(`https://local.example/api/media/${key}`);
     expect(att?.remote_url).toBe(SRC);
     expect(att?.file_size).toBe(image.byteLength);
-    expect(await kv.get("mediacache:bytes")).toBe(String(image.byteLength));
   });
 
   it("caches a remote avatar and exposes the cached URL to serializers", async () => {
@@ -251,7 +250,6 @@ describe("remote media cache", () => {
     await db.prepare("UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = ?, fetched_at = datetime('now', ?)")
       .bind(600_000, "-2 days").run();
     await db.prepare("UPDATE media_cache SET fetched_at = datetime('now', '-1 day') WHERE source_url = ?").bind("https://remote.example/other.png").run();
-    await kv.put("mediacache:bytes", String(1_200_000));
 
     const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 700_000 });
     expect(result.evicted).toBe(1);
@@ -341,7 +339,6 @@ describe("remote media cache", () => {
         "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 600000, fetched_at = datetime('now', ?) WHERE source_url = ?"
       ).bind(`-${ageDays} days`, url).run();
     }
-    await kv.put("mediacache:bytes", String(1_800_000));
 
     // Budget 700 KB but keep at least 2 entries: only the OLDEST is evicted.
     const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 700_000, minEntries: 2 });
@@ -356,7 +353,7 @@ describe("remote media cache", () => {
     ]);
   });
 
-  it("caps eviction per tick so a lowered size shrinks progressively", async () => {
+  it("drains a large overage down to the budget in one tick (FIFO, newest survives)", async () => {
     for (let i = 0; i < 5; i++) {
       const url = `https://remote.example/p${i}.png`;
       await enqueueMediaCache(db, url, "attachment", ATTACH);
@@ -364,13 +361,31 @@ describe("remote media cache", () => {
         "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 600000, fetched_at = datetime('now', ?) WHERE source_url = ?"
       ).bind(`-${5 - i} days`, url).run();
     }
-    await kv.put("mediacache:bytes", String(3_000_000));
 
-    // Only 2 deletions per run, floor of 1: the rest happens on later ticks.
-    const first = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 600_000, minEntries: 1 }, 2);
-    expect(first.evicted).toBe(2);
-    const count = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
-    expect(count?.n).toBe(3);
+    // 3 MB cached against a 600 KB budget: eviction is byte-bounded, so it
+    // deletes the four oldest entries in this tick instead of 50 rows/tick.
+    const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 600_000, minEntries: 1 });
+    expect(result.evicted).toBe(4);
+    const left = await db.prepare("SELECT source_url FROM media_cache WHERE status='ready'").bind().all<{ source_url: string }>();
+    expect(left.results.map((r) => r.source_url)).toEqual(["https://remote.example/p4.png"]);
+  });
+
+  it("does not fetch while the cache is over the byte budget", async () => {
+    // One huge ready entry pushes the cache over the limit…
+    await enqueueMediaCache(db, "https://remote.example/huge.png", "attachment", ATTACH);
+    await db.prepare(
+      "UPDATE media_cache SET status='ready', r2_key = 'cache/media/huge.png', size = 5_000_000, fetched_at = datetime('now') WHERE source_url = ?"
+    ).bind("https://remote.example/huge.png").run();
+    // …and a fresh ingest is queued meanwhile.
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockClear();
+
+    const limits = { ...LIMITS, maxBytes: 1_000_000 };
+    expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(0);
+    expect(await backfillMediaCache(bindings, limits)).toBe(0);
+    expect(federation.safeFetch).not.toHaveBeenCalled();
+    const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
+    expect(row?.status).toBe("pending");
   });
 
   it("never wipes the cache through age-based expiry alone", async () => {

@@ -1020,9 +1020,11 @@ async function executeScheduled(env: Env): Promise<void> {
   try {
     const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
     const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
+    // Enforce the byte budget first: while the cache is over it, maintenance
+    // drains (FIFO) and neither the backfill nor the queue adds new objects.
+    await maintainMediaCache(bindings, limits);
     await backfillMediaCache(bindings, limits, limits.mediaCacheFetchBatch);
     await processMediaCacheQueue(bindings, limits, instanceBaseUrl, limits.mediaCacheFetchBatch);
-    await maintainMediaCache(bindings, limits);
   } catch (err) {
     console.error("[cron] media cache maintenance failed", err);
   }
