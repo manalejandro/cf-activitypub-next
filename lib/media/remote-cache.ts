@@ -106,6 +106,10 @@ const FETCH_TIMEOUT_MS = 15_000;
 // budget. 500 MB/tick drains ~16 GB in ~35 minutes while fetching pauses.
 const EVICT_BYTES_PER_TICK = 500 * 1024 * 1024;
 const EVICT_BATCH = 100;
+// Never let the cron stage run long enough to hold the run lock: eviction
+// stops at the deadline and resumes on the next tick.
+const MAINTENANCE_DEADLINE_MS = 25_000;
+const R2_DELETE_CONCURRENCY = 40;
 // Old content queued by the backfill waits briefly behind fresh ingests (a
 // long delay left the backlog unattended — the queue must keep draining).
 const BACKFILL_DELAY_SECONDS = 300;
@@ -320,11 +324,15 @@ async function deleteEntries(
 ): Promise<number> {
   if (entries.length === 0) return 0;
   let freed = 0;
-  for (const entry of entries) {
-    if (entry.r2_key) {
-      await bindings.R2.delete(entry.r2_key).catch(() => {});
-    }
-    freed += Number(entry.size ?? 0);
+  for (const entry of entries) freed += Number(entry.size ?? 0);
+  // R2 deletes are network calls: run them in parallel chunks. Doing ~700 of
+  // them sequentially pushed the cron stage past the run-lock window.
+  for (let i = 0; i < entries.length; i += R2_DELETE_CONCURRENCY) {
+    await Promise.allSettled(
+      entries.slice(i, i + R2_DELETE_CONCURRENCY).map((entry) =>
+        entry.r2_key ? bindings.R2.delete(entry.r2_key) : Promise.resolve()
+      )
+    );
   }
   await deleteMediaCacheRows(bindings.DB, entries.map((e) => e.id));
   return freed;
@@ -465,12 +473,13 @@ export async function maintainMediaCache(
   let evicted = 0;
   let evictedBytes = 0;
   const budget = Math.max(1, limits.maxBytes);
-  while (bytes > budget && remaining > floor && evictedBytes < EVICT_BYTES_PER_TICK) {
+  const deadline = Date.now() + MAINTENANCE_DEADLINE_MS;
+  while (bytes > budget && remaining > floor && evictedBytes < EVICT_BYTES_PER_TICK && Date.now() < deadline) {
     const oldest = await listOldestMediaCache(bindings.DB, Math.max(1, Math.min(EVICT_BATCH, remaining - floor)));
     if (oldest.length === 0) break;
     const doomed: typeof oldest = [];
     for (const entry of oldest) {
-      if (bytes <= budget || remaining <= floor || evictedBytes >= EVICT_BYTES_PER_TICK) break;
+      if (bytes <= budget || remaining <= floor || evictedBytes >= EVICT_BYTES_PER_TICK || Date.now() >= deadline) break;
       doomed.push(entry);
       const size = Number(entry.size ?? 0);
       bytes -= size;
