@@ -94,7 +94,10 @@ CREATE TABLE IF NOT EXISTS objects (
   -- 1 while remote media (attachments or the author's avatar) is still being
   -- cached in R2: feeds hide the status until clients can be served without
   -- hitting the origin server. Released (and broadcast) when cached or failed.
-  media_pending   INTEGER NOT NULL DEFAULT 0
+  media_pending   INTEGER NOT NULL DEFAULT 0,
+  -- 1 when content mentions a link (maintained on create/edit). The moderation
+  -- patrol used `content LIKE '%http%'`, which reads every post body.
+  has_link        INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
@@ -109,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_objects_url         ON objects(url);
 CREATE INDEX IF NOT EXISTS idx_objects_card_id     ON objects(card_id);
 -- Finding statuses held by the media cache (partial: pending rows are rare).
 CREATE INDEX IF NOT EXISTS idx_objects_media_pending ON objects(media_pending) WHERE media_pending = 1;
+-- Index-only link-post counts per actor (Guardian behaviour review).
+CREATE INDEX IF NOT EXISTS idx_objects_actor_type_link ON objects(actor_id, type, has_link);
 -- Covering index for the instance-statistics COUNT(DISTINCT actor_id) /
 -- COUNT(*) queries (nodeinfo, /api/v1/instance): the published-range scans
 -- stay index-only instead of reading the whole table.

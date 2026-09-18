@@ -78,6 +78,7 @@ const { env } = getCloudflareContext();
 - **Don't `ORDER BY` a computed expression over a big table.** Denormalize and maintain on writes:
   - `objects.engagement` = favourites + reblogs + replies (kept in sync in every counter mutation; index `idx_objects_trending`).
   - `actors.last_status_at` = max public status date (maintained by `createObject`, `deleteObject`, remote upsert and the scheduled-publish cron; index `idx_actors_discoverable_active`; directory ranks by it).
+  - `objects.has_link` = content mentions a link (maintained by `createObject`/`updateObject`; index `idx_objects_actor_type_link`). The Guardian patrol counted link-posts with `content LIKE '%http%'`, which read every body; the count is now index-only. Existing rows are backfilled by `upgrade-schema.mjs` (marker `backfill:objects_has_link`).
   - `idx_objects_url` backs the Like/Announce URL fallback.
 - **Correlated `MAX(published)` subqueries per row are a smell** — precompute on `actors` instead.
 - **D1 bind limit ≈ 100.** For long `IN` lists pass a JSON array and use `json_each(?)`.

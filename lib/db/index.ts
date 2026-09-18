@@ -1818,6 +1818,11 @@ function extractObjectTags(raw: string | undefined | null): string[] {
   return [];
 }
 
+/** LIKE '%http%' is ASCII-case-insensitive; mirror that with a lowercase scan. */
+function hasLink(content: string | null | undefined): number {
+  return content && content.toLowerCase().includes("http") ? 1 : 0;
+}
+
 export async function createObject(db: D1Database, obj: Omit<LocalObject, "updatedAt">): Promise<boolean> {
   const statements = [
     db
@@ -1826,8 +1831,8 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
           id, type, actor_id, content, content_warning, sensitive,
           visibility, in_reply_to_id, quote_id, language, url,
           replies_count, reblogs_count, favourites_count, engagement,
-          published, is_local, raw, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          published, is_local, raw, has_link, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         obj.id,
@@ -1848,6 +1853,7 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         obj.published,
         obj.local ? 1 : 0,
         obj.raw,
+        hasLink(obj.content),
         obj.published   // pin updated_at = published so new posts never appear as edited
       ),
     ...extractObjectTags(obj.raw).map((tag) =>
@@ -2290,7 +2296,12 @@ export async function updateObject(
   const setClauses: string[] = [];
   const values: unknown[] = [];
 
-  if ("content" in fields) { setClauses.push("content = ?"); values.push(fields.content ?? null); }
+  if ("content" in fields) {
+    setClauses.push("content = ?");
+    values.push(fields.content ?? null);
+    setClauses.push("has_link = ?");
+    values.push(hasLink(fields.content));
+  }
   if ("contentWarning" in fields) { setClauses.push("content_warning = ?"); values.push(fields.contentWarning ?? null); }
   if ("sensitive" in fields) { setClauses.push("sensitive = ?"); values.push(fields.sensitive ? 1 : 0); }
   if ("language" in fields) { setClauses.push("language = ?"); values.push(fields.language ?? null); }

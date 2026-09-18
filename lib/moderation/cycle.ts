@@ -161,7 +161,7 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
           .bind(id)
           .first<{ c: number }>(),
         env.DB
-          .prepare("SELECT COUNT(*) AS c FROM objects WHERE actor_id = ? AND content LIKE '%http%' AND type = 'Note'")
+          .prepare("SELECT COUNT(*) AS c FROM objects WHERE actor_id = ? AND type = 'Note' AND has_link = 1")
           .bind(id)
           .first<{ c: number }>(),
       ]);

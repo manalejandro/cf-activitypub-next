@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 
-import { createAttachment, createObject, getObjectById } from "@/lib/db";
+import { createAttachment, createObject, getObjectById, updateObject } from "@/lib/db";
 
 class D1Adapter {
   private sql = new DatabaseSync(":memory:");
@@ -80,6 +80,24 @@ beforeEach(async () => {
 });
 
 describe("idempotent remote object ingestion", () => {
+  it("maintains the link-post flag on create and edit (Guardian count)", async () => {
+    await createObject(db, objectDoc("no links here"));
+    const noLink = await db.prepare("SELECT has_link FROM objects WHERE id = ?").bind(OBJ).first<{ has_link: number }>();
+    expect(noLink?.has_link).toBe(0);
+
+    // Editing the content recomputes it (the patrol counts via the index).
+    await updateObject(db, OBJ, { content: '<p>see https://example.com</p>' });
+    const withLink = await db.prepare("SELECT has_link FROM objects WHERE id = ?").bind(OBJ).first<{ has_link: number }>();
+    expect(withLink?.has_link).toBe(1);
+  });
+
+  it("marks a post whose content contains an uppercase link (LIKE semantics)", async () => {
+    const obj = { ...objectDoc("<p>HTTP://EXAMPLE.COM</p>") };
+    await createObject(db, obj);
+    const row = await db.prepare("SELECT has_link FROM objects WHERE id = ?").bind(OBJ).first<{ has_link: number }>();
+    expect(row?.has_link).toBe(1);
+  });
+
   it("returns true on the first insert and false on a concurrent duplicate", async () => {
     expect(await createObject(db, objectDoc("first"))).toBe(true);
     // A second delivery (shared inbox + user inbox, retry…) must not throw.
