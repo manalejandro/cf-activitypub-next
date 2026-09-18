@@ -4007,21 +4007,33 @@ export async function listOrphanMediaCache(
   db: D1Database,
   limit = 50
 ): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+  // Every probe hits a single indexed column (target_type drives the branch):
+  // an `OR` over two columns without matching indexes used to full-scan
+  // `attachments` per media-cache row and blew D1's CPU budget.
   const rows = await db
     .prepare(
       `SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
-       WHERE mc.created_at < datetime('now', '-5 minutes')
-         AND (
-           (mc.target_type = 'attachment' AND NOT EXISTS (
-              SELECT 1 FROM attachments a WHERE a.remote_url = mc.source_url OR a.url = mc.source_url))
-           OR (mc.target_type IN ('avatar', 'header') AND NOT EXISTS (
-              SELECT 1 FROM actors ac WHERE ac.avatar_url = mc.source_url OR ac.header_url = mc.source_url))
-           OR (mc.target_type = 'card'
-               AND mc.created_at < datetime('now', '-1 hour')
-               AND NOT EXISTS (
-                 SELECT 1 FROM preview_cards pc JOIN objects o ON o.card_id = pc.id
-                 WHERE pc.image_url = mc.source_url))
-         )
+       WHERE mc.target_type = 'attachment'
+         AND mc.created_at < datetime('now', '-5 minutes')
+         AND NOT EXISTS (SELECT 1 FROM attachments a WHERE a.remote_url = mc.source_url)
+         AND NOT EXISTS (SELECT 1 FROM attachments a WHERE a.url = mc.source_url)
+       UNION ALL
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       WHERE mc.target_type = 'avatar'
+         AND mc.created_at < datetime('now', '-5 minutes')
+         AND NOT EXISTS (SELECT 1 FROM actors ac WHERE ac.avatar_url = mc.source_url)
+       UNION ALL
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       WHERE mc.target_type = 'header'
+         AND mc.created_at < datetime('now', '-5 minutes')
+         AND NOT EXISTS (SELECT 1 FROM actors ac WHERE ac.header_url = mc.source_url)
+       UNION ALL
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       WHERE mc.target_type = 'card'
+         AND mc.created_at < datetime('now', '-1 hour')
+         AND NOT EXISTS (
+           SELECT 1 FROM preview_cards pc JOIN objects o ON o.card_id = pc.id
+           WHERE pc.image_url = mc.source_url)
        LIMIT ?`
     )
     .bind(limit)
@@ -4439,15 +4451,6 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
            LIMIT ?)`
       )
       .bind(limit),
-    db
-      .prepare(
-        `UPDATE attachments SET url = remote_url WHERE rowid IN (
-           SELECT a.rowid FROM attachments a
-           WHERE a.url LIKE '%/api/media/cache/media/%' AND a.remote_url IS NOT NULL AND a.url <> a.remote_url
-             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.url)
-           LIMIT ?)`
-      )
-      .bind(limit),
   ];
 
   // Cards are recent: skip the (expensive) objects scan on instances where no
@@ -4483,7 +4486,35 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
   }
 
   const results = await db.batch(statements);
-  return results.reduce((sum, r) => sum + Number(r.meta?.changes ?? 0), 0);
+  let repaired = results.reduce((sum, r) => sum + Number(r.meta?.changes ?? 0), 0);
+
+  // The attachment pass cannot be indexed (`url LIKE '%/api/media/cache/%'`),
+  // so walk the table in rowid windows: each window scans a bounded slice and
+  // probes the indexed `media_cache.cached_url`. The cursor lives in
+  // instance_settings so the pass resumes across cron ticks; when the last
+  // window also finds nothing, the whole repair is done.
+  const cursor = Number(await getInstanceSetting(db, "media_cache_refs_repair_cursor") ?? 0) || 0;
+  const maxRow = Number(
+    (await db.prepare("SELECT COALESCE(MAX(rowid), 0) AS max FROM attachments").bind().first<{ max: number }>())?.max ?? 0
+  );
+  if (cursor < maxRow) {
+    const next = Math.min(cursor + 20_000, maxRow);
+    const res = await db
+      .prepare(
+        `UPDATE attachments SET url = remote_url
+         WHERE rowid > ? AND rowid <= ?
+           AND url LIKE '%/api/media/cache/media/%' AND remote_url IS NOT NULL AND url <> remote_url
+           AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = attachments.url)`
+      )
+      .bind(cursor, next)
+      .run();
+    repaired += res.meta?.changes ?? 0;
+    await setInstanceSetting(db, "media_cache_refs_repair_cursor", String(next));
+    return repaired;
+  }
+
+  if (repaired === 0) await setInstanceSetting(db, "media_cache_refs_repaired", "1");
+  return repaired;
 }
 
 /** Drop queued rows when the cache is disabled (keeps metadata from piling up). */

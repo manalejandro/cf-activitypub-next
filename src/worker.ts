@@ -27,7 +27,7 @@ import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPub
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -1133,8 +1133,11 @@ async function executeScheduled(env: Env): Promise<void> {
         const throttled = await env.KV.get("cron:repair:media-refs").catch(() => null);
         if (!throttled) {
           await env.KV.put("cron:repair:media-refs", "1", { expirationTtl: 600 }).catch(() => {});
-          const repaired = await repairMediaCacheReferences(env.DB, 200);
-          if (repaired === 0) await setInstanceSetting(env.DB, "media_cache_refs_repaired", "1");
+          // The repair walks `attachments` in rowid windows and sets the
+          // `media_cache_refs_repaired` marker itself once every window has
+          // been scanned. The worker must not set it early: a window finding
+          // nothing does not mean the whole table is done.
+          await repairMediaCacheReferences(env.DB, 200);
         }
       }
     } catch (err) {

@@ -182,6 +182,9 @@ CREATE INDEX IF NOT EXISTS idx_attachments_object ON attachments(object_id);
 -- Restoring the origin URL when a cached copy is evicted/purged.
 CREATE INDEX IF NOT EXISTS idx_attachments_remote_url ON attachments(remote_url);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attachments_object_url ON attachments(object_id, url);
+-- Orphan-cache reconciliation probes `attachments.url` directly; without this
+-- the media-cache sweep fell back to a full scan per entry (D1 CPU limits).
+CREATE INDEX IF NOT EXISTS idx_attachments_url ON attachments(url);
 
 -- ─────────────────────────────────────────
 -- Activities
