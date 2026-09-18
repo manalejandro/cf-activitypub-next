@@ -37,6 +37,28 @@ export interface TurnstileVerifyOptions {
   idempotencyKey?: string;
 }
 
+let warnedMissingSecret = false;
+
+/**
+ * Enforce the captcha for a user-facing flow. When `TURNSTILE_SECRET` is not
+ * configured (local dev, self-host without Turnstile) the check is skipped so
+ * auth still works, but that is logged — never treat "no secret" as verified.
+ * With a secret configured a missing/invalid token always fails. Callers must
+ * reject the request when `success` is false.
+ */
+export async function enforceTurnstilePolicy(
+  options: TurnstileVerifyOptions & { secret: string | undefined | null; token?: string | null }
+): Promise<TurnstileVerifyResult & { skipped?: boolean }> {
+  if (!options.secret) {
+    if (!warnedMissingSecret) {
+      warnedMissingSecret = true;
+      console.warn("[turnstile] TURNSTILE_SECRET is not configured: captcha checks are disabled");
+    }
+    return { success: true, skipped: true };
+  }
+  return verifyTurnstileToken(options.token, options);
+}
+
 export async function verifyTurnstileToken(
   token: string | null | undefined,
   options: TurnstileVerifyOptions

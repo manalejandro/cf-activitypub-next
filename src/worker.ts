@@ -875,7 +875,9 @@ async function executeScheduled(env: Env): Promise<void> {
   const setStage = async (name: string) => {
     await env.KV
       .put("cron:lock", JSON.stringify({ startedAt: new Date(runStartedAt).toISOString(), stage: name }), {
-        expirationTtl: 90,
+        // Long enough that a slow (media-cache) run never overlaps with the
+        // next tick's D1-heavy work.
+        expirationTtl: 180,
       })
       .catch(() => {});
   };
@@ -1100,34 +1102,43 @@ async function executeScheduled(env: Env): Promise<void> {
     const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
     const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
     const mediaLimits = mediaCacheLimitsFrom(limits);
-    // Enforce the byte budget first: while the cache is over it, maintenance
-    // drains (FIFO) and neither the backfill nor the queue adds new objects.
-    // Each step is isolated so a failure in one does not skip the others.
+    // Order matters: the time-sensitive work runs first. A slow/optional step
+    // at the end can never delay the queue drain, the release of held statuses
+    // or the maintenance (a huge table scan in the repair used to eat the
+    // whole stage and the queue appeared stalled for minutes).
+    //
+    // 1) Byte budget + orphan cleanup (FIFO eviction) before new fetches.
     try {
       await maintainMediaCache(bindings, mediaLimits);
     } catch (err) {
       console.error("[cron] media cache maintenance failed", err);
     }
-    // One-shot repair (marker-guarded): references left dead by the old
-    // eviction code, which deleted the R2 copy without pointing them back at
-    // the origin. Runs in bounded batches until a full pass fixes nothing.
+    // 2) Drain the queue (fresh media first) so held statuses can be released.
     try {
-      if (!(await getInstanceSetting(env.DB, "media_cache_refs_repaired"))) {
-        const repaired = await repairMediaCacheReferences(env.DB, 200);
-        if (repaired === 0) await setInstanceSetting(env.DB, "media_cache_refs_repaired", "1");
-      }
+      await processMediaCacheQueue(bindings, mediaLimits, instanceBaseUrl, mediaLimits.fetchBatch);
     } catch (err) {
-      console.error("[cron] media cache reference repair failed", err);
+      console.error("[cron] media cache fetch failed", err);
     }
+    // 3) Optional backlog: only meaningful once the queue above is empty.
     try {
       await backfillMediaCache(bindings, mediaLimits, mediaLimits.fetchBatch);
     } catch (err) {
       console.error("[cron] media cache backfill failed", err);
     }
+    // 4) One-shot repair (marker-guarded, throttled): references left dead by
+    // the old eviction code. The attachment scan is expensive, so it runs at
+    // most every 10 minutes until a pass fixes nothing.
     try {
-      await processMediaCacheQueue(bindings, mediaLimits, instanceBaseUrl, mediaLimits.fetchBatch);
+      if (!(await getInstanceSetting(env.DB, "media_cache_refs_repaired"))) {
+        const throttled = await env.KV.get("cron:repair:media-refs").catch(() => null);
+        if (!throttled) {
+          await env.KV.put("cron:repair:media-refs", "1", { expirationTtl: 600 }).catch(() => {});
+          const repaired = await repairMediaCacheReferences(env.DB, 200);
+          if (repaired === 0) await setInstanceSetting(env.DB, "media_cache_refs_repaired", "1");
+        }
+      }
     } catch (err) {
-      console.error("[cron] media cache fetch failed", err);
+      console.error("[cron] media cache reference repair failed", err);
     }
     // Release statuses whose remote media is now in R2 (or permanently failed)
     // and announce them: they were hidden from feeds while uncached. With the

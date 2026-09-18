@@ -33,6 +33,7 @@ import {
   listMediaCacheKeys,
   listMediaCacheQueue,
   listOldestMediaCache,
+  listOrphanMediaCache,
   listPreviewCardsMissingImageCache,
   markMediaCacheFailed,
   markMediaCacheReady,
@@ -461,10 +462,10 @@ export async function maintainMediaCache(
   bindings: MediaCacheBindings,
   rawLimits: MediaCacheLimits,
   batch = 50
-): Promise<{ expired: number; evicted: number; bytesBefore: number; bytesAfter: number; overBudget: boolean }> {
+): Promise<{ expired: number; evicted: number; orphaned: number; bytesBefore: number; bytesAfter: number; overBudget: boolean }> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) {
-    return { expired: 0, evicted: 0, bytesBefore: 0, bytesAfter: 0, overBudget: false };
+    return { expired: 0, evicted: 0, orphaned: 0, bytesBefore: 0, bytesAfter: 0, overBudget: false };
   }
 
   const stats = await getMediaCacheStats(bindings.DB);
@@ -506,6 +507,16 @@ export async function maintainMediaCache(
     if (freed === 0) break;
   }
 
+  // 3) Drop entries whose owner is gone: the status/attachment was deleted
+  // (cascade), the avatar was replaced, or the account is gone. The avatar of
+  // a live account is never touched — it only dies with the actor row.
+  let orphaned = 0;
+  try {
+    const orphans = await listOrphanMediaCache(bindings.DB, batch);
+    await deleteEntries(bindings, orphans);
+    orphaned = orphans.length;
+  } catch { /* best-effort */ }
+
   if (bytes > budget && evicted === 0 && expirable.length === 0) {
     // No progress: the cache is over its limit and this run could not delete
     // anything (floor reached, list failures, R2/D1 deletes failing…). While
@@ -515,7 +526,7 @@ export async function maintainMediaCache(
     );
   }
 
-  return { expired: expirable.length, evicted, bytesBefore, bytesAfter: bytes, overBudget: bytes > budget };
+  return { expired: expirable.length, evicted, orphaned, bytesBefore, bytesAfter: bytes, overBudget: bytes > budget };
 }
 
 /** Remove every cached object and row (admin purge). */
@@ -539,11 +550,12 @@ export async function enforceMediaCacheBudget(
   bindings: MediaCacheBindings,
   rawLimits: MediaCacheLimits,
   maxMs = 60_000
-): Promise<{ iterations: number; expired: number; evicted: number; bytesBefore: number; bytesAfter: number }> {
+): Promise<{ iterations: number; expired: number; evicted: number; orphaned: number; bytesBefore: number; bytesAfter: number }> {
   const limits = normalizeLimits(rawLimits);
   const statsBefore = await getMediaCacheStats(bindings.DB);
   let expired = 0;
   let evicted = 0;
+  let orphaned = 0;
   let iterations = 0;
   const deadline = Date.now() + maxMs;
   let bytes = statsBefore.bytes;
@@ -553,10 +565,11 @@ export async function enforceMediaCacheBudget(
     iterations += 1;
     expired += result.expired;
     evicted += result.evicted;
+    orphaned += result.orphaned;
     bytes = (await getMediaCacheStats(bindings.DB)).bytes;
     // No progress (nothing deletable / deletes failing): stop instead of looping.
     if (result.evicted === 0 && result.expired === 0) break;
   }
 
-  return { iterations, expired, evicted, bytesBefore: statsBefore.bytes, bytesAfter: bytes };
+  return { iterations, expired, evicted, orphaned, bytesBefore: statsBefore.bytes, bytesAfter: bytes };
 }

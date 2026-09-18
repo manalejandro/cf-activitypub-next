@@ -14,7 +14,7 @@ import {
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { actorIRI, generateId } from "@/lib/activitypub/utils";
 import { hashPassword, generateSecureToken } from "@/lib/auth";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { sendVerificationEmail } from "@/lib/email";
 import { evaluateRegistration } from "@/lib/moderation/ai";
 import { rejectAccount, approveAccount, GUARDIAN_MODEL } from "@/lib/moderation/actions";
@@ -84,21 +84,24 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, error_code: "register_error_password_short" }, 422);
   }
 
-  // If a Turnstile token is provided (web form), verify it.
-  // API clients (Mastodon apps) that don't send a Turnstile token skip this check.
-  const webRegistration = Boolean(turnstileToken);
-  if (webRegistration) {
-    const remoteIp = request.headers.get("CF-Connecting-IP") ?? undefined;
-    const valid = await verifyTurnstileToken(turnstileToken, {
-      secret: env.TURNSTILE_SECRET,
-      remoteIp,
-      expectedHostname: domain,
-      expectedAction: "register",
-    });
-    if (!valid.success) {
-      return json({ error: "Security check failed. Please try again.", error_code: "turnstile_error" }, 422);
-    }
+  // Account creation is a browser-only flow (Mastodon apps authenticate
+  // existing accounts, they don't register them), so the captcha is mandatory
+  // whenever the instance has one configured. Trusting a token only when the
+  // client bothered to send it was a trivial bypass: omitting
+  // `cf-turnstile-response` skipped the check entirely.
+  const turnstile = await enforceTurnstilePolicy({
+    secret: env.TURNSTILE_SECRET,
+    token: turnstileToken,
+    remoteIp: request.headers.get("CF-Connecting-IP") ?? undefined,
+    expectedHostname: new URL(getBaseUrl(env)).hostname,
+    expectedAction: "register",
+  });
+  if (!turnstile.success) {
+    return json({ error: "Security check failed. Please try again.", error_code: "turnstile_error" }, 422);
   }
+  // A verified captcha means the web flow: the account must confirm its email
+  // before the API token is usable (never auto-verified).
+  const webRegistration = !turnstile.skipped;
 
   const existing = await getActorByEmail(env.DB, email);
   if (existing) {

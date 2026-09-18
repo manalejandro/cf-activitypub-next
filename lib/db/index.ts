@@ -3997,6 +3997,38 @@ export async function applyMediaCacheToPreviewCardsByUrl(
   ]);
 }
 
+/**
+ * Cache entries whose owner is gone: a deleted status (attachments cascade
+ * away), a deleted/replaced actor avatar, or an unlinked preview card. Avatars
+ * of live accounts are never touched. A small grace keeps ingest races and
+ * in-flight card crawls safe.
+ */
+export async function listOrphanMediaCache(
+  db: D1Database,
+  limit = 50
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       WHERE mc.created_at < datetime('now', '-5 minutes')
+         AND (
+           (mc.target_type = 'attachment' AND NOT EXISTS (
+              SELECT 1 FROM attachments a WHERE a.remote_url = mc.source_url OR a.url = mc.source_url))
+           OR (mc.target_type IN ('avatar', 'header') AND NOT EXISTS (
+              SELECT 1 FROM actors ac WHERE ac.avatar_url = mc.source_url OR ac.header_url = mc.source_url))
+           OR (mc.target_type = 'card'
+               AND mc.created_at < datetime('now', '-1 hour')
+               AND NOT EXISTS (
+                 SELECT 1 FROM preview_cards pc JOIN objects o ON o.card_id = pc.id
+                 WHERE pc.image_url = mc.source_url))
+         )
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+  return rows.results ?? [];
+}
+
 /** Cards whose image was never cached (media cache backfill). */
 export async function listPreviewCardsMissingImageCache(
   db: D1Database,
@@ -4019,7 +4051,7 @@ export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): 
     .prepare(
       `DELETE FROM preview_cards WHERE id IN (
          SELECT pc.id FROM preview_cards pc
-         WHERE pc.created_at < datetime('now', '-30 days')
+         WHERE pc.created_at < datetime('now', '-1 hour')
            AND NOT EXISTS (SELECT 1 FROM objects o WHERE o.card_id = pc.id)
          LIMIT ?
        )`

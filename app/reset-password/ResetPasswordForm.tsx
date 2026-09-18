@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
-export default function ResetPasswordForm() {
+export default function ResetPasswordForm({ turnstileSiteKey = "" }: { turnstileSiteKey?: string } = {}) {
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,10 @@ export default function ResetPasswordForm() {
       return;
     }
 
+    if (turnstileSiteKey && !turnstileToken) {
+      setError(t.turnstile_error);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -32,7 +38,7 @@ export default function ResetPasswordForm() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password, "cf-turnstile-response": turnstileToken }),
       });
 
       const data = await res.json() as { error?: string };
@@ -152,10 +158,12 @@ export default function ResetPasswordForm() {
                 />
               </div>
 
+              <TurnstileWidget siteKey={turnstileSiteKey} action="reset_password" onToken={setTurnstileToken} />
+
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={loading}
+                disabled={loading || (Boolean(turnstileSiteKey) && !turnstileToken)}
               >
                 {loading ? t.login_submitting : t.reset_password_submit}
               </button>

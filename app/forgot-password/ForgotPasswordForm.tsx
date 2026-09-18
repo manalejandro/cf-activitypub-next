@@ -7,9 +7,11 @@ import { useRouter } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
 import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
-export default function ForgotPasswordForm() {
+export default function ForgotPasswordForm({ turnstileSiteKey = "" }: { turnstileSiteKey?: string } = {}) {
   const [email, setEmail] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,10 @@ export default function ForgotPasswordForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (turnstileSiteKey && !turnstileToken) {
+      setError(t.turnstile_error);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -32,7 +38,7 @@ export default function ForgotPasswordForm() {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, "cf-turnstile-response": turnstileToken }),
       });
 
       if (!res.ok) {
@@ -109,10 +115,12 @@ export default function ForgotPasswordForm() {
                 />
               </div>
 
+              <TurnstileWidget siteKey={turnstileSiteKey} action="forgot_password" onToken={setTurnstileToken} />
+
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={loading}
+                disabled={loading || (Boolean(turnstileSiteKey) && !turnstileToken)}
               >
                 {loading ? t.login_submitting : t.forgot_password_submit}
               </button>

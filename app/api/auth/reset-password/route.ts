@@ -2,21 +2,26 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
 import { deleteOAuthTokensForActor, getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { getBaseUrl } from "@/lib/cf";
+import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const contentType = request.headers.get("Content-Type") ?? "";
   let token: string;
   let password: string;
+  let turnstileToken: string | null = null;
 
   if (contentType.includes("application/json")) {
-    const body = await request.json() as { token?: string; password?: string };
+    const body = await request.json() as { token?: string; password?: string; "cf-turnstile-response"?: string };
     token = (body.token ?? "").trim();
     password = body.password ?? "";
+    turnstileToken = body["cf-turnstile-response"] ?? null;
   } else {
     const form = await request.formData();
     token = ((form.get("token") as string | null) ?? "").trim();
     password = (form.get("password") as string | null) ?? "";
+    turnstileToken = (form.get("cf-turnstile-response") as string | null) ?? null;
   }
 
   if (!token || !password) {
@@ -29,6 +34,17 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+
+  const turnstile = await enforceTurnstilePolicy({
+    secret: env.TURNSTILE_SECRET,
+    token: turnstileToken,
+    remoteIp: clientIp === "unknown" ? undefined : clientIp,
+    expectedHostname: new URL(getBaseUrl(env)).hostname,
+    expectedAction: "reset_password",
+  });
+  if (!turnstile.success) {
+    return json({ error: "Security check failed. Please try again.", error_code: "turnstile_error" }, 422);
+  }
   const { allowed } = await checkRateLimit(env.KV, `reset:${clientIp}`, 10, 60);
   if (!allowed) {
     return json({ error: "Too many requests. Please try again later." }, 429);

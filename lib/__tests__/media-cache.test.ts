@@ -303,6 +303,47 @@ describe("remote media cache", () => {
     expect((JSON.parse(obj!.card_json) as { image: string }).image).toBe("https://cdn.example/i.jpg");
   });
 
+  it("drops cache entries whose status was deleted but keeps avatars", async () => {
+    const avatarSrc = "https://remote.example/avatar.png";
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    await enqueueMediaCache(db, avatarSrc, "avatar", "https://remote.example/users/fan");
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1, 2, 3]), "image/png"));
+    await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
+    expect(r2.store.size).toBe(2);
+    // Age the entries past the orphan grace window.
+    await db.prepare("UPDATE media_cache SET created_at = datetime('now', '-10 minutes')").bind().run();
+
+    // Deleting the object cascades its attachments away.
+    await db.prepare("DELETE FROM objects WHERE id = 'https://remote.example/objects/1'").bind().run();
+    const result = await maintainMediaCache(bindings, LIMITS);
+    expect(result.orphaned).toBe(1);
+
+    const left = await db.prepare("SELECT source_url FROM media_cache").bind().all<{ source_url: string }>();
+    expect(left.results.map((r) => r.source_url)).toEqual([avatarSrc]);
+    expect(r2.store.size).toBe(1);
+  });
+
+  it("keeps a cached file still referenced by another status", async () => {
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, visibility, is_local)
+       VALUES ('https://remote.example/objects/2', 'Note', 'https://remote.example/users/fan', 'public', 0)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO attachments (id, object_id, type, url, remote_url)
+       VALUES ('att-2', 'https://remote.example/objects/2', 'image', ?, ?)`
+    ).bind(SRC, SRC).run();
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
+    await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
+    await db.prepare("UPDATE media_cache SET created_at = datetime('now', '-10 minutes')").bind().run();
+
+    // Attach rewrite happened for both rows; deleting one object keeps the copy.
+    await db.prepare("DELETE FROM objects WHERE id = 'https://remote.example/objects/1'").bind().run();
+    expect((await maintainMediaCache(bindings, LIMITS)).orphaned).toBe(0);
+    const left = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE source_url = ?").bind(SRC).first<{ n: number }>();
+    expect(left?.n).toBe(1);
+  });
+
   it("repairs dangling references left behind by earlier deletes", async () => {
     const actorId = "https://remote.example/users/fan";
     await db.prepare("UPDATE actors SET avatar_cache_url = 'https://local.example/api/media/cache/media/gone.png' WHERE id = ?")

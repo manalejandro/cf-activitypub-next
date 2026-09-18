@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, getOAuthAppByClientId, createOAuthToken } from "@/lib/db";
+import { getActorByEmail, getOAuthAppByClientId, createOAuthToken, mediaCacheId } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { clampScope } from "@/lib/oauth-scopes";
 
 // POST /oauth/token — standard Mastodon OAuth token endpoint (also used by the
@@ -34,17 +34,25 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "username and password are required", error_code: "login_error_fields_required" }, 400);
     }
 
-    // If a Turnstile token is included (web form login), verify it.
+    // API clients (Mastodon apps) identify with a registered app's
+    // client_id/client_secret; browser logins must pass the captcha whenever
+    // the instance has one configured. Verifying only when a token happened to
+    // be present let a bot skip the challenge by omitting it.
     const turnstileToken = body["cf-turnstile-response"];
-    if (turnstileToken) {
-      const remoteIp = request.headers.get("CF-Connecting-IP") ?? undefined;
-      const valid = await verifyTurnstileToken(turnstileToken, {
+    let apiClient = false;
+    if (client_id && client_secret) {
+      const app = await getOAuthAppByClientId(env.DB, client_id);
+      apiClient = Boolean(app?.clientSecret && app.clientSecret === client_secret);
+    }
+    if (!apiClient) {
+      const turnstile = await enforceTurnstilePolicy({
         secret: env.TURNSTILE_SECRET,
+        token: turnstileToken,
         remoteIp,
         expectedHostname: new URL(getBaseUrl(env)).hostname,
         expectedAction: "login",
       });
-      if (!valid.success) {
+      if (!turnstile.success) {
         return json({ error: "invalid_grant", error_description: "Security check failed. Please try again.", error_code: "turnstile_error" }, 401);
       }
     }
@@ -56,8 +64,15 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const valid = await verifyPassword(password, actor.passwordHash);
     if (!valid) {
+      // Per-account lockout: independent of IP, so rotating proxies can't
+      // mount a credential-stuffing run against one account.
+      const { allowed } = await checkRateLimit(env.KV, `login-fail:${await mediaCacheId(username.toLowerCase())}`, 10, 900);
+      if (!allowed) {
+        return json({ error: "invalid_grant", error_description: "Too many failed attempts. Please try again later.", error_code: "login_error_rate_limited" }, 429);
+      }
       return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
+    await env.KV.delete(`login-fail:${await mediaCacheId(username.toLowerCase())}`).catch(() => {});
 
     // Block login for accounts that registered via the web form but haven't verified their email.
     if (!actor.emailVerified) {

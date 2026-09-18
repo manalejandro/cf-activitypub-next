@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   actorIRI: vi.fn(() => "https://local.example/users/newbie"),
   hashPassword: vi.fn(async () => "hash"),
   generateSecureToken: vi.fn(() => "token123"),
-  verifyTurnstileToken: vi.fn(async () => ({ success: true })),
+  verifyTurnstileToken: vi.fn<(token?: string | null, options?: unknown) => Promise<{ success: boolean }>>(async () => ({ success: true })),
   sendVerificationEmail: vi.fn(async () => {}),
   evaluateRegistration: vi.fn(async () => null),
   rejectAccount: vi.fn(async () => {}),
@@ -61,7 +61,16 @@ vi.mock("@/lib/auth", () => ({
   hashPassword: mocks.hashPassword,
   generateSecureToken: mocks.generateSecureToken,
 }));
-vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken: mocks.verifyTurnstileToken }));
+vi.mock("@/lib/turnstile", () => ({
+  verifyTurnstileToken: mocks.verifyTurnstileToken,
+  // Mirrors the real policy: skip only without a secret, otherwise a token is
+  // mandatory.
+  enforceTurnstilePolicy: async (o: { secret?: string; token?: string | null }) => {
+    if (!o.secret) return { success: true, skipped: true };
+    if (!o.token) return { success: false, errorCodes: ["missing-input-response"] };
+    return mocks.verifyTurnstileToken(o.token, o);
+  },
+}));
 vi.mock("@/lib/email", () => ({ sendVerificationEmail: mocks.sendVerificationEmail }));
 vi.mock("@/lib/moderation/ai", () => ({ evaluateRegistration: mocks.evaluateRegistration }));
 vi.mock("@/lib/moderation/actions", () => ({
@@ -131,19 +140,25 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/accounts", () => {
-  it("never auto-verifies an API registration and sends the confirmation email", async () => {
-    // No cf-turnstile-response: this is how a third-party app (or a bot) registers.
+  it("rejects a tokenless registration when Turnstile is configured", async () => {
+    // The old code verified the captcha only when a token was present, so a bot
+    // could skip the challenge by omitting `cf-turnstile-response`.
+    const { status, body } = await post({ username: "newbie", email: "new@example.com", password: "password123" });
+
+    expect(status).toBe(422);
+    expect(body.error_code).toBe("turnstile_error");
+    expect(mocks.createActor).not.toHaveBeenCalled();
+    expect(mocks.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("allows tokenless registration only when no captcha secret is configured", async () => {
+    mocks.getCloudflareContext.mockReturnValue({
+      env: { DB: fakeDb, KV: {}, EMAIL: {}, FROM_EMAIL: "noreply@local.example", INSTANCE_TITLE: "Test" },
+    });
     const { status, body } = await post({ username: "newbie", email: "new@example.com", password: "password123" });
 
     expect(status).toBe(200);
-    expect(mocks.createActor).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ emailVerified: false })
-    );
-    expect(mocks.createEmailVerification).toHaveBeenCalledTimes(1);
-    expect(mocks.sendVerificationEmail).toHaveBeenCalledTimes(1);
-    // Mastodon-compatible: the token is issued but stays unusable until the
-    // address is confirmed (see getAuthenticatedActor).
+    expect(mocks.verifyTurnstileToken).not.toHaveBeenCalled();
     expect(body.access_token).toBe("token123");
   });
 
@@ -172,7 +187,12 @@ describe("POST /api/v1/accounts", () => {
       isLocal: true,
     });
 
-    const { status, body } = await post({ username: "newbie", email: "a544049483+b1r2@gmail.com", password: "password123" });
+    const { status, body } = await post({
+      username: "newbie",
+      email: "a544049483+b1r2@gmail.com",
+      password: "password123",
+      "cf-turnstile-response": "turnstile-token",
+    });
 
     expect(status).toBe(422);
     expect(body.error_code).toBe("register_error_email_taken");
@@ -183,7 +203,12 @@ describe("POST /api/v1/accounts", () => {
 
   it("returns error codes the web form can translate", async () => {
     mocks.getActorByEmail.mockResolvedValue({ id: "https://local.example/users/taken" });
-    const { status, body } = await post({ username: "newbie", email: "taken@example.com", password: "password123" });
+    const { status, body } = await post({
+      username: "newbie",
+      email: "taken@example.com",
+      password: "password123",
+      "cf-turnstile-response": "turnstile-token",
+    });
     expect(status).toBe(422);
     expect(body.error_code).toBe("register_error_email_taken");
   });
@@ -202,6 +227,7 @@ describe("POST /api/v1/accounts", () => {
       username: "newbie",
       email: "new@example.com",
       password: "password123",
+      "cf-turnstile-response": "turnstile-token",
     });
 
     expect(status).toBe(200);
