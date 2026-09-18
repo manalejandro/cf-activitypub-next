@@ -6,6 +6,7 @@ import {
   getTimelineCache,
   isTimelineCacheFresh,
   mergeTimelineItems,
+  pruneMissingFromWindow,
   setTimelineCache,
 } from "./timeline-cache";
 
@@ -270,7 +271,12 @@ export function useTimelineCache<T extends { id: string }>(
             // authoritative for what still belongs to the feed.
             const merged = optionsRef.current.replaceOnRefetch === true
               ? result.items
-              : mergeTimelineItems(result.items, prev);
+              // Deleted statuses disappear from the server page: without this
+              // reconciliation the merge kept serving them from the cache
+              // forever (auto-deleted posts stayed in the timeline). Only the
+              // re-fetched window is reconciled; later pages and streamed
+              // items newer than the window are preserved.
+              : mergeTimelineItems(result.items, pruneMissingFromWindow(result.items, prev));
             setTimelineCache(key, {
               items: merged,
               hasMore: result.hasMore,

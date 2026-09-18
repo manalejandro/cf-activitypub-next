@@ -171,6 +171,7 @@ const { env } = getCloudflareContext();
 
 - `middleware.ts` must stay Edge-compatible (only `next/server`). A file named `proxy.ts` would run on Node — don't rename it.
 - `src/worker.ts` is wrangler's `main`: wraps OpenNext, exports the DO classes, and adds the queue consumer (incl. DLQ), WebSocket upgrades for `/api/v1/streaming` and `/api/v1/calls/:id/ws`, and cron. Intercept those **before** `openNextDefault.fetch`.
+- **Never reference DOM globals in Workers code** (`status`, `name`, `origin`, `top`, `event`…): with `lib.dom` in tsconfig TypeScript resolves them and `tsc` stays green, but at runtime in a Worker they throw (`ReferenceError`) — a surrounding `try/catch` can swallow it silently (a `status` typo made `broadcastObjectDelete` skip every list channel for months). Either fix, and prefer `obj.visibility`, never bare `status`.
 - Cron phase drifts: `executeScheduled` aligns to the top of the minute; never assume `:00`.
 - `getFollow` does **not** filter by state — use `isAcceptedFollower` for followers-only visibility.
 - Removing local accounts must clean `oauth_tokens`, `activities` and `moderation_log` (no FKs) and federate a `Delete` tombstone (see `app/api/v1/accounts/delete/route.ts` and the admin DELETE route).

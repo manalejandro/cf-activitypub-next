@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   mergeTimelineItems,
+  pruneMissingFromWindow,
   handleStatusStreamEvent,
   setTimelineCache,
   getTimelineCache,
@@ -34,6 +35,25 @@ describe("mergeTimelineItems", () => {
 
   it("keeps insertion order for items without a date", () => {
     expect(mergeTimelineItems([s("x"), s("y")]).map((x) => x.id)).toEqual(["x", "y"]);
+  });
+});
+
+describe("pruneMissingFromWindow", () => {
+  it("drops cached items the server no longer returns inside the fetched window", () => {
+    const fetched = [s("new", "2026-01-01T12:00:00Z"), s("old", "2026-01-01T09:00:00Z")];
+    const cached = [s("new", "2026-01-01T12:00:00Z"), s("deleted", "2026-01-01T10:00:00Z"), s("old", "2026-01-01T09:00:00Z")];
+    expect(pruneMissingFromWindow(fetched, cached).map((i) => i.id)).toEqual(["new", "old"]);
+  });
+
+  it("keeps streamed items newer than the window and older cached pages", () => {
+    const fetched = [s("new", "2026-01-01T12:00:00Z"), s("old", "2026-01-01T09:00:00Z")];
+    const cached = [s("streamed", "2026-01-01T12:30:00Z"), s("page2", "2026-01-01T08:00:00Z")];
+    expect(pruneMissingFromWindow(fetched, cached).map((i) => i.id)).toEqual(["streamed", "page2"]);
+  });
+
+  it("never prunes from an empty (failed/empty) page", () => {
+    const cached = [s("x", "2026-01-01T12:00:00Z")];
+    expect(pruneMissingFromWindow([], cached)).toBe(cached);
   });
 });
 

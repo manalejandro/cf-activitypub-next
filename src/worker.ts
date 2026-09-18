@@ -23,11 +23,10 @@ import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
-import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusRefresh } from "../lib/streaming/broadcast";
+import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
-import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -900,12 +899,17 @@ async function executeScheduled(env: Env): Promise<void> {
   for (const actor of actors.results) {
     const cutoff = new Date(Date.now() - actor.auto_delete_after * 1000).toISOString();
 
+    // Every status type the API exposes (Notes, polls/Questions, events…) is
+    // auto-deleted; the old `type = 'Note'` filter left polls and other
+    // objects behind forever.
     const objects = await env.DB
       .prepare(
-        "SELECT id, visibility FROM objects WHERE actor_id = ? AND published < ? AND is_local = 1 AND type = 'Note'"
+        `SELECT id, visibility, raw FROM objects
+         WHERE actor_id = ? AND published < ? AND is_local = 1
+           AND type IN (${PUBLIC_STATUS_TYPE_SQL})`
       )
       .bind(actor.id, cutoff)
-      .all<{ id: string; visibility: string }>();
+      .all<{ id: string; visibility: string; raw: string | null }>();
 
     if (objects.results.length === 0) continue;
 
@@ -938,31 +942,35 @@ async function executeScheduled(env: Env): Promise<void> {
       }
     }
 
+    // Same delete fan-out as a manual deletion: public channels, the home
+    // feeds of local followers, hashtag timelines and every list containing
+    // the author. The old bespoke fan-out only covered public/home, so
+    // auto-deleted statuses stayed in hashtag and list timelines.
     if (env.TIMELINE_STREAM) {
-      const broadcastTasks: Promise<void>[] = [];
-
+      // Audience computed once per account: two queries instead of 2×N.
+      const [localFollowerRows, listRows] = await Promise.all([
+        env.DB
+          .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+          .bind(actor.id)
+          .all<{ id: string }>(),
+        env.DB
+          .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+          .bind(actor.id)
+          .all<{ list_id: string }>(),
+      ]);
+      const audience = {
+        followers: localFollowerRows.results.map((r) => r.id),
+        lists: listRows.results.map((r) => r.list_id),
+      };
       for (const obj of objects.results) {
-        const encodedStatusId = encodeStatusId(obj.id, true);
-        const isPublic = obj.visibility === "public";
-        broadcastTasks.push(
-          broadcastDelete(env.TIMELINE_STREAM, encodedStatusId, isPublic, true),
-          broadcastHomeDelete(env.TIMELINE_STREAM, localActor.id, encodedStatusId),
-        );
+        await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, {
+          id: obj.id,
+          local: true,
+          visibility: obj.visibility,
+          actorId: actor.id,
+          raw: obj.raw,
+        }, audience);
       }
-
-      const localFollowerRows = await env.DB
-        .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-        .bind(actor.id)
-        .all<{ id: string }>();
-
-      for (const obj of objects.results) {
-        const encodedStatusId = encodeStatusId(obj.id, true);
-        for (const follower of localFollowerRows.results) {
-          broadcastTasks.push(broadcastHomeDelete(env.TIMELINE_STREAM, follower.id, encodedStatusId));
-        }
-      }
-
-      await Promise.allSettled(broadcastTasks);
     }
 
     const ids = objects.results.map((o) => o.id);

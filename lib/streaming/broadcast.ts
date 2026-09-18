@@ -197,7 +197,10 @@ function extractHashtagNames(raw: string | undefined): string[] {
 export async function broadcastObjectDelete(
   ns: DONamespace,
   db: D1DatabaseLike,
-  obj: { id: string; local: boolean; visibility: string; actorId: string; raw?: string | null }
+  obj: { id: string; local: boolean; visibility: string; actorId: string; raw?: string | null },
+  /** Precomputed audience for bulk deletes (auto-delete): avoids two queries
+   *  per object when many statuses of one author are removed in a batch. */
+  audience?: { followers?: string[]; lists?: string[] }
 ): Promise<void> {
   const encodedStatusId = encodeStatusId(obj.id, obj.local);
   const isPublic = obj.visibility === "public";
@@ -206,36 +209,50 @@ export async function broadcastObjectDelete(
   ];
 
   // Local followers' home feeds.
-  try {
-    const followerRows = await db
-      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-      .bind(obj.actorId)
-      .all<{ id: string }>();
-    for (const row of followerRows.results) {
-      tasks.push(broadcastHomeDelete(ns, row.id, encodedStatusId));
+  if (audience?.followers) {
+    for (const followerId of audience.followers) {
+      tasks.push(broadcastHomeDelete(ns, followerId, encodedStatusId));
     }
-  } catch { /* ignore */ }
+  } else {
+    try {
+      const followerRows = await db
+        .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+        .bind(obj.actorId)
+        .all<{ id: string }>();
+      for (const row of followerRows.results) {
+        tasks.push(broadcastHomeDelete(ns, row.id, encodedStatusId));
+      }
+    } catch { /* ignore */ }
+  }
 
   // Hashtag timelines.
   for (const tag of extractHashtagNames(obj.raw ?? undefined)) {
     tasks.push(broadcastToChannel(ns, `hashtag:${tag}`, "delete", encodedStatusId));
   }
 
-  // List timelines containing the author.
-  try {
-    // List timelines only ever show public/unlisted posts (getListTimeline).
-    // Broadcasting private/direct payloads to list channels leaked them to
-    // anyone able to subscribe to a list channel.
-    const visibility = (status as { visibility?: string } | null)?.visibility;
-    if (visibility !== "public" && visibility !== "unlisted") return;
-    const listRows = await db
-      .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
-      .bind(obj.actorId)
-      .all<{ list_id: string }>();
-    for (const row of listRows.results) {
-      tasks.push(broadcastToChannel(ns, `list:${row.list_id}`, "delete", encodedStatusId));
+  // List timelines containing the author. List timelines only ever show
+  // public/unlisted posts (getListTimeline), so private/direct deletions are
+  // not broadcast there. NOTE: this used to read the DOM global `status`
+  // instead of `obj.visibility` — it always threw inside the try/catch, so
+  // lists never received delete events (and the early `return` skipped the
+  // `allSettled` below).
+  if (obj.visibility === "public" || obj.visibility === "unlisted") {
+    if (audience?.lists) {
+      for (const listId of audience.lists) {
+        tasks.push(broadcastToChannel(ns, `list:${listId}`, "delete", encodedStatusId));
+      }
+    } else {
+      try {
+        const listRows = await db
+          .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+          .bind(obj.actorId)
+          .all<{ list_id: string }>();
+        for (const row of listRows.results) {
+          tasks.push(broadcastToChannel(ns, `list:${row.list_id}`, "delete", encodedStatusId));
+        }
+      } catch { /* ignore */ }
     }
-  } catch { /* ignore */ }
+  }
 
   await Promise.allSettled(tasks);
 }
