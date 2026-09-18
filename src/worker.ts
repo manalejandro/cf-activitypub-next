@@ -904,11 +904,15 @@ async function executeScheduled(env: Env): Promise<void> {
     // Every status type the API exposes (Notes, polls/Questions, events…) is
     // auto-deleted; the old `type = 'Note'` filter left polls and other
     // objects behind forever.
+    // Bounded batch: `raw` holds the full AP document, so loading every old
+    // status of a prolific account could exhaust Worker memory. The cron keeps
+    // deleting in the following ticks.
     const objects = await env.DB
       .prepare(
         `SELECT id, visibility, raw, in_reply_to_id FROM objects
          WHERE actor_id = ? AND published < ? AND is_local = 1
-           AND type IN (${PUBLIC_STATUS_TYPE_SQL})`
+           AND type IN (${PUBLIC_STATUS_TYPE_SQL})
+         LIMIT 500`
       )
       .bind(actor.id, cutoff)
       .all<{ id: string; visibility: string; raw: string | null; in_reply_to_id: string | null }>();

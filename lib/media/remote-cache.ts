@@ -173,6 +173,10 @@ const R2_DELETE_CONCURRENCY = 40;
 // Old content queued by the backfill waits briefly behind fresh ingests (a
 // long delay left the backlog unattended — the queue must keep draining).
 const BACKFILL_DELAY_SECONDS = 300;
+// Concurrent downloads/uploads per tick. The old unbounded Promise.all
+// buffered every body in memory (up to MAX_OBJECT_BYTES each) and hammered R2
+// with dozens of simultaneous PUTs — that is what hit the Worker memory limit.
+const FETCH_CONCURRENCY = 8;
 const MAX_ATTEMPTS = 3;
 const RETRY_HOURS = 6;
 
@@ -242,22 +246,52 @@ async function cacheOne(
   let permanent = !fetched.ok && fetched.permanent;
 
   if (fetched.ok) {
-    const bytes = await readBoundedBytes(fetched.response, limits.maxObjectBytes);
-    if (!bytes) {
+    // Stream the body straight into R2 instead of buffering it: the Worker
+    // memory limit (128 MB) was exceeded when 50 parallel downloads each held
+    // a full body (up to 40 MB) plus the copy. Mocks/tests may return a
+    // bodyless Response, so keep a bounded buffered fallback.
+    const contentType = fetched.contentType;
+    const r2Key = `cache/media/${job.id}.${extensionFor(contentType, job.sourceUrl)}`;
+    let size = 0;
+    let upload: Uint8Array | ReadableStream<Uint8Array> | null = null;
+    let oversized = false;
+
+    const body = fetched.response.body;
+    if (body) {
+      const limiter = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          size += chunk.byteLength;
+          if (size > limits.maxObjectBytes) {
+            oversized = true;
+            controller.error(new Error("Body exceeds the size limit"));
+            return;
+          }
+          controller.enqueue(chunk);
+        },
+      });
+      upload = body.pipeThrough(limiter);
+    } else {
+      const bytes = await readBoundedBytes(fetched.response, limits.maxObjectBytes);
+      if (!bytes) oversized = true;
+      else {
+        size = bytes.byteLength;
+        upload = bytes;
+      }
+    }
+
+    if (oversized) {
       permanent = true;
       lastError = "Body exceeds the size limit";
-    } else {
-      const contentType = fetched.contentType;
-      const r2Key = `cache/media/${job.id}.${extensionFor(contentType, job.sourceUrl)}`;
+    } else if (upload) {
       try {
-        await bindings.R2.put(r2Key, bytes, {
+        await bindings.R2.put(r2Key, upload, {
           httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
           customMetadata: { sourceUrl: job.sourceUrl.slice(0, 900) },
         });
         const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
-        await markMediaCacheReady(bindings.DB, job.id, { r2Key, cachedUrl, size: bytes.byteLength, contentType });
+        await markMediaCacheReady(bindings.DB, job.id, { r2Key, cachedUrl, size, contentType });
         // Rewrite every reference to this URL, not just the trigger target.
-        await applyMediaCacheToAttachmentsByUrl(bindings.DB, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
+        await applyMediaCacheToAttachmentsByUrl(bindings.DB, job.sourceUrl, cachedUrl, size, contentType);
         if (job.targetType === "avatar" || job.targetType === "header") {
           await applyMediaCacheToActorsByUrl(bindings.DB, job.targetType, job.sourceUrl, cachedUrl);
         }
@@ -267,8 +301,10 @@ async function cacheOne(
         return true;
       } catch (err) {
         // Storage/bookkeeping failure: count the attempt so the row backs off
-        // instead of being retried on every single tick.
+        // instead of being retried on every single tick. A mid-stream size
+        // violation surfaces here too.
         lastError = `store failed: ${String(err)}`;
+        if (oversized || String(err).includes("size limit")) permanent = true;
       }
     }
   }
@@ -309,10 +345,23 @@ export async function processMediaCacheQueue(
   const stats = await getMediaCacheStats(bindings.DB);
   if (stats.bytes > limits.maxBytes * 2) return 0;
   const jobs = await listMediaCacheQueue(bindings.DB, limit ?? limits.fetchBatch);
-  // Fetch concurrently so the cron stage costs ~one media download instead of
-  // batch × timeout.
-  const results = await Promise.allSettled(jobs.map((job) => cacheOne(bindings, limits, job, baseUrl)));
-  return results.filter((r) => r.status === "fulfilled" && r.value).length;
+  // Bounded concurrency: keeps memory and simultaneous R2 PUTs low while still
+  // making the stage cost ~one download instead of batch × timeout.
+  let cached = 0;
+  const queue = jobs.slice();
+  const workers = Array.from({ length: Math.min(FETCH_CONCURRENCY, queue.length) }, async () => {
+    for (;;) {
+      const job = queue.shift();
+      if (!job) return;
+      try {
+        if (await cacheOne(bindings, limits, job, baseUrl)) cached += 1;
+      } catch (err) {
+        console.error(`[media-cache] Unexpected fetch failure for ${job.sourceUrl}`, err);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return cached;
 }
 
 async function deleteEntries(

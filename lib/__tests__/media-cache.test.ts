@@ -63,8 +63,26 @@ class D1Adapter {
 
 class FakeR2 {
   store = new Map<string, Uint8Array>();
-  async put(key: string, value: Uint8Array) {
-    this.store.set(key, value);
+  async put(key: string, value: Uint8Array | ReadableStream<Uint8Array>) {
+    // The cache streams bodies into R2; tests may also pass plain bytes.
+    if (value && typeof (value as ReadableStream).getReader === "function") {
+      const reader = (value as ReadableStream<Uint8Array>).getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
+        if (!chunk) continue;
+        chunks.push(chunk);
+        total += chunk.byteLength;
+      }
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
+      this.store.set(key, out);
+      return;
+    }
+    this.store.set(key, value as Uint8Array);
   }
   async delete(key: string) {
     this.store.delete(key);
@@ -98,6 +116,21 @@ const LIMITS: MediaCacheLimits = {
   minEntries: 0,
   userAgents: ["bot-agent", "browser-agent"],
 };
+
+function okStreamResponse(chunks: Uint8Array[], contentType: string): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": contentType }),
+    body: stream,
+  } as unknown as Response;
+}
 
 function okResponse(body: Uint8Array, contentType: string): Response {
   return {
@@ -579,6 +612,31 @@ describe("remote media cache", () => {
     expect(federation.safeFetch).not.toHaveBeenCalled();
     const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
     expect(row?.status).toBe("pending");
+  });
+
+  it("streams a download straight into R2 without buffering the whole body", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(
+      okStreamResponse([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])], "image/png")
+    );
+
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+    const [key] = [...r2.store.keys()];
+    expect(r2.store.get(key)?.byteLength).toBe(5);
+    expect((await getMediaCacheStats(db)).bytes).toBe(5);
+  });
+
+  it("rejects an oversized streamed body and gives up (no retry loop)", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(
+      okStreamResponse([new Uint8Array(600_000), new Uint8Array(600_000)], "image/png")
+    );
+
+    const limits = { ...LIMITS, maxObjectBytes: 500_000 };
+    expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(0);
+    expect(r2.store.size).toBe(0);
+    const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
+    expect(row?.status).toBe("failed");
   });
 
   it("treats an ISO-8601 backoff timestamp as due (mixed date formats)", async () => {
