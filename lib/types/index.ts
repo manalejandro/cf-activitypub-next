@@ -269,6 +269,8 @@ export interface LocalObject {
   cardId?: string | null;
   /** Serialized card snapshot served with the status (JSON). */
   cardJson?: string | null;
+  /** True while remote media (attachments/author avatar) is not yet in R2. */
+  mediaPending?: boolean;
 }
 
 export interface LocalFollow {

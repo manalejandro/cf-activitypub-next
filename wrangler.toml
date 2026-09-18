@@ -45,6 +45,10 @@ MEDIA_CACHE_FETCH_BATCH = "50"
 # Maintenance never shrinks the cache below this many entries (FIFO eviction:
 # the oldest are replaced first when a limit is reached).
 MEDIA_CACHE_MIN_ENTRIES = "20"
+# Remote statuses are held out of timelines while their media is cached. If the
+# cache is degraded/behind, release them after this many minutes anyway (0 =
+# never force-release) so nothing stays hidden forever.
+MEDIA_CACHE_MAX_HOLD_MINUTES = "30"
 # Link previews (Mastodon PreviewCard): the first external link of a status is
 # crawled by the cron with the same user agents as the media cache. oEmbed is
 # tried first, then OpenGraph/Twitter Card/JSON-LD. Cards are refreshed after

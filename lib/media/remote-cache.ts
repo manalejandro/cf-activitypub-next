@@ -300,9 +300,13 @@ export async function processMediaCacheQueue(
     // the cache is re-enabled. (Deleting here used to wipe the queue silently.)
     return 0;
   }
-  // Never grow past the byte budget: while over it, only maintenance runs.
+  // Rolling window: maintenance (FIFO eviction) runs before this stage every
+  // tick, so fresh media always enters and the oldest leaves. Pausing at
+  // `>= maxBytes` used to stall the queue forever at the (normal) steady state
+  // where the cache sits at its cap — new statuses never got their media.
+  // Only a runaway overage (eviction behind) pauses fetching.
   const stats = await getMediaCacheStats(bindings.DB);
-  if (stats.bytes >= limits.maxBytes) return 0;
+  if (stats.bytes > limits.maxBytes * 2) return 0;
   const jobs = await listMediaCacheQueue(bindings.DB, limit ?? limits.fetchBatch);
   // Fetch concurrently so the cron stage costs ~one media download instead of
   // batch × timeout.
@@ -350,9 +354,10 @@ export async function backfillMediaCache(
 ): Promise<number> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) return 0;
-  // Don't queue more work while the cache is over its byte budget.
+  // Backfill is optional work: while over budget, only fresh media (and
+  // maintenance) get the tick.
   const cacheStats = await getMediaCacheStats(bindings.DB);
-  if (cacheStats.bytes >= limits.maxBytes) return 0;
+  if (cacheStats.bytes > limits.maxBytes) return 0;
   let queued = 0;
 
   // Heal references that were left on the origin before the URL-based

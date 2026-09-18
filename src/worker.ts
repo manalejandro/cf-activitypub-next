@@ -23,12 +23,13 @@ import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
-import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus, broadcastStatusRefresh } from "../lib/streaming/broadcast";
+import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
+import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
@@ -810,6 +811,46 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
   return { published: publishedCount, failed: failedCount };
 }
 
+/** Instance hostname (own links/canonical URLs) or null when unset. */
+function instanceDomain(env: Env): string | null {
+  try {
+    const instanceUrl = (env as unknown as Record<string, string>).INSTANCE_URL;
+    return instanceUrl ? new URL(instanceUrl).hostname : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load and serialize a status for a streaming payload, including everything a
+ * client needs to replace its copy (attachments, emojis, poll, quote). Used by
+ * the link-preview card broadcast and the media-pending release sweep.
+ */
+async function serializeObjectForStream(
+  env: Env,
+  objectId: string,
+  domain: string
+): Promise<{ status: ReturnType<typeof serializeStatus>; authorId: string; isLocal: boolean } | null> {
+  const object = await getObjectById(env.DB, objectId);
+  if (!object) return null;
+  const author = await getActorById(env.DB, object.actorId);
+  if (!author) return null;
+  const [attachments, emojis, poll, quoteObject] = await Promise.all([
+    getAttachmentsByObjectId(env.DB, objectId),
+    getAllCustomEmojis(env.DB),
+    getPollByObjectId(env.DB, objectId),
+    object.quoteId ? getObjectById(env.DB, object.quoteId) : Promise.resolve(null),
+  ]);
+  const pollOptions = poll ? await getPollOptions(env.DB, poll.id) : [];
+  const status = serializeStatus(object, author, domain, {
+    attachments,
+    emojis,
+    poll: poll ? serializePoll(poll, pollOptions, false, []) : null,
+    quote: await serializeQuote(env.DB, quoteObject, domain),
+  });
+  return { status, authorId: author.id, isLocal: author.isLocal };
+}
+
 async function executeScheduled(env: Env): Promise<void> {
   // Cloudflare cron triggers keep the phase they had at deploy time: a
   // `* * * * *` cron created at 2:51:53 keeps firing at :53 every minute and
@@ -1040,26 +1081,11 @@ async function executeScheduled(env: Env): Promise<void> {
       // refreshed payload so timelines show the preview without a reload.
       onAttached: async (objectId) => {
         if (!env.TIMELINE_STREAM) return;
-        const object = await getObjectById(env.DB, objectId);
-        if (!object) return;
-        const author = await getActorById(env.DB, object.actorId);
-        if (!author) return;
-        const [attachments, emojis, poll] = await Promise.all([
-          getAttachmentsByObjectId(env.DB, objectId),
-          getAllCustomEmojis(env.DB),
-          getPollByObjectId(env.DB, objectId),
-        ]);
-        // Include the poll: the update replaces the client's copy, and a poll
-        // status that also has a link would otherwise lose its options.
-        const pollOptions = poll ? await getPollOptions(env.DB, poll.id) : [];
-        const serialized = serializeStatus(object, author, ownDomain ?? "", {
-          attachments,
-          emojis,
-          poll: poll ? serializePoll(poll, pollOptions, false, []) : null,
-        });
-        await broadcastStatusRefresh(env.DB, env.TIMELINE_STREAM, serialized, {
-          id: author.id,
-          isLocal: author.isLocal,
+        const payload = await serializeObjectForStream(env, objectId, ownDomain ?? "");
+        if (!payload) return;
+        await broadcastStatusRefresh(env.DB, env.TIMELINE_STREAM, payload.status, {
+          id: payload.authorId,
+          isLocal: payload.isLocal,
         });
       },
     });
@@ -1102,6 +1128,36 @@ async function executeScheduled(env: Env): Promise<void> {
       await processMediaCacheQueue(bindings, mediaLimits, instanceBaseUrl, mediaLimits.fetchBatch);
     } catch (err) {
       console.error("[cron] media cache fetch failed", err);
+    }
+    // Release statuses whose remote media is now in R2 (or permanently failed)
+    // and announce them: they were hidden from feeds while uncached. With the
+    // cache disabled there is nothing to wait for, so clear any leftover flag.
+    try {
+      if (!mediaLimits.enabled) {
+        await clearMediaPending(env.DB, 200);
+      } else {
+        const released = await releaseMediaPendingObjects(env.DB, 50);
+        // Safety valve: never hide a status forever when the cache is behind.
+        const maxHold = limits.mediaCacheMaxHoldMinutes;
+        const stale = maxHold > 0 ? await releaseStaleMediaPendingObjects(env.DB, maxHold, 20) : [];
+        if (stale.length > 0) {
+          console.warn(`[media-cache] released ${stale.length} status(es) held longer than ${maxHold} min`);
+          released.push(...stale);
+        }
+        if (env.TIMELINE_STREAM && released.length > 0) {
+          const domain = instanceDomain(env) ?? "";
+          for (const objectId of released) {
+            const payload = await serializeObjectForStream(env, objectId, domain);
+            if (!payload) continue;
+            await broadcastStatusCreatedToAudience(env.DB, env.TIMELINE_STREAM, payload.status, {
+              id: payload.authorId,
+              isLocal: payload.isLocal,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[cron] media pending release failed", err);
     }
   } catch (err) {
     console.error("[cron] media cache stage failed", err);

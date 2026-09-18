@@ -106,8 +106,12 @@ const LIMITS: LinkPreviewLimits = {
   days: 14,
   maxBytes: 2 * 1024 * 1024,
   userAgents: ["bot-agent", "browser-agent"],
-  mediaCacheEnabled: true,
+  // Most tests exercise parsing/linking without the R2 wait; the caching
+  // tests below enable it explicitly.
+  mediaCacheEnabled: false,
 };
+
+const CACHED_LIMITS: LinkPreviewLimits = { ...LIMITS, mediaCacheEnabled: true };
 
 const MEDIA_LIMITS: MediaCacheLimits = {
   enabled: true,
@@ -238,13 +242,6 @@ describe("link preview queue", () => {
 
     const queued = await db.prepare("SELECT COUNT(*) AS n FROM link_preview_queue").bind().first<{ n: number }>();
     expect(queued?.n).toBe(0);
-
-    // The preview image goes through the media cache (same client/UA).
-    const cached = await db
-      .prepare("SELECT target_type FROM media_cache WHERE source_url = ?")
-      .bind("https://cdn.example/cover.jpg")
-      .first<{ target_type: string }>();
-    expect(cached?.target_type).toBe("card");
   });
 
   it("notifies the caller when a card is attached so clients can be refreshed", async () => {
@@ -343,17 +340,37 @@ describe("link preview queue", () => {
     expect(card?.html).not.toContain("<script");
   });
 
-  it("serves the preview image from R2 once the media cache processes it", async () => {
+  it("waits for the card image and only then attaches it with the R2 URL", async () => {
     await seedObject("https://remote.example/objects/1", '<a href="https://news.example/story">a</a>');
     await enqueueLinkPreview(db, "https://remote.example/objects/1");
     federation.safeFetch.mockResolvedValueOnce(
       okHtml('<meta property="og:title" content="Cached"><meta property="og:image" content="https://cdn.example/cover.jpg">')
     );
-    await processLinkPreviewQueue(bindings, LIMITS, "local.example");
 
+    // The image is queued but not cached yet: the card must not be attached
+    // (clients would load the origin URL).
+    const attached: string[] = [];
+    expect(
+      await processLinkPreviewQueue(bindings, CACHED_LIMITS, "local.example", {
+        onAttached: (id) => { attached.push(id); },
+      })
+    ).toBe(0);
+    const pending = await db
+      .prepare("SELECT card_id FROM objects WHERE id = ?")
+      .bind("https://remote.example/objects/1")
+      .first<{ card_id: string | null }>();
+    expect(pending?.card_id).toBeNull();
+    const queued = await db.prepare("SELECT COUNT(*) AS n FROM link_preview_queue").bind().first<{ n: number }>();
+    expect(queued?.n).toBe(1);
+
+    // Cache the image (same fetch client), then the next tick attaches it.
     federation.safeFetch.mockResolvedValueOnce(okResponse(new Uint8Array([1, 2, 3]), "image/jpeg"));
     const mediaBindings = { DB: db, R2: r2 as never, KV: kv as never };
     expect(await processMediaCacheQueue(mediaBindings, MEDIA_LIMITS, BASE)).toBe(1);
+    expect(await processLinkPreviewQueue(bindings, CACHED_LIMITS, "local.example", {
+      onAttached: (id) => { attached.push(id); },
+    })).toBe(1);
+    expect(attached).toEqual(["https://remote.example/objects/1"]);
 
     const card = await db
       .prepare("SELECT image_cache_url FROM preview_cards WHERE source_url = ?")
@@ -365,6 +382,25 @@ describe("link preview queue", () => {
       .bind("https://remote.example/objects/1")
       .first<{ card_json: string }>();
     expect((JSON.parse(obj!.card_json) as { image: string }).image).toBe(card?.image_cache_url);
+  });
+
+  it("attaches the card with the origin image when caching failed permanently", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://news.example/story">a</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockResolvedValueOnce(
+      okHtml('<meta property="og:title" content="Broken image"><meta property="og:image" content="https://cdn.example/cover.jpg">')
+    );
+    expect(await processLinkPreviewQueue(bindings, CACHED_LIMITS, "local.example")).toBe(0);
+    await db
+      .prepare("UPDATE media_cache SET status = 'failed', attempts = 3, next_attempt_at = datetime('now', '+7 days') WHERE source_url = ?")
+      .bind("https://cdn.example/cover.jpg").run();
+
+    expect(await processLinkPreviewQueue(bindings, CACHED_LIMITS, "local.example")).toBe(1);
+    const obj = await db
+      .prepare("SELECT card_json FROM objects WHERE id = ?")
+      .bind("https://remote.example/objects/1")
+      .first<{ card_json: string }>();
+    expect((JSON.parse(obj!.card_json) as { image: string }).image).toBe("https://cdn.example/cover.jpg");
   });
 });
 

@@ -340,11 +340,14 @@ export function serializeStatus(
       supportsCalls: opts.authorSupportsCalls,
       moved: opts.authorMoved ?? undefined,
     }),
-    media_attachments: (opts.attachments ?? []).map(serializeAttachment),
+    // Held statuses (remote media still being cached) never expose origin
+    // URLs: without media they are only serialized in non-feed contexts, where
+    // they are filled in by the release broadcast once cached.
+    media_attachments: obj.mediaPending ? [] : (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
-    card: parsePreviewCard(obj.cardJson),
+    card: obj.mediaPending ? null : parsePreviewCard(obj.cardJson),
     poll: opts.poll ?? null,
     filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,

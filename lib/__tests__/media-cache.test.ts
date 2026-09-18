@@ -496,6 +496,21 @@ describe("remote media cache", () => {
     expect(row?.status).toBe("pending");
   });
 
+  it("keeps fetching at the byte budget instead of stalling the queue", async () => {
+    // The cache sitting at its cap is the normal steady state (maintenance
+    // evicts the oldest each tick). Pausing at `>= maxBytes` left every new
+    // status waiting forever, so only a runaway overage pauses fetching.
+    await enqueueMediaCache(db, "https://remote.example/old.png", "attachment", ATTACH);
+    await db.prepare(
+      "UPDATE media_cache SET status='ready', r2_key = 'cache/media/old.png', size = 1_500_000, fetched_at = datetime('now') WHERE source_url = ?"
+    ).bind("https://remote.example/old.png").run();
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
+
+    // 1.5 MB > 1 MB budget but under the 2x runaway guard → still fetching.
+    expect(await processMediaCacheQueue(bindings, { ...LIMITS, maxBytes: 1_000_000 }, "https://local.example")).toBe(1);
+  });
+
   it("never wipes the cache through age-based expiry alone", async () => {
     for (let i = 0; i < 4; i++) {
       const url = `https://remote.example/x${i}.png`;

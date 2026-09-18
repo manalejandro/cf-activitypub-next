@@ -610,7 +610,7 @@ export default function ThreadPage() {
   // was fetched (e.g. its link preview card), and edits/deletes must land
   // without a manual reload.
   useTimelineStream("public", (event, payload) => {
-    if (event === "status.update") {
+    if (event === "update" || event === "status.update") {
       try {
         const updated = JSON.parse(payload) as Status;
         const merge = (prev: Status[]): Status[] =>

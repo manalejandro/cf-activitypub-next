@@ -168,6 +168,7 @@ export async function GET(request: NextRequest): Promise<Response> {
          JOIN actors a ON a.id = o.actor_id
          WHERE o.content LIKE ? ESCAPE '\\'
            AND o.visibility IN ('public', 'unlisted')
+           AND o.media_pending = 0
            AND o.published >= ?
            AND a.suspended = 0 AND a.silenced = 0
          ORDER BY o.published DESC

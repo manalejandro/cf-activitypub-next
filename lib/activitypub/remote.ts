@@ -14,7 +14,7 @@ import {
   createPoll,
   getPollByObjectId,
   upsertCustomEmoji,
-  enqueueMediaCache,
+  enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
@@ -615,6 +615,7 @@ async function storeObjectAttachments(
       await enqueueMediaCache(db, att.url, "attachment", att.id || "");
     } catch { /* ignore duplicate/conflict */ }
   }
+  await markObjectMediaPending(db, objectId);
 }
 
 /**

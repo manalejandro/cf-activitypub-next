@@ -27,6 +27,7 @@ import {
   enqueueLinkPreview,
   enqueueMediaCache,
   getAttachmentsByObjectId,
+  getMediaCacheStatusBySourceUrl,
   getObjectById,
   getPreviewCardBySourceUrl,
   linkObjectPreviewCard,
@@ -643,6 +644,12 @@ async function processJob(
     const fetchedMs = Date.parse(existing.fetchedAt ?? "");
     const fresh = Number.isFinite(fetchedMs) && Date.now() - fetchedMs < limits.days * 86_400_000;
     if (existing.status === "ready" && fresh) {
+      // The image must be served from R2: keep waiting (job stays queued,
+      // attempts untouched) instead of emitting the origin URL.
+      if (limits.mediaCacheEnabled && existing.imageUrl && !existing.imageCacheUrl) {
+        const cache = await getMediaCacheStatusBySourceUrl(db, existing.imageUrl);
+        if (cache?.status === "pending") return false;
+      }
       const snapshot = toSnapshot(
         {
           title: existing.title, description: existing.description, type: existing.type,
@@ -737,11 +744,19 @@ async function processJob(
       // Reuses the media-cache fetch client (same user agents); the fast path
       // applies an already-cached copy to the card snapshot immediately.
       await enqueueMediaCache(db, outcome.card.imageUrl, "card", cardId);
+      const cache = await getMediaCacheStatusBySourceUrl(db, outcome.card.imageUrl);
+      if (cache?.status === "pending") {
+        // Wait for R2 (or a permanent failure) before attaching the card: the
+        // job stays queued and no attempt is consumed, so once the image is
+        // ready the card is attached and broadcast with the cached URL.
+        return false;
+      }
     } catch { /* cache is best-effort */ }
   }
 
   const stored = await getPreviewCardBySourceUrl(db, url);
-  const servedImage = stored?.imageCacheUrl ?? stored?.imageUrl ?? outcome.card.imageUrl;
+  const servedImage = stored?.imageCacheUrl
+    ?? (limits.mediaCacheEnabled ? null : stored?.imageUrl ?? outcome.card.imageUrl);
   const snapshot = JSON.stringify(toSnapshot(outcome.card, url, servedImage));
   await linkObjectPreviewCard(db, objectId, cardId, snapshot);
   await updateObjectCardSnapshots(db, cardId, snapshot);

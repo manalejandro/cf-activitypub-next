@@ -153,6 +153,9 @@ export interface InstanceLimits {
   mediaCacheFetchBatch: number;
   mediaCacheMinEntries: number;
   mediaCacheUserAgents: string[];
+  /** Safety valve: held statuses are released after this many minutes even if
+   *  their media is still pending (0 disables the forced release). */
+  mediaCacheMaxHoldMinutes: number;
   linkPreviewEnabled: boolean;
   linkPreviewFetchBatch: number;
   linkPreviewDays: number;
@@ -207,6 +210,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
   mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
+  mediaCacheMaxHoldMinutes: 30,
   linkPreviewEnabled: true,
   linkPreviewFetchBatch: 5,
   linkPreviewDays: 14,
@@ -298,6 +302,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
     mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
+    mediaCacheMaxHoldMinutes: nonNegativeNum(env, "MEDIA_CACHE_MAX_HOLD_MINUTES", DEFAULT_LIMITS.mediaCacheMaxHoldMinutes),
     linkPreviewEnabled: bool(env, "LINK_PREVIEW_ENABLED", DEFAULT_LIMITS.linkPreviewEnabled),
     linkPreviewFetchBatch: num(env, "LINK_PREVIEW_FETCH_BATCH", DEFAULT_LIMITS.linkPreviewFetchBatch),
     linkPreviewDays: num(env, "LINK_PREVIEW_DAYS", DEFAULT_LIMITS.linkPreviewDays),

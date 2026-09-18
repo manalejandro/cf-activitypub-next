@@ -299,29 +299,12 @@ export async function broadcastStatusInteraction(
  * the status was delivered — so clients update without a manual refresh.
  */
 export async function broadcastStatusRefresh(
-  db: { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } },
+  db: AudienceDb,
   ns: DONamespace,
   status: unknown,
   author: { id: string; isLocal: boolean }
 ): Promise<void> {
-  const tasks: Promise<void>[] = [
-    broadcastStatusUpdate(ns, status, author.isLocal),
-    broadcastStatusInteractionToLists(db, ns, author.id, status),
-  ];
-  try {
-    const followers = await db
-      .prepare(
-        `SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id
-         WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1`
-      )
-      .bind(author.id)
-      .all<{ id: string }>();
-    for (const row of followers.results ?? []) {
-      tasks.push(broadcastHomeStatusUpdate(ns, row.id, status));
-    }
-  } catch { /* streaming refresh is best-effort */ }
-  if (author.isLocal) tasks.push(broadcastHomeStatusUpdate(ns, author.id, status));
-  await Promise.allSettled(tasks);
+  await broadcastToAuthorAudience(db, ns, status, author, "status.update");
 }
 
 /**
@@ -332,7 +315,8 @@ export async function broadcastStatusInteractionToLists(
   db: { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } },
   ns: DONamespace,
   authorId: string,
-  status: unknown
+  status: unknown,
+  event: "update" | "status.update" = "status.update"
 ): Promise<void> {
   try {
     // List timelines only ever show public/unlisted posts (getListTimeline).
@@ -346,8 +330,67 @@ export async function broadcastStatusInteractionToLists(
       .all<{ list_id: string }>();
     const payload = JSON.stringify(status);
     const tasks = listRows.results.map((row) =>
-      broadcastToChannel(ns, `list:${row.list_id}`, "status.update", payload)
+      broadcastToChannel(ns, `list:${row.list_id}`, event, payload)
     );
     await Promise.allSettled(tasks);
   } catch { /* ignore */ }
+}
+
+type AudienceDb = { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } };
+
+/** Fan a status out to the author's audience using insert or replace events. */
+async function broadcastToAuthorAudience(
+  db: AudienceDb,
+  ns: DONamespace,
+  status: unknown,
+  author: { id: string; isLocal: boolean },
+  kind: "update" | "status.update"
+): Promise<void> {
+  const tasks: Promise<void>[] = [
+    kind === "update"
+      ? broadcastPublicStatus(ns, status, author.isLocal)
+      : broadcastStatusUpdate(ns, status, author.isLocal),
+    broadcastStatusInteractionToLists(db, ns, author.id, status, kind),
+  ];
+  // Direct messages never go to followers' home feeds.
+  const visibility = (status as { visibility?: string } | null)?.visibility;
+  if (visibility !== "direct") {
+    try {
+      const followers = await db
+        .prepare(
+          `SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id
+           WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1`
+        )
+        .bind(author.id)
+        .all<{ id: string }>();
+      for (const row of followers.results ?? []) {
+        tasks.push(
+          kind === "update"
+            ? broadcastHomeStatus(ns, row.id, status)
+            : broadcastHomeStatusUpdate(ns, row.id, status)
+        );
+      }
+    } catch { /* streaming refresh is best-effort */ }
+  }
+  if (author.isLocal) {
+    tasks.push(
+      kind === "update"
+        ? broadcastHomeStatus(ns, author.id, status)
+        : broadcastHomeStatusUpdate(ns, author.id, status)
+    );
+  }
+  await Promise.allSettled(tasks);
+}
+
+/**
+ * Announce a status that was not in timelines before (it was held while its
+ * remote media was cached): home/public/list clients insert it in place.
+ */
+export async function broadcastStatusCreatedToAudience(
+  db: AudienceDb,
+  ns: DONamespace,
+  status: unknown,
+  author: { id: string; isLocal: boolean }
+): Promise<void> {
+  await broadcastToAuthorAudience(db, ns, status, author, "update");
 }

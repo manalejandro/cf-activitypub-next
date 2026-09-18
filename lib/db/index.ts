@@ -139,6 +139,7 @@ function rowToObject(r: Row): LocalObject {
     raw: r.raw ?? "{}",
     cardId: (r.card_id as string | null) ?? null,
     cardJson: (r.card_json as string | null) ?? null,
+    mediaPending: Boolean(r.media_pending),
   };
 }
 
@@ -1946,6 +1947,8 @@ export async function getPublicTimeline(
   let localFilter = local ? "AND o.is_local = 1" : "";
   if (remote) localFilter = "AND o.is_local = 0";
   const mediaFilter = onlyMedia ? "AND EXISTS (SELECT 1 FROM attachments a WHERE a.object_id = o.id)" : "";
+  // Held until their remote media is cached (clients never hit origins).
+  const pendingFilter = "AND o.media_pending = 0";
   // Silenced (limited) and suspended accounts never appear on public timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
   // Blocked accounts and accounts from a domain-blocked instance are hidden for
@@ -1965,7 +1968,7 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
            AND o.published > ?
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -1977,7 +1980,7 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
            AND o.published < (SELECT published FROM objects WHERE id = ?)
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -1988,7 +1991,7 @@ export async function getPublicTimeline(
   const rows = await db
     .prepare(
       `SELECT o.* FROM objects o
-       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
        ORDER BY o.published DESC LIMIT ?`
     )
     .bind(...blockBinds, limit)
@@ -2020,6 +2023,7 @@ export async function getHomeTimeline(
     SELECT o.* FROM objects o
     WHERE ${actorClause}
       AND ${visibilityClause}
+      AND o.media_pending = 0
       AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
       AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
@@ -2123,6 +2127,7 @@ export async function getListTimeline(
   const branch = (visibility: string) => `
     SELECT o.* FROM objects o INDEXED BY idx_objects_vis_published
     WHERE o.visibility = '${visibility}'
+      AND o.media_pending = 0
       AND o.actor_id IN (SELECT value FROM json_each(?))
       ${publishedClause}
     ORDER BY o.published DESC LIMIT ?`;
@@ -2177,6 +2182,7 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
          WHERE t.tag = ?
            AND o.visibility IN ('public', 'unlisted')
+           AND o.media_pending = 0
            AND t.published >= ?
            AND t.published > ?
            ${stateFilter} ${blockFilter}
@@ -2192,6 +2198,7 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
          WHERE t.tag = ?
            AND o.visibility IN ('public', 'unlisted')
+           AND o.media_pending = 0
            AND t.published >= ?
            AND t.published < (SELECT published FROM objects WHERE id = ?)
            ${stateFilter} ${blockFilter}
@@ -2206,6 +2213,7 @@ export async function getHashtagTimeline(
       `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
        WHERE t.tag = ?
          AND o.visibility IN ('public', 'unlisted')
+         AND o.media_pending = 0
          AND t.published >= ?
          ${stateFilter} ${blockFilter}
        ORDER BY t.published DESC LIMIT ?`
@@ -2242,7 +2250,7 @@ export async function getActorStatuses(
       : "'public', 'unlisted'";
 
   const query = (withPublished: boolean) => {
-    const where = `WHERE actor_id = ? AND visibility IN (${visibilities})`;
+    const where = `WHERE actor_id = ? AND media_pending = 0 AND visibility IN (${visibilities})`;
     if (withPublished) {
       return `SELECT * FROM objects ${where}
               AND published < (SELECT published FROM objects WHERE id = ?)
@@ -2971,7 +2979,7 @@ export async function getActorStatuses_withReplies(
       : "'public', 'unlisted'";
 
   const query = (withPublished: boolean) => {
-    const where = `WHERE actor_id = ? AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
+    const where = `WHERE actor_id = ? AND media_pending = 0 AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
     if (withPublished) {
       return `SELECT * FROM objects ${where}
               AND published < (SELECT published FROM objects WHERE id = ?)
@@ -4090,7 +4098,10 @@ export async function listMediaCacheQueue(db: D1Database, limit: number): Promis
     .prepare(
       `SELECT * FROM media_cache
        WHERE status IN ('pending', 'failed') AND next_attempt_at <= datetime('now')
-       ORDER BY next_attempt_at ASC LIMIT ?`
+       -- Newest first among the due items: a just-ingested status must be
+       -- cached before the older backlog so it can enter the timelines quickly
+       -- (retries keep their original rowid, so they don't jump the queue).
+       ORDER BY rowid DESC LIMIT ?`
     )
     .bind(limit)
     .all<Row>();
@@ -4207,6 +4218,108 @@ export async function listOldestMediaCache(
     .bind(limit)
     .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
   return rows.results ?? [];
+}
+
+/**
+ * Hold a freshly ingested remote status out of feeds while its remote media
+ * (attachments or the author's avatar) is still being cached in R2: clients
+ * must never be sent origin URLs when the media cache is active.
+ */
+export async function markObjectMediaPending(db: D1Database, objectId: string): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE objects SET media_pending = 1 WHERE id = ? AND (
+         EXISTS (SELECT 1 FROM attachments a JOIN media_cache mc ON mc.source_url = a.remote_url
+                 WHERE a.object_id = objects.id AND mc.status = 'pending')
+         OR EXISTS (SELECT 1 FROM actors ac JOIN media_cache mc ON mc.source_url = ac.avatar_url
+                 WHERE ac.id = objects.actor_id AND ac.avatar_cache_url IS NULL AND mc.status = 'pending')
+       )`
+    )
+    .bind(objectId)
+    .run();
+}
+
+/**
+ * Statuses held only by media that is now cached or permanently failed.
+ * Clears `media_pending` and returns the ids so the caller can broadcast them.
+ */
+export async function releaseMediaPendingObjects(db: D1Database, limit = 50): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT o.id FROM objects o
+       WHERE o.media_pending = 1
+         AND NOT EXISTS (SELECT 1 FROM attachments a JOIN media_cache mc ON mc.source_url = a.remote_url
+                         WHERE a.object_id = o.id AND mc.status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM actors ac JOIN media_cache mc ON mc.source_url = ac.avatar_url
+                         WHERE ac.id = o.actor_id AND ac.avatar_cache_url IS NULL AND mc.status = 'pending')
+       ORDER BY o.published DESC LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.id);
+  if (ids.length === 0) return [];
+  await db
+    .prepare("UPDATE objects SET media_pending = 0 WHERE id IN (SELECT value FROM json_each(?))")
+    .bind(JSON.stringify(ids))
+    .run();
+  return ids;
+}
+
+/**
+ * Safety valve: release statuses older than `minutes` even if their media is
+ * still pending, so a degraded/behind cache can never hide content forever
+ * (clients fall back to the origin for those). Uses the publication date, so
+ * on-demand fetches of old statuses (threads/profiles) surface immediately
+ * instead of waiting on the back of the queue.
+ */
+export async function releaseStaleMediaPendingObjects(
+  db: D1Database,
+  minutes: number,
+  limit = 20
+): Promise<string[]> {
+  const window = `-${Math.max(1, Math.floor(minutes))} minutes`;
+  const rows = await db
+    .prepare(
+      `SELECT id FROM objects
+       WHERE media_pending = 1 AND published < datetime('now', ?)
+       ORDER BY published ASC LIMIT ?`
+    )
+    .bind(window, limit)
+    .all<{ id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.id);
+  if (ids.length === 0) return [];
+  await db
+    .prepare("UPDATE objects SET media_pending = 0 WHERE id IN (SELECT value FROM json_each(?))")
+    .bind(JSON.stringify(ids))
+    .run();
+  return ids;
+}
+
+/** Release every held status (the media cache is disabled: no gating). */
+export async function clearMediaPending(db: D1Database, limit = 200): Promise<number> {
+  const result = await db
+    .prepare(
+      "UPDATE objects SET media_pending = 0 WHERE rowid IN (SELECT rowid FROM objects WHERE media_pending = 1 LIMIT ?)"
+    )
+    .bind(limit)
+    .run();
+  return result.meta?.changes ?? 0;
+}
+
+/** Crawl-wait check: is the cached copy of `sourceUrl` still being fetched? */
+export async function getMediaCacheStatusBySourceUrl(
+  db: D1Database,
+  sourceUrl: string
+): Promise<{ status: "pending" | "ready" | "failed"; cachedUrl: string | null } | null> {
+  const row = await db
+    .prepare("SELECT status, cached_url FROM media_cache WHERE source_url = ?")
+    .bind(sourceUrl)
+    .first<{ status: string; cached_url: string | null }>();
+  if (!row) return null;
+  return {
+    status: (row.status as "pending" | "ready" | "failed") ?? "pending",
+    cachedUrl: row.cached_url ?? null,
+  };
 }
 
 /** Delete cache rows by id (the caller removes the R2 objects first). */

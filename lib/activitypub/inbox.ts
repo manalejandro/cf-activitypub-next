@@ -35,6 +35,7 @@ import {
   getLocalInteractedActorIds,
   getAttachmentsByObjectId,
   clearObjectPreviewCard,
+  markObjectMediaPending,
   getLastStatusAtMap,
   isActorBlockedBy,
   getInstanceDomainBlock,
@@ -546,6 +547,10 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     quoteId: extractQuoteId(obj as Record<string, unknown>),
     hasAttachments: storedAttachments.length > 0,
   });
+
+  // Hold the status out of feeds until its remote media (attachments and the
+  // author's avatar) is in R2: clients must not be sent origin URLs.
+  await markObjectMediaPending(ctx.db, obj.id);
 
   // Process tags: mentions (notify) + emoji (cache federated emoji)
   const mentionedLocalIds = new Set<string>();
@@ -2227,4 +2232,5 @@ async function saveObjectAttachments(
       await enqueueMediaCache(db, att.url, "attachment", att.id || "");
     } catch { /* ignore */ }
   }
+  await markObjectMediaPending(db, objectId);
 }

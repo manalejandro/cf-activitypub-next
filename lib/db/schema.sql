@@ -90,7 +90,11 @@ CREATE TABLE IF NOT EXISTS objects (
   -- Link preview card (Mastodon-style): shared `preview_cards` row plus a
   -- snapshot so every timeline/serializer gets the card without joining.
   card_id         TEXT,
-  card_json       TEXT
+  card_json       TEXT,
+  -- 1 while remote media (attachments or the author's avatar) is still being
+  -- cached in R2: feeds hide the status until clients can be served without
+  -- hitting the origin server. Released (and broadcast) when cached or failed.
+  media_pending   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
@@ -103,6 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
 CREATE INDEX IF NOT EXISTS idx_objects_url         ON objects(url);
 -- Reverse lookup for card refreshes/evictions: keep objects.card_json in sync.
 CREATE INDEX IF NOT EXISTS idx_objects_card_id     ON objects(card_id);
+-- Finding statuses held by the media cache (partial: pending rows are rare).
+CREATE INDEX IF NOT EXISTS idx_objects_media_pending ON objects(media_pending) WHERE media_pending = 1;
 -- Covering index for the instance-statistics COUNT(DISTINCT actor_id) /
 -- COUNT(*) queries (nodeinfo, /api/v1/instance): the published-range scans
 -- stay index-only instead of reading the whole table.

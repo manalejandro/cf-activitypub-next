@@ -79,6 +79,7 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'public'
                AND o.type = 'Note'
                AND o.published >= ?
+               AND o.media_pending = 0
                AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
              ORDER BY o.engagement DESC, o.published DESC
              LIMIT ?
@@ -89,6 +90,7 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'unlisted'
                AND o.type = 'Note'
                AND o.published >= ?
+               AND o.media_pending = 0
                AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
              ORDER BY o.engagement DESC, o.published DESC
              LIMIT ?
