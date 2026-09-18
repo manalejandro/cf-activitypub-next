@@ -117,6 +117,12 @@ const LIMITS: MediaCacheLimits = {
   userAgents: ["bot-agent", "browser-agent"],
 };
 
+function okSizedStreamResponse(chunks: Uint8Array[], contentType: string, length: number): Response {
+  const res = okStreamResponse(chunks, contentType);
+  (res.headers as Headers).set("content-length", String(length));
+  return res;
+}
+
 function okStreamResponse(chunks: Uint8Array[], contentType: string): Response {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -614,7 +620,34 @@ describe("remote media cache", () => {
     expect(row?.status).toBe("pending");
   });
 
-  it("streams a download straight into R2 without buffering the whole body", async () => {
+  it("streams a known-length body into R2 through FixedLengthStream", async () => {
+    class FakeFixedLengthStream {
+      readable: ReadableStream<Uint8Array>;
+      writable: WritableStream<Uint8Array>;
+      constructor(public length: number) {
+        const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+        this.readable = readable;
+        this.writable = writable;
+      }
+    }
+    const original = (globalThis as Record<string, unknown>).FixedLengthStream;
+    (globalThis as Record<string, unknown>).FixedLengthStream = FakeFixedLengthStream;
+    try {
+      await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+      federation.safeFetch.mockResolvedValue(
+        okSizedStreamResponse([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])], "image/png", 5)
+      );
+
+      expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+      const [key] = [...r2.store.keys()];
+      expect(r2.store.get(key)?.byteLength).toBe(5);
+      expect((await getMediaCacheStats(db)).bytes).toBe(5);
+    } finally {
+      (globalThis as Record<string, unknown>).FixedLengthStream = original;
+    }
+  });
+
+  it("buffers a chunked (unknown length) body through the capped fallback", async () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(
       okStreamResponse([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])], "image/png")

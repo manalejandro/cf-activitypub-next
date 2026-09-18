@@ -178,6 +178,22 @@ const BACKFILL_DELAY_SECONDS = 300;
 // with dozens of simultaneous PUTs — that is what hit the Worker memory limit.
 const FETCH_CONCURRENCY = 8;
 const MAX_ATTEMPTS = 3;
+// Bodies without content-length (chunked) must be buffered; cap them so the
+// 2x copy of a single body can never approach the Worker memory limit, and
+// serialize them (one at a time) since the streaming path can't be used.
+const UNKNOWN_LENGTH_MAX_BYTES = 16 * 1024 * 1024;
+let bufferedSlot: Promise<void> = Promise.resolve();
+async function withBufferedSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = bufferedSlot;
+  let release!: () => void;
+  bufferedSlot = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 const RETRY_HOURS = 6;
 
 /** Media types worth caching (SVG is excluded: it can execute when opened). */
@@ -257,26 +273,37 @@ async function cacheOne(
     let oversized = false;
 
     const body = fetched.response.body;
-    if (body) {
-      const limiter = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          size += chunk.byteLength;
-          if (size > limits.maxObjectBytes) {
-            oversized = true;
-            controller.error(new Error("Body exceeds the size limit"));
-            return;
-          }
-          controller.enqueue(chunk);
-        },
-      });
-      upload = body.pipeThrough(limiter);
+    const FixedLength = (globalThis as unknown as {
+      FixedLengthStream?: new (length: number) => {
+        readable: ReadableStream<Uint8Array>;
+        writable: WritableStream<Uint8Array>;
+      };
+    }).FixedLengthStream;
+
+    if (body && fetched.declaredLength > 0 && FixedLength) {
+      // R2 rejects streams without a known length ("Provided readable stream
+      // must have a known length"): FixedLengthStream declares the
+      // content-length that `fetchWithUserAgents` already size-checked, and
+      // the runtime streams it through without buffering.
+      const fixed = new FixedLength(fetched.declaredLength);
+      body.pipeTo(fixed.writable).catch(() => {});
+      upload = fixed.readable;
+      size = fetched.declaredLength;
     } else {
-      const bytes = await readBoundedBytes(fetched.response, limits.maxObjectBytes);
-      if (!bytes) oversized = true;
-      else {
+      // Chunked/unknown length: buffer one at a time, capped well below the
+      // memory limit (readBoundedBytes makes a temporary 2x copy).
+      await withBufferedSlot(async () => {
+        const bytes = await readBoundedBytes(
+          fetched.response,
+          Math.min(limits.maxObjectBytes, UNKNOWN_LENGTH_MAX_BYTES)
+        );
+        if (!bytes) {
+          oversized = true;
+          return;
+        }
         size = bytes.byteLength;
         upload = bytes;
-      }
+      });
     }
 
     if (oversized) {
