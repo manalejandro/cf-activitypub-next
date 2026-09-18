@@ -581,6 +581,18 @@ describe("remote media cache", () => {
     expect(row?.status).toBe("pending");
   });
 
+  it("treats an ISO-8601 backoff timestamp as due (mixed date formats)", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    // markMediaCacheFailed writes ISO-8601 while enqueue writes SQLite format;
+    // comparing the raw strings made same-day backoffs wait until tomorrow.
+    await db.prepare("UPDATE media_cache SET next_attempt_at = ? WHERE source_url = ?")
+      .bind(new Date(Date.now() - 60_000).toISOString(), SRC)
+      .run();
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
+
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+  });
+
   it("keeps fetching at the byte budget instead of stalling the queue", async () => {
     // The cache sitting at its cap is the normal steady state (maintenance
     // evicts the oldest each tick). Pausing at `>= maxBytes` left every new

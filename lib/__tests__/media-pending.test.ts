@@ -193,8 +193,10 @@ describe("media-pending gating", () => {
     // Freshly published: still held.
     expect(await releaseStaleMediaPendingObjects(db, 30, 10)).toEqual([]);
 
-    await db.prepare("UPDATE objects SET published = datetime('now', '-2 hours') WHERE id = ?")
-      .bind(REMOTE_OBJECT).run();
+    // Production rows store `published` as ISO-8601 (JS toISOString), not in
+    // SQLite's datetime format: the same-day comparison used to fail ('T' > ' ').
+    await db.prepare("UPDATE objects SET published = ? WHERE id = ?")
+      .bind(new Date(Date.now() - 2 * 3_600_000).toISOString(), REMOTE_OBJECT).run();
     expect(await releaseStaleMediaPendingObjects(db, 30, 10)).toEqual([REMOTE_OBJECT]);
     expect(await mediaPending(REMOTE_OBJECT)).toBe(0);
   });

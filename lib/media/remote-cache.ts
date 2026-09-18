@@ -438,7 +438,7 @@ export async function backfillMediaCache(
       .prepare(
         `SELECT a.id, a.avatar_url FROM actors a
          WHERE a.is_local = 0 AND a.avatar_url LIKE 'https://%' AND a.avatar_cache_url IS NULL
-           AND a.last_status_at IS NOT NULL AND a.last_status_at >= datetime('now', '-14 days')
+           AND a.last_status_at IS NOT NULL AND a.last_status_at >= date('now', '-14 days')
          ORDER BY a.last_status_at DESC LIMIT ?`
       )
       .bind(batch)

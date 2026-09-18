@@ -3849,7 +3849,7 @@ export async function enqueueLinkPreview(db: D1Database, objectId: string): Prom
 /** Due crawl jobs, oldest attempt first. */
 export async function listLinkPreviewQueue(db: D1Database, limit: number): Promise<LinkPreviewQueueEntry[]> {
   const rows = await db
-    .prepare("SELECT * FROM link_preview_queue WHERE next_attempt_at <= datetime('now') ORDER BY next_attempt_at ASC LIMIT ?")
+    .prepare("SELECT * FROM link_preview_queue WHERE datetime(next_attempt_at) <= datetime('now') ORDER BY datetime(next_attempt_at) ASC LIMIT ?")
     .bind(limit)
     .all<Row>();
   return (rows.results ?? []).map((r) => ({
@@ -4154,7 +4154,10 @@ export async function listMediaCacheQueue(db: D1Database, limit: number): Promis
   const rows = await db
     .prepare(
       `SELECT * FROM media_cache
-       WHERE status IN ('pending', 'failed') AND next_attempt_at <= datetime('now')
+       -- datetime(...) normalizes both formats: next_attempt_at is written
+       -- in SQLite format on enqueue and ISO-8601 on backoff. Comparing raw
+       -- strings made same-day ISO rows "not due" until the next day ('T' > ' ').
+       WHERE status IN ('pending', 'failed') AND datetime(next_attempt_at) <= datetime('now')
        -- Newest first among the due items: a just-ingested status must be
        -- cached before the older backlog so it can enter the timelines quickly
        -- (retries keep their original rowid, so they don't jump the queue).
@@ -4338,7 +4341,7 @@ export async function releaseStaleMediaPendingObjects(
   const rows = await db
     .prepare(
       `SELECT id FROM objects
-       WHERE media_pending = 1 AND published < datetime('now', ?)
+       WHERE media_pending = 1 AND datetime(published) < datetime('now', ?)
        ORDER BY published ASC LIMIT ?`
     )
     .bind(window, limit)
@@ -4734,12 +4737,12 @@ export async function listInstances(
       where.push("i.suspended = 1");
       break;
     case "dormant":
-      where.push("i.last_seen_at < ? AND i.suspended = 0");
+      where.push("datetime(i.last_seen_at) < datetime(?) AND i.suspended = 0");
       binds.push(dormantCutoff);
       break;
     case "ok":
       where.push(
-        "i.unavailable = 0 AND i.suspended = 0 AND i.last_seen_at >= ?",
+        "i.unavailable = 0 AND i.suspended = 0 AND datetime(i.last_seen_at) >= datetime(?)",
         "NOT EXISTS (SELECT 1 FROM instance_domain_blocks b WHERE b.domain = i.domain)"
       );
       binds.push(dormantCutoff);
@@ -4967,8 +4970,8 @@ export async function listInstancesDueForRefresh(
   const rows = await db
     .prepare(
       `SELECT domain FROM instances
-       WHERE next_refresh_at IS NOT NULL AND next_refresh_at <= ? AND suspended = 0
-       ORDER BY next_refresh_at LIMIT ?`
+       WHERE next_refresh_at IS NOT NULL AND datetime(next_refresh_at) <= datetime(?) AND suspended = 0
+       ORDER BY datetime(next_refresh_at) LIMIT ?`
     )
     .bind(now.toISOString(), limit)
     .all<{ domain: string }>();

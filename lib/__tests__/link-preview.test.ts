@@ -12,7 +12,7 @@ const federation = vi.hoisted(() => ({
 
 vi.mock("@/lib/activitypub/federation", () => federation);
 
-import { enqueueLinkPreview, getActorById, getObjectById } from "@/lib/db";
+import { enqueueLinkPreview, getActorById, getObjectById, listLinkPreviewQueue } from "@/lib/db";
 import {
   extractFirstLink,
   parseOpenGraph,
@@ -254,6 +254,19 @@ describe("link preview queue", () => {
       onAttached: (objectId) => { attached.push(objectId); },
     });
     expect(attached).toEqual(["https://remote.example/objects/1"]);
+  });
+
+  it("treats an ISO-8601 crawl backoff timestamp as due", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://news.example/story">a</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    // markLinkPreviewFailed writes ISO-8601; the enqueue default is SQLite
+    // format. Raw string comparison skipped same-day retries entirely.
+    await db.prepare("UPDATE link_preview_queue SET next_attempt_at = ?")
+      .bind(new Date(Date.now() - 60_000).toISOString())
+      .run();
+
+    const jobs = await listLinkPreviewQueue(db, 10);
+    expect(jobs.map((j) => j.objectId)).toContain("https://remote.example/objects/1");
   });
 
   it("reuses a fresh card for other statuses without hitting the origin again", async () => {
