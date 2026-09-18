@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Подтвердите адрес электронной почты перед входом.",
   "login_error_rate_limited": "Слишком много запросов. Повторите попытку позже.",
   "register_error_reason_required": "Требуется причина регистрации",
-  "login_error_fields_required": "требуются имя пользователя и пароль"
+  "login_error_fields_required": "требуются имя пользователя и пароль",
+  "a11y_tag_suggestions": "Подсказки хэштегов"
 }

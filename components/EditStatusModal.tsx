@@ -6,6 +6,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
+import { useTagAutocomplete, TagAutocompleteDropdown } from "@/components/TagAutocomplete";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
@@ -45,6 +46,7 @@ export function EditStatusModal({
   const emojiRef = useRef<HTMLDivElement>(null);
   const auto = useEmojiAutocomplete(text, setText, textareaRef);
   const accountAuto = useAccountAutocomplete(text, setText, textareaRef);
+  const tagAuto = useTagAutocomplete(text, setText, textareaRef);
 
   // Initialize the form when the modal opens or the status changes.
   useEffect(() => {
@@ -177,8 +179,8 @@ export function EditStatusModal({
             autoFocus
             ref={textareaRef}
             value={text}
-            onChange={(e) => { auto.onChange(e); accountAuto.onChange(e); }}
-            onKeyDown={(e) => { auto.onKeyDown(e); accountAuto.onKeyDown(e); }}
+            onChange={(e) => { auto.onChange(e); accountAuto.onChange(e); tagAuto.onChange(e); }}
+            onKeyDown={(e) => { auto.onKeyDown(e); accountAuto.onKeyDown(e); tagAuto.onKeyDown(e); }}
             placeholder={t.edit_status_placeholder}
             aria-label={t.edit_label}
             maxLength={limits.maxStatusChars}
@@ -195,6 +197,12 @@ export function EditStatusModal({
             activeIndex={accountAuto.activeIndex}
             onSelect={accountAuto.select}
             loading={accountAuto.loading}
+          />
+          <TagAutocompleteDropdown
+            suggestions={tagAuto.suggestions}
+            activeIndex={tagAuto.activeIndex}
+            onSelect={tagAuto.select}
+            loading={tagAuto.loading}
           />
         </div>
 

@@ -8,6 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
+import { useTagAutocomplete, TagAutocompleteDropdown } from "@/components/TagAutocomplete";
 import { StatusCard } from "@/components/StatusCard";
 import { RichText } from "@/components/RichText";
 import { Icon } from "@/components/Icon";
@@ -199,6 +200,7 @@ function ReplyBox({
   const closeEmoji = useCallback(() => setEmojiOpen(false), []);
   const emojiAuto = useEmojiAutocomplete(text, setText, textareaRef);
   const accountAuto = useAccountAutocomplete(text, setText, textareaRef);
+  const tagAuto = useTagAutocomplete(text, setText, textareaRef);
 
   const insertEmoji = useCallback((emoji: string) => {
     const ta = textareaRef.current;
@@ -372,8 +374,8 @@ function ReplyBox({
             <textarea
               ref={textareaRef}
               value={text}
-              onChange={(e) => { emojiAuto.onChange(e); accountAuto.onChange(e); }}
-              onKeyDown={(e) => { emojiAuto.onKeyDown(e); accountAuto.onKeyDown(e); }}
+              onChange={(e) => { emojiAuto.onChange(e); accountAuto.onChange(e); tagAuto.onChange(e); }}
+              onKeyDown={(e) => { emojiAuto.onKeyDown(e); accountAuto.onKeyDown(e); tagAuto.onKeyDown(e); }}
               placeholder={t.reply_placeholder}
               aria-label={t.reply_placeholder}
               maxLength={limits.maxStatusChars}
@@ -390,6 +392,12 @@ function ReplyBox({
               activeIndex={accountAuto.activeIndex}
               onSelect={accountAuto.select}
               loading={accountAuto.loading}
+            />
+              <TagAutocompleteDropdown
+              suggestions={tagAuto.suggestions}
+              activeIndex={tagAuto.activeIndex}
+              onSelect={tagAuto.select}
+              loading={tagAuto.loading}
             />
           </div>
           {pollMode && (

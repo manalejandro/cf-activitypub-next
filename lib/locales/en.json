@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Please verify your email address before signing in.",
   "login_error_rate_limited": "Too many requests. Please try again later.",
   "register_error_reason_required": "A registration reason is required",
-  "login_error_fields_required": "username and password are required"
+  "login_error_fields_required": "username and password are required",
+  "a11y_tag_suggestions": "Hashtag suggestions"
 }

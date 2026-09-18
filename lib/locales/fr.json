@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Veuillez confirmer votre adresse e-mail avant de vous connecter.",
   "login_error_rate_limited": "Trop de requêtes. Réessayez plus tard.",
   "register_error_reason_required": "Un motif d'inscription est requis",
-  "login_error_fields_required": "nom d'utilisateur et mot de passe sont requis"
+  "login_error_fields_required": "nom d'utilisateur et mot de passe sont requis",
+  "a11y_tag_suggestions": "Suggestions de hashtags"
 }

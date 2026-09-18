@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
+import { serializeTag } from "@/lib/mastodon/tags";
 
 // GET /api/v1/trends/tags
 // Returns trending hashtags from the last 7 days.
@@ -43,33 +44,4 @@ export async function GET(request: NextRequest): Promise<Response> {
   const body = json(sorted);
   await env.KV.put(cacheKey, JSON.stringify(sorted), { expirationTtl: 300 }).catch(() => {});
   return body;
-}
-
-function tagId(name: string): string {
-  let h = 5381;
-  for (const c of name.toLowerCase()) {
-    h = (((h << 5) + h) ^ c.charCodeAt(0)) & 0x7fffffff;
-  }
-  return String(h >>> 0);
-}
-
-export function serializeTag(
-  name: string,
-  domain: string,
-  uses = 0,
-  accounts = 0
-) {
-  return {
-    id: tagId(name),
-    name,
-    url: `https://${domain}/tags/${encodeURIComponent(name)}`,
-    history: [
-      {
-        day: String(Math.floor(Date.now() / 1000 / 86400) * 86400),
-        uses: String(uses),
-        accounts: String(accounts),
-      },
-    ],
-    following: false,
-  };
 }

@@ -10450,6 +10450,56 @@
         }
       }
     },
+    "/api/v1/tags/search": {
+      "get": {
+        "summary": "Get /api/v1/tags/search",
+        "operationId": "get_api_v1_tags_search",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 40,
+              "default": 20
+            },
+            "description": "Maximum number of results to return."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query."
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/timelines/home": {
       "get": {
         "summary": "View the home timeline",

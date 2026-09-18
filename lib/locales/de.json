@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Bitte bestätige deine E-Mail-Adresse, bevor du dich anmeldest.",
   "login_error_rate_limited": "Zu viele Anfragen. Bitte später erneut versuchen.",
   "register_error_reason_required": "Ein Registrierungsgrund ist erforderlich",
-  "login_error_fields_required": "Benutzername und Passwort sind erforderlich"
+  "login_error_fields_required": "Benutzername und Passwort sind erforderlich",
+  "a11y_tag_suggestions": "Hashtag-Vorschläge"
 }

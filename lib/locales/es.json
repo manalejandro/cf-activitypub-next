@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Verifica tu correo electrónico antes de iniciar sesión.",
   "login_error_rate_limited": "Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
   "register_error_reason_required": "Se requiere un motivo de registro",
-  "login_error_fields_required": "se requieren nombre de usuario y contraseña"
+  "login_error_fields_required": "se requieren nombre de usuario y contraseña",
+  "a11y_tag_suggestions": "Sugerencias de etiquetas"
 }

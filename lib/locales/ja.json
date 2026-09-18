@@ -947,5 +947,6 @@
   "login_error_unverified_email": "ログインする前にメールアドレスを確認してください。",
   "login_error_rate_limited": "リクエストが多すぎます。しばらくしてからお試しください。",
   "register_error_reason_required": "登録理由が必要です",
-  "login_error_fields_required": "ユーザー名とパスワードが必要です"
+  "login_error_fields_required": "ユーザー名とパスワードが必要です",
+  "a11y_tag_suggestions": "ハッシュタグの提案"
 }

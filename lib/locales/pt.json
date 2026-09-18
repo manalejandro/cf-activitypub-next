@@ -947,5 +947,6 @@
   "login_error_unverified_email": "Verifique o seu e-mail antes de iniciar sessão.",
   "login_error_rate_limited": "Demasiados pedidos. Tente novamente mais tarde.",
   "register_error_reason_required": "É necessário um motivo de registo",
-  "login_error_fields_required": "nome de usuário e senha são obrigatórios"
+  "login_error_fields_required": "nome de usuário e senha são obrigatórios",
+  "a11y_tag_suggestions": "Sugestões de hashtags"
 }
