@@ -722,6 +722,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     broadcastTasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serializedStatus, /* isLocal */ true));
   }
   broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serializedStatus));
+  // Lists containing the author are home-like feeds: they must receive the new
+  // status live too (the broadcast helper already filters to public/unlisted).
+  broadcastTasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serializedStatus, "update"));
   const localFollowerRows = await env.DB
     .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
     .bind(actor.id)

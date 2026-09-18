@@ -23,7 +23,7 @@ import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
-import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusRefresh } from "../lib/streaming/broadcast";
+import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL } from "../lib/db";
@@ -796,6 +796,8 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
             .bind(actor.id)
             .all<{ id: string }>();
           for (const row of localFollowers.results) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serialized));
+          // List channels get new posts live as well.
+          tasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serialized, "update"));
           await Promise.allSettled(tasks);
         }
       }
@@ -904,12 +906,12 @@ async function executeScheduled(env: Env): Promise<void> {
     // objects behind forever.
     const objects = await env.DB
       .prepare(
-        `SELECT id, visibility, raw FROM objects
+        `SELECT id, visibility, raw, in_reply_to_id FROM objects
          WHERE actor_id = ? AND published < ? AND is_local = 1
            AND type IN (${PUBLIC_STATUS_TYPE_SQL})`
       )
       .bind(actor.id, cutoff)
-      .all<{ id: string; visibility: string; raw: string | null }>();
+      .all<{ id: string; visibility: string; raw: string | null; in_reply_to_id: string | null }>();
 
     if (objects.results.length === 0) continue;
 
@@ -975,14 +977,38 @@ async function executeScheduled(env: Env): Promise<void> {
 
     const ids = objects.results.map((o) => o.id);
 
+    // Reply parents must lose one reply/engagement point each (the manual
+    // delete path does this per object; here it is aggregated per parent).
+    const parentDecrements = new Map<string, number>();
+    for (const obj of objects.results) {
+      if (!obj.in_reply_to_id) continue;
+      parentDecrements.set(obj.in_reply_to_id, (parentDecrements.get(obj.in_reply_to_id) ?? 0) + 1);
+    }
+    for (const [parentId, count] of parentDecrements) {
+      await env.DB
+        .prepare(
+          `UPDATE objects
+           SET replies_count = MAX(COALESCE(replies_count, 0) - ?, 0),
+               engagement = MAX(COALESCE(engagement, 0) - ?, 0)
+           WHERE id = ?`
+        )
+        .bind(count, count, parentId)
+        .run();
+    }
+
     // Delete dependents + objects in chunked batches (D1 caps batch size).
-    // status_pins and custom_filter_statuses have no FK to objects, so they
-    // must be removed explicitly; everything else cascades.
+    // Tables without an FK to objects must be cleaned explicitly, exactly like
+    // `deleteObject`: status_pins, custom_filter_statuses, notifications and
+    // conversations.last_status_id (dangling rows showed up as empty
+    // notifications and dead conversation pointers). Likes, announces,
+    // bookmarks, attachments and polls cascade via their FKs.
     for (let i = 0; i < ids.length; i += 30) {
       const chunk = ids.slice(i, i + 30);
       await env.DB.batch([
         ...chunk.map((id) => env.DB.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id)),
         ...chunk.map((id) => env.DB.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("DELETE FROM notifications WHERE object_id = ?").bind(id)),
+        ...chunk.map((id) => env.DB.prepare("UPDATE conversations SET last_status_id = NULL WHERE last_status_id = ?").bind(id)),
         ...chunk.map((id) => env.DB.prepare("DELETE FROM objects WHERE id = ?").bind(id)),
       ]);
     }
@@ -993,9 +1019,19 @@ async function executeScheduled(env: Env): Promise<void> {
       .bind(ids.length, actor.id)
       .run();
 
-    // All public objects are gone — drop the account's directory rank too.
+    // Recompute the directory rank from the remaining statuses: the old code
+    // set `last_status_at = NULL` unconditionally, which wrongly unranked
+    // accounts that still had recent posts after their old ones were purged.
     await env.DB
-      .prepare("UPDATE actors SET last_status_at = NULL WHERE id = ?")
+      .prepare(
+        `UPDATE actors SET last_status_at = NULLIF((
+           SELECT MAX(substr(o.published, 1, 10)) FROM objects o
+           WHERE o.actor_id = actors.id
+             AND o.visibility IN ('public', 'unlisted')
+             AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+         ), '')
+         WHERE id = ?`
+      )
       .bind(actor.id)
       .run();
   }
@@ -1110,6 +1146,41 @@ async function executeScheduled(env: Env): Promise<void> {
     const bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
     const instanceBaseUrl = (env as unknown as Record<string, string>).INSTANCE_URL ?? "http://localhost:3000";
     const mediaLimits = mediaCacheLimitsFrom(limits);
+    // Release statuses whose remote media is now in R2 (or permanently failed)
+    // and announce them: they were hidden from feeds while uncached. Runs
+    // FIRST: it uses the previous tick's cache state, and a slow step later in
+    // the stage (or an invocation killed mid-stage) can never delay the safety
+    // valve. With the cache disabled there is nothing to wait for, so clear
+    // any leftover flag.
+    try {
+      if (!mediaLimits.enabled) {
+        await clearMediaPending(env.DB, 200);
+      } else {
+        const released = await releaseMediaPendingObjects(env.DB, 50);
+        // Safety valve: never hide a status forever when the cache is behind.
+        // `?? 30`: an older build/payload without the field must still run
+        // the safety valve (an explicit 0 keeps it disabled).
+        const maxHold = limits.mediaCacheMaxHoldMinutes ?? 30;
+        const stale = maxHold > 0 ? await releaseStaleMediaPendingObjects(env.DB, maxHold, 20) : [];
+        if (stale.length > 0) {
+          console.warn(`[media-cache] released ${stale.length} status(es) held longer than ${maxHold} min`);
+          released.push(...stale);
+        }
+        if (env.TIMELINE_STREAM && released.length > 0) {
+          const domain = instanceDomain(env) ?? "";
+          for (const objectId of released) {
+            const payload = await serializeObjectForStream(env, objectId, domain);
+            if (!payload) continue;
+            await broadcastStatusCreatedToAudience(env.DB, env.TIMELINE_STREAM, payload.status, {
+              id: payload.authorId,
+              isLocal: payload.isLocal,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[cron] media pending release failed", err);
+    }
     // Order matters: the time-sensitive work runs first. A slow/optional step
     // at the end can never delay the queue drain, the release of held statuses
     // or the maintenance (a huge table scan in the repair used to eat the
@@ -1150,36 +1221,6 @@ async function executeScheduled(env: Env): Promise<void> {
       }
     } catch (err) {
       console.error("[cron] media cache reference repair failed", err);
-    }
-    // Release statuses whose remote media is now in R2 (or permanently failed)
-    // and announce them: they were hidden from feeds while uncached. With the
-    // cache disabled there is nothing to wait for, so clear any leftover flag.
-    try {
-      if (!mediaLimits.enabled) {
-        await clearMediaPending(env.DB, 200);
-      } else {
-        const released = await releaseMediaPendingObjects(env.DB, 50);
-        // Safety valve: never hide a status forever when the cache is behind.
-        const maxHold = limits.mediaCacheMaxHoldMinutes;
-        const stale = maxHold > 0 ? await releaseStaleMediaPendingObjects(env.DB, maxHold, 20) : [];
-        if (stale.length > 0) {
-          console.warn(`[media-cache] released ${stale.length} status(es) held longer than ${maxHold} min`);
-          released.push(...stale);
-        }
-        if (env.TIMELINE_STREAM && released.length > 0) {
-          const domain = instanceDomain(env) ?? "";
-          for (const objectId of released) {
-            const payload = await serializeObjectForStream(env, objectId, domain);
-            if (!payload) continue;
-            await broadcastStatusCreatedToAudience(env.DB, env.TIMELINE_STREAM, payload.status, {
-              id: payload.authorId,
-              isLocal: payload.isLocal,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.error("[cron] media pending release failed", err);
     }
   } catch (err) {
     console.error("[cron] media cache stage failed", err);

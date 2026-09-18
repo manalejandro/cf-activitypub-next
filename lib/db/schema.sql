@@ -385,6 +385,9 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notif_target   ON notifications(target_account_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_created  ON notifications(created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup ON notifications(type, account_id, target_account_id, object_id);
+-- Status deletion cleans notifications by object_id (without this each
+-- deleted status full-scanned the notifications table).
+CREATE INDEX IF NOT EXISTS idx_notifications_object ON notifications(object_id);
 
 -- ─────────────────────────────────────────
 -- OAuth Apps
@@ -690,6 +693,8 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_actor ON conversations(actor_id);
+-- Status deletion repoints conversations away from the deleted status.
+CREATE INDEX IF NOT EXISTS idx_conversations_last_status ON conversations(last_status_id);
 
 -- ─────────────────────────────────────────
 -- Collections (curated collections of accounts)
@@ -874,6 +879,7 @@ CREATE TABLE IF NOT EXISTS status_pins (
 );
 
 CREATE INDEX IF NOT EXISTS idx_status_pins_actor ON status_pins(actor_id);
+CREATE INDEX IF NOT EXISTS idx_status_pins_status ON status_pins(status_id);
 
 -- ─────────────────────────────────────────
 -- Object edit history
