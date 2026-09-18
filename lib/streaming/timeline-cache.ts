@@ -47,9 +47,26 @@ export function updateStatusInCache<T extends { id: string }>(status: T): void {
   for (const entry of entries.values()) {
     const items = entry.items as T[];
     if (items.some((s) => s.id === status.id)) {
-      entry.items = items.map((s) => (s.id === status.id ? { ...s, ...status } : s));
+      entry.items = items.map((s) => (s.id === status.id ? mergeStatusUpdate(s, status) : s));
     }
   }
+}
+
+/**
+ * Viewer-specific fields that a broadcast `status.update` cannot know (its
+ * payload is shared by every viewer) and must therefore never clobber when a
+ * cached status is refreshed.
+ */
+const VIEWER_FIELDS = ["favourited", "reblogged", "bookmarked", "muted", "pinned", "filtered"] as const;
+
+/** Merge a broadcast status update over the copy the viewer already has. */
+export function mergeStatusUpdate<T extends { id: string }>(existing: T, updated: T): T {
+  const base = existing as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...base, ...(updated as Record<string, unknown>) };
+  for (const key of VIEWER_FIELDS) {
+    if (key in base) merged[key] = base[key];
+  }
+  return merged as T;
 }
 
 export function isTimelineCacheFresh<T>(entry: TimelineCacheEntry<T>): boolean {
@@ -113,6 +130,7 @@ export function handleStatusStreamEvent<T extends TimelineItem>(
   if (event === "update") {
     try {
       const status = JSON.parse(payload) as T;
+      updateStatusInCache(status);
       if (seenIds.has(status.id)) return true;
       seenIds.add(status.id);
       setItems((prev) => mergeTimelineItems([status], prev));
@@ -129,7 +147,8 @@ export function handleStatusStreamEvent<T extends TimelineItem>(
   if (event === "status.update") {
     try {
       const updated = JSON.parse(payload) as T;
-      setItems((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+      updateStatusInCache(updated);
+      setItems((prev) => prev.map((s) => (s.id === updated.id ? mergeStatusUpdate(s, updated) : s)));
     } catch { /* ignore malformed payload */ }
     return true;
   }

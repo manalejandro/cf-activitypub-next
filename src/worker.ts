@@ -23,12 +23,12 @@ import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
-import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
+import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences } from "../lib/db";
-import { serializeStatus } from "../lib/mastodon/serializers";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences } from "../lib/db";
+import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
@@ -1035,7 +1035,34 @@ async function executeScheduled(env: Env): Promise<void> {
         return instanceUrl ? new URL(instanceUrl).hostname : null;
       } catch { return null; }
     })();
-    await processLinkPreviewQueue({ DB: env.DB, KV: env.KV }, linkPreviewLimitsFrom(limits), ownDomain);
+    await processLinkPreviewQueue({ DB: env.DB, KV: env.KV }, linkPreviewLimitsFrom(limits), ownDomain, {
+      // The status was delivered before its card existed: broadcast the
+      // refreshed payload so timelines show the preview without a reload.
+      onAttached: async (objectId) => {
+        if (!env.TIMELINE_STREAM) return;
+        const object = await getObjectById(env.DB, objectId);
+        if (!object) return;
+        const author = await getActorById(env.DB, object.actorId);
+        if (!author) return;
+        const [attachments, emojis, poll] = await Promise.all([
+          getAttachmentsByObjectId(env.DB, objectId),
+          getAllCustomEmojis(env.DB),
+          getPollByObjectId(env.DB, objectId),
+        ]);
+        // Include the poll: the update replaces the client's copy, and a poll
+        // status that also has a link would otherwise lose its options.
+        const pollOptions = poll ? await getPollOptions(env.DB, poll.id) : [];
+        const serialized = serializeStatus(object, author, ownDomain ?? "", {
+          attachments,
+          emojis,
+          poll: poll ? serializePoll(poll, pollOptions, false, []) : null,
+        });
+        await broadcastStatusRefresh(env.DB, env.TIMELINE_STREAM, serialized, {
+          id: author.id,
+          isLocal: author.isLocal,
+        });
+      },
+    });
   } catch (err) {
     console.error("[cron] link preview crawl failed", err);
   }

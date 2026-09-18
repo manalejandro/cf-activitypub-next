@@ -58,6 +58,37 @@ describe("handleStatusStreamEvent", () => {
     expect(holder.items.map((i) => i.id)).toEqual(["1"]);
   });
 
+  it("status.update replaces the status in state and cache but keeps viewer state", () => {
+    type WithViewer = S & { favourited?: boolean; card?: { title: string } };
+    const mine: WithViewer = { ...s("1", "2026-01-01T12:00:00Z"), favourited: true };
+    setTimelineCache("home", {
+      items: [mine],
+      hasMore: false,
+      scrollY: 0,
+      fetchedAt: Date.now(),
+      ready: true,
+    });
+    const holder = stateHolder([mine]);
+    const updated: WithViewer = {
+      ...s("1", "2026-01-01T12:00:00Z"),
+      content: "with card",
+      favourited: false,
+      card: { title: "Preview" },
+    };
+
+    handleStatusStreamEvent("status.update", JSON.stringify(updated), holder.setItems, new Set(["1"]));
+
+    const shown = holder.items[0] as unknown as WithViewer;
+    expect(shown.content).toBe("with card");
+    expect(shown.card?.title).toBe("Preview");
+    // The shared broadcast payload carries the author's view: the viewer's
+    // favourite must survive the merge.
+    expect(shown.favourited).toBe(true);
+    const cached = getTimelineCache<WithViewer>("home")?.items[0] as WithViewer;
+    expect(cached.card?.title).toBe("Preview");
+    expect(cached.favourited).toBe(true);
+  });
+
   it("delete removes the status and purges it from every cached feed", () => {
     setTimelineCache("home", {
       items: [s("1", "2026-01-01T12:00:00Z")],

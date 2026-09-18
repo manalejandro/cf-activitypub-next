@@ -292,6 +292,39 @@ export async function broadcastStatusInteraction(
 }
 
 /**
+ * Push the current state of a status to every audience that may be showing it:
+ * public channels, the home feeds of the author's local followers (plus the
+ * author) and every list containing the author. Used when data that was
+ * initially missing becomes available — e.g. a link preview card crawled after
+ * the status was delivered — so clients update without a manual refresh.
+ */
+export async function broadcastStatusRefresh(
+  db: { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } },
+  ns: DONamespace,
+  status: unknown,
+  author: { id: string; isLocal: boolean }
+): Promise<void> {
+  const tasks: Promise<void>[] = [
+    broadcastStatusUpdate(ns, status, author.isLocal),
+    broadcastStatusInteractionToLists(db, ns, author.id, status),
+  ];
+  try {
+    const followers = await db
+      .prepare(
+        `SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id
+         WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1`
+      )
+      .bind(author.id)
+      .all<{ id: string }>();
+    for (const row of followers.results ?? []) {
+      tasks.push(broadcastHomeStatusUpdate(ns, row.id, status));
+    }
+  } catch { /* streaming refresh is best-effort */ }
+  if (author.isLocal) tasks.push(broadcastHomeStatusUpdate(ns, author.id, status));
+  await Promise.allSettled(tasks);
+}
+
+/**
  * Refresh a status on the list channels that contain its author (lists are
  * user-configured feeds; the members' counter/content updates belong there).
  */

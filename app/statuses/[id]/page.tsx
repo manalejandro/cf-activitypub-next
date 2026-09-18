@@ -20,7 +20,7 @@ import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { mergeStatusUpdate, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
@@ -606,9 +606,23 @@ export default function ThreadPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusId]);
 
-  // Remove the status from the screen live when it's deleted (streaming delete
-  // events carry the encoded status id), and purge it from any cached timelines.
+  // Live status changes on the open thread: a status may gain data after it
+  // was fetched (e.g. its link preview card), and edits/deletes must land
+  // without a manual reload.
   useTimelineStream("public", (event, payload) => {
+    if (event === "status.update") {
+      try {
+        const updated = JSON.parse(payload) as Status;
+        const merge = (prev: Status[]): Status[] =>
+          prev.map((item) => (item.id === updated.id ? mergeStatusUpdate(item, updated) : item));
+        setFocal((prev) => (prev && prev.id === updated.id ? mergeStatusUpdate(prev, updated) : prev));
+        setAncestors(merge);
+        setDescendants(merge);
+      } catch { /* ignore malformed payload */ }
+      return;
+    }
+    // Remove the status from the screen live when it's deleted (streaming delete
+    // events carry the encoded status id), and purge it from any cached timelines.
     if (event !== "delete") return;
     const deletedId = payload.replace(/^"|"$/g, "");
     purgeStatusFromCache(deletedId);

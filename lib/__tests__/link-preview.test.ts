@@ -247,6 +247,18 @@ describe("link preview queue", () => {
     expect(cached?.target_type).toBe("card");
   });
 
+  it("notifies the caller when a card is attached so clients can be refreshed", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://news.example/story">a</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockResolvedValueOnce(okHtml('<meta property="og:title" content="Live">'));
+
+    const attached: string[] = [];
+    await processLinkPreviewQueue(bindings, LIMITS, "local.example", {
+      onAttached: (objectId) => { attached.push(objectId); },
+    });
+    expect(attached).toEqual(["https://remote.example/objects/1"]);
+  });
+
   it("reuses a fresh card for other statuses without hitting the origin again", async () => {
     await seedObject("https://remote.example/objects/1", '<a href="https://news.example/story">a</a>');
     await seedObject("https://remote.example/objects/2", '<a href="https://news.example/story">b</a>');

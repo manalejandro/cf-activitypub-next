@@ -749,6 +749,19 @@ async function processJob(
   return true;
 }
 
+export interface ProcessLinkPreviewOptions {
+  /** Max jobs per run (defaults to `LINK_PREVIEW_FETCH_BATCH`). */
+  limit?: number;
+  /** Wall-clock budget for the whole batch. */
+  budgetMs?: number;
+  /**
+   * Called with the object id whenever a card ends up attached, so the caller
+   * can broadcast a `status.update` (the status was delivered before the card
+   * existed and clients would otherwise need a manual refresh).
+   */
+  onAttached?: (objectId: string) => Promise<void> | void;
+}
+
 /**
  * Cron stage: crawl a bounded batch of queued statuses. Failures back off
  * (1h/6h/24h) and permanently bad URLs are negative cached for a week.
@@ -757,13 +770,13 @@ export async function processLinkPreviewQueue(
   bindings: LinkPreviewBindings,
   rawLimits: LinkPreviewLimits,
   ownDomain: string | null,
-  limit?: number,
-  budgetMs = MAX_QUEUE_BUDGET_MS
+  options: ProcessLinkPreviewOptions = {}
 ): Promise<number> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) return 0;
+  const budgetMs = options.budgetMs ?? MAX_QUEUE_BUDGET_MS;
 
-  const jobs = await listLinkPreviewQueue(bindings.DB, limit ?? limits.fetchBatch);
+  const jobs = await listLinkPreviewQueue(bindings.DB, options.limit ?? limits.fetchBatch);
   const deadline = Date.now() + budgetMs;
   let processed = 0;
 
@@ -775,7 +788,16 @@ export async function processLinkPreviewQueue(
         await deleteLinkPreviewQueue(bindings.DB, job.objectId);
         continue;
       }
-      if (await processJob(bindings, limits, object, ownDomain, job.attempts)) processed += 1;
+      if (await processJob(bindings, limits, object, ownDomain, job.attempts)) {
+        processed += 1;
+        if (options.onAttached) {
+          try {
+            await options.onAttached(object.id);
+          } catch (err) {
+            console.error(`[link-preview] Attach broadcast failed for ${object.id}`, err);
+          }
+        }
+      }
     } catch (err) {
       console.error(`[link-preview] Job failed for ${job.objectId}`, err);
       const attempts = job.attempts + 1;
