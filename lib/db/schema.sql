@@ -60,6 +60,9 @@ CREATE INDEX IF NOT EXISTS idx_actors_local_domain_susp ON actors(is_local, doma
 -- Directory "active" ranking: actors are listed by last public post date, so
 -- the ordered scan stays index-only (no per-actor MAX() subquery over objects).
 CREATE INDEX IF NOT EXISTS idx_actors_discoverable_active ON actors(discoverable, suspended, last_status_at DESC);
+-- Resetting avatar/header cache URLs back to the origin on eviction/purge.
+CREATE INDEX IF NOT EXISTS idx_actors_avatar_url ON actors(avatar_url);
+CREATE INDEX IF NOT EXISTS idx_actors_header_url ON actors(header_url);
 
 -- ─────────────────────────────────────────
 -- Objects / Notes / Statuses
@@ -170,6 +173,8 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attachments_object ON attachments(object_id);
+-- Restoring the origin URL when a cached copy is evicted/purged.
+CREATE INDEX IF NOT EXISTS idx_attachments_remote_url ON attachments(remote_url);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attachments_object_url ON attachments(object_id, url);
 
 -- ─────────────────────────────────────────
@@ -277,6 +282,8 @@ CREATE TABLE IF NOT EXISTS media_cache (
 CREATE INDEX IF NOT EXISTS idx_media_cache_queue  ON media_cache(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_expiry ON media_cache(status, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_target ON media_cache(target_type, target_id);
+-- Dangling-reference repair (is the cached URL still backed by an entry?).
+CREATE INDEX IF NOT EXISTS idx_media_cache_cached_url ON media_cache(cached_url);
 
 -- ─────────────────────────────────────────
 -- Canonical email blocks (anti-abuse)

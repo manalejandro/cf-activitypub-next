@@ -22,7 +22,7 @@ import {
   type MediaCacheBindings,
   type MediaCacheLimits,
 } from "@/lib/media/remote-cache";
-import { enqueueMediaCache, getMediaCacheStats } from "@/lib/db";
+import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 
 class D1Adapter {
@@ -254,10 +254,71 @@ describe("remote media cache", () => {
       .bind(600_000, "-2 days").run();
     await db.prepare("UPDATE media_cache SET fetched_at = datetime('now', '-1 day') WHERE source_url = ?").bind("https://remote.example/other.png").run();
 
+    // The attachment currently serves the (about to be evicted) cached copy.
+    await db.prepare("UPDATE attachments SET url = 'https://local.example/api/media/cache/media/x.png' WHERE id = ?")
+      .bind(ATTACH).run();
+
     const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 700_000 });
     expect(result.evicted).toBe(1);
     const left = await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status='ready'").bind().first<{ n: number }>();
     expect(left?.n).toBe(1);
+    // ...and the reference goes back to the origin when the copy is deleted.
+    const att = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
+    expect(att?.url).toBe(SRC);
+  });
+
+  it("points avatars and preview cards back at the origin when entries are evicted", async () => {
+    const actorId = "https://remote.example/users/fan";
+    const avatarSrc = "https://remote.example/avatar.png";
+    await db.prepare("UPDATE actors SET avatar_cache_url = ? WHERE id = ?")
+      .bind("https://local.example/api/media/cache/media/dead.png", actorId).run();
+    await enqueueMediaCache(db, avatarSrc, "avatar", actorId);
+
+    await db.prepare(
+      `INSERT INTO preview_cards (id, source_url, url, title, image_url, image_cache_url, status, fetched_at)
+       VALUES ('card-1', 'https://news.example/s', 'https://news.example/s', 'T',
+               'https://cdn.example/i.jpg', 'https://local.example/api/media/cache/media/dead.jpg',
+               'ready', datetime('now'))`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, visibility, is_local, card_id, card_json)
+       VALUES ('https://remote.example/objects/card', 'Note', ?, 'public', 0, 'card-1', ?)`
+    ).bind(actorId, JSON.stringify({
+      url: "https://news.example/s",
+      image: "https://local.example/api/media/cache/media/dead.jpg",
+    })).run();
+    await enqueueMediaCache(db, "https://cdn.example/i.jpg", "card", "card-1");
+
+    await db.prepare(
+      "UPDATE media_cache SET status='ready', r2_key = 'cache/media/' || id || '.png', size = 600000, fetched_at = datetime('now', '-2 days')"
+    ).bind().run();
+    const result = await maintainMediaCache(bindings, { ...LIMITS, maxBytes: 100 });
+    expect(result.evicted).toBe(2);
+
+    const actor = await db.prepare("SELECT avatar_cache_url FROM actors WHERE id = ?").bind(actorId).first<{ avatar_cache_url: string | null }>();
+    expect(actor?.avatar_cache_url).toBeNull();
+    const card = await db.prepare("SELECT image_cache_url FROM preview_cards WHERE id = 'card-1'").bind().first<{ image_cache_url: string | null }>();
+    expect(card?.image_cache_url).toBeNull();
+    const obj = await db.prepare("SELECT card_json FROM objects WHERE id = 'https://remote.example/objects/card'").bind().first<{ card_json: string }>();
+    expect((JSON.parse(obj!.card_json) as { image: string }).image).toBe("https://cdn.example/i.jpg");
+  });
+
+  it("repairs dangling references left behind by earlier deletes", async () => {
+    const actorId = "https://remote.example/users/fan";
+    await db.prepare("UPDATE actors SET avatar_cache_url = 'https://local.example/api/media/cache/media/gone.png' WHERE id = ?")
+      .bind(actorId).run();
+    await db.prepare("UPDATE attachments SET url = 'https://local.example/api/media/cache/media/gone2.png' WHERE id = ?")
+      .bind(ATTACH).run();
+    // No media_cache rows exist for either URL (deleted by the old code).
+
+    const repaired = await repairMediaCacheReferences(db, 100);
+    expect(repaired).toBeGreaterThanOrEqual(2);
+    const actor = await db.prepare("SELECT avatar_cache_url FROM actors WHERE id = ?").bind(actorId).first<{ avatar_cache_url: string | null }>();
+    expect(actor?.avatar_cache_url).toBeNull();
+    const att = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
+    expect(att?.url).toBe(SRC);
+    // A second pass has nothing left to fix (the cron marker path).
+    expect(await repairMediaCacheReferences(db, 100)).toBe(0);
   });
 
   it("honors the configured byte budget when handed the raw instance limits", async () => {
@@ -494,14 +555,18 @@ describe("remote media cache", () => {
     expect(row?.url).toContain("/api/media/cache/media/");
   });
 
-  it("purges every cached object and row", async () => {
+  it("purges every cached object and row and restores the origin references", async () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
     await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
     expect(r2.store.size).toBe(1);
+    const cached = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
+    expect(cached?.url).toContain("/api/media/cache/media/");
 
     expect(await purgeMediaCache(bindings)).toBe(1);
     expect(r2.store.size).toBe(0);
     expect((await getMediaCacheStats(db)).ready).toBe(0);
+    const restored = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
+    expect(restored?.url).toBe(SRC);
   });
 });

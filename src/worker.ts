@@ -27,7 +27,7 @@ import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPub
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { encodeStatusId } from "../lib/mastodon/statusId";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, setInstanceSetting, repairMediaCacheReferences } from "../lib/db";
 import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
@@ -1054,6 +1054,17 @@ async function executeScheduled(env: Env): Promise<void> {
       await maintainMediaCache(bindings, mediaLimits);
     } catch (err) {
       console.error("[cron] media cache maintenance failed", err);
+    }
+    // One-shot repair (marker-guarded): references left dead by the old
+    // eviction code, which deleted the R2 copy without pointing them back at
+    // the origin. Runs in bounded batches until a full pass fixes nothing.
+    try {
+      if (!(await getInstanceSetting(env.DB, "media_cache_refs_repaired"))) {
+        const repaired = await repairMediaCacheReferences(env.DB, 200);
+        if (repaired === 0) await setInstanceSetting(env.DB, "media_cache_refs_repaired", "1");
+      }
+    } catch (err) {
+      console.error("[cron] media cache reference repair failed", err);
     }
     try {
       await backfillMediaCache(bindings, mediaLimits, mediaLimits.fetchBatch);

@@ -36,6 +36,7 @@ import {
   listPreviewCardsMissingImageCache,
   markMediaCacheFailed,
   markMediaCacheReady,
+  resetMediaCacheReferences,
 } from "@/lib/db";
 import type { MediaCacheEntry } from "@/lib/types";
 
@@ -311,7 +312,7 @@ export async function processMediaCacheQueue(
 
 async function deleteEntries(
   bindings: MediaCacheBindings,
-  entries: { id: string; r2_key: string | null; size: number }[]
+  entries: { id: string; r2_key: string | null; size: number; source_url?: string | null }[]
 ): Promise<number> {
   if (entries.length === 0) return 0;
   let freed = 0;
@@ -325,6 +326,13 @@ async function deleteEntries(
       )
     );
   }
+  // Point every reference back at the origin BEFORE the row disappears: an
+  // evicted/expired copy left `actors.avatar_cache_url`, `attachments.url`
+  // and card snapshots pointing at a dead `/api/media/...` URL.
+  await resetMediaCacheReferences(
+    bindings.DB,
+    entries.map((entry) => entry.source_url ?? null)
+  );
   await deleteMediaCacheRows(bindings.DB, entries.map((e) => e.id));
   return freed;
 }

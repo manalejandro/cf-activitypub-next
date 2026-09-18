@@ -4165,20 +4165,20 @@ export async function listExpiredMediaCache(
   attachmentDays: number,
   profileDays: number,
   limit = 50
-): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
   const attachments = await db
     .prepare(
-      `SELECT id, r2_key, size FROM media_cache
+      `SELECT id, r2_key, size, source_url FROM media_cache
        WHERE status = 'ready' AND target_type = 'attachment'
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
        LIMIT ?`
     )
     .bind(`-${Math.max(1, Math.floor(attachmentDays))} days`, limit)
-    .all<{ id: string; r2_key: string | null; size: number }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
 
   const profiles = await db
     .prepare(
-      `SELECT id, r2_key, size FROM media_cache
+      `SELECT id, r2_key, size, source_url FROM media_cache
        WHERE status = 'ready' AND target_type IN ('avatar', 'header')
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
          AND NOT EXISTS (
@@ -4189,7 +4189,7 @@ export async function listExpiredMediaCache(
        LIMIT ?`
     )
     .bind(`-${Math.max(1, Math.floor(profileDays))} days`, limit)
-    .all<{ id: string; r2_key: string | null; size: number }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
 
   return [...(attachments.results ?? []), ...(profiles.results ?? [])].slice(0, limit);
 }
@@ -4198,14 +4198,14 @@ export async function listExpiredMediaCache(
 export async function listOldestMediaCache(
   db: D1Database,
   limit = 50
-): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
   const rows = await db
     .prepare(
-      `SELECT id, r2_key, size FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
+      `SELECT id, r2_key, size, source_url FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
        ORDER BY fetched_at ASC, rowid ASC LIMIT ?`
     )
     .bind(limit)
-    .all<{ id: string; r2_key: string | null; size: number }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
   return rows.results ?? [];
 }
 
@@ -4214,6 +4214,131 @@ export async function deleteMediaCacheRows(db: D1Database, ids: string[]): Promi
   if (ids.length === 0) return;
   const json = JSON.stringify(ids);
   await db.prepare("DELETE FROM media_cache WHERE id IN (SELECT value FROM json_each(?))").bind(json).run();
+}
+
+/**
+ * Point every reference at the cached copy back at the origin. Called before
+ * an entry is deleted (expiry, byte-budget eviction, purge): keeping the dead
+ * `/api/media/...` URL after the R2 object is gone left avatars, attachments
+ * and preview cards as broken images.
+ */
+export async function resetMediaCacheReferences(
+  db: D1Database,
+  sourceUrls: (string | null | undefined)[]
+): Promise<void> {
+  const unique = [...new Set(sourceUrls.filter((url): url is string => Boolean(url)))];
+  for (let i = 0; i < unique.length; i += 100) {
+    const json = JSON.stringify(unique.slice(i, i + 100));
+    await db.batch([
+      db
+        .prepare(
+          `UPDATE attachments SET url = remote_url
+           WHERE remote_url IN (SELECT value FROM json_each(?)) AND url <> remote_url`
+        )
+        .bind(json),
+      db
+        .prepare(
+          `UPDATE actors SET avatar_cache_url = NULL
+           WHERE avatar_url IN (SELECT value FROM json_each(?)) AND avatar_cache_url IS NOT NULL`
+        )
+        .bind(json),
+      db
+        .prepare(
+          `UPDATE actors SET header_cache_url = NULL
+           WHERE header_url IN (SELECT value FROM json_each(?)) AND header_cache_url IS NOT NULL`
+        )
+        .bind(json),
+      db
+        .prepare(
+          `UPDATE objects SET card_json = json_set(card_json, '$.image',
+             (SELECT pc.image_url FROM preview_cards pc WHERE pc.id = objects.card_id))
+           WHERE card_json IS NOT NULL AND rowid IN (
+             SELECT o.rowid FROM objects o
+             JOIN preview_cards pc ON pc.id = o.card_id
+             WHERE pc.image_url IN (SELECT value FROM json_each(?))
+             LIMIT 100)`
+        )
+        .bind(json),
+      db
+        .prepare(
+          `UPDATE preview_cards SET image_cache_url = NULL
+           WHERE image_url IN (SELECT value FROM json_each(?)) AND image_cache_url IS NOT NULL`
+        )
+        .bind(json),
+    ]);
+  }
+}
+
+/**
+ * One-shot, batched repair for references left dangling by the old eviction
+ * code (which deleted the R2 copy without resetting them). Runs until a full
+ * pass finds nothing to fix; the cron guards it with an instance marker.
+ */
+export async function repairMediaCacheReferences(db: D1Database, limit = 200): Promise<number> {
+  const statements = [
+    db
+      .prepare(
+        `UPDATE actors SET avatar_cache_url = NULL WHERE rowid IN (
+           SELECT a.rowid FROM actors a
+           WHERE a.avatar_cache_url IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.avatar_cache_url)
+           LIMIT ?)`
+      )
+      .bind(limit),
+    db
+      .prepare(
+        `UPDATE actors SET header_cache_url = NULL WHERE rowid IN (
+           SELECT a.rowid FROM actors a
+           WHERE a.header_cache_url IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.header_cache_url)
+           LIMIT ?)`
+      )
+      .bind(limit),
+    db
+      .prepare(
+        `UPDATE attachments SET url = remote_url WHERE rowid IN (
+           SELECT a.rowid FROM attachments a
+           WHERE a.url LIKE '%/api/media/cache/media/%' AND a.remote_url IS NOT NULL AND a.url <> a.remote_url
+             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.url)
+           LIMIT ?)`
+      )
+      .bind(limit),
+  ];
+
+  // Cards are recent: skip the (expensive) objects scan on instances where no
+  // card image was ever cached.
+  const hasCards = await db
+    .prepare("SELECT 1 AS ok FROM preview_cards WHERE image_cache_url IS NOT NULL LIMIT 1")
+    .bind()
+    .first<{ ok: number }>();
+  if (hasCards) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE objects SET card_json = json_set(card_json, '$.image',
+             (SELECT pc.image_url FROM preview_cards pc WHERE pc.id = objects.card_id))
+           WHERE rowid IN (
+             SELECT o.rowid FROM objects o
+             WHERE o.card_id IS NOT NULL AND o.card_json IS NOT NULL
+               AND json_extract(o.card_json, '$.image') LIKE '%/api/media/cache/media/%'
+               AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = json_extract(o.card_json, '$.image'))
+             LIMIT ?)`
+        )
+        .bind(limit),
+      db
+        .prepare(
+          `UPDATE preview_cards SET image_cache_url = NULL WHERE rowid IN (
+             SELECT pc.rowid FROM preview_cards pc
+             WHERE pc.image_cache_url IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = pc.image_cache_url)
+             LIMIT ?)`
+        )
+        .bind(limit)
+    );
+  }
+
+  const results = await db.batch(statements);
+  return results.reduce((sum, r) => sum + Number(r.meta?.changes ?? 0), 0);
 }
 
 /** Drop queued rows when the cache is disabled (keeps metadata from piling up). */
@@ -4226,11 +4351,11 @@ export async function deletePendingMediaCache(db: D1Database): Promise<number> {
 export async function listMediaCacheKeys(
   db: D1Database,
   limit = 100
-): Promise<{ id: string; r2_key: string | null; size: number }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
   const rows = await db
-    .prepare("SELECT id, r2_key, size FROM media_cache WHERE r2_key IS NOT NULL LIMIT ?")
+    .prepare("SELECT id, r2_key, size, source_url FROM media_cache WHERE r2_key IS NOT NULL LIMIT ?")
     .bind(limit)
-    .all<{ id: string; r2_key: string | null; size: number }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
   return rows.results ?? [];
 }
 
