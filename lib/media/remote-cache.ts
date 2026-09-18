@@ -548,11 +548,12 @@ export async function maintainMediaCache(
     if (freed === 0) break;
   }
 
-  if (bytes > budget) {
-    // Surface it: the cache is over its limit and this run could not finish
-    // the job (deadline, delete failures…). The next tick continues.
+  if (bytes > budget && evicted === 0 && expirable.length === 0) {
+    // No progress: the cache is over its limit and this run could not delete
+    // anything (floor reached, list failures, R2/D1 deletes failing…). While
+    // the FIFO drain is making progress this is a normal multi-tick state.
     console.error(
-      `[media-cache] still over budget after maintenance: ${Math.round(bytes / 1048576)} MB > ${Math.round(budget / 1048576)} MB (evicted ${evicted}, expired ${expirable.length})`
+      `[media-cache] still over budget and not draining: ${Math.round(bytes / 1048576)} MB > ${Math.round(budget / 1048576)} MB`
     );
   }
 

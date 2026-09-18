@@ -25,13 +25,14 @@ import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundU
 import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastDelete, broadcastHomeDelete, broadcastHomeStatus, broadcastPublicStatus } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
+import type { APAttachment } from "@/lib/types";
 import { encodeStatusId } from "../lib/mastodon/statusId";
 import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure } from "../lib/db";
 import { serializeStatus } from "../lib/mastodon/serializers";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
-import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache } from "../lib/media/remote-cache";
+import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -607,7 +608,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const baseUrl = `https://${actor.domain}`;
       const domain = actor.domain;
       const content = (body.status as string | undefined)?.trim() ?? "";
-      const visibility = (body.visibility as string) ?? "public";
+      const visibility = ((body.visibility as string) ?? "public") as "public" | "unlisted" | "private" | "direct";
       const sensitive = body.sensitive === true || body.sensitive === "true";
       const spoilerText = (body.spoiler_text as string | undefined) ?? "";
       const language = body.language as string | undefined;
@@ -619,7 +620,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         actorUsername: actor.username,
         content,
         published,
-        visibility: visibility as "public" | "unlisted" | "private" | "direct",
+        visibility,
         inReplyTo: inReplyToId ?? undefined,
         sensitive,
         summary: sensitive ? spoilerText : undefined,
@@ -629,7 +630,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
 
       // Link pending media uploads (same `pending_media:` KV contract as
       // POST /api/v1/statuses; the schedule-time branch extends their TTL).
-      const noteAttachments: Record<string, unknown>[] = [];
+      const noteAttachments: APAttachment[] = [];
       const mediaIds = Array.isArray(body.media_ids)
         ? body.media_ids as string[]
         : s.media_ids ? JSON.parse(s.media_ids) as string[] : [];
@@ -661,7 +662,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
             type: mimeType?.startsWith("image/") ? "Image"
               : mimeType?.startsWith("video/") ? "Video"
               : mimeType?.startsWith("audio/") ? "Audio" : "Document",
-            mediaType: mimeType,
+            ...(mimeType ? { mediaType: mimeType } : {}),
             url: att.url,
             ...(att.description ? { name: att.description } : {}),
           });
@@ -1180,15 +1181,16 @@ const worker = {
     // Dead-letter queue: record undeliverable activities for inspection
     // (KV, 30 days) and ack them so the DLQ doesn't grow unbounded.
     if (batch.queue === "cf-ap-delivery-dlq") {
+      type DlqLastFailure = { status?: number; error?: string | null; attempts?: number };
       for (const message of batch.messages) {
         const body = message.body as Partial<APDeliveryMessage>;
         // The main consumer stores the last failure reason per inbox before
         // retrying, so the DLQ record explains WHY the delivery died.
-        let last: { status?: number; error?: string | null; attempts?: number } | null = null;
+        let last: DlqLastFailure | null = null;
         if (body.inboxUrl) {
           try {
             const raw = await env.KV.get(`dlq:last:${body.inboxUrl}`);
-            if (raw) last = JSON.parse(raw) as typeof last;
+            if (raw) last = JSON.parse(raw) as DlqLastFailure;
           } catch { /* best-effort */ }
         }
         console.error("[dlq] Undeliverable federation activity", {

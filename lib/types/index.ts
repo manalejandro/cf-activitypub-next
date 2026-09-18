@@ -120,7 +120,8 @@ export interface APNote extends APObject {
 
 export interface APAttachment extends APObject {
   type: "Document" | "Image" | "Video" | "Audio";
-  mediaType: string;
+  /** MIME type; optional in ActivityPub and absent on some remote objects. */
+  mediaType?: string;
   url: string;
   name?: string;
   blurhash?: string;
