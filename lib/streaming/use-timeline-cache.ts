@@ -216,7 +216,12 @@ export function useTimelineCache<T extends { id: string }>(
       // of inheriting the previous feed's. History traversals restore too.
       const shouldRestore = historyRestore || tabSwitch;
 
-      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch && (!refetchOnMount || historyRestore)) {
+      // `!refetchOnMount` only: a fresh cache is restored instantly, but feeds
+      // that opt into refetchOnMount must still fetch in the background and
+      // reconcile deletions — a history traversal (back from a status) used to
+      // short-circuit here, so auto-deleted statuses stayed in the cached feed
+      // until a full reload.
+      if (cached?.ready && isTimelineCacheFresh(cached) && !tabSwitch && !refetchOnMount) {
         // Mount or history traversal with a fresh cache: restore instantly,
         // nothing to refetch yet. A tab switch never short-circuits here —
         // switching feeds is an explicit request to see the latest content, so
@@ -356,8 +361,10 @@ useIsomorphicLayoutEffect(() => {
         return;
       }
       // Paged items are older than the feed tail; the canonical merge keeps
-      // them ordered even if a streamed status slipped in meanwhile.
-      setStatuses((prev) => mergeTimelineItems(prev, result.items));
+      // them ordered even if a streamed status slipped in meanwhile. Items
+      // inside the fetched window that the server no longer returns were
+      // deleted: drop them instead of resurrecting them from the cache.
+      setStatuses((prev) => mergeTimelineItems(pruneMissingFromWindow(result.items, prev), result.items));
       setHasMore(result.hasMore);
     } catch {
       // Keep the current page; the next sentinel hit retries.
@@ -392,7 +399,7 @@ useIsomorphicLayoutEffect(() => {
     try {
       const result = await fetchPageRef.current();
       setStatuses((prev) => {
-        const merged = mergeTimelineItems(result.items, prev);
+        const merged = mergeTimelineItems(result.items, pruneMissingFromWindow(result.items, prev));
         setTimelineCache(keyRef.current, {
           items: merged,
           hasMore: result.hasMore,
