@@ -33,6 +33,8 @@ import {
   createPollVotes,
   getAllCustomEmojis,
   getLocalInteractedActorIds,
+  getAttachmentsByObjectId,
+  clearObjectPreviewCard,
   getLastStatusAtMap,
   isActorBlockedBy,
   getInstanceDomainBlock,
@@ -61,6 +63,7 @@ import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFedivers
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
 import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
+import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
   getMlsKeyPackageByObjectId,
@@ -534,6 +537,15 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       } catch { /* ignore */ }
     }
   }
+
+  // Link preview: crawl the first external link asynchronously, like a local
+  // status. Mastodon skips statuses that carry media or a quote.
+  await maybeEnqueueLinkPreview(ctx.db, {
+    id: obj.id,
+    content,
+    quoteId: extractQuoteId(obj as Record<string, unknown>),
+    hasAttachments: storedAttachments.length > 0,
+  });
 
   // Process tags: mentions (notify) + emoji (cache federated emoji)
   const mentionedLocalIds = new Set<string>();
@@ -1566,6 +1578,25 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       raw: JSON.stringify(note),
     });
     await ensurePollRowsForQuestion(ctx, note);
+
+    // Refresh the link preview when the first link changed (or none exists).
+    try {
+      const ownHost = new URL(ctx.baseUrl).hostname;
+      const nextLink = extractFirstLink(content, ownHost);
+      const previousLink = extractFirstLink(existing.content, ownHost);
+      if (!nextLink) {
+        await clearObjectPreviewCard(ctx.db, note.id);
+      } else if (nextLink !== previousLink || !existing.cardId) {
+        await clearObjectPreviewCard(ctx.db, note.id);
+        const attachments = await getAttachmentsByObjectId(ctx.db, note.id);
+        await maybeEnqueueLinkPreview(ctx.db, {
+          id: note.id,
+          content,
+          quoteId: existing.quoteId,
+          hasAttachments: attachments.length > 0,
+        });
+      }
+    } catch { /* previews are best-effort */ }
     // Notify local users who interacted with the edited note
     const interacted = await getLocalInteractedActorIds(ctx.db, note.id);
     for (const targetId of interacted) {

@@ -83,7 +83,11 @@ CREATE TABLE IF NOT EXISTS objects (
   published       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   is_local        INTEGER NOT NULL DEFAULT 0,
-  raw             TEXT NOT NULL DEFAULT '{}'
+  raw             TEXT NOT NULL DEFAULT '{}',
+  -- Link preview card (Mastodon-style): shared `preview_cards` row plus a
+  -- snapshot so every timeline/serializer gets the card without joining.
+  card_id         TEXT,
+  card_json       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
@@ -94,6 +98,8 @@ CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
 -- Inbox Like/Announce objects sometimes carry the status URL instead of its
 -- AP id; resolving that fallback was a full table scan without this index.
 CREATE INDEX IF NOT EXISTS idx_objects_url         ON objects(url);
+-- Reverse lookup for card refreshes/evictions: keep objects.card_json in sync.
+CREATE INDEX IF NOT EXISTS idx_objects_card_id     ON objects(card_id);
 -- Covering index for the instance-statistics COUNT(DISTINCT actor_id) /
 -- COUNT(*) queries (nodeinfo, /api/v1/instance): the published-range scans
 -- stay index-only instead of reading the whole table.
@@ -976,3 +982,55 @@ CREATE TABLE IF NOT EXISTS custom_filter_statuses (
 
 CREATE INDEX IF NOT EXISTS idx_custom_filter_statuses_filter ON custom_filter_statuses(custom_filter_id);
 CREATE INDEX IF NOT EXISTS idx_custom_filter_statuses_status ON custom_filter_statuses(status_id);
+
+-- ─────────────────────────────────────────
+-- Link preview cards (Mastodon-style)
+-- ─────────────────────────────────────────
+-- One row per crawled URL, shared by every status that links to it. The card
+-- is crawled asynchronously (link_preview_queue -> cron) with the same
+-- user-agent fallback as the media cache; the preview image is queued there
+-- too (`media_cache.target_type = 'card'`), so it is served from R2 when the
+-- cache is enabled. `status = 'failed'` doubles as a negative cache.
+CREATE TABLE IF NOT EXISTS preview_cards (
+  id                TEXT PRIMARY KEY,             -- sha256(source_url)
+  source_url        TEXT NOT NULL,                -- URL as posted (queue key)
+  url               TEXT NOT NULL DEFAULT '',     -- canonical URL after redirects
+  title             TEXT NOT NULL DEFAULT '',
+  description       TEXT NOT NULL DEFAULT '',
+  type              TEXT NOT NULL DEFAULT 'link', -- link | photo | video | rich
+  author_name       TEXT NOT NULL DEFAULT '',
+  author_url        TEXT NOT NULL DEFAULT '',
+  provider_name     TEXT NOT NULL DEFAULT '',
+  provider_url      TEXT NOT NULL DEFAULT '',
+  html              TEXT NOT NULL DEFAULT '',     -- sanitized embed, if any
+  width             INTEGER NOT NULL DEFAULT 0,
+  height            INTEGER NOT NULL DEFAULT 0,
+  image_url         TEXT,                          -- origin (og:image/thumbnail)
+  image_cache_url   TEXT,                          -- R2 copy once cached
+  image_description TEXT NOT NULL DEFAULT '',
+  embed_url         TEXT NOT NULL DEFAULT '',
+  language          TEXT,
+  published_at      TEXT,
+  status            TEXT NOT NULL DEFAULT 'ready', -- ready | failed
+  attempts          INTEGER NOT NULL DEFAULT 0,
+  last_error        TEXT,
+  next_attempt_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  fetched_at        TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_preview_cards_refresh ON preview_cards(status, fetched_at);
+CREATE INDEX IF NOT EXISTS idx_preview_cards_image   ON preview_cards(image_url);
+
+-- Statuses waiting for their first link to be crawled (one per object).
+CREATE TABLE IF NOT EXISTS link_preview_queue (
+  object_id       TEXT PRIMARY KEY REFERENCES objects(id) ON DELETE CASCADE,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_link_preview_queue_due ON link_preview_queue(next_attempt_at);

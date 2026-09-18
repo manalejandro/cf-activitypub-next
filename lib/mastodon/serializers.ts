@@ -26,6 +26,7 @@ import type {
   APTag,
   APObject,
   APObjectMeta,
+  MastodonPreviewCard,
 } from "@/lib/types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
@@ -260,6 +261,42 @@ function renderRemoteContent(
   return processStatusContent(localSummaryToPlain(raw), `https://${localDomain}`, emojis).html;
 }
 
+/**
+ * Parse the card snapshot stored on the object row (`objects.card_json`).
+ * The snapshot is written by the link-preview crawler; anything malformed is
+ * treated as "no card" so a bad row can never break a timeline.
+ */
+export function parsePreviewCard(raw: string | null | undefined): MastodonPreviewCard | null {
+  if (!raw) return null;
+  try {
+    const card = JSON.parse(raw) as Partial<MastodonPreviewCard> | null;
+    if (!card || typeof card.url !== "string" || !card.url) return null;
+    const type = card.type === "photo" || card.type === "video" || card.type === "rich" ? card.type : "link";
+    return {
+      url: card.url,
+      title: typeof card.title === "string" ? card.title : "",
+      description: typeof card.description === "string" ? card.description : "",
+      type,
+      author_name: typeof card.author_name === "string" ? card.author_name : "",
+      author_url: typeof card.author_url === "string" ? card.author_url : "",
+      provider_name: typeof card.provider_name === "string" ? card.provider_name : "",
+      provider_url: typeof card.provider_url === "string" ? card.provider_url : "",
+      html: typeof card.html === "string" ? card.html : "",
+      width: Number(card.width ?? 0) || 0,
+      height: Number(card.height ?? 0) || 0,
+      image: typeof card.image === "string" && card.image ? card.image : null,
+      image_description: typeof card.image_description === "string" ? card.image_description : "",
+      embed_url: typeof card.embed_url === "string" ? card.embed_url : "",
+      blurhash: typeof card.blurhash === "string" ? card.blurhash : null,
+      language: typeof card.language === "string" ? card.language : null,
+      published_at: typeof card.published_at === "string" ? card.published_at : null,
+      authors: Array.isArray(card.authors) ? card.authors : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function serializeStatus(
   obj: LocalObject,
   author: LocalActor,
@@ -307,7 +344,7 @@ export function serializeStatus(
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
-    card: null,
+    card: parsePreviewCard(obj.cardJson),
     poll: opts.poll ?? null,
     filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,

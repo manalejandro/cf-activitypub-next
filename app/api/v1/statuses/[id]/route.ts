@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -11,6 +11,7 @@ import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activityp
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
+import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
@@ -270,6 +271,22 @@ export async function PUT(
     language: language ?? null,
     raw: JSON.stringify(note),
   });
+
+  // The first link may have changed: drop the stale card snapshot and queue a
+  // fresh crawl. When the same link stays, the existing card is kept as-is.
+  const currentAttachments = await getAttachmentsByObjectId(env.DB, obj.id);
+  const newLink = extractFirstLink(htmlContent, domain);
+  if (!newLink) {
+    await clearObjectPreviewCard(env.DB, obj.id);
+  } else if (newLink !== extractFirstLink(obj.content, domain) || !obj.cardId) {
+    await clearObjectPreviewCard(env.DB, obj.id);
+    await maybeEnqueueLinkPreview(env.DB, {
+      id: obj.id,
+      content: htmlContent,
+      quoteId: obj.quoteId,
+      hasAttachments: currentAttachments.length > 0,
+    });
+  }
 
   // Fan-out Update activity to followers
   if (obj.visibility !== "direct") {

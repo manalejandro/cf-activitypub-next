@@ -33,6 +33,7 @@ import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
+import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -719,6 +720,13 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         raw: JSON.stringify(note),
       });
 
+      await maybeEnqueueLinkPreview(env.DB, {
+        id: noteId,
+        content,
+        quoteId: null,
+        hasAttachments: noteAttachments.length > 0,
+      });
+
       await env.DB
         .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
         .bind(s.actor_id)
@@ -1013,6 +1021,23 @@ async function executeScheduled(env: Env): Promise<void> {
     await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
   } catch (err) {
     console.error("[cron] shared inbox backfill failed", err);
+  }
+
+  // Link previews: crawl the first external link of a few queued statuses per
+  // tick (oEmbed/OpenGraph) and attach the card to the status. Runs before the
+  // media-cache stage so a newly found preview image is queued and picked up
+  // in the same tick.
+  await setStage("link-preview");
+  try {
+    const ownDomain = (() => {
+      try {
+        const instanceUrl = (env as unknown as Record<string, string>).INSTANCE_URL;
+        return instanceUrl ? new URL(instanceUrl).hostname : null;
+      } catch { return null; }
+    })();
+    await processLinkPreviewQueue({ DB: env.DB, KV: env.KV }, linkPreviewLimitsFrom(limits), ownDomain);
+  } catch (err) {
+    console.error("[cron] link preview crawl failed", err);
   }
 
   // Remote media cache: queue what is missing, fetch a few per tick and keep

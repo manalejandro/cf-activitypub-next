@@ -153,6 +153,10 @@ export interface InstanceLimits {
   mediaCacheFetchBatch: number;
   mediaCacheMinEntries: number;
   mediaCacheUserAgents: string[];
+  linkPreviewEnabled: boolean;
+  linkPreviewFetchBatch: number;
+  linkPreviewDays: number;
+  linkPreviewMaxBytes: number;
   instanceRefreshBatch: number;
   instanceRefreshDays: number;
   instanceDormantDays: number;
@@ -203,6 +207,10 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
   mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
+  linkPreviewEnabled: true,
+  linkPreviewFetchBatch: 5,
+  linkPreviewDays: 14,
+  linkPreviewMaxBytes: 2 * 1024 * 1024,
   instanceRefreshBatch: INSTANCE_REFRESH_BATCH,
   instanceRefreshDays: INSTANCE_REFRESH_DAYS,
   instanceDormantDays: INSTANCE_DORMANT_DAYS,
@@ -290,6 +298,10 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
     mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
+    linkPreviewEnabled: bool(env, "LINK_PREVIEW_ENABLED", DEFAULT_LIMITS.linkPreviewEnabled),
+    linkPreviewFetchBatch: num(env, "LINK_PREVIEW_FETCH_BATCH", DEFAULT_LIMITS.linkPreviewFetchBatch),
+    linkPreviewDays: num(env, "LINK_PREVIEW_DAYS", DEFAULT_LIMITS.linkPreviewDays),
+    linkPreviewMaxBytes: num(env, "LINK_PREVIEW_MAX_BYTES", DEFAULT_LIMITS.linkPreviewMaxBytes),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
     instanceDormantDays: num(env, "INSTANCE_DORMANT_DAYS", DEFAULT_LIMITS.instanceDormantDays),

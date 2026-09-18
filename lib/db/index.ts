@@ -25,6 +25,8 @@ import type {
   ObjectEdit,
   LocalMlsKeyPackage,
   LocalMlsMessage,
+  PreviewCardRow,
+  LinkPreviewQueueEntry,
 } from "@/lib/types";
 
 // ─────────────────────────────────────────
@@ -135,6 +137,8 @@ function rowToObject(r: Row): LocalObject {
     updatedAt: r.updated_at,
     local: Boolean(r.is_local),
     raw: r.raw ?? "{}",
+    cardId: (r.card_id as string | null) ?? null,
+    cardJson: (r.card_json as string | null) ?? null,
   };
 }
 
@@ -3781,6 +3785,242 @@ export async function applyMediaCacheToAttachmentsByUrl(
     .run();
 }
 
+/** Map a `preview_cards` row. */
+function rowToPreviewCard(r: Row): PreviewCardRow {
+  return {
+    id: r.id as string,
+    sourceUrl: r.source_url as string,
+    url: (r.url as string) ?? "",
+    title: (r.title as string) ?? "",
+    description: (r.description as string) ?? "",
+    type: ((r.type as string) ?? "link") as PreviewCardRow["type"],
+    authorName: (r.author_name as string) ?? "",
+    authorUrl: (r.author_url as string) ?? "",
+    providerName: (r.provider_name as string) ?? "",
+    providerUrl: (r.provider_url as string) ?? "",
+    html: (r.html as string) ?? "",
+    width: Number(r.width ?? 0),
+    height: Number(r.height ?? 0),
+    imageUrl: (r.image_url as string | null) ?? null,
+    imageCacheUrl: (r.image_cache_url as string | null) ?? null,
+    imageDescription: (r.image_description as string) ?? "",
+    embedUrl: (r.embed_url as string) ?? "",
+    language: (r.language as string | null) ?? null,
+    publishedAt: (r.published_at as string | null) ?? null,
+    status: ((r.status as string) ?? "ready") as PreviewCardRow["status"],
+    attempts: Number(r.attempts ?? 0),
+    lastError: (r.last_error as string | null) ?? null,
+    nextAttemptAt: (r.next_attempt_at as string) ?? "",
+    fetchedAt: (r.fetched_at as string | null) ?? null,
+    createdAt: (r.created_at as string) ?? "",
+    updatedAt: (r.updated_at as string) ?? "",
+  };
+}
+
+/** Queue a status for link crawling (idempotent, one job per object). */
+export async function enqueueLinkPreview(db: D1Database, objectId: string): Promise<void> {
+  await db
+    .prepare("INSERT OR IGNORE INTO link_preview_queue (object_id) VALUES (?)")
+    .bind(objectId)
+    .run();
+}
+
+/** Due crawl jobs, oldest attempt first. */
+export async function listLinkPreviewQueue(db: D1Database, limit: number): Promise<LinkPreviewQueueEntry[]> {
+  const rows = await db
+    .prepare("SELECT * FROM link_preview_queue WHERE next_attempt_at <= datetime('now') ORDER BY next_attempt_at ASC LIMIT ?")
+    .bind(limit)
+    .all<Row>();
+  return (rows.results ?? []).map((r) => ({
+    objectId: r.object_id as string,
+    attempts: Number(r.attempts ?? 0),
+    lastError: (r.last_error as string | null) ?? null,
+    nextAttemptAt: (r.next_attempt_at as string) ?? "",
+    createdAt: (r.created_at as string) ?? "",
+  }));
+}
+
+export async function deleteLinkPreviewQueue(db: D1Database, objectId: string): Promise<void> {
+  await db.prepare("DELETE FROM link_preview_queue WHERE object_id = ?").bind(objectId).run();
+}
+
+export async function markLinkPreviewFailed(
+  db: D1Database,
+  objectId: string,
+  error: string,
+  nextAttemptAt: string
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE link_preview_queue SET attempts = attempts + 1, last_error = ?, next_attempt_at = ? WHERE object_id = ?`
+    )
+    .bind(error.slice(0, 300), nextAttemptAt, objectId)
+    .run();
+}
+
+export async function getPreviewCardBySourceUrl(db: D1Database, sourceUrl: string): Promise<PreviewCardRow | null> {
+  const row = await db
+    .prepare("SELECT * FROM preview_cards WHERE source_url = ?")
+    .bind(sourceUrl)
+    .first<Row>();
+  return row ? rowToPreviewCard(row) : null;
+}
+
+export interface PreviewCardInput {
+  id: string;
+  sourceUrl: string;
+  url: string;
+  title: string;
+  description: string;
+  type: PreviewCardRow["type"];
+  authorName: string;
+  authorUrl: string;
+  providerName: string;
+  providerUrl: string;
+  html: string;
+  width: number;
+  height: number;
+  imageUrl: string | null;
+  imageDescription: string;
+  embedUrl: string;
+  language: string | null;
+  publishedAt: string | null;
+}
+
+/** Insert/refresh a crawled card (keyed by the URL as posted). */
+export async function upsertPreviewCard(db: D1Database, card: PreviewCardInput): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO preview_cards (
+         id, source_url, url, title, description, type, author_name, author_url,
+         provider_name, provider_url, html, width, height, image_url,
+         image_description, embed_url, language, published_at,
+         status, attempts, last_error, fetched_at, updated_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ready',1,NULL,datetime('now'),datetime('now'))
+       ON CONFLICT(source_url) DO UPDATE SET
+         url = excluded.url, title = excluded.title, description = excluded.description,
+         type = excluded.type, author_name = excluded.author_name, author_url = excluded.author_url,
+         provider_name = excluded.provider_name, provider_url = excluded.provider_url,
+         html = excluded.html, width = excluded.width, height = excluded.height,
+         image_url = excluded.image_url, image_description = excluded.image_description,
+         embed_url = excluded.embed_url, language = excluded.language, published_at = excluded.published_at,
+         status = 'ready', attempts = attempts + 1, last_error = NULL,
+         fetched_at = datetime('now'), updated_at = datetime('now')`
+    )
+    .bind(
+      card.id, card.sourceUrl, card.url, card.title, card.description, card.type,
+      card.authorName, card.authorUrl, card.providerName, card.providerUrl, card.html,
+      card.width, card.height, card.imageUrl, card.imageDescription, card.embedUrl,
+      card.language, card.publishedAt
+    )
+    .run();
+}
+
+/** Negative cache: remember a URL that produced no usable card. */
+export async function markPreviewCardFailed(
+  db: D1Database,
+  id: string,
+  sourceUrl: string,
+  error: string,
+  nextAttemptAt: string
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO preview_cards (id, source_url, status, attempts, last_error, next_attempt_at, updated_at)
+       VALUES (?, ?, 'failed', 1, ?, ?, datetime('now'))
+       ON CONFLICT(source_url) DO UPDATE SET
+         status = 'failed', attempts = attempts + 1, last_error = excluded.last_error,
+         next_attempt_at = excluded.next_attempt_at, updated_at = datetime('now')`
+    )
+    .bind(id, sourceUrl, error.slice(0, 300), nextAttemptAt)
+    .run();
+}
+
+/**
+ * Attach a card snapshot to a status. The snapshot (not a join) is what every
+ * serializer reads, so all timelines/notifications expose the card without
+ * extra queries; media-cache completions update it in place via `card_id`.
+ */
+export async function linkObjectPreviewCard(
+  db: D1Database,
+  objectId: string,
+  cardId: string,
+  cardJson: string
+): Promise<void> {
+  await db
+    .prepare("UPDATE objects SET card_id = ?, card_json = ? WHERE id = ?")
+    .bind(cardId, cardJson, objectId)
+    .run();
+}
+
+/** Refresh the snapshot of every status pointing at `cardId` (same card). */
+export async function updateObjectCardSnapshots(
+  db: D1Database,
+  cardId: string,
+  cardJson: string
+): Promise<void> {
+  await db.prepare("UPDATE objects SET card_json = ? WHERE card_id = ?").bind(cardJson, cardId).run();
+}
+
+/** Drop a status' card snapshot (edit/refresh before re-crawling). */
+export async function clearObjectPreviewCard(db: D1Database, objectId: string): Promise<void> {
+  await db.prepare("UPDATE objects SET card_id = NULL, card_json = NULL WHERE id = ?").bind(objectId).run();
+}
+
+/**
+ * Point every card using `sourceUrl` as preview image at the cached copy and
+ * refresh the snapshots already attached to statuses.
+ */
+export async function applyMediaCacheToPreviewCardsByUrl(
+  db: D1Database,
+  sourceUrl: string,
+  cachedUrl: string
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare("UPDATE preview_cards SET image_cache_url = ?, updated_at = datetime('now') WHERE image_url = ?")
+      .bind(cachedUrl, sourceUrl),
+    db
+      .prepare(
+        `UPDATE objects SET card_json = json_set(card_json, '$.image', ?)
+         WHERE card_id IN (SELECT id FROM preview_cards WHERE image_url = ?)`
+      )
+      .bind(cachedUrl, sourceUrl),
+  ]);
+}
+
+/** Cards whose image was never cached (media cache backfill). */
+export async function listPreviewCardsMissingImageCache(
+  db: D1Database,
+  limit: number
+): Promise<{ id: string; imageUrl: string }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT id, image_url FROM preview_cards
+       WHERE status = 'ready' AND image_url LIKE 'https://%' AND image_cache_url IS NULL
+       ORDER BY fetched_at DESC LIMIT ?`
+    )
+    .bind(limit)
+    .all<Row>();
+  return (rows.results ?? []).map((r) => ({ id: r.id as string, imageUrl: r.image_url as string }));
+}
+
+/** Remove old cards no status points at (bounded per tick). */
+export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): Promise<number> {
+  const result = await db
+    .prepare(
+      `DELETE FROM preview_cards WHERE id IN (
+         SELECT pc.id FROM preview_cards pc
+         WHERE pc.created_at < datetime('now', '-30 days')
+           AND NOT EXISTS (SELECT 1 FROM objects o WHERE o.card_id = pc.id)
+         LIMIT ?
+       )`
+    )
+    .bind(limit)
+    .run();
+  return result.meta?.changes ?? 0;
+}
+
 /** Point every actor using `sourceUrl` as avatar/header at the cached copy. */
 export async function applyMediaCacheToActorsByUrl(
   db: D1Database,
@@ -3824,6 +4064,7 @@ export async function enqueueMediaCache(
     await applyMediaCacheToAttachmentsByUrl(db, sourceUrl, ready.cached_url, Number(ready.size ?? 0), ready.content_type ?? null);
     await applyMediaCacheToActorsByUrl(db, "avatar", sourceUrl, ready.cached_url);
     await applyMediaCacheToActorsByUrl(db, "header", sourceUrl, ready.cached_url);
+    await applyMediaCacheToPreviewCardsByUrl(db, sourceUrl, ready.cached_url);
     return;
   }
 

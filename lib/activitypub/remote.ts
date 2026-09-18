@@ -17,6 +17,7 @@ import {
   enqueueMediaCache,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
+import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
@@ -562,6 +563,13 @@ export async function fetchAndCacheRemoteActorStatuses(
       // Inline attachments (remote objects reference of their URLs).
       await storeObjectAttachments(db, oid, obj.attachment as APAttachment[] | undefined, obj.sensitive === true);
 
+      await maybeEnqueueLinkPreview(db, {
+        id: oid,
+        content: sanitized.content,
+        quoteId: extractQuoteId(obj as Record<string, unknown>),
+        hasAttachments: Array.isArray(obj.attachment) && (obj.attachment as APAttachment[]).length > 0,
+      });
+
       // Backfill poll rows for Question objects.
       if (objType === "Question") {
         try { await ensureOutboxPollRows(db, obj as unknown as APNote); } catch { /* ignore */ }
@@ -679,6 +687,12 @@ export async function fetchAndCacheRemoteStatus(
     });
 
     await storeObjectAttachments(db, oid, obj.attachment as APAttachment[] | undefined, obj.sensitive === true);
+    await maybeEnqueueLinkPreview(db, {
+      id: oid,
+      content: typeof obj.content === "string" ? obj.content : null,
+      quoteId: extractQuoteId(obj as Record<string, unknown>),
+      hasAttachments: Array.isArray(obj.attachment) && (obj.attachment as APAttachment[]).length > 0,
+    });
     if (objType === "Question") {
       try { await ensureOutboxPollRows(db, obj as unknown as APNote); } catch { /* ignore */ }
     }

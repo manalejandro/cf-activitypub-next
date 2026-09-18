@@ -265,6 +265,10 @@ export interface LocalObject {
   updatedAt: string;
   local: boolean;
   raw: string; // JSON
+  /** Shared preview card row id (preview_cards.id), null until crawled. */
+  cardId?: string | null;
+  /** Serialized card snapshot served with the status (JSON). */
+  cardJson?: string | null;
 }
 
 export interface LocalFollow {
@@ -675,7 +679,7 @@ export interface LocalPushSubscription {
 export interface MediaCacheEntry {
   id: string;
   sourceUrl: string;
-  targetType: "attachment" | "avatar" | "header";
+  targetType: "attachment" | "avatar" | "header" | "card";
   targetId: string | null;
   status: "pending" | "ready" | "failed";
   r2Key: string | null;
@@ -686,6 +690,45 @@ export interface MediaCacheEntry {
   lastError: string | null;
   nextAttemptAt: string;
   fetchedAt: string | null;
+  createdAt: string;
+}
+
+/** A crawled link preview card (Mastodon `PreviewCard`). */
+export interface PreviewCardRow {
+  id: string;
+  sourceUrl: string;
+  url: string;
+  title: string;
+  description: string;
+  type: "link" | "photo" | "video" | "rich";
+  authorName: string;
+  authorUrl: string;
+  providerName: string;
+  providerUrl: string;
+  html: string;
+  width: number;
+  height: number;
+  imageUrl: string | null;
+  imageCacheUrl: string | null;
+  imageDescription: string;
+  embedUrl: string;
+  language: string | null;
+  publishedAt: string | null;
+  status: "ready" | "failed";
+  attempts: number;
+  lastError: string | null;
+  nextAttemptAt: string;
+  fetchedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An object waiting for its first link to be crawled. */
+export interface LinkPreviewQueueEntry {
+  objectId: string;
+  attempts: number;
+  lastError: string | null;
+  nextAttemptAt: string;
   createdAt: string;
 }
 

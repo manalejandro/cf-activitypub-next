@@ -20,10 +20,12 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { resolveLimits, type InstanceLimits } from "@/lib/constants";
-import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
+import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
 import {
   applyMediaCacheToActorsByUrl,
   applyMediaCacheToAttachmentsByUrl,
+  applyMediaCacheToPreviewCardsByUrl,
   enqueueMediaCache,
   deleteMediaCacheRows,
   getMediaCacheStats,
@@ -31,6 +33,7 @@ import {
   listMediaCacheKeys,
   listMediaCacheQueue,
   listOldestMediaCache,
+  listPreviewCardsMissingImageCache,
   markMediaCacheFailed,
   markMediaCacheReady,
 } from "@/lib/db";
@@ -212,37 +215,6 @@ function plusHours(hours: number, from = Date.now()): string {
   return new Date(from + hours * 3_600_000).toISOString();
 }
 
-/** Read at most `max` bytes of a response body (bounded memory). */
-async function readBoundedBytes(res: Response, max: number): Promise<Uint8Array | null> {
-  const reader = res.body?.getReader();
-  if (!reader) {
-    const buffer = await res.arrayBuffer().catch(() => null);
-    if (!buffer || buffer.byteLength > max) return null;
-    return new Uint8Array(buffer);
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > max) return null;
-      chunks.push(value);
-    }
-  } finally {
-    try { await reader.cancel(); } catch { /* already closed */ }
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
-}
-
 /** Download one queued resource and point its target at the cached copy. */
 async function cacheOne(
   bindings: MediaCacheBindings,
@@ -256,82 +228,46 @@ async function cacheOne(
     return false;
   }
 
-  let lastError = "unreachable";
-  let permanent = false;
+  const fetched = await fetchWithUserAgents(job.sourceUrl, {
+    userAgents: limits.userAgents,
+    accept: "image/avif,image/webp,image/*,video/*,audio/*,*/*;q=0.8",
+    timeoutMs: FETCH_TIMEOUT_MS,
+    maxBytes: limits.maxObjectBytes,
+    isAcceptableType: isCacheableType,
+  });
 
-  for (const userAgent of limits.userAgents) {
-    let res: Response | null = null;
-    try {
-      res = await safeFetch(
-        job.sourceUrl,
-        {
-          headers: {
-            "User-Agent": userAgent,
-            Accept: "image/avif,image/webp,image/*,video/*,audio/*,*/*;q=0.8",
-          },
-        },
-        FETCH_TIMEOUT_MS
-      );
-    } catch (err) {
-      lastError = String(err);
-      continue;
-    }
-    if (!res) {
-      lastError = "unreachable";
-      continue;
-    }
-    if (res.status === 404 || res.status === 410) {
-      permanent = true;
-      lastError = `HTTP ${res.status}`;
-      break;
-    }
-    if (!res.ok) {
-      lastError = `HTTP ${res.status}`;
-      await res.body?.cancel().catch(() => {});
-      // 401/403/406/429/451 → the next user agent may be accepted.
-      continue;
-    }
+  let lastError = fetched.ok ? "unreachable" : fetched.error;
+  let permanent = !fetched.ok && fetched.permanent;
 
-    const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!isCacheableType(contentType)) {
-      permanent = true;
-      lastError = `Unsupported content type ${contentType || "unknown"}`;
-      await res.body?.cancel().catch(() => {});
-      break;
-    }
-    const declared = Number(res.headers.get("content-length") ?? "0");
-    if (declared > limits.maxObjectBytes) {
-      permanent = true;
-      lastError = `Too large (${declared} bytes)`;
-      await res.body?.cancel().catch(() => {});
-      break;
-    }
-    const bytes = await readBoundedBytes(res, limits.maxObjectBytes);
+  if (fetched.ok) {
+    const bytes = await readBoundedBytes(fetched.response, limits.maxObjectBytes);
     if (!bytes) {
       permanent = true;
       lastError = "Body exceeds the size limit";
-      break;
-    }
-
-    const r2Key = `cache/media/${job.id}.${extensionFor(contentType, job.sourceUrl)}`;
-    try {
-      await bindings.R2.put(r2Key, bytes, {
-        httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
-        customMetadata: { sourceUrl: job.sourceUrl.slice(0, 900) },
-      });
-      const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
-      await markMediaCacheReady(bindings.DB, job.id, { r2Key, cachedUrl, size: bytes.byteLength, contentType });
-      // Rewrite every reference to this URL, not just the trigger target.
-      await applyMediaCacheToAttachmentsByUrl(bindings.DB, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
-      if (job.targetType === "avatar" || job.targetType === "header") {
-        await applyMediaCacheToActorsByUrl(bindings.DB, job.targetType, job.sourceUrl, cachedUrl);
+    } else {
+      const contentType = fetched.contentType;
+      const r2Key = `cache/media/${job.id}.${extensionFor(contentType, job.sourceUrl)}`;
+      try {
+        await bindings.R2.put(r2Key, bytes, {
+          httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" },
+          customMetadata: { sourceUrl: job.sourceUrl.slice(0, 900) },
+        });
+        const cachedUrl = `${baseUrl}/api/media/${r2Key}`;
+        await markMediaCacheReady(bindings.DB, job.id, { r2Key, cachedUrl, size: bytes.byteLength, contentType });
+        // Rewrite every reference to this URL, not just the trigger target.
+        await applyMediaCacheToAttachmentsByUrl(bindings.DB, job.sourceUrl, cachedUrl, bytes.byteLength, contentType);
+        if (job.targetType === "avatar" || job.targetType === "header") {
+          await applyMediaCacheToActorsByUrl(bindings.DB, job.targetType, job.sourceUrl, cachedUrl);
+        }
+        if (job.targetType === "card") {
+          await applyMediaCacheToPreviewCardsByUrl(bindings.DB, job.sourceUrl, cachedUrl);
+        }
+        return true;
+      } catch (err) {
+        // Storage/bookkeeping failure: count the attempt so the row backs off
+        // instead of being retried on every single tick.
+        lastError = `store failed: ${String(err)}`;
       }
-      return true;
-    } catch (err) {
-      // Storage/bookkeeping failure: count the attempt so the row backs off
-      // instead of being retried on every single tick.
-      lastError = `store failed: ${String(err)}`;
-      break;
     }
   }
 
@@ -444,6 +380,15 @@ export async function backfillMediaCache(
       .all<{ id: string; url: string }>();
     for (const row of attachments.results ?? []) {
       await enqueueMediaCache(bindings.DB, row.url, "attachment", row.id, BACKFILL_DELAY_SECONDS);
+      queued++;
+    }
+  } catch { /* the table may be missing pre-migration */ }
+
+  // Preview card images of recently crawled links (served from R2 once done).
+  try {
+    const cards = await listPreviewCardsMissingImageCache(bindings.DB, batch);
+    for (const card of cards) {
+      await enqueueMediaCache(bindings.DB, card.imageUrl, "card", card.id, BACKFILL_DELAY_SECONDS);
       queued++;
     }
   } catch { /* the table may be missing pre-migration */ }

@@ -39,6 +39,26 @@ export interface MediaAttachment {
   sensitive?: boolean;
 }
 
+export interface LinkPreviewCardData {
+  url: string;
+  title: string;
+  description: string;
+  type: "link" | "photo" | "video" | "rich";
+  author_name: string;
+  author_url: string;
+  provider_name: string;
+  provider_url: string;
+  html: string;
+  width: number;
+  height: number;
+  image: string | null;
+  image_description: string;
+  embed_url: string;
+  blurhash?: string | null;
+  language?: string | null;
+  published_at?: string | null;
+}
+
 export interface PollOption { title: string; votes_count: number | null }
 export interface Poll {
   id: string;
@@ -79,6 +99,7 @@ export interface Status {
   language?: string | null;
   visibility?: string;
   poll: Poll | null;
+  card?: LinkPreviewCardData | null;
   emojis?: EmojiData[];
   ap_type?: string | null;
   quote?: Status | null;
@@ -449,6 +470,74 @@ export function QuoteInline({ quote }: { quote: Status }) {
 
 // ─── StatusCard ───────────────────────────────────────────────────────────────
 
+function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive: boolean }) {
+  const { t } = useLocale();
+  const [revealed, setRevealed] = useState(false);
+  const blurred = sensitive && !revealed;
+  const host = (() => {
+    try { return new URL(card.url).hostname; } catch { return card.url; }
+  })();
+  const title = card.title || host;
+  return (
+    <a
+      href={card.url}
+      target="_blank"
+      rel="nofollow noopener noreferrer"
+      style={{
+        display: "block",
+        textDecoration: "none",
+        color: "inherit",
+        marginTop: "0.6rem",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        background: "var(--bg-elevated)",
+        overflow: "hidden",
+      }}
+    >
+      {card.image && (
+        <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "var(--bg-overlay)" }}>
+          <Image
+            src={card.image}
+            alt={card.image_description || title}
+            fill
+            sizes="(max-width: 768px) 100vw, 600px"
+            style={{ objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }}
+          />
+          {card.type === "video" && !blurred && (
+            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: "2.6rem", height: "2.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="play" size="1.1rem" color="#fff" />
+              </span>
+            </span>
+          )}
+          {blurred && (
+            <button
+              type="button"
+              onClick={(event) => { event.preventDefault(); setRevealed(true); }}
+              aria-label={t.media_reveal}
+              style={{ position: "absolute", inset: 0, zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.4rem", background: "rgba(0,0,0,0.55)", color: "#fff", border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}
+            >
+              <Icon name="eye-slash" size="1.3rem" color="#fff" />
+              <span>{t.media_sensitive_label}</span>
+            </button>
+          )}
+        </div>
+      )}
+      <span style={{ display: "flex", flexDirection: "column", gap: "0.15rem", padding: "0.6rem 0.75rem" }}>
+        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {card.provider_name || host}
+        </span>
+        <span style={{ fontWeight: 600, fontSize: "0.9rem", lineHeight: 1.35 }}>{title}</span>
+        {card.description && (
+          <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {card.description}
+          </span>
+        )}
+      </span>
+    </a>
+  );
+}
+
 export function StatusCard({
   status,
   isFocal = false,
@@ -814,6 +903,9 @@ export function StatusCard({
         )}
         {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
+        {showContent && status.card && (
+          <LinkPreview card={status.card} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} />
+        )}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><Icon name="pencil" size="0.7rem" /> {t.status_edited}</div>
         )}

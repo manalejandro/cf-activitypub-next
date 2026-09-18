@@ -23,6 +23,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import {
   buildNote,
   buildCreate,
@@ -633,6 +634,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       .bind(JSON.stringify(note), note.id)
       .run();
   }
+
+  // Link preview: the first external link is crawled asynchronously (cron),
+  // with the same user agents as the media cache. Skipped when the status has
+  // media or a quote, mirroring Mastodon.
+  await maybeEnqueueLinkPreview(env.DB, {
+    id: note.id,
+    content: content ?? "",
+    quoteId: quoteId ?? null,
+    hasAttachments: linkedAttachments.length > 0,
+  });
 
   // Fan-out delivery
   const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
