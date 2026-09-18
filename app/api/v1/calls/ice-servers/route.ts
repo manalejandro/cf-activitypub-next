@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { discardBody } from "@/lib/http";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 
@@ -27,6 +28,8 @@ export async function GET(request: NextRequest): Promise<Response> {
         if (raw && raw.length > 0) {
           return json({ iceServers: raw });
         }
+      } else {
+        await discardBody(res);
       }
     } catch {
       // fall through

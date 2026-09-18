@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { discardBody } from "@/lib/http";
 import { getCloudflareContext } from "@/lib/cf";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
@@ -65,8 +66,9 @@ async function remoteFetch(
       const res = await safeFetch(url, {
         headers: { ...headers, "User-Agent": ua },
       }, timeoutMs);
-      last = res;
       if (res?.ok) return res;
+      await discardBody(res);
+      last = res;
     } catch {
       /* try next UA */
     }

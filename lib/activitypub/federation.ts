@@ -3,6 +3,7 @@
  */
 
 import { signRequest } from "./security";
+import { discardBody } from "@/lib/http";
 import type { APActivity, APActor, APObject } from "@/lib/types";
 
 const AP_CONTENT_TYPE = "application/activity+json";
@@ -170,10 +171,16 @@ export async function fetchRemoteObject(
         ...additionalHeaders,
       },
     });
-    if (!res?.ok) return null;
+    if (!res?.ok) {
+      await discardBody(res);
+      return null;
+    }
 
     const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("json")) return null;
+    if (!contentType.includes("json")) {
+      await discardBody(res);
+      return null;
+    }
 
     // The timeout signal stays armed while the body is read, so a slow body
     // can't hang the request past REQUEST_TIMEOUT_MS. Read as text first and
@@ -241,7 +248,10 @@ export async function resolveWebFinger(
     const res = await safeFetch(url, {
       headers: { Accept: "application/jrd+json, application/json" },
     }, 5000);
-    if (!res?.ok) return null;
+    if (!res?.ok) {
+      await discardBody(res);
+      return null;
+    }
     const data = await res.json() as { links?: { rel: string; href: string }[] };
     const selfLink = data.links?.find((l) => l.rel === "self");
     return selfLink?.href ?? null;

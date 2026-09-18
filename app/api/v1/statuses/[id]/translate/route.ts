@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { discardBody } from "@/lib/http";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, isAcceptedFollower, canViewStatus } from "@/lib/db";
@@ -34,6 +35,8 @@ export async function POST(
       if (res.ok) {
         const data = await res.json() as { translatedText: string };
         translatedText = data.translatedText;
+      } else {
+        await discardBody(res);
       }
     } catch { /* fallback to original */ }
   }

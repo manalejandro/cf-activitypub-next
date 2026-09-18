@@ -10,6 +10,8 @@
  *   site (or for another flow) is rejected.
  */
 
+import { discardBody } from "@/lib/http";
+
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TOKEN_LENGTH = 2048;
@@ -90,6 +92,7 @@ export async function verifyTurnstileToken(
       });
 
       if (!res.ok) {
+        await discardBody(res);
         // 4xx is a protocol/credentials problem — retrying won't help.
         if (res.status < 500) return fail(["bad-request"]);
         throw new Error(`Siteverify responded ${res.status}`);

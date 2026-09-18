@@ -1,4 +1,5 @@
 import { getBaseUrl, json, getCloudflareContext, unauthorized } from "@/lib/cf";
+import { discardBody } from "@/lib/http";
 import { getActorByUsername, getActorById } from "@/lib/db";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
@@ -60,7 +61,10 @@ async function resolveActorIri(
   if (!val.valid) return null;
   try {
     const res = await safeFetch(webfingerUrl, { headers: { Accept: "application/json" } }, 6000);
-    if (!res?.ok) return null;
+    if (!res?.ok) {
+      await discardBody(res);
+      return null;
+    }
     const wf = await res.json() as { links?: { rel: string; href: string }[] };
     const selfLink = wf.links?.find((l) => l.rel === "self");
     if (!selfLink?.href) return null;

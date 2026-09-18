@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { discardBody } from "@/lib/http";
 import { getPushSubscription } from "@/lib/db";
 import type { LocalNotification } from "@/lib/types";
 import en from "@/lib/locales/en.json";
@@ -164,6 +165,9 @@ export async function deliverPushNotification(
     body: body as BodyInit,
   });
 
+  // We only need the status: release the body so many push deliveries can't
+  // stall the in-flight fetch pool.
+  await discardBody(resp);
   if (resp.status === 410 || resp.status === 404) {
     // The push service dropped the subscription (uninstalled browser, stale
     // endpoint). Remove it and make it visible — silent deletion hides why a

@@ -13,6 +13,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { discardBody } from "@/lib/http";
 import type { APActor, LocalActor, LocalCollectionItem } from "@/lib/types";
 import {
   getActorById,
@@ -248,7 +249,10 @@ export async function syncRemoteCollections(
 async function fetchListing(url: string): Promise<CollectionListingDoc | null> {
   try {
     const res = await safeFetch(url, { headers: { Accept: AP_ACCEPT } }, 8000);
-    if (!res?.ok) return null;
+    if (!res?.ok) {
+      await discardBody(res);
+      return null;
+    }
     const doc = await res.json() as CollectionListingDoc;
     return doc && typeof doc === "object" ? doc : null;
   } catch {

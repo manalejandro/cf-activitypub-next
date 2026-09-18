@@ -14,6 +14,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { discardBody } from "@/lib/http";
 import { safeFetch, validateOutboundUrl, fetchRemoteObject } from "@/lib/activitypub/federation";
 import {
   getInstance,
@@ -126,7 +127,10 @@ export interface InstanceMetadata {
 async function fetchJson(url: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
   try {
     const res = await safeFetch(url, { headers: { Accept: "application/json" } }, timeoutMs);
-    if (!res || !res.ok) return null;
+    if (!res || !res.ok) {
+      await discardBody(res);
+      return null;
+    }
     const text = await res.text().catch(() => "");
     if (!text || text.length > 512 * 1024) return null;
     const parsed: unknown = JSON.parse(text);

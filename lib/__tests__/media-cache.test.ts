@@ -647,6 +647,42 @@ describe("remote media cache", () => {
     }
   });
 
+  it("cancels the source response when R2 rejects the upload", async () => {
+    class FakeFixedLengthStream {
+      readable: ReadableStream<Uint8Array>;
+      writable: WritableStream<Uint8Array>;
+      constructor(public length: number) {
+        const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+        this.readable = readable;
+        this.writable = writable;
+      }
+    }
+    const original = (globalThis as Record<string, unknown>).FixedLengthStream;
+    (globalThis as Record<string, unknown>).FixedLengthStream = FakeFixedLengthStream;
+    try {
+      let canceled = false;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new Uint8Array([1, 2, 3])); },
+        cancel() { canceled = true; },
+      });
+      const res = {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "image/png", "content-length": "3" }),
+        body: stream,
+      } as unknown as Response;
+      await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+      federation.safeFetch.mockResolvedValue(res);
+      const put = vi.spyOn(r2, "put").mockRejectedValueOnce(new Error("r2 down"));
+
+      expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(0);
+      expect(canceled).toBe(true);
+      put.mockRestore();
+    } finally {
+      (globalThis as Record<string, unknown>).FixedLengthStream = original;
+    }
+  });
+
   it("buffers a chunked (unknown length) body through the capped fallback", async () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(

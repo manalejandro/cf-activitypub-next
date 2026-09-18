@@ -327,6 +327,13 @@ async function cacheOne(
         }
         return true;
       } catch (err) {
+        // If R2 rejected the upload before consuming it, cancel the stream so
+        // the source response body is released: unread bodies pile up and trip
+        // Cloudflare's stalled-response protection ("A stalled HTTP response
+        // was canceled to prevent deadlock").
+        if (upload && typeof (upload as ReadableStream).cancel === "function") {
+          await (upload as ReadableStream).cancel().catch(() => {});
+        }
         // Storage/bookkeeping failure: count the attempt so the row backs off
         // instead of being retried on every single tick. A mid-stream size
         // violation surfaces here too.

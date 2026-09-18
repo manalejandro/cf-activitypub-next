@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { discardBody } from "@/lib/http";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
@@ -135,6 +136,8 @@ export async function GET(request: NextRequest): Promise<Response> {
                 }
               }
             }
+          } else {
+            await discardBody(wfRes);
           }
         } catch { /* ignore network errors */ }
       }

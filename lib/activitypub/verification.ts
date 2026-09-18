@@ -8,6 +8,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { discardBody } from "@/lib/http";
 import { getActorById, getActorFields, setActorFieldVerified } from "@/lib/db";
 import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 
@@ -141,6 +142,8 @@ export async function verifyAccountFields(
       if (res?.ok) {
         const html = await readBoundedText(res);
         ok = extractMeLinks(html).map(normalizeUrl).some((href) => profileUrls.includes(href));
+      } else {
+        await discardBody(res);
       }
     } catch {
       ok = false;

@@ -1,4 +1,5 @@
 import { getCloudflareContext, json } from "@/lib/cf";
+import { discardBody } from "@/lib/http";
 import { getInstanceSetting } from "@/lib/db";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
@@ -38,6 +39,8 @@ export async function GET(): Promise<Response> {
           if (source.length > 0) {
             return json({ source, target });
           }
+        } else {
+          await discardBody(res);
         }
       }
     } catch { /* fall through to configured languages */ }
