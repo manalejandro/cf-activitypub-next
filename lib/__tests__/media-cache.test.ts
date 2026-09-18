@@ -323,6 +323,50 @@ describe("remote media cache", () => {
     expect(r2.store.size).toBe(1);
   });
 
+  it("caches media without breaking on duplicate attachment rows of one object", async () => {
+    // Two rows of the same object for the same source (one already at the
+    // origin, one stale cached URL): rewriting both to the same cached URL
+    // used to violate the unique (object_id, url) index.
+    const stale = "https://local.example/api/media/cache/media/stale.png";
+    await db
+      .prepare(
+        `INSERT INTO attachments (id, object_id, type, url, remote_url)
+         VALUES ('att-dup', 'https://remote.example/objects/1', 'image', ?, ?)`
+      )
+      .bind(stale, SRC)
+      .run();
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
+
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+    const rows = await db
+      .prepare("SELECT id, url FROM attachments WHERE object_id = 'https://remote.example/objects/1'")
+      .bind()
+      .all<{ id: string; url: string }>();
+    expect(rows.results.map((r) => r.id)).toEqual([ATTACH]);
+    expect(rows.results[0].url).toContain("/api/media/cache/media/");
+  });
+
+  it("repairs duplicate attachments by dropping the dead copy", async () => {
+    const stale = "https://local.example/api/media/cache/media/stale.png";
+    await db
+      .prepare(
+        `INSERT INTO attachments (id, object_id, type, url, remote_url)
+         VALUES ('att-dup', 'https://remote.example/objects/1', 'image', ?, ?)`
+      )
+      .bind(stale, SRC)
+      .run();
+    // No media_cache row for the stale copy: the repair must dedupe it.
+    const repaired = await repairMediaCacheReferences(db, 100);
+    expect(repaired).toBeGreaterThanOrEqual(1);
+    const rows = await db
+      .prepare("SELECT id, url FROM attachments WHERE object_id = 'https://remote.example/objects/1'")
+      .bind()
+      .all<{ id: string; url: string }>();
+    expect(rows.results.map((r) => r.id)).toEqual([ATTACH]);
+    expect(rows.results[0].url).toBe(SRC);
+  });
+
   it("keeps a cached file still referenced by another status", async () => {
     await db.prepare(
       `INSERT INTO objects (id, type, actor_id, visibility, is_local)

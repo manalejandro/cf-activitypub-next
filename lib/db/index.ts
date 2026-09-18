@@ -3783,14 +3783,27 @@ export async function applyMediaCacheToAttachmentsByUrl(
   size: number,
   contentType: string | null
 ): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE attachments
-       SET url = ?, file_size = COALESCE(file_size, ?), mime_type = COALESCE(mime_type, ?)
-       WHERE remote_url = ? OR url = ?`
-    )
-    .bind(cachedUrl, size, contentType, sourceUrl, sourceUrl)
-    .run();
+  await db.batch([
+    // Dedupe rows of the same object that point at the same source with
+    // different URLs (one origin, one stale cached copy): rewriting both to
+    // `cachedUrl` would violate the unique (object_id, url) index.
+    db
+      .prepare(
+        `DELETE FROM attachments
+         WHERE remote_url = ? AND remote_url IS NOT NULL
+           AND rowid NOT IN (
+             SELECT MIN(rowid) FROM attachments WHERE remote_url = ? GROUP BY object_id
+           )`
+      )
+      .bind(sourceUrl, sourceUrl),
+    db
+      .prepare(
+        `UPDATE OR IGNORE attachments
+         SET url = ?, file_size = COALESCE(file_size, ?), mime_type = COALESCE(mime_type, ?)
+         WHERE remote_url = ? OR url = ?`
+      )
+      .bind(cachedUrl, size, contentType, sourceUrl, sourceUrl),
+  ]);
 }
 
 /** Map a `preview_cards` row. */
@@ -4387,9 +4400,21 @@ export async function resetMediaCacheReferences(
   for (let i = 0; i < unique.length; i += 100) {
     const json = JSON.stringify(unique.slice(i, i + 100));
     await db.batch([
+      // When another attachment of the same object already serves the origin
+      // URL, resetting this row would violate the unique (object_id, url)
+      // index. That duplicate is redundant (the origin copy is already there),
+      // so drop it; `OR IGNORE` keeps a rare self-collision non-fatal.
       db
         .prepare(
-          `UPDATE attachments SET url = remote_url
+          `DELETE FROM attachments
+           WHERE remote_url IN (SELECT value FROM json_each(?)) AND url <> remote_url
+             AND EXISTS (SELECT 1 FROM attachments b
+                         WHERE b.object_id = attachments.object_id AND b.url = attachments.remote_url)`
+        )
+        .bind(json),
+      db
+        .prepare(
+          `UPDATE OR IGNORE attachments SET url = remote_url
            WHERE remote_url IN (SELECT value FROM json_each(?)) AND url <> remote_url`
         )
         .bind(json),
@@ -4499,16 +4524,30 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
   );
   if (cursor < maxRow) {
     const next = Math.min(cursor + 20_000, maxRow);
-    const res = await db
-      .prepare(
-        `UPDATE attachments SET url = remote_url
-         WHERE rowid > ? AND rowid <= ?
-           AND url LIKE '%/api/media/cache/media/%' AND remote_url IS NOT NULL AND url <> remote_url
-           AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = attachments.url)`
-      )
-      .bind(cursor, next)
-      .run();
-    repaired += res.meta?.changes ?? 0;
+    const results = await db.batch([
+      // Dedupe rows whose origin URL already exists on another attachment of
+      // the same object (the unique (object_id, url) index would reject the
+      // reset); the surviving row already serves the origin media.
+      db
+        .prepare(
+          `DELETE FROM attachments
+           WHERE rowid > ? AND rowid <= ?
+             AND url LIKE '%/api/media/cache/media/%' AND remote_url IS NOT NULL AND url <> remote_url
+             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = attachments.url)
+             AND EXISTS (SELECT 1 FROM attachments b
+                         WHERE b.object_id = attachments.object_id AND b.url = attachments.remote_url)`
+        )
+        .bind(cursor, next),
+      db
+        .prepare(
+          `UPDATE OR IGNORE attachments SET url = remote_url
+           WHERE rowid > ? AND rowid <= ?
+             AND url LIKE '%/api/media/cache/media/%' AND remote_url IS NOT NULL AND url <> remote_url
+             AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = attachments.url)`
+        )
+        .bind(cursor, next),
+    ]);
+    repaired += results.reduce((sum, r) => sum + Number(r.meta?.changes ?? 0), 0);
     await setInstanceSetting(db, "media_cache_refs_repair_cursor", String(next));
     return repaired;
   }
