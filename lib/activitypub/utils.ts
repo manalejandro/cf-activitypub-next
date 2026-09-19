@@ -251,6 +251,40 @@ export function buildCreate(baseUrl: string, actorId: string, note: APNote, id: 
   };
 }
 
+/**
+ * A local poll vote, serialized like Mastodon's `ActivityPub::VoteSerializer`:
+ * a `Create{Note}` whose `name` is the chosen option title and `inReplyTo` the
+ * poll object, addressed only to the poll author (votes are not public).
+ */
+export function buildVote(
+  baseUrl: string,
+  actorId: string,
+  pollObjectId: string,
+  choiceTitle: string,
+  activityId: string,
+  to: string[]
+): APActivity {
+  const published = new Date().toISOString();
+  return {
+    "@context": DEFAULT_CONTEXT,
+    id: activityIRI(baseUrl, activityId),
+    type: "Create",
+    actor: actorId,
+    published,
+    to,
+    cc: [],
+    object: {
+      id: activityIRI(baseUrl, `vote-${activityId}`),
+      type: "Note",
+      attributedTo: actorId,
+      inReplyTo: pollObjectId,
+      name: choiceTitle,
+      to,
+      published,
+    } as unknown as APNote,
+  };
+}
+
 export function buildFollow(baseUrl: string, actorId: string, targetId: string, id: string): APActivity {
   return {
     "@context": DEFAULT_CONTEXT,

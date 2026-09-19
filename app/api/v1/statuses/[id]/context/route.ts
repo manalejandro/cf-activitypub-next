@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getPollsByObjectIds, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
@@ -85,7 +85,7 @@ export async function GET(
 
   const serializeAll = async (objs: LocalObject[]) => {
     const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
-      getPollsByObjectIds(env.DB, objs.map((o) => o.id)),
+      loadSerializedPolls(env.DB, authActor?.id ?? null, objs.map((o) => o.id)),
       objs.length > 0 ? getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
       authActor
@@ -103,8 +103,7 @@ export async function GET(
           if (!(await canView(obj))) return null;
           const author = await getAuthor(obj.actorId);
           if (!author) return null;
-          const pollEntry = pollMap.get(obj.id);
-          const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
+          const poll = pollMap.get(obj.id) ?? null;
           const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
           return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, bookmarked: bookmarkedIds.has(obj.id), muted: mutedIds.has(obj.actorId), authorFields: authorFieldsMap.get(obj.actorId) ?? [] });
         })

@@ -1,8 +1,10 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { canViewStatus, getObjectById, getPollById, getPollOptions, getPollVotesByActor, createPollVotes, isAcceptedFollower } from "@/lib/db";
+import { canViewStatus, getActorById, getObjectById, getPollById, getPollOptions, getPollVotesByActor, createPollVotes, isAcceptedFollower } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializePoll } from "@/lib/mastodon/serializers";
+import { buildVote, generateId } from "@/lib/activitypub/utils";
+import { enqueueDeliveries } from "@/lib/activitypub/queue";
 
 export async function POST(
   request: NextRequest,
@@ -58,6 +60,30 @@ export async function POST(
   if (validChoices.length !== choices.length) return json({ error: "Invalid choices" }, 422);
 
   await createPollVotes(env.DB, id, actor.id, validChoices);
+
+  // Federate the vote to the poll author (one Create{Note} per choice, like
+  // Mastodon): a remote poll never saw the vote otherwise. Addressed to the
+  // author only — votes are not public.
+  if (!pollObject.local && actor.privateKeyPem) {
+    const pollAuthor = await getActorById(env.DB, pollObject.actorId);
+    const inbox = pollAuthor?.endpoints?.sharedInbox ?? pollAuthor?.inbox ?? null;
+    if (pollAuthor && !pollAuthor.isLocal && inbox) {
+      const baseUrl = `https://${actor.domain}`;
+      for (const choice of validChoices) {
+        const title = options[choice]?.title;
+        if (!title) continue;
+        const activity = buildVote(baseUrl, actor.id, pollObject.id, title, generateId(), [pollObject.actorId]);
+        await enqueueDeliveries(
+          env.DELIVERY_QUEUE,
+          [inbox],
+          JSON.stringify(activity),
+          actor.id,
+          `${actor.id}#main-key`,
+          actor.privateKeyPem
+        );
+      }
+    }
+  }
 
   const updatedPoll = await getPollById(env.DB, id);
   const updatedOptions = await getPollOptions(env.DB, id);

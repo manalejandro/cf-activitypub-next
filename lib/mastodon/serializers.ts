@@ -29,6 +29,7 @@ import type {
   MastodonPreviewCard,
 } from "@/lib/types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
+import { getPollsByObjectIds, getPollVotesByObjectIds } from "@/lib/db";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
 import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
@@ -635,6 +636,30 @@ function buildTypeMeta(obj: LocalObject): { ap_type?: string; ap_meta?: APObject
 // ─────────────────────────────────────────
 // Poll serializer
 // ─────────────────────────────────────────
+
+/**
+ * Load and serialize the polls of a page with the viewer's own votes: every
+ * timeline used to call `serializePoll(..., false, [])`, so a poll the user had
+ * already voted on looked unvoted after a reload and re-voting returned
+ * "Already voted".
+ */
+export async function loadSerializedPolls(
+  db: D1Database,
+  viewerId: string | null | undefined,
+  objectIds: string[]
+): Promise<Map<string, MastodonPoll>> {
+  const polls = await getPollsByObjectIds(db, objectIds);
+  if (polls.size === 0) return new Map();
+  const votes = viewerId
+    ? await getPollVotesByObjectIds(db, viewerId, objectIds)
+    : new Map<string, number[]>();
+  const map = new Map<string, MastodonPoll>();
+  for (const [objectId, entry] of polls) {
+    const ownVotes = votes.get(objectId) ?? [];
+    map.set(objectId, serializePoll(entry.poll, entry.options, ownVotes.length > 0, ownVotes));
+  }
+  return map;
+}
 
 export function serializePoll(
   poll: LocalPoll,

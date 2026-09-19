@@ -4,7 +4,6 @@ import {
   getActorById,
   getActorsByIds,
   getAttachmentsByObjectIds,
-  getPollsByObjectIds,
   getLikedObjectIds,
   getAnnouncedObjectIds,
   getAllCustomEmojis,
@@ -13,7 +12,7 @@ import {
   getActorFieldsMap,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -111,7 +110,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
-    getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
+    loadSerializedPolls(env.DB, authActor?.id ?? null, objects.map((o) => o.id)),
     authActor
       ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id))
       : Promise.resolve(new Set<string>()),
@@ -151,10 +150,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         }
       }
       if (!author) return null;
-      const pollEntry = pollMap.get(obj.id);
-      const poll = pollEntry
-        ? serializePoll(pollEntry.poll, pollEntry.options, false, [])
-        : null;
+      const poll = pollMap.get(obj.id) ?? null;
       return serializeStatus(obj, author, domain, {
         attachments: attachmentMap.get(obj.id) ?? [],
         poll,

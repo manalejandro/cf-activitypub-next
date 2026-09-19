@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -75,7 +75,8 @@ export async function GET(
     getAllCustomEmojis(env.DB),
   ]);
   const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
-  const poll = pollDb ? serializePoll(pollDb, pollOpts, false, []) : null;
+  const pollVotes = pollDb && authActor ? await getPollVotesByActor(env.DB, pollDb.id, authActor.id) : [];
+  const poll = pollDb ? serializePoll(pollDb, pollOpts, pollVotes.length > 0, pollVotes) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
   const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras, bookmarked, muted, authorFields] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),

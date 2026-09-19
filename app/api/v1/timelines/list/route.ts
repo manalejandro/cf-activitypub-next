@@ -23,8 +23,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const { getListTimeline, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap, getActorFieldsMap, getMutedActorIds } = await import("@/lib/db");
   const objects = await getListTimeline(env.DB, listId, me.id, limit, maxId, sinceId);
   if (objects.length === 0) return json([]);
-  const { serializeStatus } = await import("@/lib/mastodon/serializers");
+  const { serializeStatus, loadSerializedPolls } = await import("@/lib/mastodon/serializers");
   const objectIds = objects.map((o) => o.id);
+  const pollMap = await loadSerializedPolls(env.DB, me.id, objectIds);
   const objs = objects;
   const [attachmentMap, allEmojis, replyToMap, filteredMap, lastStatusAtMap, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objectIds),
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     objs.map(async (obj) => {
       const author = authorMap.get(obj.actorId) ?? null;
       if (!author) return null;
-      return serializeStatus(obj, author, domain, { attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId: replyToMap.get(obj.id) ?? null, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, authorFields: authorFieldsMap.get(obj.actorId) ?? [], muted: mutedIds.has(obj.actorId) });
+      return serializeStatus(obj, author, domain, { poll: pollMap.get(obj.id) ?? null, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId: replyToMap.get(obj.id) ?? null, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, authorFields: authorFieldsMap.get(obj.actorId) ?? [], muted: mutedIds.has(obj.actorId) });
     })
   );
   const result = statuses.filter(Boolean);

@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getPublicTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getPublicTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
-    getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
+    loadSerializedPolls(env.DB, authActor?.id ?? null, objects.map((o) => o.id)),
     authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
@@ -109,8 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       // Serialize it against a minimal placeholder account so the timeline is
       // complete rather than silently dropping the post.
       if (!author) author = placeholderActor(obj.actorId);
-      const pollEntry = pollMap.get(obj.id);
-      const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
+      const poll = pollMap.get(obj.id) ?? null;
       return serializeStatus(obj, author, domain, {
         attachments: attachmentMap.get(obj.id) ?? [],
         poll,

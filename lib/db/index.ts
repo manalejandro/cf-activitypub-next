@@ -3391,6 +3391,35 @@ export async function getPollVotesByActor(db: D1Database, pollId: string, actorI
   return rows.results.map((r) => r.option_idx);
 }
 
+/**
+ * The viewer's votes for every polled object in a page, keyed by object id.
+ * Used by the timeline serializers so a voted poll shows its choice after a
+ * reload (they used to hardcode `voted: false, own_votes: []`).
+ */
+export async function getPollVotesByObjectIds(
+  db: D1Database,
+  actorId: string,
+  objectIds: string[]
+): Promise<Map<string, number[]>> {
+  if (objectIds.length === 0) return new Map();
+  const placeholders = objectIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT p.object_id, pv.option_idx
+       FROM poll_votes pv JOIN polls p ON p.id = pv.poll_id
+       WHERE pv.actor_id = ? AND p.object_id IN (${placeholders})`
+    )
+    .bind(actorId, ...objectIds)
+    .all<{ object_id: string; option_idx: number }>();
+  const map = new Map<string, number[]>();
+  for (const row of rows.results) {
+    const list = map.get(row.object_id) ?? [];
+    list.push(row.option_idx);
+    map.set(row.object_id, list);
+  }
+  return map;
+}
+
 export async function createPollVotes(
   db: D1Database,
   pollId: string,

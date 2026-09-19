@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
@@ -88,7 +88,7 @@ export async function GET(
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
-    getPollsByObjectIds(env.DB, allObjects.map((o) => o.id)),
+    loadSerializedPolls(env.DB, me?.id ?? null, allObjects.map((o) => o.id)),
     me ? getLikedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     me ? getAnnouncedObjectIds(env.DB, me.id, allObjects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
@@ -105,8 +105,7 @@ export async function GET(
   const authorFieldsMap = await getActorFieldsMap(env.DB, allObjects.map((o) => o.actorId));
 
   const statuses = allObjects.map((obj) => {
-    const pollEntry = pollMap.get(obj.id);
-    const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
+    const poll = pollMap.get(obj.id) ?? null;
     return serializeStatus(obj, actor, domain, {
       attachments: attachmentMap.get(obj.id) ?? [],
       poll,

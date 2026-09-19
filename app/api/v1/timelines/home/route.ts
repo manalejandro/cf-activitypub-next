@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
-import { getHomeTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getPollsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getHomeTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
-    getPollsByObjectIds(env.DB, objects.map((o) => o.id)),
+    loadSerializedPolls(env.DB, actor.id, objects.map((o) => o.id)),
     getLikedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getAnnouncedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getAllCustomEmojis(env.DB),
@@ -63,8 +63,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         } catch { /* ignore */ }
       }
       if (!author) return null;
-      const pollEntry = pollMap.get(obj.id);
-      const poll = pollEntry ? serializePoll(pollEntry.poll, pollEntry.options, false, []) : null;
+      const poll = pollMap.get(obj.id) ?? null;
       return serializeStatus(obj, author, domain, {
         attachments: attachmentMap.get(obj.id) ?? [],
         poll,

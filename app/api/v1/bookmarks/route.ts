@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getBookmarkedStatusIds, getObjectById, getActorById, getAttachmentsByObjectId, getLike, getAnnounce, getLastStatusAtMap, getActorFieldsMap, getMutedActorIds } from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { loadSerializedPolls, serializeStatus } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
@@ -27,6 +27,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
   const mutedIds = new Set(await getMutedActorIds(env.DB, actor.id));
 
+  const pollMap = await loadSerializedPolls(env.DB, actor.id, objs.map((o) => o.id));
+
   const serialized = await Promise.all(
     objs.map(async (obj) => {
       const author = await getActorById(env.DB, obj.actorId);
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         favourited: favourited !== null,
         reblogged: reblogged !== null,
         attachments,
+        poll: pollMap.get(obj.id) ?? null,
         filtered: filteredMap.get(obj.id) ?? [],
         authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null,
         authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls,
