@@ -948,5 +948,13 @@
   "login_error_rate_limited": "请求过多，请稍后再试。",
   "register_error_reason_required": "需要填写注册理由",
   "login_error_fields_required": "需要用户名和密码",
-  "a11y_tag_suggestions": "话题标签建议"
+  "a11y_tag_suggestions": "话题标签建议",
+  "poll_title": "投票",
+  "poll_not_found": "未找到投票",
+  "poll_voters_1": "投票者",
+  "poll_voters_n": "投票者",
+  "poll_time_left_h_m": "剩余 {h}小时{m}分",
+  "poll_time_left_m_s": "剩余 {m}分{s}秒",
+  "poll_time_left_s": "剩余 {s}秒",
+  "poll_view_original": "查看原帖"
 }

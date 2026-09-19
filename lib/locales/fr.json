@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Trop de requêtes. Réessayez plus tard.",
   "register_error_reason_required": "Un motif d'inscription est requis",
   "login_error_fields_required": "nom d'utilisateur et mot de passe sont requis",
-  "a11y_tag_suggestions": "Suggestions de hashtags"
+  "a11y_tag_suggestions": "Suggestions de hashtags",
+  "poll_title": "Sondage",
+  "poll_not_found": "Sondage introuvable",
+  "poll_voters_1": "votant",
+  "poll_voters_n": "votants",
+  "poll_time_left_h_m": "{h} h {m} min restantes",
+  "poll_time_left_m_s": "{m} min {s} s restantes",
+  "poll_time_left_s": "{s} s restantes",
+  "poll_view_original": "Voir la publication d'origine"
 }

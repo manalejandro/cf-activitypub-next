@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Too many requests. Please try again later.",
   "register_error_reason_required": "A registration reason is required",
   "login_error_fields_required": "username and password are required",
-  "a11y_tag_suggestions": "Hashtag suggestions"
+  "a11y_tag_suggestions": "Hashtag suggestions",
+  "poll_title": "Poll",
+  "poll_not_found": "Poll not found",
+  "poll_voters_1": "voter",
+  "poll_voters_n": "voters",
+  "poll_time_left_h_m": "{h}h {m}m left",
+  "poll_time_left_m_s": "{m}m {s}s left",
+  "poll_time_left_s": "{s}s left",
+  "poll_view_original": "View original post"
 }

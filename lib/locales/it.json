@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Troppe richieste. Riprova più tardi.",
   "register_error_reason_required": "È richiesto un motivo di registrazione",
   "login_error_fields_required": "nome utente e password sono obbligatori",
-  "a11y_tag_suggestions": "Suggerimenti di hashtag"
+  "a11y_tag_suggestions": "Suggerimenti di hashtag",
+  "poll_title": "Sondaggio",
+  "poll_not_found": "Sondaggio non trovato",
+  "poll_voters_1": "votante",
+  "poll_voters_n": "votanti",
+  "poll_time_left_h_m": "{h} h {m} min rimasti",
+  "poll_time_left_m_s": "{m} min {s} s rimasti",
+  "poll_time_left_s": "{s} s rimasti",
+  "poll_view_original": "Vedi post originale"
 }

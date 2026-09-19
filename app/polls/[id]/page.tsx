@@ -7,7 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { Icon } from "@/components/Icon";
 import { getToken } from "@/lib/client-api";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, type Translations } from "@/lib/i18n";
 
 interface PollOption {
   title: string;
@@ -33,15 +33,15 @@ interface Poll {
   emojis: EmojiData[];
 }
 
-function formatTimeLeft(expiresAt: string): string {
+function formatTimeLeft(expiresAt: string, t: Translations): string {
   const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return "Closed";
+  if (diff <= 0) return t.poll_closed;
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
   const s = Math.floor((diff % 60000) / 1000);
-  if (h > 0) return `${h}h ${m}m left`;
-  if (m > 0) return `${m}m ${s}s left`;
-  return `${s}s left`;
+  if (h > 0) return t.poll_time_left_h_m.replace("{h}", String(h)).replace("{m}", String(m));
+  if (m > 0) return t.poll_time_left_m_s.replace("{m}", String(m)).replace("{s}", String(s));
+  return t.poll_time_left_s.replace("{s}", String(s));
 }
 
 export default function PollPage() {
@@ -51,11 +51,13 @@ export default function PollPage() {
   const token = getToken();
   const { t } = useLocale();
 
+
   const rawId = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
   const pollId = decodeURIComponent(rawId);
   const statusId = searchParams.get("status");
 
   const [poll, setPoll] = useState<Poll | null>(null);
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<number[]>([]);
   const [voting, setVoting] = useState(false);
@@ -71,6 +73,8 @@ export default function PollPage() {
         if (res.ok) {
           const data = (await res.json()) as Poll;
           setPoll(data);
+          // Computed here (not during render): `Date.now()` is impure.
+          setTimeLeft(data.expires_at && !data.expired ? formatTimeLeft(data.expires_at, t) : null);
           if (data.voted && data.own_votes) {
             setSelected(data.own_votes);
           }
@@ -81,6 +85,7 @@ export default function PollPage() {
       setLoading(false);
     }
     void load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollId]);
 
   const showResults = !!poll && (poll.voted || poll.expired);
@@ -97,7 +102,9 @@ export default function PollPage() {
         body: JSON.stringify({ choices: selected }),
       });
       if (res.ok) {
-        setPoll((await res.json()) as Poll);
+        const updated = (await res.json()) as Poll;
+        setPoll(updated);
+        setTimeLeft(updated.expires_at && !updated.expired ? formatTimeLeft(updated.expires_at, t) : null);
       }
     } finally {
       setVoting(false);
@@ -128,16 +135,16 @@ export default function PollPage() {
           >
             <Icon name="arrow-left" />
           </button>
-          <span style={{ fontWeight: 600 }}>Poll</span>
+          <span style={{ fontWeight: 600 }}>{t.poll_title}</span>
         </div>
 
         {loading ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Loading poll...
+            {t.loading}
           </div>
         ) : !poll ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Poll not found.
+            {t.poll_not_found}
           </div>
         ) : (
           <div style={{ padding: "1.25rem" }}>
@@ -276,20 +283,22 @@ export default function PollPage() {
                   disabled={selected.length === 0 || voting}
                   onClick={() => void handleVote()}
                 >
-                  {voting ? "…" : "Vote"}
+                  {voting ? "…" : t.poll_vote}
                 </button>
               )}
               <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                {poll.votes_count} vote{poll.votes_count !== 1 ? "s" : ""}
+                {poll.votes_count} {poll.votes_count === 1 ? t.poll_votes_1 : t.poll_votes_n}
                 {poll.voters_count != null &&
-                  ` · ${poll.voters_count} voter${poll.voters_count !== 1 ? "s" : ""}`}
+                  ` · ${poll.voters_count} ${poll.voters_count === 1 ? t.poll_voters_1 : t.poll_voters_n}`}
                 {poll.expires_at && (
                   <>
                     {" · "}
-                    {poll.expired ? "Closed" : formatTimeLeft(poll.expires_at)}
+                    {poll.expired
+                      ? t.poll_closed
+                      : `${timeLeft ?? ""} · ${new Date(poll.expires_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
                   </>
                 )}
-                {poll.multiple && " · Multiple choice"}
+                {poll.multiple && ` · ${t.poll_multiple}`}
               </span>
             </div>
 
@@ -309,7 +318,7 @@ export default function PollPage() {
                     textDecoration: "none",
                   }}
                 >
-                  <Icon name="arrow-left" /> View original post
+                  <Icon name="arrow-left" /> {t.poll_view_original}
                 </Link>
               </div>
             )}

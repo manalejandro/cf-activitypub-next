@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Слишком много запросов. Повторите попытку позже.",
   "register_error_reason_required": "Требуется причина регистрации",
   "login_error_fields_required": "требуются имя пользователя и пароль",
-  "a11y_tag_suggestions": "Подсказки хэштегов"
+  "a11y_tag_suggestions": "Подсказки хэштегов",
+  "poll_title": "Опрос",
+  "poll_not_found": "Опрос не найден",
+  "poll_voters_1": "проголосовавший",
+  "poll_voters_n": "проголосовавших",
+  "poll_time_left_h_m": "Осталось {h} ч {m} мин",
+  "poll_time_left_m_s": "Осталось {m} мин {s} с",
+  "poll_time_left_s": "Осталось {s} с",
+  "poll_view_original": "Открыть исходный пост"
 }

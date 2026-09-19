@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Demasiados pedidos. Tente novamente mais tarde.",
   "register_error_reason_required": "É necessário um motivo de registo",
   "login_error_fields_required": "nome de usuário e senha são obrigatórios",
-  "a11y_tag_suggestions": "Sugestões de hashtags"
+  "a11y_tag_suggestions": "Sugestões de hashtags",
+  "poll_title": "Enquete",
+  "poll_not_found": "Enquete não encontrada",
+  "poll_voters_1": "votante",
+  "poll_voters_n": "votantes",
+  "poll_time_left_h_m": "Faltam {h}h {m}m",
+  "poll_time_left_m_s": "Faltam {m}m {s}s",
+  "poll_time_left_s": "Faltam {s}s",
+  "poll_view_original": "Ver publicação original"
 }

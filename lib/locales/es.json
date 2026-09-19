@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
   "register_error_reason_required": "Se requiere un motivo de registro",
   "login_error_fields_required": "se requieren nombre de usuario y contraseña",
-  "a11y_tag_suggestions": "Sugerencias de etiquetas"
+  "a11y_tag_suggestions": "Sugerencias de etiquetas",
+  "poll_title": "Encuesta",
+  "poll_not_found": "Encuesta no encontrada",
+  "poll_voters_1": "votante",
+  "poll_voters_n": "votantes",
+  "poll_time_left_h_m": "Quedan {h} h {m} min",
+  "poll_time_left_m_s": "Quedan {m} min {s} s",
+  "poll_time_left_s": "Quedan {s} s",
+  "poll_view_original": "Ver publicación original"
 }

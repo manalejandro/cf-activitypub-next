@@ -948,5 +948,13 @@
   "login_error_rate_limited": "リクエストが多すぎます。しばらくしてからお試しください。",
   "register_error_reason_required": "登録理由が必要です",
   "login_error_fields_required": "ユーザー名とパスワードが必要です",
-  "a11y_tag_suggestions": "ハッシュタグの提案"
+  "a11y_tag_suggestions": "ハッシュタグの提案",
+  "poll_title": "投票",
+  "poll_not_found": "投票が見つかりません",
+  "poll_voters_1": "投票者",
+  "poll_voters_n": "投票者",
+  "poll_time_left_h_m": "残り {h}時間{m}分",
+  "poll_time_left_m_s": "残り {m}分{s}秒",
+  "poll_time_left_s": "残り {s}秒",
+  "poll_view_original": "元の投稿を表示"
 }

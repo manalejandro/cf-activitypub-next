@@ -948,5 +948,13 @@
   "login_error_rate_limited": "Zu viele Anfragen. Bitte später erneut versuchen.",
   "register_error_reason_required": "Ein Registrierungsgrund ist erforderlich",
   "login_error_fields_required": "Benutzername und Passwort sind erforderlich",
-  "a11y_tag_suggestions": "Hashtag-Vorschläge"
+  "a11y_tag_suggestions": "Hashtag-Vorschläge",
+  "poll_title": "Umfrage",
+  "poll_not_found": "Umfrage nicht gefunden",
+  "poll_voters_1": "Wähler",
+  "poll_voters_n": "Wähler",
+  "poll_time_left_h_m": "Noch {h} Std. {m} Min.",
+  "poll_time_left_m_s": "Noch {m} Min. {s} Sek.",
+  "poll_time_left_s": "Noch {s} Sek.",
+  "poll_view_original": "Originalbeitrag ansehen"
 }

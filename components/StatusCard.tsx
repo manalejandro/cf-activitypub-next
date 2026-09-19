@@ -409,7 +409,7 @@ export function PollView({ poll: initialPoll }: { poll: Poll }) {
         )}
         <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
           {poll.votes_count} {poll.votes_count === 1 ? t.poll_votes_1 : t.poll_votes_n}
-          {poll.expires_at && <> · {poll.expired ? t.poll_closed : t.poll_closes.replace("{date}", new Date(poll.expires_at).toLocaleDateString())}</>}
+          {poll.expires_at && <> · {poll.expired ? t.poll_closed : t.poll_closes.replace("{date}", new Date(poll.expires_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}</>}
           {poll.multiple && ` · ${t.poll_multiple}`}
         </span>
       </div>
