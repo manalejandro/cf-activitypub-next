@@ -65,6 +65,7 @@ import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
 import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
   getMlsKeyPackageByObjectId,
@@ -1583,6 +1584,13 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       raw: JSON.stringify(note),
     });
     await ensurePollRowsForQuestion(ctx, note);
+    // An edited Question carries the current per-choice counts: apply them so
+    // remote votes show up without reopening the poll.
+    if (String(note.type ?? "").split("/").pop() === "Question") {
+      try {
+        await refreshPollFromQuestion(ctx.db, note as unknown as Record<string, unknown>);
+      } catch { /* best-effort */ }
+    }
 
     // Refresh the link preview when the first link changed (or none exists).
     try {

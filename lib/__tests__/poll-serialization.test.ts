@@ -6,6 +6,8 @@ import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 
 import { loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { createPoll, createPollVotes, getPollById, getPollOptions } from "@/lib/db";
+import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 
 class D1Adapter {
   private sql = new DatabaseSync(":memory:");
@@ -69,5 +71,104 @@ describe("loadSerializedPolls", () => {
     const anonymous = await loadSerializedPolls(db, null, ["https://local.example/objects/1"]);
     expect(anonymous.get("https://local.example/objects/1")?.voted).toBe(false);
     expect(anonymous.get("https://local.example/objects/1")?.own_votes).toEqual([]);
+  });
+});
+
+describe("refreshPollFromQuestion", () => {
+  async function seedRemotePoll(db: D1Database): Promise<void> {
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://remote.example/users/author', 'author', 'remote.example', 'k', NULL, 0)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw)
+       VALUES ('https://remote.example/objects/q1', 'Question', 'https://remote.example/users/author', 'poll', 'public', 0, '{}')`
+    ).bind().run();
+    await createPoll(db, {
+      id: "p-remote",
+      objectId: "https://remote.example/objects/q1",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      multiple: false,
+      options: [
+        { id: "ro1", title: "A", position: 0 },
+        { id: "ro2", title: "B", position: 1 },
+      ],
+    });
+  }
+
+  it("applies the origin's per-choice counts and totals without touching local votes", async () => {
+    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
+    const db = new D1Adapter(schema) as unknown as D1Database;
+    await seedRemotePoll(db);
+    // A local vote already recorded (must survive the refresh).
+    await db.prepare(
+      "INSERT INTO poll_votes (id, poll_id, actor_id, option_idx) VALUES ('lv','p-remote','https://remote.example/users/author',0)"
+    ).bind().run();
+
+    const ok = await refreshPollFromQuestion(db, {
+      id: "https://remote.example/objects/q1",
+      type: "Question",
+      oneOf: [
+        { name: "A", replies: { totalItems: 7 } },
+        { name: "B", replies: { totalItems: 3 } },
+      ],
+      votersCount: 9,
+    });
+    expect(ok).toBe(true);
+
+    const options = await getPollOptions(db, "p-remote");
+    expect(options.map((o) => o.votesCount)).toEqual([7, 3]);
+    const poll = await getPollById(db, "p-remote");
+    expect(poll?.votesCount).toBe(10);
+    expect(poll?.votersCount).toBe(9);
+    const localVotes = await db.prepare("SELECT COUNT(*) AS n FROM poll_votes WHERE poll_id = 'p-remote'").bind().first<{ n: number }>();
+    expect(localVotes?.n).toBe(1);
+  });
+
+  it("ignores a partial document instead of clobbering the counts", async () => {
+    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
+    const db = new D1Adapter(schema) as unknown as D1Database;
+    await seedRemotePoll(db);
+
+    const ok = await refreshPollFromQuestion(db, {
+      id: "https://remote.example/objects/q1",
+      type: "Question",
+      oneOf: [{ name: "A", replies: { totalItems: 5 } }],
+    });
+    expect(ok).toBe(false);
+    const options = await getPollOptions(db, "p-remote");
+    expect(options.map((o) => o.votesCount)).toEqual([0, 0]);
+  });
+});
+
+describe("createPollVotes", () => {
+  it("counts one voter for a multiple-choice vote (votes_count per choice)", async () => {
+    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
+    const db = new D1Adapter(schema) as unknown as D1Database;
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw)
+       VALUES ('https://local.example/objects/q2', 'Question', 'https://local.example/users/me', 'poll', 'public', 1, '{}')`
+    ).bind().run();
+    await createPoll(db, {
+      id: "p-multi",
+      objectId: "https://local.example/objects/q2",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      multiple: true,
+      options: [
+        { id: "mo1", title: "A", position: 0 },
+        { id: "mo2", title: "B", position: 1 },
+      ],
+    });
+
+    await createPollVotes(db, "p-multi", "https://local.example/users/me", [0, 1]);
+    const poll = await getPollById(db, "p-multi");
+    expect(poll?.votesCount).toBe(2);
+    expect(poll?.votersCount).toBe(1);
+    const options = await getPollOptions(db, "p-multi");
+    expect(options.map((o) => o.votesCount)).toEqual([1, 1]);
   });
 });

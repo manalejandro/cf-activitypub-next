@@ -3426,6 +3426,7 @@ export async function createPollVotes(
   actorId: string,
   choices: number[]
 ): Promise<void> {
+  let insertedAny = false;
   for (const choice of choices) {
     const res = await db
       .prepare("INSERT OR IGNORE INTO poll_votes (id, poll_id, actor_id, option_idx) VALUES (?,?,?,?)")
@@ -3434,16 +3435,43 @@ export async function createPollVotes(
     // Only increment counters when the vote row was actually inserted, so a
     // duplicate vote (INSERT OR IGNORE) can't double-count.
     if ((res.meta?.changes ?? 0) > 0) {
+      insertedAny = true;
       await db
         .prepare("UPDATE poll_options SET votes_count = votes_count + 1 WHERE poll_id = ? AND position = ?")
         .bind(pollId, choice)
         .run();
       await db
-        .prepare("UPDATE polls SET votes_count = votes_count + 1, voters_count = voters_count + 1 WHERE id = ?")
+        .prepare("UPDATE polls SET votes_count = votes_count + 1 WHERE id = ?")
         .bind(pollId)
         .run();
     }
   }
+  // `voters_count` counts voters, not choices: a multiple-choice vote used to
+  // bump it once per selected option.
+  if (insertedAny) {
+    await db.prepare("UPDATE polls SET voters_count = voters_count + 1 WHERE id = ?").bind(pollId).run();
+  }
+}
+
+/** Replace the cached vote counts with the origin's current numbers. */
+export async function setPollVoteCounts(
+  db: D1Database,
+  pollId: string,
+  optionCounts: number[],
+  votersCount: number | null
+): Promise<void> {
+  const statements = optionCounts.map((count, position) =>
+    db
+      .prepare("UPDATE poll_options SET votes_count = ? WHERE poll_id = ? AND position = ?")
+      .bind(count, pollId, position)
+  );
+  const total = optionCounts.reduce((sum, n) => sum + n, 0);
+  statements.push(
+    db
+      .prepare("UPDATE polls SET votes_count = ?, voters_count = ? WHERE id = ?")
+      .bind(total, votersCount ?? total, pollId)
+  );
+  await db.batch(statements);
 }
 
 // ─────────────────────────────────────────
