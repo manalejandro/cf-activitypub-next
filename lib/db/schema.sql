@@ -63,6 +63,10 @@ CREATE INDEX IF NOT EXISTS idx_actors_discoverable_active ON actors(discoverable
 -- Resetting avatar/header cache URLs back to the origin on eviction/purge.
 CREATE INDEX IF NOT EXISTS idx_actors_avatar_url ON actors(avatar_url);
 CREATE INDEX IF NOT EXISTS idx_actors_header_url ON actors(header_url);
+-- Dangling-reference repair scans only the cached entries (NULLs are not
+-- stored in an index, so the scan is tiny instead of the whole actors table).
+CREATE INDEX IF NOT EXISTS idx_actors_avatar_cache ON actors(avatar_cache_url);
+CREATE INDEX IF NOT EXISTS idx_actors_header_cache ON actors(header_cache_url);
 
 -- ─────────────────────────────────────────
 -- Objects / Notes / Statuses

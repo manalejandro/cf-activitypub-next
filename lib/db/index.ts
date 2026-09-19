@@ -4475,7 +4475,7 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
     db
       .prepare(
         `UPDATE actors SET avatar_cache_url = NULL WHERE rowid IN (
-           SELECT a.rowid FROM actors a
+           SELECT a.rowid FROM actors a INDEXED BY idx_actors_avatar_cache
            WHERE a.avatar_cache_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.avatar_cache_url)
            LIMIT ?)`
@@ -4484,7 +4484,7 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
     db
       .prepare(
         `UPDATE actors SET header_cache_url = NULL WHERE rowid IN (
-           SELECT a.rowid FROM actors a
+           SELECT a.rowid FROM actors a INDEXED BY idx_actors_header_cache
            WHERE a.header_cache_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = a.header_cache_url)
            LIMIT ?)`
@@ -4505,7 +4505,7 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
           `UPDATE objects SET card_json = json_set(card_json, '$.image',
              (SELECT pc.image_url FROM preview_cards pc WHERE pc.id = objects.card_id))
            WHERE rowid IN (
-             SELECT o.rowid FROM objects o
+             SELECT o.rowid FROM objects o INDEXED BY idx_objects_card_id
              WHERE o.card_id IS NOT NULL AND o.card_json IS NOT NULL
                AND json_extract(o.card_json, '$.image') LIKE '%/api/media/cache/media/%'
                AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.cached_url = json_extract(o.card_json, '$.image'))
