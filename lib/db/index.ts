@@ -3453,6 +3453,27 @@ export async function createPollVotes(
   }
 }
 
+/**
+ * Active remote polls worth refreshing in the background (the origin's
+ * document is the only source of total remote votes). Recent statuses first.
+ */
+export async function listRemotePollsForRefresh(
+  db: D1Database,
+  limit: number
+): Promise<{ id: string; objectId: string }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT p.id, p.object_id FROM polls p JOIN objects o ON o.id = p.object_id
+       WHERE o.is_local = 0
+         AND datetime(p.expires_at) > datetime('now')
+         AND datetime(o.published) >= datetime('now', '-7 days')
+       ORDER BY o.published DESC LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ id: string; object_id: string }>();
+  return (rows.results ?? []).map((r) => ({ id: r.id, objectId: r.object_id }));
+}
+
 /** Replace the cached vote counts with the origin's current numbers. */
 export async function setPollVoteCounts(
   db: D1Database,

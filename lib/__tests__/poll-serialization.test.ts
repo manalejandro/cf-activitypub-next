@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 
 import { loadSerializedPolls } from "@/lib/mastodon/serializers";
-import { createPoll, createPollVotes, getPollById, getPollOptions } from "@/lib/db";
+import { createPoll, createPollVotes, getPollById, getPollOptions, listRemotePollsForRefresh } from "@/lib/db";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 
 class D1Adapter {
@@ -170,5 +170,39 @@ describe("createPollVotes", () => {
     expect(poll?.votersCount).toBe(1);
     const options = await getPollOptions(db, "p-multi");
     expect(options.map((o) => o.votesCount)).toEqual([1, 1]);
+  });
+});
+
+describe("listRemotePollsForRefresh", () => {
+  it("selects only active remote polls from recent statuses", async () => {
+    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
+    const db = new D1Adapter(schema) as unknown as D1Database;
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://remote.example/users/author', 'author', 'remote.example', 'k', NULL, 0)`
+    ).bind().run();
+    const insertObject = async (id: string, isLocal: number, published: string) => {
+      await db.prepare(
+        `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw, published)
+         VALUES (?, 'Question', 'https://remote.example/users/author', 'poll', 'public', ?, '{}', ?)`
+      ).bind(id, isLocal, published).run();
+    };
+    const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+    await insertObject("https://remote.example/objects/fresh", 0, iso(0));
+    await insertObject("https://remote.example/objects/old", 0, iso(-30 * 86400000));
+    await insertObject("https://remote.example/objects/local", 1, iso(0));
+    for (const [id, objectId, expires] of [
+      ["p-fresh", "https://remote.example/objects/fresh", iso(3600_000)],
+      ["p-old", "https://remote.example/objects/old", iso(3600_000)],
+      ["p-local", "https://remote.example/objects/local", iso(3600_000)],
+      ["p-expired", "https://remote.example/objects/fresh", iso(-1000)],
+    ]) {
+      await db.prepare(
+        "INSERT INTO polls (id, object_id, expires_at, multiple, votes_count, voters_count) VALUES (?,?,?,0,0,0)"
+      ).bind(id, objectId, expires).run();
+    }
+
+    const due = await listRemotePollsForRefresh(db, 10);
+    expect(due.map((p) => p.id)).toEqual(["p-fresh"]);
   });
 });

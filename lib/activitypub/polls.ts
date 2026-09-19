@@ -8,6 +8,45 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { getPollByObjectId, getPollOptions, setPollVoteCounts } from "@/lib/db";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import type { LocalObject, LocalPoll } from "@/lib/types";
+
+interface RefreshBindings {
+  DB: D1Database;
+  KV: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
+}
+
+/**
+ * Fetch a remote poll's current document and apply its counts, throttled per
+ * poll in KV. Votes are addressed to the poll author only, so this is the only
+ * way a timeline/viewer sees the total remote votes.
+ */
+export async function refreshRemotePoll(
+  bindings: RefreshBindings,
+  poll: LocalPoll,
+  object: LocalObject,
+  signer?: { id: string; privateKeyPem?: string | null }
+): Promise<boolean> {
+  if (object.local) return false;
+  if (new Date(poll.expiresAt) <= new Date()) return false;
+  const key = `poll:refresh:${poll.id}`;
+  try {
+    if (await bindings.KV.get(key)) return false;
+    await bindings.KV.put(key, "1", { expirationTtl: 300 });
+  } catch { /* KV is best-effort: still refresh */ }
+  try {
+    const question = await fetchRemoteObject(
+      object.id,
+      signer ? `${signer.id}#main-key` : undefined,
+      signer?.privateKeyPem ?? undefined
+    );
+    const q = question as Record<string, unknown> | null;
+    if (!q || String(q.type ?? "").split("/").pop() !== "Question") return false;
+    return await refreshPollFromQuestion(bindings.DB, q);
+  } catch {
+    return false;
+  }
+}
 
 function questionChoices(question: Record<string, unknown>): Record<string, unknown>[] {
   const single = Array.isArray(question.oneOf) ? question.oneOf : [];

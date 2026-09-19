@@ -12,6 +12,7 @@ import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { refreshRemotePoll } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
@@ -74,9 +75,22 @@ export async function GET(
     authActor ? getAnnouncedObjectIds(env.DB, authActor.id, [obj.id]) : Promise.resolve(new Set<string>()),
     getAllCustomEmojis(env.DB),
   ]);
-  const pollOpts = pollDb ? await getPollOptions(env.DB, pollDb.id) : [];
-  const pollVotes = pollDb && authActor ? await getPollVotesByActor(env.DB, pollDb.id, authActor.id) : [];
-  const poll = pollDb ? serializePoll(pollDb, pollOpts, pollVotes.length > 0, pollVotes) : null;
+  // Opening a status refreshes its remote poll from the origin (throttled):
+  // open votes only reach the poll author, so the origin's document is the
+  // only place with the total remote votes.
+  let pollRow = pollDb;
+  if (pollRow && !obj.local) {
+    const refreshed = await refreshRemotePoll(
+      { DB: env.DB, KV: env.KV },
+      pollRow,
+      obj,
+      authActor ? { id: authActor.id, privateKeyPem: authActor.privateKeyPem } : undefined
+    );
+    if (refreshed) pollRow = await getPollByObjectId(env.DB, obj.id);
+  }
+  const pollOpts = pollRow ? await getPollOptions(env.DB, pollRow.id) : [];
+  const pollVotes = pollRow && authActor ? await getPollVotesByActor(env.DB, pollRow.id, authActor.id) : [];
+  const poll = pollRow ? serializePoll(pollRow, pollOpts, pollVotes.length > 0, pollVotes) : null;
   const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
   const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras, bookmarked, muted, authorFields] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),

@@ -26,7 +26,7 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -34,6 +34,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
+import { refreshRemotePoll } from "../lib/activitypub/polls";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -1112,6 +1113,33 @@ async function executeScheduled(env: Env): Promise<void> {
     await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
   } catch (err) {
     console.error("[cron] shared inbox backfill failed", err);
+  }
+
+  // Remote polls: open votes only reach the poll author, so refresh a few
+  // active polls from their origin each tick (throttled per poll in
+  // `refreshRemotePoll`) to keep timeline/vote totals reasonably fresh.
+  await setStage("polls");
+  try {
+    const duePolls = await listRemotePollsForRefresh(env.DB, 10);
+    const pollQueue = duePolls.slice();
+    const pollDeadline = Date.now() + 20_000;
+    const pollWorkers = Array.from({ length: Math.min(5, pollQueue.length) }, async () => {
+      for (;;) {
+        if (Date.now() >= pollDeadline) return;
+        const row = pollQueue.shift();
+        if (!row) return;
+        try {
+          const poll = await getPollById(env.DB, row.id);
+          const object = poll ? await getObjectById(env.DB, poll.objectId) : null;
+          if (poll && object) {
+            await refreshRemotePoll({ DB: env.DB, KV: env.KV }, poll, object);
+          }
+        } catch { /* best-effort */ }
+      }
+    });
+    await Promise.all(pollWorkers);
+  } catch (err) {
+    console.error("[cron] poll refresh failed", err);
   }
 
   // Link previews: crawl the first external link of a few queued statuses per
