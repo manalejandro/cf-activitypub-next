@@ -6,6 +6,12 @@ export interface TimelineCacheEntry<T> {
   scrollY: number;
   fetchedAt: number;
   ready: boolean;
+  /**
+   * Status that was visible at the top when the feed was left. Restoring
+   * anchors to it (instead of the feed's first item) so a history traversal
+   * keeps the exact position even if new posts arrived meanwhile.
+   */
+  anchorId?: string | null;
 }
 
 const TIMELINE_CACHE_TTL_MS = 5 * 60 * 1000;

@@ -49,6 +49,16 @@ if (typeof window !== "undefined") {
   });
 }
 
+/** The first status visible in the viewport, used as the restore anchor. */
+function topVisibleStatusId(): string | null {
+  if (typeof document === "undefined") return null;
+  const nodes = document.querySelectorAll<HTMLElement>("[data-status-id]");
+  for (const node of nodes) {
+    if (node.getBoundingClientRect().bottom > 0) return node.dataset.statusId ?? null;
+  }
+  return null;
+}
+
 function scrollToStatusAnchor(anchorId: string | null, fallbackY: number) {
   const apply = () => {
     if (anchorId) {
@@ -185,6 +195,7 @@ export function useTimelineCache<T extends { id: string }>(
             items: statusesRef.current,
             hasMore: hasMoreRef.current,
             scrollY: window.scrollY > 0 ? window.scrollY : prevEntry.scrollY,
+            anchorId: topVisibleStatusId() ?? prevEntry.anchorId ?? null,
           });
         }
       }
@@ -262,7 +273,7 @@ export function useTimelineCache<T extends { id: string }>(
         if (tabSwitch) window.scrollTo(0, 0);
       }
 
-      const anchorId = historyRestore ? (cached?.items[0]?.id ?? null) : null;
+      const anchorId = historyRestore ? (cached?.anchorId ?? cached?.items[0]?.id ?? null) : null;
       const fallbackY = historyRestore ? targetY : 0;
       (async () => {
         try {
@@ -318,7 +329,10 @@ useIsomorphicLayoutEffect(() => {
   return () => {
     window.removeEventListener("scroll", onScroll);
     const entry = getTimelineCache(keyRef.current);
-    if (entry && window.scrollY > 0) entry.scrollY = window.scrollY;
+    if (entry) {
+      if (window.scrollY > 0) entry.scrollY = window.scrollY;
+      entry.anchorId = topVisibleStatusId() ?? entry.anchorId ?? null;
+    }
   };
 }, []);
 
