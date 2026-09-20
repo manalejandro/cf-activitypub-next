@@ -45,10 +45,10 @@ describe("pruneMissingFromWindow", () => {
     expect(pruneMissingFromWindow(fetched, cached).map((i) => i.id)).toEqual(["new", "old"]);
   });
 
-  it("keeps streamed items newer than the window and older cached pages", () => {
+  it("drops items newer than the window too (a deleted latest post) but keeps older pages", () => {
     const fetched = [s("new", "2026-01-01T12:00:00Z"), s("old", "2026-01-01T09:00:00Z")];
-    const cached = [s("streamed", "2026-01-01T12:30:00Z"), s("page2", "2026-01-01T08:00:00Z")];
-    expect(pruneMissingFromWindow(fetched, cached).map((i) => i.id)).toEqual(["streamed", "page2"]);
+    const cached = [s("deleted-latest", "2026-01-01T12:30:00Z"), s("page2", "2026-01-01T08:00:00Z")];
+    expect(pruneMissingFromWindow(fetched, cached).map((i) => i.id)).toEqual(["page2"]);
   });
 
   it("never prunes from an empty (failed/empty) page", () => {

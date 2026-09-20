@@ -208,6 +208,13 @@ export async function broadcastObjectDelete(
     broadcastDelete(ns, encodedStatusId, isPublic, obj.local),
   ];
 
+  // The author's own home channel: their client shows the deleted status in
+  // its cached feed until this event arrives (auto-delete has no DELETE
+  // request from the UI to filter it locally).
+  if (obj.local) {
+    tasks.push(broadcastHomeDelete(ns, obj.actorId, encodedStatusId));
+  }
+
   // Local followers' home feeds.
   if (audience?.followers) {
     for (const followerId of audience.followers) {

@@ -76,25 +76,25 @@ export function mergeStatusUpdate<T extends { id: string }>(existing: T, updated
 }
 
 /**
- * Reconcile a cached feed with a freshly fetched first page: a cached item
- * inside the fetched window (between the page's oldest and newest items) that
+ * Reconcile a cached feed with a freshly fetched first page: any cached item
  * the server no longer returns was deleted (or hidden) and must not come back
- * from the cache. Items newer than the window are kept — they may have arrived
- * over streaming while the page was being fetched — and items older than the
- * window belong to later pages that were not re-fetched.
+ * from the cache. This includes items *newer* than the page's newest entry —
+ * a deleted status was often the author's latest post, and keeping "newer than
+ * the window" items (the old streaming-race allowance) meant deletions never
+ * disappeared from the cached feed. Items older than the window belong to
+ * later pages that were not re-fetched, so they are preserved.
  */
 export function pruneMissingFromWindow<T extends TimelineItem>(fetched: T[], cached: T[]): T[] {
   if (fetched.length === 0 || cached.length === 0) return cached;
-  const newest = fetched[0]?.created_at;
   const oldest = fetched[fetched.length - 1]?.created_at;
-  if (!newest || !oldest) return cached;
+  if (!oldest) return cached;
   const ids = new Set(fetched.map((item) => item.id));
   return cached.filter((item) => {
     if (ids.has(item.id)) return true;
     const created = item.created_at;
     // No timestamp (notifications without one…) can't be placed in the window.
     if (!created) return true;
-    return created > newest || created < oldest;
+    return created < oldest;
   });
 }
 

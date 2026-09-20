@@ -63,6 +63,9 @@ describe("broadcastObjectDelete", () => {
     expect(channels).toContain("public:delete");
     expect(channels).toContain("public:local:delete");
     expect(channels).toContain("home:follower:delete");
+    // The author's own home must get it too: an auto-deleted status otherwise
+    // stays in the author's cached feed.
+    expect(channels).toContain("home:author:delete");
     expect(channels).toContain("hashtag:news:delete");
     // Regression: the list branch used to read the DOM global `status`, throw
     // inside its try/catch and silently skip every list channel.
@@ -85,6 +88,6 @@ describe("broadcastObjectDelete", () => {
     });
 
     const channels = stream.events.map((e) => `${e.channel}:${e.event}`);
-    expect(channels).toEqual(["home:follower:delete"]);
+    expect(channels.sort()).toEqual(["home:author:delete", "home:follower:delete"]);
   });
 });
