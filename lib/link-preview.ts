@@ -638,6 +638,17 @@ async function processJob(
     return false;
   }
 
+  // A geolocated status already renders the native map preview: crawling its
+  // OpenStreetMap link would show a second, redundant card.
+  if (object.locationJson) {
+    try {
+      if (/(^|\.)openstreetmap\.org$/i.test(new URL(url).hostname)) {
+        await deleteLinkPreviewQueue(db, objectId);
+        return false;
+      }
+    } catch { /* not a URL */ }
+  }
+
   const existing = await getPreviewCardBySourceUrl(db, url);
 
   if (existing) {

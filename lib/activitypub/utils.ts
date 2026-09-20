@@ -235,7 +235,7 @@ export function buildNote(
       ? {
           location: {
             type: "Place",
-            name: options.location.name ?? undefined,
+            name: options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`,
             latitude: options.location.latitude,
             longitude: options.location.longitude,
           } as unknown as import("@/lib/types").APObject,

@@ -286,7 +286,7 @@ export async function PUT(
   }
 
   await updateObject(env.DB, obj.id, {
-    content: htmlContent,
+    content: note.content ?? htmlContent,
     contentWarning: sensitive ? spoilerText : null,
     sensitive,
     language: language ?? null,

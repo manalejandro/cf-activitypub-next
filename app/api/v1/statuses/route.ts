@@ -461,7 +461,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     id: note.id,
     type: "Note",
     actorId: actor.id,
-    content: htmlContent,
+    // `note.content` includes the 📍 location link, so local and federated
+    // copies render identically.
+    content: note.content ?? htmlContent,
     contentWarning: sensitive ? spoilerText : null,
     sensitive,
     visibility: visibility as "public" | "unlisted" | "private" | "direct",
@@ -717,7 +719,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain) : null;
   const serializedStatus = serializeStatus(
-    { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, raw: JSON.stringify(note) },
+    { id: note.id, type: "Note", actorId: actor.id, content: note.content ?? htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, raw: JSON.stringify(note) },
     actor,
     domain,
     { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10) }
