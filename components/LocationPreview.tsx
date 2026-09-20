@@ -10,11 +10,11 @@ export interface GeoLocation {
 
 const TILE = 256;
 const ZOOM = 14;
-// A 6x5 mosaic (1536x1280) covers any card width with room to spare; the extra
-// row/column also hides the sub-pixel hairline a fractional container height
-// used to leave at the bottom edge.
-const COLS = 6;
-const ROWS = 5;
+// 4x3 tiles (1024x768) cover the card (max ~640px wide) with room to spare for
+// the centered point and the rounding shift, with far fewer OSM requests than
+// a larger mosaic (the tile proxy caches each tile at the edge).
+const COLS = 4;
+const ROWS = 3;
 
 function tileX(lon: number, zoom: number): number {
   return ((lon + 180) / 360) * 2 ** zoom;

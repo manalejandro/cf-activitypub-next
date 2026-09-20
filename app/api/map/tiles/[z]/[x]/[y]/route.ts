@@ -45,6 +45,9 @@ export async function GET(
     },
   }).catch(() => null);
   if (!res || !res.ok || !res.body) {
+    // Release the discarded response: unread bodies stall the in-flight fetch
+    // pool ("A stalled HTTP response was canceled to prevent deadlock").
+    await res?.body?.cancel().catch(() => {});
     return new Response("Tile unavailable", { status: 502 });
   }
 
