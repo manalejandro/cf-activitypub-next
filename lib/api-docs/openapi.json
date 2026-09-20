@@ -162,6 +162,18 @@
     {
       "name": "ActivityPub",
       "description": "Federation endpoints (actors, inbox, outbox, objects, nodeinfo, WebFinger)."
+    },
+    {
+      "name": "Tags",
+      "description": "Hashtag search, follow/unfollow and featuring."
+    },
+    {
+      "name": "Collections",
+      "description": "Federated featured collections (FEP-7aa9)."
+    },
+    {
+      "name": "Maps",
+      "description": "OpenStreetMap tile proxy used by geolocated posts."
     }
   ],
   "paths": {
@@ -287,7 +299,7 @@
         "summary": "Update /api/admin/emojis/{id}",
         "operationId": "patch_api_admin_emojis_Byid",
         "tags": [
-          "Misc"
+          "Admin"
         ],
         "parameters": [
           {
@@ -349,7 +361,7 @@
         "summary": "Delete /api/admin/emojis/{id}",
         "operationId": "delete_api_admin_emojis_Byid",
         "tags": [
-          "Misc"
+          "Admin"
         ],
         "parameters": [
           {
@@ -388,7 +400,7 @@
         "summary": "Get /api/admin/emojis",
         "operationId": "get_api_admin_emojis",
         "tags": [
-          "Misc"
+          "Admin"
         ],
         "parameters": [
           {
@@ -438,7 +450,7 @@
         "summary": "Post /api/admin/emojis",
         "operationId": "post_api_admin_emojis",
         "tags": [
-          "Misc"
+          "Admin"
         ],
         "parameters": [
           {
@@ -526,11 +538,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -549,16 +557,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -580,24 +578,10 @@
         "tags": [
           "Auth"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -618,11 +602,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -641,16 +621,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -688,11 +658,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -711,16 +677,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -742,24 +698,10 @@
         "tags": [
           "Auth"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -780,24 +722,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -807,13 +735,9 @@
         "summary": "Post /api/inbox",
         "operationId": "post_api_inbox",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -833,16 +757,6 @@
           "200": {
             "description": "Successful response."
           },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
           "422": {
             "description": "Validation error.",
             "content": {
@@ -861,7 +775,7 @@
         "summary": "Get /api/map/tiles/{z}/{x}/{y}",
         "operationId": "get_api_map_tiles_Byz_Byx_Byy",
         "tags": [
-          "Misc"
+          "Maps"
         ],
         "parameters": [
           {
@@ -889,24 +803,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -916,7 +816,7 @@
         "summary": "Get /api/media/{key}",
         "operationId": "get_api_media_Bykey",
         "tags": [
-          "Misc"
+          "Media"
         ],
         "parameters": [
           {
@@ -928,24 +828,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -955,7 +841,7 @@
         "summary": "Get /api/nodeinfo/{version}",
         "operationId": "get_api_nodeinfo_Byversion",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -967,24 +853,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -994,7 +866,7 @@
         "summary": "Post /api/oauth/authorize",
         "operationId": "post_api_oauth_authorize",
         "tags": [
-          "Misc"
+          "OAuth"
         ],
         "parameters": [
           {
@@ -1113,7 +985,7 @@
         "summary": "Delete /api/oauth/authorized/{id}",
         "operationId": "delete_api_oauth_authorized_Byid",
         "tags": [
-          "Misc"
+          "OAuth"
         ],
         "parameters": [
           {
@@ -1152,7 +1024,7 @@
         "summary": "Get /api/oauth/authorized",
         "operationId": "get_api_oauth_authorized",
         "tags": [
-          "Misc"
+          "OAuth"
         ],
         "security": [
           {
@@ -1181,7 +1053,7 @@
         "summary": "Get /api/users/{username}/followers",
         "operationId": "get_api_users_Byusername_followers",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1202,24 +1074,10 @@
             "description": "Page number."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -1229,7 +1087,7 @@
         "summary": "Get /api/users/{username}/following",
         "operationId": "get_api_users_Byusername_following",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1250,24 +1108,10 @@
             "description": "Page number."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -1277,7 +1121,7 @@
         "summary": "Post /api/users/{username}/inbox",
         "operationId": "post_api_users_Byusername_inbox",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1289,11 +1133,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -1313,16 +1153,6 @@
           "200": {
             "description": "Successful response."
           },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
           "422": {
             "description": "Validation error.",
             "content": {
@@ -1341,7 +1171,7 @@
         "summary": "Get /api/users/{username}/keyPackages",
         "operationId": "get_api_users_Byusername_keyPackages",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1362,24 +1192,10 @@
             "description": "Page number."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -1389,7 +1205,7 @@
         "summary": "Get /api/users/{username}/messages",
         "operationId": "get_api_users_Byusername_messages",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1418,24 +1234,10 @@
             "description": "Return results older than this ID (pagination)."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -1445,7 +1247,7 @@
         "summary": "Get /api/users/{username}/outbox",
         "operationId": "get_api_users_Byusername_outbox",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1466,24 +1268,10 @@
             "description": "Page number."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       },
@@ -1491,7 +1279,7 @@
         "summary": "Post /api/users/{username}/outbox",
         "operationId": "post_api_users_Byusername_outbox",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1512,11 +1300,7 @@
             "description": "Page number."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -1536,16 +1320,6 @@
           "200": {
             "description": "Successful response."
           },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
           "422": {
             "description": "Validation error.",
             "content": {
@@ -1564,7 +1338,7 @@
         "summary": "Get /api/users/{username}",
         "operationId": "get_api_users_Byusername",
         "tags": [
-          "Misc"
+          "ActivityPub"
         ],
         "parameters": [
           {
@@ -1583,24 +1357,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -5515,7 +5275,7 @@
         "summary": "Post /api/v1/collections/{id}/items/{itemId}/revoke",
         "operationId": "post_api_v1_collections_Byid_items_ByitemId_revoke",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5535,24 +5295,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -5562,7 +5308,7 @@
         "summary": "Delete /api/v1/collections/{id}/items/{itemId}",
         "operationId": "delete_api_v1_collections_Byid_items_ByitemId",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5582,24 +5328,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Successfully deleted."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -5609,7 +5341,7 @@
         "summary": "Post /api/v1/collections/{id}/items",
         "operationId": "post_api_v1_collections_Byid_items",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5628,11 +5360,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -5651,16 +5379,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -5680,7 +5398,7 @@
         "summary": "Get /api/v1/collections/{id}",
         "operationId": "get_api_v1_collections_Byid",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5692,24 +5410,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       },
@@ -5717,7 +5421,7 @@
         "summary": "Update /api/v1/collections/{id}",
         "operationId": "patch_api_v1_collections_Byid",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5729,11 +5433,7 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -5752,16 +5452,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -5779,7 +5469,7 @@
         "summary": "Delete /api/v1/collections/{id}",
         "operationId": "delete_api_v1_collections_Byid",
         "tags": [
-          "Misc"
+          "Collections"
         ],
         "parameters": [
           {
@@ -5791,24 +5481,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Successfully deleted."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -5818,13 +5494,9 @@
         "summary": "Post /api/v1/collections",
         "operationId": "post_api_v1_collections",
         "tags": [
-          "Misc"
+          "Collections"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "requestBody": {
           "required": false,
           "content": {
@@ -5843,16 +5515,6 @@
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           },
           "422": {
             "description": "Validation error.",
@@ -7145,7 +6807,7 @@
         "summary": "Get /api/v1/graph",
         "operationId": "get_api_v1_graph",
         "tags": [
-          "Misc"
+          "Instance"
         ],
         "security": [
           {
@@ -10329,7 +9991,7 @@
         "summary": "Post /api/v1/tags/{name}/feature",
         "operationId": "post_api_v1_tags_Byname_feature",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10341,24 +10003,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -10368,7 +10016,7 @@
         "summary": "Post /api/v1/tags/{name}/follow",
         "operationId": "post_api_v1_tags_Byname_follow",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10380,24 +10028,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -10407,7 +10041,7 @@
         "summary": "Get /api/v1/tags/{name}",
         "operationId": "get_api_v1_tags_Byname",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10432,7 +10066,7 @@
         "summary": "Post /api/v1/tags/{name}/unfeature",
         "operationId": "post_api_v1_tags_Byname_unfeature",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10444,24 +10078,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -10471,7 +10091,7 @@
         "summary": "Post /api/v1/tags/{name}/unfollow",
         "operationId": "post_api_v1_tags_Byname_unfollow",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10483,24 +10103,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -10510,7 +10116,7 @@
         "summary": "Get /api/v1/tags/search",
         "operationId": "get_api_v1_tags_search",
         "tags": [
-          "Misc"
+          "Tags"
         ],
         "parameters": [
           {
@@ -10533,24 +10139,10 @@
             "description": "Search query."
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -10645,8 +10237,8 @@
     },
     "/api/v1/timelines/list": {
       "get": {
-        "summary": "Get /api/v1/timelines/list",
-        "operationId": "get_api_v1_timelines_list",
+        "summary": "View a list timeline",
+        "operationId": "getListTimeline",
         "tags": [
           "Timelines"
         ],
@@ -11509,7 +11101,7 @@
         "summary": "Get /api/v2/notifications/policy",
         "operationId": "get_api_v2_notifications_policy",
         "tags": [
-          "Misc"
+          "Notifications"
         ],
         "security": [
           {
@@ -11536,7 +11128,7 @@
         "summary": "Update /api/v2/notifications/policy",
         "operationId": "patch_api_v2_notifications_policy",
         "tags": [
-          "Misc"
+          "Notifications"
         ],
         "security": [
           {
@@ -11693,7 +11285,7 @@
         "summary": "Get /authorize_interaction",
         "operationId": "get_authorize_interaction",
         "tags": [
-          "Misc"
+          "Apps"
         ],
         "parameters": [
           {
@@ -11704,24 +11296,10 @@
             }
           }
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -11747,26 +11325,12 @@
         "summary": "Get /manifest.webmanifest",
         "operationId": "get_manifestwebmanifest",
         "tags": [
-          "Misc"
+          "Instance"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
@@ -11963,26 +11527,12 @@
         "summary": "Get /security.txt",
         "operationId": "get_securitytxt",
         "tags": [
-          "Misc"
+          "Instance"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Successful response."
-          },
-          "401": {
-            "description": "Unauthorized. Missing or invalid access token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
           }
         }
       }
