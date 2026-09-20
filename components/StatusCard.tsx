@@ -15,6 +15,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
 import { Icon } from "./Icon";
+import LocationPreview from "./LocationPreview";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ export interface Status {
   visibility?: string;
   poll: Poll | null;
   card?: LinkPreviewCardData | null;
+  location?: { name: string | null; latitude: number; longitude: number } | null;
   emojis?: EmojiData[];
   ap_type?: string | null;
   quote?: Status | null;
@@ -903,6 +905,9 @@ export function StatusCard({
         )}
         {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
         {showContent && status.poll && <PollView poll={status.poll} />}
+        {showContent && status.location && (
+          <LocationPreview location={status.location} />
+        )}
         {showContent && status.card && (
           <LinkPreview card={status.card} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} />
         )}

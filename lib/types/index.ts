@@ -271,6 +271,8 @@ export interface LocalObject {
   cardJson?: string | null;
   /** True while remote media (attachments/author avatar) is not yet in R2. */
   mediaPending?: boolean;
+  /** ActivityStreams `Place` (geolocated status), JSON snapshot. */
+  locationJson?: string | null;
 }
 
 export interface LocalFollow {
@@ -494,6 +496,8 @@ export interface MastodonStatus {
   tags: MastodonTag[];
   emojis: MastodonEmoji[];
   card: MastodonPreviewCard | null;
+  /** Geolocation (`Place`), a local extension Mastodon clients ignore. */
+  location?: { name: string | null; latitude: number; longitude: number } | null;
   poll: MastodonPoll | null;
   filtered: MastodonFilterResult[];
   quotes_count: number;

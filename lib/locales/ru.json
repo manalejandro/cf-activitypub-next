@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "Осталось {h} ч {m} мин",
   "poll_time_left_m_s": "Осталось {m} мин {s} с",
   "poll_time_left_s": "Осталось {s} с",
-  "poll_view_original": "Открыть исходный пост"
+  "poll_view_original": "Открыть исходный пост",
+  "location_title": "Местоположение",
+  "location_use_my_location": "Использовать моё местоположение",
+  "location_locating": "Определение местоположения…",
+  "location_latitude": "Широта",
+  "location_longitude": "Долгота",
+  "location_name": "Название места (необязательно)",
+  "location_name_placeholder": "напр. Центральный парк",
+  "location_fill_name": "Предложить название",
+  "location_remove": "Удалить местоположение",
+  "location_error_denied": "Доступ к местоположению запрещён",
+  "location_error_unavailable": "Местоположение недоступно",
+  "location_error_invalid": "Неверные координаты",
+  "compose_error_location": "Неверное местоположение",
+  "cancel": "Отмена",
+  "save": "Сохранить"
 }

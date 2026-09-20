@@ -33,6 +33,7 @@ import { getPollsByObjectIds, getPollVotesByObjectIds } from "@/lib/db";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
 import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
+import { parseLocationJson } from "@/lib/activitypub/utils";
 import {
   INSTANCE_LANGUAGES,
   MASTODON_COMPAT_VERSION,
@@ -349,6 +350,7 @@ export function serializeStatus(
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
     card: obj.mediaPending ? null : parsePreviewCard(obj.cardJson),
+    location: obj.mediaPending ? null : parseLocationJson(obj.locationJson),
     poll: opts.poll ?? null,
     filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,

@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "{h}h {m}m left",
   "poll_time_left_m_s": "{m}m {s}s left",
   "poll_time_left_s": "{s}s left",
-  "poll_view_original": "View original post"
+  "poll_view_original": "View original post",
+  "location_title": "Location",
+  "location_use_my_location": "Use my location",
+  "location_locating": "Locating…",
+  "location_latitude": "Latitude",
+  "location_longitude": "Longitude",
+  "location_name": "Place name (optional)",
+  "location_name_placeholder": "e.g. Central Park",
+  "location_fill_name": "Suggest name",
+  "location_remove": "Remove location",
+  "location_error_denied": "Location permission denied",
+  "location_error_unavailable": "Location is not available",
+  "location_error_invalid": "Invalid coordinates",
+  "compose_error_location": "Invalid location",
+  "cancel": "Cancel",
+  "save": "Save"
 }

@@ -856,6 +856,61 @@
         }
       }
     },
+    "/api/map/tiles/{z}/{x}/{y}": {
+      "get": {
+        "summary": "Get /api/map/tiles/{z}/{x}/{y}",
+        "operationId": "get_api_map_tiles_Byz_Byx_Byy",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/media/{key}": {
       "get": {
         "summary": "Get /api/media/{key}",

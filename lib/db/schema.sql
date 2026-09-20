@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS objects (
   media_pending   INTEGER NOT NULL DEFAULT 0,
   -- 1 when content mentions a link (maintained on create/edit). The moderation
   -- patrol used `content LIKE '%http%'`, which reads every post body.
-  has_link        INTEGER NOT NULL DEFAULT 0
+  has_link        INTEGER NOT NULL DEFAULT 0,
+  -- ActivityStreams `Place` (geolocated status): JSON {name, latitude, longitude}.
+  location_json   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);

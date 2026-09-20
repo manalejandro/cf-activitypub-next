@@ -12,6 +12,7 @@ import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
 import { refreshRemotePoll } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
@@ -164,6 +165,10 @@ export async function PUT(
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
   const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, limits.maxMediaAttachments) : undefined;
+  const locationJson = normalizeLocationInput(body.location);
+  if (body.location !== undefined && locationJson === undefined) {
+    return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);
+  }
 
   const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
   const updatedAt = new Date().toISOString();
@@ -195,6 +200,7 @@ export async function PUT(
     tags,
     to: originalTo,
     cc: originalCc,
+    location: locationJson ? parseLocationJson(locationJson) : null,
   });
   note.attachment = (await getAttachmentsByObjectId(env.DB, obj.id)).map(toAPAttachment);
   note.updated = updatedAt;
@@ -285,6 +291,7 @@ export async function PUT(
     sensitive,
     language: language ?? null,
     raw: JSON.stringify(note),
+    ...(body.location !== undefined ? { locationJson: locationJson ?? null } : {}),
   });
 
   // The first link may have changed: drop the stale card snapshot and queue a

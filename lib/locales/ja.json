@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "残り {h}時間{m}分",
   "poll_time_left_m_s": "残り {m}分{s}秒",
   "poll_time_left_s": "残り {s}秒",
-  "poll_view_original": "元の投稿を表示"
+  "poll_view_original": "元の投稿を表示",
+  "location_title": "位置",
+  "location_use_my_location": "現在地を使う",
+  "location_locating": "位置情報を取得中…",
+  "location_latitude": "緯度",
+  "location_longitude": "経度",
+  "location_name": "場所の名前（任意）",
+  "location_name_placeholder": "例: 中央公園",
+  "location_fill_name": "名前を提案",
+  "location_remove": "位置を削除",
+  "location_error_denied": "位置情報の許可が拒否されました",
+  "location_error_unavailable": "位置情報を利用できません",
+  "location_error_invalid": "座標が無効です",
+  "compose_error_location": "位置が無効です",
+  "cancel": "キャンセル",
+  "save": "保存"
 }

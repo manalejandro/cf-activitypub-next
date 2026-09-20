@@ -13,6 +13,7 @@ import { purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent }
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
+import LocationPickerModal, { type GeoLocation } from "@/components/LocationPickerModal";
 import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
 import { useTagAutocomplete, TagAutocompleteDropdown } from "@/components/TagAutocomplete";
 import { EditStatusModal } from "@/components/EditStatusModal";
@@ -88,6 +89,8 @@ export default function HomePage() {
   const [cwText, setCwText] = useState("");
   // Poll compose state
   const [pollMode, setPollMode] = useState(false);
+  const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
@@ -150,6 +153,9 @@ export default function HomePage() {
     };
     if (scheduling && scheduledAt) {
       body.scheduled_at = new Date(scheduledAt).toISOString();
+    }
+    if (location) {
+      body.location = location;
     }
     if (hasPoll) {
       body.poll = {
@@ -508,6 +514,17 @@ export default function HomePage() {
                 >
                   <Icon name="bar-chart" size="1rem" />
                 </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowLocationPicker(true)}
+                    title={t.location_title}
+                    aria-label={t.location_title}
+                    aria-pressed={Boolean(location)}
+                    style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: location ? "var(--accent-bg)" : undefined }}
+                  >
+                    <Icon name="map-marker" size="1rem" />
+                  </button>
                 {/* Schedule button */}
                 <button
                   type="button"
@@ -589,6 +606,13 @@ export default function HomePage() {
 
       <BackToTop />
       {/* Edit status modal */}
+      {showLocationPicker && (
+        <LocationPickerModal
+          initial={location}
+          onSave={(next) => { setLocation(next); setShowLocationPicker(false); }}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
       <EditStatusModal status={editingStatus} onClose={() => setEditingStatus(null)} onSaved={handleStatusSaved} />
     </>
   );

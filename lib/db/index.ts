@@ -140,6 +140,7 @@ function rowToObject(r: Row): LocalObject {
     cardId: (r.card_id as string | null) ?? null,
     cardJson: (r.card_json as string | null) ?? null,
     mediaPending: Boolean(r.media_pending),
+    locationJson: (r.location_json as string | null) ?? null,
   };
 }
 
@@ -1831,8 +1832,8 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
           id, type, actor_id, content, content_warning, sensitive,
           visibility, in_reply_to_id, quote_id, language, url,
           replies_count, reblogs_count, favourites_count, engagement,
-          published, is_local, raw, has_link, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          published, is_local, raw, has_link, location_json, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         obj.id,
@@ -1854,6 +1855,7 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         obj.local ? 1 : 0,
         obj.raw,
         hasLink(obj.content),
+        obj.locationJson ?? null,
         obj.published   // pin updated_at = published so new posts never appear as edited
       ),
     ...extractObjectTags(obj.raw).map((tag) =>
@@ -2283,7 +2285,7 @@ export async function getActorStatuses(
 export async function updateObject(
   db: D1Database,
   id: string,
-  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string }
+  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null }
 ): Promise<void> {
   const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
@@ -2306,6 +2308,7 @@ export async function updateObject(
   if ("sensitive" in fields) { setClauses.push("sensitive = ?"); values.push(fields.sensitive ? 1 : 0); }
   if ("language" in fields) { setClauses.push("language = ?"); values.push(fields.language ?? null); }
   if ("raw" in fields) { setClauses.push("raw = ?"); values.push(fields.raw); }
+  if ("locationJson" in fields) { setClauses.push("location_json = ?"); values.push(fields.locationJson ?? null); }
 
   if (setClauses.length === 0) return;
   setClauses.push("updated_at = datetime('now')");

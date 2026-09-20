@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "剩余 {h}小时{m}分",
   "poll_time_left_m_s": "剩余 {m}分{s}秒",
   "poll_time_left_s": "剩余 {s}秒",
-  "poll_view_original": "查看原帖"
+  "poll_view_original": "查看原帖",
+  "location_title": "位置",
+  "location_use_my_location": "使用我的位置",
+  "location_locating": "正在定位…",
+  "location_latitude": "纬度",
+  "location_longitude": "经度",
+  "location_name": "地点名称（可选）",
+  "location_name_placeholder": "例如：中央公园",
+  "location_fill_name": "建议名称",
+  "location_remove": "移除位置",
+  "location_error_denied": "位置权限被拒绝",
+  "location_error_unavailable": "位置不可用",
+  "location_error_invalid": "坐标无效",
+  "compose_error_location": "位置无效",
+  "cancel": "取消",
+  "save": "保存"
 }

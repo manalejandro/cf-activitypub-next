@@ -24,6 +24,7 @@ import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
 import {
   buildNote,
   buildCreate,
@@ -227,6 +228,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   let spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
   const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+  // Optional geolocation (ActivityStreams Place); an invalid object is rejected.
+  const locationJson = normalizeLocationInput(body.location);
+  if (body.location !== undefined && locationJson === undefined) {
+    return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);
+  }
 
   // ── Quote post (Mastodon 4.5 / FEP-044f) ─────────────────────────────────
   const quotedStatusIdRaw = (body.quoted_status_id as string | undefined) ?? (body.quote_id as string | undefined);
@@ -442,6 +448,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     tags: allTags,
     to: noteTo,
     cc: noteCc,
+    location: locationJson ? parseLocationJson(locationJson) : null,
   });
   // note.attachment will be set after linkedAttachments is populated below
 
@@ -467,6 +474,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     favouritesCount: 0,
     published,
     local: true,
+    locationJson: locationJson ?? null,
     raw: JSON.stringify(note),
   });
 
@@ -709,7 +717,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain) : null;
   const serializedStatus = serializeStatus(
-    { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, raw: JSON.stringify(note) },
+    { id: note.id, type: "Note", actorId: actor.id, content: htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, raw: JSON.stringify(note) },
     actor,
     domain,
     { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10) }

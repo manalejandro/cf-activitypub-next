@@ -175,6 +175,7 @@ export function buildNote(
     cc?: string[];
     tags?: import("@/lib/types").APTag[];
     attachments?: import("@/lib/types").APAttachment[];
+    location?: { name: string | null; latitude: number; longitude: number } | null;
   }
 ): APNote {
   const actorId = actorIRI(baseUrl, options.actorUsername);
@@ -202,12 +203,19 @@ export function buildNote(
       cc = options.cc ?? [];
   }
 
+  // Remote instances need a crawlable link to render a map preview card: the
+  // location page exposes oEmbed + OpenGraph with the map tile.
+  // The map link points at OpenStreetMap (same target as the preview image) so
+  // every client can open the location, even if it ignores the `Place` object.
+  const locationLink = options.location
+    ? `<p><a href="https://www.openstreetmap.org/?mlat=${options.location.latitude}&mlon=${options.location.longitude}#map=14/${options.location.latitude}/${options.location.longitude}" rel="nofollow noopener noreferrer">\u{1F4CD} ${(options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a></p>`
+    : "";
   const note: APNote = {
     "@context": DEFAULT_CONTEXT,
     id: noteId,
     type: "Note",
     attributedTo: actorId,
-    content: options.content,
+    content: options.content + locationLink,
     published: options.published,
     to,
     cc,
@@ -223,6 +231,16 @@ export function buildNote(
         items: [],
       },
     },
+    ...(options.location
+      ? {
+          location: {
+            type: "Place",
+            name: options.location.name ?? undefined,
+            latitude: options.location.latitude,
+            longitude: options.location.longitude,
+          } as unknown as import("@/lib/types").APObject,
+        }
+      : {}),
   };
 
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
@@ -525,4 +543,43 @@ export function getRecipientInboxes(
   return [...to, ...cc].filter(
     (addr) => addr !== PUBLIC_ADDRESS && addr !== actorInbox
   );
+}
+
+/** Parse an ActivityStreams `Place` from a remote object into a JSON snapshot. */
+export function extractLocationJson(obj: Record<string, unknown>): string | null {
+  const raw = obj.location as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== "object") return null;
+  const latitude = Number(raw.latitude);
+  const longitude = Number(raw.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 200) : null;
+  return JSON.stringify({ name, latitude, longitude });
+}
+
+/** Validate a client-provided location (POST body) into a `Place` snapshot. */
+export function normalizeLocationInput(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return value === null ? null : undefined;
+  if (typeof value !== "object") return undefined;
+  const loc = value as Record<string, unknown>;
+  const latitude = Number(loc.latitude);
+  const longitude = Number(loc.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
+  const name = typeof loc.name === "string" && loc.name.trim() ? loc.name.trim().slice(0, 200) : null;
+  return JSON.stringify({ name, latitude, longitude });
+}
+
+/** Parse a stored location snapshot for serialization. */
+export function parseLocationJson(raw: string | null | undefined): { name: string | null; latitude: number; longitude: number } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { name?: unknown; latitude?: unknown; longitude?: unknown };
+    const latitude = Number(parsed.latitude);
+    const longitude = Number(parsed.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { name: typeof parsed.name === "string" ? parsed.name : null, latitude, longitude };
+  } catch {
+    return null;
+  }
 }

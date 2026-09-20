@@ -19,6 +19,7 @@ import {
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
@@ -559,6 +560,7 @@ export async function fetchAndCacheRemoteActorStatuses(
         favouritesCount: 0,
         published,
         local: false,
+        locationJson: extractLocationJson(obj as Record<string, unknown>),
         raw: JSON.stringify(obj),
       });
 
@@ -686,6 +688,7 @@ export async function fetchAndCacheRemoteStatus(
       favouritesCount: 0,
       published: toIso(obj.published) ?? new Date().toISOString(),
       local: false,
+      locationJson: extractLocationJson(obj as Record<string, unknown>),
       raw: JSON.stringify(obj),
     });
 
@@ -774,6 +777,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           favouritesCount: 0,
           published: toIso(item.published) ?? new Date().toISOString(),
           local: false,
+          locationJson: extractLocationJson(item as Record<string, unknown>),
           raw: JSON.stringify(item),
         });
 

@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "Noch {h} Std. {m} Min.",
   "poll_time_left_m_s": "Noch {m} Min. {s} Sek.",
   "poll_time_left_s": "Noch {s} Sek.",
-  "poll_view_original": "Originalbeitrag ansehen"
+  "poll_view_original": "Originalbeitrag ansehen",
+  "location_title": "Standort",
+  "location_use_my_location": "Meinen Standort verwenden",
+  "location_locating": "Standort wird ermittelt…",
+  "location_latitude": "Breitengrad",
+  "location_longitude": "Längengrad",
+  "location_name": "Ortsname (optional)",
+  "location_name_placeholder": "z. B. Stadtpark",
+  "location_fill_name": "Namen vorschlagen",
+  "location_remove": "Standort entfernen",
+  "location_error_denied": "Standortberechtigung verweigert",
+  "location_error_unavailable": "Standort nicht verfügbar",
+  "location_error_invalid": "Ungültige Koordinaten",
+  "compose_error_location": "Ungültiger Standort",
+  "cancel": "Abbrechen",
+  "save": "Speichern"
 }

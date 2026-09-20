@@ -23,11 +23,13 @@
     "db:drop": "wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.22",
     "@xyflow/react": "^12.11.6",
     "d3-force": "^3.0.0",
     "esbuild": "^0.28.2",
     "fork-awesome": "^1.2.0",
     "i18next": "^26.4.2",
+    "leaflet": "^1.9.4",
     "next": "^16.3.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",

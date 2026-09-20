@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "{h}시간 {m}분 남음",
   "poll_time_left_m_s": "{m}분 {s}초 남음",
   "poll_time_left_s": "{s}초 남음",
-  "poll_view_original": "원본 게시물 보기"
+  "poll_view_original": "원본 게시물 보기",
+  "location_title": "위치",
+  "location_use_my_location": "내 위치 사용",
+  "location_locating": "위치 확인 중…",
+  "location_latitude": "위도",
+  "location_longitude": "경도",
+  "location_name": "장소 이름(선택)",
+  "location_name_placeholder": "예: 센트럴 파크",
+  "location_fill_name": "이름 제안",
+  "location_remove": "위치 제거",
+  "location_error_denied": "위치 권한이 거부되었습니다",
+  "location_error_unavailable": "위치를 사용할 수 없습니다",
+  "location_error_invalid": "좌표가 잘못되었습니다",
+  "compose_error_location": "위치가 잘못되었습니다",
+  "cancel": "취소",
+  "save": "저장"
 }

@@ -956,5 +956,20 @@
   "poll_time_left_h_m": "{h} h {m} min rimasti",
   "poll_time_left_m_s": "{m} min {s} s rimasti",
   "poll_time_left_s": "{s} s rimasti",
-  "poll_view_original": "Vedi post originale"
+  "poll_view_original": "Vedi post originale",
+  "location_title": "Posizione",
+  "location_use_my_location": "Usa la mia posizione",
+  "location_locating": "Localizzazione…",
+  "location_latitude": "Latitudine",
+  "location_longitude": "Longitudine",
+  "location_name": "Nome del luogo (facoltativo)",
+  "location_name_placeholder": "es. Parco centrale",
+  "location_fill_name": "Suggerisci nome",
+  "location_remove": "Rimuovi posizione",
+  "location_error_denied": "Permesso di localizzazione negato",
+  "location_error_unavailable": "Localizzazione non disponibile",
+  "location_error_invalid": "Coordinate non valide",
+  "compose_error_location": "Posizione non valida",
+  "cancel": "Annulla",
+  "save": "Salva"
 }

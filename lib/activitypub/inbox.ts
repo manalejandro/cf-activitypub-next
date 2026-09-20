@@ -65,6 +65,7 @@ import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
 import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { extractLocationJson } from "@/lib/activitypub/utils";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
@@ -477,6 +478,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     favouritesCount: 0,
     published: toUtcIso(obj.published),
     local: false,
+    locationJson: extractLocationJson(obj as Record<string, unknown>),
     raw: JSON.stringify(obj),
   });
 
@@ -1582,6 +1584,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       sensitive: note.sensitive ?? false,
       language: note.contentMap ? Object.keys(note.contentMap)[0] : undefined,
       raw: JSON.stringify(note),
+      locationJson: extractLocationJson(note as unknown as Record<string, unknown>),
     });
     await ensurePollRowsForQuestion(ctx, note);
     // An edited Question carries the current per-choice counts: apply them so
