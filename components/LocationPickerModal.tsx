@@ -33,7 +33,14 @@ export default function LocationPickerModal({
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Leaflet hands out longitudes outside [-180, 180] once the map is panned
+  // across world copies (they can look like 400+); wrap/clamp before storing.
+  const wrapLng = (lng: number): number => ((((lng + 180) % 360) + 360) % 360) - 180;
+  const clampLat = (lat: number): number => Math.max(-90, Math.min(90, lat));
+
   const setPoint = useCallback((latitude: number, longitude: number) => {
+    latitude = clampLat(latitude);
+    longitude = wrapLng(longitude);
     setLat(latitude.toFixed(6));
     setLng(longitude.toFixed(6));
     const map = mapRef.current;
@@ -56,6 +63,7 @@ export default function LocationPickerModal({
       const map = L.map(mapEl.current, { zoomControl: true, attributionControl: true }).setView(center, initial ? 15 : 2);
       L.tileLayer("/api/map/tiles/{z}/{x}/{y}.png", {
         maxZoom: 19,
+        noWrap: true,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
       const icon = L.divIcon({
@@ -114,9 +122,13 @@ export default function LocationPickerModal({
     } catch { /* best-effort */ }
   }
 
+  // Some locales type/paste coordinates with a comma (`54,24447`); `Number()`
+  // returns NaN for those and the modal wrongly reported invalid coordinates.
+  const parseCoord = (value: string): number => Number(value.trim().replace(",", "."));
+
   function save() {
-    const latitude = Number(lat);
-    const longitude = Number(lng);
+    const latitude = clampLat(parseCoord(lat));
+    const longitude = wrapLng(parseCoord(lng));
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
       setError(t.location_error_invalid);
       return;
@@ -169,7 +181,7 @@ export default function LocationPickerModal({
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => void reverseGeocode(Number(lat), Number(lng))}
-            disabled={!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))}
+            disabled={!Number.isFinite(parseCoord(lat)) || !Number.isFinite(parseCoord(lng))}
           >
             {t.location_fill_name}
           </button>

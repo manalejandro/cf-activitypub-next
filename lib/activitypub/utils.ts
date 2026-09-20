@@ -562,8 +562,10 @@ export function normalizeLocationInput(value: unknown): string | null | undefine
   if (value === null || value === undefined) return value === null ? null : undefined;
   if (typeof value !== "object") return undefined;
   const loc = value as Record<string, unknown>;
-  const latitude = Number(loc.latitude);
-  const longitude = Number(loc.longitude);
+  const coord = (raw: unknown): number =>
+    typeof raw === "string" ? Number(raw.trim().replace(",", ".")) : Number(raw);
+  const latitude = coord(loc.latitude);
+  const longitude = coord(loc.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
   const name = typeof loc.name === "string" && loc.name.trim() ? loc.name.trim().slice(0, 200) : null;
