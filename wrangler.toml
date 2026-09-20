@@ -7,7 +7,7 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 [vars]
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.2.8"
+INSTANCE_VERSION = "1.2.9"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""
@@ -56,7 +56,7 @@ MEDIA_CACHE_MAX_HOLD_MINUTES = "30"
 # cached for a week. When the media cache is enabled the preview image is
 # stored in R2 too (media_cache.target_type = 'card').
 LINK_PREVIEW_ENABLED = "true"
-LINK_PREVIEW_FETCH_BATCH = "5"
+LINK_PREVIEW_FETCH_BATCH = "10"
 LINK_PREVIEW_DAYS = "14"
 LINK_PREVIEW_MAX_BYTES = "2097152"
 INSTANCE_REFRESH_DAYS = "7"
