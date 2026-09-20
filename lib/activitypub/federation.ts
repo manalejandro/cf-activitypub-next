@@ -96,6 +96,13 @@ export async function safeFetch(
       }
       continue;
     }
+    if (!res.ok) {
+      // Every caller treats non-2xx as a failure and only inspects the status,
+      // never the body. Release it here so an unread error response can never
+      // stall the runtime's in-flight fetch pool ("A stalled HTTP response was
+      // canceled to prevent deadlock").
+      await res.body?.cancel().catch(() => {});
+    }
     return res;
   }
   console.warn(`[federation] Too many redirects for ${url}`);
