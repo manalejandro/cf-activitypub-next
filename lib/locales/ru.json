@@ -971,5 +971,6 @@
   "location_error_invalid": "Неверные координаты",
   "compose_error_location": "Неверное местоположение",
   "cancel": "Отмена",
-  "save": "Сохранить"
+  "save": "Сохранить",
+  "status_not_found": "Пост не найден"
 }

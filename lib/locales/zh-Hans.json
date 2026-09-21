@@ -971,5 +971,6 @@
   "location_error_invalid": "坐标无效",
   "compose_error_location": "位置无效",
   "cancel": "取消",
-  "save": "保存"
+  "save": "保存",
+  "status_not_found": "未找到帖子"
 }

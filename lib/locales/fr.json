@@ -971,5 +971,6 @@
   "location_error_invalid": "Coordonnées invalides",
   "compose_error_location": "Localisation invalide",
   "cancel": "Annuler",
-  "save": "Enregistrer"
+  "save": "Enregistrer",
+  "status_not_found": "Publication introuvable"
 }

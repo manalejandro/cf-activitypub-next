@@ -971,5 +971,6 @@
   "location_error_invalid": "Ungültige Koordinaten",
   "compose_error_location": "Ungültiger Standort",
   "cancel": "Abbrechen",
-  "save": "Speichern"
+  "save": "Speichern",
+  "status_not_found": "Beitrag nicht gefunden"
 }

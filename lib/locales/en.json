@@ -971,5 +971,6 @@
   "location_error_invalid": "Invalid coordinates",
   "compose_error_location": "Invalid location",
   "cancel": "Cancel",
-  "save": "Save"
+  "save": "Save",
+  "status_not_found": "Post not found"
 }

@@ -971,5 +971,6 @@
   "location_error_invalid": "Coordinate non valide",
   "compose_error_location": "Posizione non valida",
   "cancel": "Annulla",
-  "save": "Salva"
+  "save": "Salva",
+  "status_not_found": "Post non trovato"
 }

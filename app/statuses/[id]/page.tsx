@@ -820,7 +820,7 @@ export default function ThreadPage() {
           <Loading />
         ) : deleted || !focal ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            {deleted ? t.status_deleted : t.profile_not_found}
+            {deleted ? t.status_deleted : t.status_not_found}
           </div>
         ) : (
           <>

@@ -971,5 +971,6 @@
   "location_error_invalid": "Coordenadas no válidas",
   "compose_error_location": "Ubicación no válida",
   "cancel": "Cancelar",
-  "save": "Guardar"
+  "save": "Guardar",
+  "status_not_found": "Publicación no encontrada"
 }

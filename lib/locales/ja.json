@@ -971,5 +971,6 @@
   "location_error_invalid": "座標が無効です",
   "compose_error_location": "位置が無効です",
   "cancel": "キャンセル",
-  "save": "保存"
+  "save": "保存",
+  "status_not_found": "投稿が見つかりません"
 }
