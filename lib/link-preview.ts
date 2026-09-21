@@ -535,6 +535,41 @@ function plusHours(hours: number, from = Date.now()): string {
   return new Date(from + hours * 3_600_000).toISOString();
 }
 
+/** Video id of a YouTube URL (watch, youtu.be, shorts, embed). */
+export function youTubeVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\.|^m\./, "").toLowerCase();
+    if (host === "youtu.be") return parsed.pathname.slice(1).split("/")[0] || null;
+    if (host !== "youtube.com" && host !== "youtube-nocookie.com") return null;
+    if (parsed.pathname === "/watch") return parsed.searchParams.get("v");
+    const match = parsed.pathname.match(/^\/(?:shorts|embed|v)\/([^/?#]+)/);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * YouTube's watch page (consent wall in the EU) and oEmbed endpoint can be
+ * blocked from datacenter IPs; the video id is enough to build a usable card:
+ * the CDN thumbnail plus a nocookie embed.
+ */
+export function applyYouTubeFallback(card: CardCandidate, url: string): void {
+  const videoId = youTubeVideoId(url);
+  if (!videoId) return;
+  if (!card.imageUrl) card.imageUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  if (!card.html) {
+    const width = card.width || 480;
+    const height = card.height || 270;
+    card.width = width;
+    card.height = height;
+    card.type = "video";
+    card.embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+    card.html = buildIframe(card.embedUrl, width, height);
+  }
+}
+
 type CrawlOutcome =
   | { ok: true; card: CardCandidate; canonicalUrl: string }
   | { ok: false; permanent: boolean; error: string };
@@ -558,6 +593,7 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
 
   const oembed = await parseOEmbed(html, url, userAgents);
   const card = oembed?.card ?? parseOpenGraph(html, url);
+  if (card) applyYouTubeFallback(card, url);
   if (!card || (!card.title && !card.html)) {
     return { ok: false, permanent: true, error: "no preview metadata" };
   }
@@ -766,8 +802,10 @@ async function processJob(
   }
 
   const stored = await getPreviewCardBySourceUrl(db, url);
-  const servedImage = stored?.imageCacheUrl
-    ?? (limits.mediaCacheEnabled ? null : stored?.imageUrl ?? outcome.card.imageUrl);
+  // Fall back to the origin image whenever the cached copy is not ready
+  // (pending entries already returned above): a blocked/errored cache must not
+  // leave the card image-less.
+  const servedImage = stored?.imageCacheUrl ?? stored?.imageUrl ?? outcome.card.imageUrl;
   const snapshot = JSON.stringify(toSnapshot(outcome.card, url, servedImage));
   await linkObjectPreviewCard(db, objectId, cardId, snapshot);
   await updateObjectCardSnapshots(db, cardId, snapshot);

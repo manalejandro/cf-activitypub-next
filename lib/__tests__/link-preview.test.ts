@@ -14,8 +14,10 @@ vi.mock("@/lib/activitypub/federation", () => federation);
 
 import { enqueueLinkPreview, getActorById, getObjectById, listLinkPreviewQueue } from "@/lib/db";
 import {
+  applyYouTubeFallback,
   extractFirstLink,
   parseOpenGraph,
+  youTubeVideoId,
   processLinkPreviewQueue,
   type LinkPreviewBindings,
   type LinkPreviewLimits,
@@ -438,5 +440,23 @@ describe("card serializer", () => {
     expect(card?.type).toBe("video");
     expect(card?.image).toBe("https://cdn.example/cover.jpg");
     expect(card?.width).toBe(480);
+  });
+});
+
+describe("YouTube fallback", () => {
+  it("extracts the video id from watch, short and shorts URLs", () => {
+    expect(youTubeVideoId("https://www.youtube.com/watch?v=abc123")).toBe("abc123");
+    expect(youTubeVideoId("https://youtu.be/xyz789")).toBe("xyz789");
+    expect(youTubeVideoId("https://m.youtube.com/shorts/short1")).toBe("short1");
+    expect(youTubeVideoId("https://example.com/watch?v=nope")).toBeNull();
+  });
+
+  it("fills the thumbnail and nocookie embed when the page/oEmbed are blocked", () => {
+    const card = parseOpenGraph("<html><head><title>Video</title></head></html>", "https://www.youtube.com/watch?v=abc123");
+    expect(card).not.toBeNull();
+    applyYouTubeFallback(card!, "https://www.youtube.com/watch?v=abc123");
+    expect(card?.imageUrl).toBe("https://i.ytimg.com/vi/abc123/hqdefault.jpg");
+    expect(card?.type).toBe("video");
+    expect(card?.html).toContain("https://www.youtube-nocookie.com/embed/abc123");
   });
 });
