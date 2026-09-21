@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 
 export interface GeoLocation {
@@ -41,6 +42,24 @@ export default function LocationPreview({ location }: { location: GeoLocation })
   const width = COLS * TILE;
   const height = ROWS * TILE;
 
+  // Scale the mosaic to fully cover the card: a fixed 1024px mosaic left white
+  // strips on the sides of wider cards depending on the fractional position of
+  // the point. Scaling around the pin keeps it at the exact location.
+  const boxRef = useRef<HTMLSpanElement>(null);
+  const [cover, setCover] = useState(1);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const update = () => {
+      const next = Math.max(el.clientWidth / width, el.clientHeight / height, 1);
+      setCover(next);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [width, height]);
+
   const max = 2 ** ZOOM;
   const tiles: { key: string; src: string; left: number; top: number }[] = [];
   for (let row = 0; row < ROWS; row++) {
@@ -67,12 +86,15 @@ export default function LocationPreview({ location }: { location: GeoLocation })
     >
       <span style={{ display: "block", position: "relative", width: "100%", aspectRatio: "3 / 2", overflow: "hidden", background: "var(--bg-overlay)" }}>
         <span
+          ref={boxRef}
           style={{
             position: "absolute",
             left: `calc(50% - ${offsetX}px)`,
             top: `calc(50% - ${offsetY}px)`,
             width,
             height,
+            transform: cover > 1 ? `scale(${cover})` : undefined,
+            transformOrigin: `${offsetX}px ${offsetY}px`,
           }}
         >
           {tiles.map((tile) => (
