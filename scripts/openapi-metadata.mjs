@@ -93,6 +93,8 @@ export const PUBLIC = {
     "/api/v1/featured_tags/suggestions",
     "/api/auth/status",
     "/api/auth/verify-email",
+    // oEmbed provider: external sites/crawlers resolve status embeds without a token.
+    "/api/oembed",
   ],
   POST: [
     "/oauth/token",
@@ -155,6 +157,7 @@ export const PATH_TAGS = [
   ["/api/admin", "Admin"],
   ["/api/media", "Media"],
   ["/api/map", "Maps"],
+  ["/api/oembed", "Statuses"],
   ["/api/oauth", "OAuth"],
   ["/api/users", "ActivityPub"],
   ["/api/inbox", "ActivityPub"],

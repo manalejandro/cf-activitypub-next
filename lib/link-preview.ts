@@ -472,8 +472,9 @@ export async function parseOEmbed(
   const version = String(payload.version ?? "");
   const type = String(payload.type ?? "") as CardCandidate["type"];
   if (!version.startsWith("1") || !["link", "photo", "video", "rich"].includes(type)) return null;
-  // Most `rich` providers rely on <script> embeds, which we never accept.
-  if (type === "rich") return null;
+  // `rich` embeds (Mastodon statuses, many players) are accepted: only a
+  // single https <iframe> is kept (rebuilt by us, scripts dropped) and the
+  // rest of the payload still yields a usable card.
 
   const origin = endpoint.origin;
   const width = positiveInt(payload.width as number | string | undefined);
@@ -484,7 +485,7 @@ export async function parseOEmbed(
   let imageUrl: string | null = null;
   let imageDescription = "";
 
-  if (type === "video") {
+  if (type === "video" || type === "rich") {
     const rawHtml = typeof payload.html === "string" ? payload.html : "";
     const src = rawHtml.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
     const iframeSrc = httpsUrl(src ? decodeHtmlEntities(src) : null, pageUrl);
@@ -505,7 +506,8 @@ export async function parseOEmbed(
     card: {
       title: decodeHtmlEntities(String(payload.title ?? "")).trim(),
       description: "",
-      type,
+      // A `rich` payload without a safe iframe is just a link card.
+      type: type === "rich" && !embedHtml ? "link" : type,
       authorName: decodeHtmlEntities(String(payload.author_name ?? "")),
       authorUrl: httpsUrl(payload.author_url as string | undefined, origin) ?? "",
       providerName: decodeHtmlEntities(String(payload.provider_name ?? "")),

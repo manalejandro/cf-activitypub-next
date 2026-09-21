@@ -585,7 +585,12 @@ export default function ThreadPage() {
         }),
       ]);
 
-      if (statusRes.ok) setFocal(await statusRes.json() as Status);
+      if (statusRes.ok) {
+        setFocal(await statusRes.json() as Status);
+      } else if (!token) {
+        router.push("/login");
+        return;
+      }
       if (contextRes.ok) {
         const ctx = await contextRes.json() as { ancestors: Status[]; descendants: Status[] };
         setAncestors(ctx.ancestors ?? []);
@@ -606,10 +611,12 @@ export default function ThreadPage() {
   }
 
   useEffect(() => {
-    if (!token) { router.push("/login"); return; }
+    // Public statuses are viewable without a session (link sharing, embeds,
+    // remote instances crawling the page); private/direct ones still bounce to
+    // login when the fetch 404s.
     Promise.resolve().then(() => {
       void load();
-      void fetchMe();
+      if (token) void fetchMe();
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusId]);

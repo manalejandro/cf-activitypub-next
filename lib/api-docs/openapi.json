@@ -1048,6 +1048,30 @@
         }
       }
     },
+    "/api/oembed": {
+      "get": {
+        "summary": "Get /api/oembed",
+        "operationId": "get_api_oembed",
+        "tags": [
+          "Statuses"
+        ],
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/api/users/{username}/followers": {
       "get": {
         "summary": "Get /api/users/{username}/followers",
