@@ -8,6 +8,7 @@
   },
   "scripts": {
     "generate:openapi": "node scripts/generate-openapi.mjs",
+    "check:openapi": "node scripts/generate-openapi.mjs --check",
     "predev": "npm run generate:openapi",
     "prebuild": "npm run generate:openapi",
     "prepreview": "npm run generate:openapi",

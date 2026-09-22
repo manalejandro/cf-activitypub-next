@@ -3,7 +3,7 @@
   "info": {
     "title": "CF ActivityPub API",
     "version": "1.3.1",
-    "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`; tags, auth requirements and parameters are read from the source."
+    "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`; tags, auth requirements and parameters are read from the source."
   },
   "servers": [
     {
@@ -13,15 +13,15 @@
   "tags": [
     {
       "name": "Streaming",
-      "description": "WebSocket streaming."
+      "description": "Real-time WebSocket streaming of timeline updates and notifications."
     },
     {
       "name": "ActivityPub",
-      "description": "ActivityPub endpoints."
+      "description": "Federation surface (actors, inbox/outbox, objects, nodeinfo, WebFinger). Served to remote servers without a token — requests are authenticated with HTTP signatures."
     },
     {
       "name": "Admin",
-      "description": "Admin endpoints."
+      "description": "Instance administration. Requires an access token held by an administrator or moderator; privileged operations (roles, instance settings, federation rules, audit log, media cache) require a full administrator."
     },
     {
       "name": "Auth",
@@ -37,7 +37,7 @@
     },
     {
       "name": "OAuth",
-      "description": "OAuth endpoints."
+      "description": "OAuth 2.0 token issuance and revocation."
     },
     {
       "name": "OEmbed",
@@ -65,7 +65,7 @@
     },
     {
       "name": "Calls",
-      "description": "Calls endpoints."
+      "description": "WebRTC audio/video calls between accounts."
     },
     {
       "name": "Collections",
@@ -133,7 +133,7 @@
     },
     {
       "name": "Instance",
-      "description": "Instance endpoints."
+      "description": "Public instance metadata (name, description, limits, rules, peers)."
     },
     {
       "name": "Lists",
@@ -217,11 +217,11 @@
         }
       }
     },
-    "/.well-known/host-meta": {
+    "/.well-known/host-meta.json": {
       "get": {
-        "summary": "Get /.well-known/host-meta",
-        "description": "XRD document advertising the WebFinger (lrdd) template used to resolve acct:user@domain resources on this instance.",
-        "operationId": "get_wellknown_hostmeta",
+        "summary": "Get /.well-known/host-meta.json",
+        "description": "JSON representation of the host-meta discovery document.",
+        "operationId": "get_wellknown_hostmetajson",
         "tags": [
           "ActivityPub"
         ],
@@ -233,11 +233,11 @@
         }
       }
     },
-    "/.well-known/host-meta.json": {
+    "/.well-known/host-meta": {
       "get": {
-        "summary": "Get /.well-known/host-meta.json",
-        "description": "JSON representation of the host-meta discovery document.",
-        "operationId": "get_wellknown_hostmetajson",
+        "summary": "Get /.well-known/host-meta",
+        "description": "XRD document advertising the WebFinger (lrdd) template used to resolve acct:user@domain resources on this instance.",
+        "operationId": "get_wellknown_hostmeta",
         "tags": [
           "ActivityPub"
         ],
@@ -1130,10 +1130,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1192,7 +1206,11 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -1213,6 +1231,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -1322,10 +1350,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1908,10 +1950,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2352,10 +2408,51 @@
         "tags": [
           "Accounts"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2528,10 +2625,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2553,10 +2664,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2578,10 +2703,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2704,10 +2843,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3004,10 +3157,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3028,10 +3195,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -3050,7 +3231,11 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3071,6 +3256,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -3099,10 +3294,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3159,7 +3368,11 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3180,6 +3393,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -3208,10 +3431,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3250,7 +3487,11 @@
         "tags": [
           "Admin"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3271,6 +3512,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -3337,7 +3588,11 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3358,6 +3613,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -3386,10 +3651,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3428,10 +3707,24 @@
         "tags": [
           "Admin"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -3441,10 +3734,24 @@
         "tags": [
           "Admin"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3466,10 +3773,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3508,10 +3829,24 @@
         "tags": [
           "Admin"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3916,10 +4251,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3958,7 +4307,11 @@
         "tags": [
           "Announcements"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -3979,6 +4332,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -4042,10 +4405,24 @@
         "tags": [
           "Apps"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4309,7 +4686,11 @@
         "tags": [
           "Calls"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -4330,6 +4711,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -5174,10 +5565,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -5203,10 +5608,24 @@
             }
           }
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successfully deleted."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -7199,7 +7618,11 @@
         "tags": [
           "Preferences"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": false,
           "content": {
@@ -7220,6 +7643,16 @@
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -9919,9 +10352,36 @@
           "ActivityPub"
         ],
         "security": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -10258,9 +10718,36 @@
           }
         ],
         "security": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response."
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -10271,7 +10758,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "OAuth access token. Obtain it from `POST /oauth/token` and pass as `Authorization: Bearer <token>`."
+        "description": "OAuth access token (or the operator ADMIN_TOKEN). Obtain it from `POST /oauth/token` and pass as `Authorization: Bearer <token>`."
       },
       "oauth2": {
         "type": "oauth2",
