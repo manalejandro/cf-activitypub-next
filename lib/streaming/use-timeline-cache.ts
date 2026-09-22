@@ -274,7 +274,9 @@ export function useTimelineCache<T extends { id: string }>(
         if (tabSwitch) window.scrollTo(0, 0);
       }
 
-      const anchorId = historyRestore ? (cached?.anchorId ?? cached?.items[0]?.id ?? null) : null;
+      // No fallback to `items[0]`: anchoring to the feed's first item scrolls to
+      // the top. Without a captured anchor the remembered offset is used.
+      const anchorId = historyRestore ? (cached?.anchorId ?? null) : null;
       const fallbackY = historyRestore ? targetY : 0;
       (async () => {
         try {
