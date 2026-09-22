@@ -879,7 +879,12 @@ export async function fetchProfileHtmlFallback(
     if (!res?.ok) return {};
     // Cap by content-length when present, and by the actual body otherwise.
     const declared = Number(res.headers.get("content-length") ?? "0");
-    if (declared > 2_000_000) return {};
+    if (declared > 2_000_000) {
+      // Release the discarded (oversized) response: unread bodies stall the
+      // runtime's in-flight fetch pool.
+      await discardBody(res);
+      return {};
+    }
     const html = await res.text();
     if (html.length > 2_000_000) return {};
 
