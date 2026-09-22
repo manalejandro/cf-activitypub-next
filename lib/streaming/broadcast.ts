@@ -38,11 +38,14 @@ export async function broadcastToChannel(
   payload: string
 ): Promise<void> {
   try {
-    await getStub(ns).fetch(`${DO_HOST}/broadcast`, {
+    const res = await getStub(ns).fetch(`${DO_HOST}/broadcast`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ channel, event, payload }),
     });
+    // The DO response is not needed; an unread body would count against the
+    // runtime's in-flight fetch pool (stalled-response cancellation).
+    await res.body?.cancel().catch(() => {});
   } catch (err) {
     console.error(`[streaming] broadcastToChannel(${channel}) failed:`, err);
   }
