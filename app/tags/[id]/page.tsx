@@ -39,6 +39,12 @@ export default function TagPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    // The tag timeline/info APIs are session-only; without a session there is
+    // nothing to show (and anonymous page loads were mostly scrapers).
+    if (!token) router.replace("/login");
+  }, [token, router]);
+
   const fetchPage = useCallback(async (maxId?: string) => {
     const base = `/api/v1/timelines/tag/${encodeURIComponent(tagName)}?limit=${limits.defaultTimelinePage}`;
     const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;

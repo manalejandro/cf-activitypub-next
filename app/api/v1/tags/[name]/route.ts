@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 
 // Helper: deterministic numeric ID for a tag name
@@ -40,7 +40,10 @@ export async function GET(
   const { name } = await params;
   const tagName = decodeURIComponent(name).replace(/^#/, "").toLowerCase();
 
+  // Tag info is session-only: anonymous scraping of tag endpoints was the
+  // source of most external traffic (and the web page requires a session).
   const authActor = await getAuthenticatedActor(request, env.DB);
+  if (!authActor) return unauthorized();
 
   // Query 7-day history for this tag. Fully index-only via the
   // (tag, published, actor_id) covering index — the old json_each scan of
