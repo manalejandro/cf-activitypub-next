@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useLocale } from "@/lib/i18n";
+import { clipboardFiles } from "@/lib/clipboard-media";
 import { getToken } from "@/lib/client-api";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { useAccountAutocomplete, AccountAutocompleteDropdown } from "@/components/AccountAutocomplete";
@@ -117,7 +118,7 @@ export function EditStatusModal({
     setBusy(false);
   }
 
-  async function addFiles(files: FileList | null) {
+  async function addFiles(files: FileList | File[] | null) {
     if (!files || !token || media.length >= limits.maxMediaAttachments) return;
     for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
       const form = new FormData();
@@ -181,6 +182,10 @@ export function EditStatusModal({
             value={text}
             onChange={(e) => { auto.onChange(e); accountAuto.onChange(e); tagAuto.onChange(e); }}
             onKeyDown={(e) => { auto.onKeyDown(e); accountAuto.onKeyDown(e); tagAuto.onKeyDown(e); }}
+            onPaste={(e) => {
+              const files = clipboardFiles(e);
+              if (files.length > 0) void addFiles(files);
+            }}
             placeholder={t.edit_status_placeholder}
             aria-label={t.edit_label}
             maxLength={limits.maxStatusChars}

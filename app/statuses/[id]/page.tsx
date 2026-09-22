@@ -20,6 +20,7 @@ import { VisibilityPicker } from "@/components/VisibilityPicker";
 import type { APMeta } from "@/components/APTypeBlock";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
+import { clipboardFiles } from "@/lib/clipboard-media";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { mergeStatusUpdate, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
@@ -213,9 +214,16 @@ function ReplyBox({
   }, [text]);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!token || !e.target.files?.length) return;
-    const files = Array.from(e.target.files).slice(0, limits.maxMediaAttachments - mediaFiles.length);
+    const selected = Array.from(e.target.files ?? []);
     e.target.value = "";
+    await uploadFiles(selected);
+  }
+
+  /** Upload files from the picker or the clipboard (paste in the composer). */
+  async function uploadFiles(selected: File[]) {
+    if (!token || selected.length === 0) return;
+    const files = selected.slice(0, limits.maxMediaAttachments - mediaFiles.length);
+    if (files.length === 0) return;
     setUploadingMedia(true);
     for (const file of files) {
       const form = new FormData();
@@ -376,6 +384,10 @@ function ReplyBox({
               value={text}
               onChange={(e) => { emojiAuto.onChange(e); accountAuto.onChange(e); tagAuto.onChange(e); }}
               onKeyDown={(e) => { emojiAuto.onKeyDown(e); accountAuto.onKeyDown(e); tagAuto.onKeyDown(e); }}
+              onPaste={(e) => {
+                const files = clipboardFiles(e);
+                if (files.length > 0) void uploadFiles(files);
+              }}
               placeholder={t.reply_placeholder}
               aria-label={t.reply_placeholder}
               maxLength={limits.maxStatusChars}
