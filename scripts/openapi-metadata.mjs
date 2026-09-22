@@ -87,7 +87,6 @@ export const PUBLIC = {
     "/api/v1/media/{id}",
     "/api/v1/tags/{name}",
     "/api/v1/timelines/public",
-    "/api/v1/timelines/tag/{hashtag}",
     "/api/v1/accounts/lookup",
     "/api/v1/accounts/search",
     "/api/v1/featured_tags/suggestions",

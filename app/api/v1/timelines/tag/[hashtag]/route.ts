@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { getCloudflareContext, json , unauthorized } from "@/lib/cf";
 import { getHashtagTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
@@ -26,21 +26,24 @@ export async function GET(
   const sinceIdRaw = searchParams.get("since_id") ?? undefined;
   const sinceId = sinceIdRaw ? decodeStatusId(sinceIdRaw, domain) : undefined;
 
+  // Hashtag timelines are session-only: anonymous requests to this endpoint
+  // were a large share of external traffic and the web UI requires a session.
   const authActor = await getAuthenticatedActor(request, env.DB);
+  if (!authActor) return unauthorized();
 
-  const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor?.id ?? undefined);
+  const objects = await getHashtagTimeline(env.DB, hashtag, limit, maxId, sinceId, authActor.id);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
-    loadSerializedPolls(env.DB, authActor?.id ?? null, objects.map((o) => o.id)),
-    authActor ? getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
-    authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set<string>()),
+    loadSerializedPolls(env.DB, authActor.id, objects.map((o) => o.id)),
+    getLikedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)),
+    getAnnouncedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)),
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
-    authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
+    getFilterResultsForStatuses(env.DB, authActor.id, objects),
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
-    authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),
-    authActor ? getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids)) : Promise.resolve(new Set<string>()),
+    getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)),
+    getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids)),
     getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
 
