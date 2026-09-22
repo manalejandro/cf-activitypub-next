@@ -7,21 +7,30 @@
 //   * tags from the API path segments,
 //   * security by detecting the auth guards the handler actually calls,
 //   * query parameters from `searchParams.get(...)` calls,
-//   * summaries/descriptions from the handler's leading comments,
-//   * request bodies when the handler reads a body (json/formData/text).
+//   * request bodies when the handler reads a body (json/formData/text),
+//   * response schemas from the serializers the handler calls and the
+//     TypeScript types those serializers declare (`lib/types/index.ts`,
+//     `lib/mastodon/*`), converted to OpenAPI with the TypeScript compiler.
+//
+// There is no hand-written metadata file to keep in sync.
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appDir = join(root, "app");
 const outFile = join(root, "lib", "api-docs", "openapi.json");
+const typesEntry = join(root, "lib", "types", "index.ts");
+const workerTypes = join(root, "worker-configuration.d.ts");
+const mastodonDir = join(root, "lib", "mastodon");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const version = packageJson.version ?? "0.1.0";
 const instanceTitle = "CF ActivityPub API";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+const JSON_CALLEES = ["json(", "activityJson("];
 
 const METHOD_VERB = {
   GET: "Get",
@@ -250,6 +259,435 @@ function fileComments(src) {
     .slice(0, 300);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Response schemas
+//
+// The schema catalog comes from the types the API actually returns: every
+// `Mastodon*` interface in the project plus the declared return types of the
+// serializer functions in `lib/mastodon/`. A handler is wired to a schema by
+// looking at the serializer it calls and at the shape of the response argument.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sourceFilesIn(dir) {
+  return readdirSync(dir).filter((f) => f.endsWith(".ts")).map((f) => join(dir, f));
+}
+
+function buildTypeCatalog() {
+  const program = ts.createProgram([typesEntry, workerTypes, ...sourceFilesIn(mastodonDir)], {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noEmit: true,
+    skipLibCheck: true,
+    baseUrl: root,
+    paths: { "@/*": ["./*"] },
+  });
+  const checker = program.getTypeChecker();
+
+  const declarations = new Map();
+  for (const sf of program.getSourceFiles()) {
+    if (sf.fileName.includes("node_modules") || sf.fileName.endsWith("worker-configuration.d.ts")) continue;
+    for (const stmt of sf.statements) {
+      if ((ts.isInterfaceDeclaration(stmt) || ts.isTypeAliasDeclaration(stmt)) && stmt.name && !declarations.has(stmt.name.text)) {
+        declarations.set(stmt.name.text, stmt);
+      }
+    }
+  }
+
+  const schemas = {};
+  const queued = new Set();
+  const enqueue = (name) => {
+    if (name && declarations.has(name)) queued.add(name);
+  };
+  for (const name of declarations.keys()) if (name.startsWith("Mastodon")) enqueue(name);
+
+  /** Split nullable/enum/boolean unions before converting the real type. */
+  function unwrapUnion(type) {
+    if (!type.isUnion()) return { inner: type };
+    const rest = type.types.filter((m) => !(m.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null)));
+    const nullable = rest.length !== type.types.length;
+    if (rest.length === 0) return { inner: null, nullable };
+    if (rest.every((m) => m.flags & ts.TypeFlags.BooleanLiteral)) return { inner: null, nullable, boolean: true };
+    if (rest.every((m) => m.isStringLiteral() || m.isNumberLiteral())) return { inner: null, nullable, literals: rest };
+    if (rest.length === 1) return { inner: rest[0], nullable };
+    return { inner: null, nullable, mixed: true };
+  }
+
+  function withNullable(schema, nullable) {
+    return nullable ? { ...schema, nullable: true } : schema;
+  }
+
+  function toSchema(type, selfName) {
+    const u = unwrapUnion(type);
+    if (u.boolean) return withNullable({ type: "boolean" }, u.nullable);
+    if (u.literals) {
+      const isNumber = u.literals.every((m) => m.isNumberLiteral());
+      return withNullable({ type: isNumber ? "number" : "string", enum: u.literals.map((m) => m.value) }, u.nullable);
+    }
+    if (!u.inner) return u.mixed ? withNullable({}, u.nullable) : u.nullable ? { nullable: true } : {};
+    const t = u.inner;
+
+    // Named reference to another catalog type (skipped when expanding its root).
+    const named = t.aliasSymbol?.name ?? t.getSymbol()?.getName();
+    if (named && named !== selfName && declarations.has(named)) {
+      enqueue(named);
+      const ref = { $ref: `#/components/schemas/${named}` };
+      return u.nullable ? { allOf: [ref], nullable: true } : ref;
+    }
+
+    if (t.flags & ts.TypeFlags.StringLike) return withNullable({ type: "string" }, u.nullable);
+    if (t.flags & ts.TypeFlags.NumberLike) return withNullable({ type: "number" }, u.nullable);
+    if (t.flags & ts.TypeFlags.BooleanLike) return withNullable({ type: "boolean" }, u.nullable);
+
+    if (checker.isArrayType(t) || t.getSymbol()?.getName() === "Array") {
+      const [elem] = checker.getTypeArguments(t);
+      return withNullable({ type: "array", items: elem ? toSchema(elem) : {} }, u.nullable);
+    }
+
+    const indexType = checker.getIndexTypeOfType(t, ts.IndexKind.String);
+    if (indexType && t.getProperties().length === 0) {
+      return withNullable({ type: "object", additionalProperties: toSchema(indexType) }, u.nullable);
+    }
+
+    // Named type we do not model (internal Local*/AP* shapes): keep it free-form
+    // instead of inflating the catalog with implementation details. The root
+    // type being expanded (selfName) still expands into its properties.
+    if (named && named !== selfName && !named.startsWith("__")) return withNullable({ type: "object" }, u.nullable);
+
+    const props = t.getProperties();
+    if (props.length === 0) return withNullable({ type: "object" }, u.nullable);
+
+    const properties = {};
+    for (const prop of props) {
+      const propType = checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration ?? prop.declarations?.[0] ?? null);
+      const propSchema = toSchema(propType);
+      const doc = ts.displayPartsToString(prop.getDocumentationComment(checker));
+      if (doc) propSchema.description = doc;
+      properties[prop.name] = propSchema;
+    }
+    return withNullable({ type: "object", properties }, u.nullable);
+  }
+
+  // Serializer function -> schema name (declared return type of lib/mastodon/*).
+  const serializerMap = new Map();
+  for (const sf of program.getSourceFiles()) {
+    if (!sf.fileName.includes(`${sep}lib${sep}mastodon${sep}`)) continue;
+    for (const stmt of sf.statements) {
+      if (!ts.isFunctionDeclaration(stmt) || !stmt.name) continue;
+      if (!stmt.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)) continue;
+      const signature = checker.getSignatureFromDeclaration(stmt);
+      if (!signature) continue;
+      let ret = checker.getReturnTypeOfSignature(signature);
+      ret = checker.getAwaitedType(ret) ?? ret;
+      if (ret.isUnion()) ret = ret.types.find((m) => !(m.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null))) ?? ret;
+      const name = ret.aliasSymbol?.name ?? ret.getSymbol()?.getName();
+      if (name && declarations.has(name)) {
+        enqueue(name);
+        serializerMap.set(stmt.name.text, name);
+      }
+    }
+  }
+  // serializeTag declares its return type inline; it is structurally MastodonTag.
+  if (declarations.has("MastodonTag")) serializerMap.set("serializeTag", "MastodonTag");
+
+  while (true) {
+    const next = [...queued].find((name) => !(name in schemas));
+    if (!next) break;
+    const stmt = declarations.get(next);
+    const symbol = checker.getSymbolAtLocation(stmt.name);
+    const type = checker.getDeclaredTypeOfSymbol(symbol);
+    const doc = ts.displayPartsToString(symbol.getDocumentationComment(checker));
+    const schema = toSchema(type, next);
+    if (doc) schema.description = doc;
+    schemas[next] = schema;
+  }
+
+  for (const [fn, name] of serializerMap) if (!(name in schemas)) serializerMap.delete(fn);
+  return { schemas, serializerMap };
+}
+
+/** All call arguments of the given callees, in source order. */
+function callArgs(src, callees) {
+  const out = [];
+  for (const callee of callees) {
+    let from = 0;
+    while (true) {
+      const at = src.indexOf(callee, from);
+      if (at === -1) break;
+      const open = at + callee.length - 1;
+      let depth = 0;
+      let closed = -1;
+      for (let i = open; i < src.length; i++) {
+        if (src[i] === "(") depth++;
+        else if (src[i] === ")") {
+          depth--;
+          if (depth === 0) {
+            closed = i;
+            break;
+          }
+        }
+      }
+      if (closed !== -1) out.push({ at, arg: src.slice(open + 1, closed).trim() });
+      from = at + 1;
+    }
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/** Last `json()` (or `activityJson()`) call that is not an error branch. */
+function lastSuccessCall(src, callees) {
+  const calls = callArgs(src, callees);
+  if (calls.length === 0) return null;
+  const ok = calls.filter((call) => !/^\{\s*(?:"error"|error)\b/.test(call.arg));
+  return ok.length > 0 ? ok[ok.length - 1] : calls[calls.length - 1];
+}
+
+function earliestSerializer(src, serializerMap) {
+  let best = null;
+  for (const [fn, name] of serializerMap) {
+    const at = src.search(new RegExp(`\\b${fn}\\s*\\(`));
+    if (at === -1) continue;
+    if (!best || at < best.at) best = { at, name, fn };
+  }
+  return best;
+}
+
+function lastSerializerBefore(src, idx, serializerMap) {
+  let best = null;
+  for (const [fn, name] of serializerMap) {
+    const at = src.lastIndexOf(`${fn}(`, idx);
+    if (at === -1) continue;
+    if (!best || at > best.at) best = { at, name };
+  }
+  return best;
+}
+
+function refSchema(name) {
+  return { $ref: `#/components/schemas/${name}` };
+}
+
+/** Split a call argument list on top-level commas. */
+function splitTopLevel(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote && text[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (c === "," && depth === 0) {
+      parts.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+function firstArg(text) {
+  return splitTopLevel(text)[0] ?? text.trim();
+}
+
+/** `json(body, 201)` / `json(body, { status: 201 })` → 201. */
+function successStatus(argText) {
+  for (const arg of splitTopLevel(argText).slice(1)) {
+    const match = arg.match(/^(\d{3})$/) ?? arg.match(/status\s*:\s*(\d{3})/);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+const sourceFileCache = new Map();
+function parseSource(src) {
+  let sf = sourceFileCache.get(src);
+  if (!sf) {
+    sf = ts.createSourceFile("route.ts", src, ts.ScriptTarget.Latest, false);
+    sourceFileCache.set(src, sf);
+  }
+  return sf;
+}
+
+/** Initializer expression of a local `const name = ...` declaration. */
+function resolveLocalInitializer(src, name) {
+  const sf = parseSource(src);
+  let found = null;
+  const visit = (node) => {
+    if (found) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && node.initializer) {
+      found = node.initializer.getText(sf);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+function isPropertyValue(src, at) {
+  return /[A-Za-z_$][\w$]*\s*:\s*$/.test(src.slice(Math.max(0, at - 60), at));
+}
+
+/** Serializer used as an array element: map callback, push, ternary branch. */
+function isArrayElementReturn(src, at) {
+  const before = src.slice(Math.max(0, at - 60), at);
+  if (/(?:return|=>|\?|&&|\|\|)\s*$/.test(before)) return true;
+  if (/\.(?:map|push)\(\s*$/.test(before)) return true;
+  // Ternary else-branch (`? serializeX(...) : serializeX(...)`).
+  return /:\s*$/.test(before) && before.includes("?");
+}
+
+/** Split a `{ ... }` literal into its top-level `key: value` chunks. */
+function splitObjectEntries(text) {
+  const entries = [];
+  let depth = 0;
+  let start = 1;
+  let end = text.length;
+  let quote = null;
+  for (let i = 1; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote && text[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (depth === 0 && c === "}") {
+        end = i;
+        break;
+      }
+      depth--;
+    } else if (c === "," && depth === 0) {
+      entries.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  entries.push(text.slice(start, end));
+  return entries.map((e) => e.trim()).filter(Boolean);
+}
+
+function literalSchema(value) {
+  const text = value.trimStart();
+  if (/^["'`]/.test(text)) return { type: "string" };
+  if (/^-?\d+(\.\d+)?[,)\s]?$/.test(text)) return { type: "number" };
+  if (/^(true|false)\b/.test(text)) return { type: "boolean" };
+  if (text.startsWith("[")) return { type: "array", items: {} };
+  if (text.startsWith("{")) return { type: "object" };
+  return null;
+}
+
+/**
+ * Schema for an expression in a handler: a serializer call, an object/array
+ * literal, or a local variable that resolves to one of those.
+ */
+function schemaForExpression(src, expr, serializerMap, seen = new Set()) {
+  const text = expr.trim();
+  if (!text) return null;
+  if (text.startsWith("{")) return schemaForObject(text, serializerMap, src);
+  if (text.startsWith("[")) {
+    const inner = earliestSerializer(text, serializerMap);
+    return { type: "array", items: inner ? refSchema(inner.name) : {} };
+  }
+  const serializer = earliestSerializer(text, serializerMap);
+  if (serializer) {
+    if (isArrayElementReturn(text, serializer.at)) return { type: "array", items: refSchema(serializer.name) };
+    // Direct call in the response expression (`await serializeStatus(...)`).
+    if (new RegExp(`^(?:await\\s+)?${serializer.fn}\\s*\\(`).test(text)) return refSchema(serializer.name);
+    return null;
+  }
+  if (/^[A-Za-z_$][\w$]*$/.test(text) && !seen.has(text)) {
+    seen.add(text);
+    const initializer = resolveLocalInitializer(src, text);
+    if (initializer) return schemaForExpression(src, initializer, serializerMap, seen);
+  }
+  return null;
+}
+
+/** Envelope response: per-property schema for a `{ ... }` literal. */
+function schemaForObject(text, serializerMap, src) {
+  const properties = {};
+  for (const entry of splitObjectEntries(text)) {
+    const match = entry.match(/^(?:(["'])([^"']+)\1|([A-Za-z_$][\w$]*))\s*:\s*([\s\S]+)$/);
+    if (match) {
+      const key = match[2] ?? match[3];
+      const value = match[4];
+      const placeholder = /^\[\s*\]$/.test(value.trim()) || /^\{\s*\}$/.test(value.trim());
+      let schema = placeholder ? propertyFromSource(src, key, serializerMap) : schemaForExpression(src, value, serializerMap);
+      properties[key] = schema ?? schemaForExpression(src, value, serializerMap) ?? literalSchema(value) ?? {};
+    } else if (/^[A-Za-z_$][\w$]*$/.test(entry)) {
+      // Shorthand property — resolve the local variable it refers to.
+      properties[entry] = schemaForExpression(src, entry, serializerMap) ?? {};
+    }
+  }
+  return { type: "object", ...(Object.keys(properties).length ? { properties } : {}) };
+}
+
+/** A property filled later (`results.statuses.push(serializeStatus(...))`). */
+function propertyFromSource(src, key, serializerMap) {
+  const match = new RegExp(`\\.${key}\\s*(\\.push\\(|=)`).exec(src);
+  if (!match) return null;
+  const windowText = src.slice(match.index, match.index + 700);
+  const serializer = earliestSerializer(windowText, serializerMap);
+  if (!serializer) return null;
+  return match[1] === ".push(" || isArrayElementReturn(windowText, serializer.at)
+    ? { type: "array", items: refSchema(serializer.name) }
+    : refSchema(serializer.name);
+}
+
+/** Response (status + schema) for a handler. */
+function responseSchemaFor(src, method, serializerMap) {
+  const defaultStatus = method === "DELETE" ? 204 : 200;
+  if (method === "DELETE") return { status: 204, schema: null };
+
+  const call = lastSuccessCall(src, JSON_CALLEES);
+  if (call) {
+    const arg = firstArg(call.arg);
+    const status = successStatus(call.arg) ?? defaultStatus;
+
+    // Response expression: serializer call, object literal or a local variable.
+    const schema = schemaForExpression(src, arg, serializerMap) ?? builtSerializerSchema(src, call.at, arg, serializerMap);
+    if (schema) return { status, schema };
+
+    // No serializer: structural inference from the response expression.
+    if (arg.startsWith("{")) return { status, schema: schemaForObject(arg, serializerMap, src) };
+    if (arg.startsWith("[")) return { status, schema: { type: "array", items: {} } };
+    const literal = literalSchema(arg);
+    return literal ? { status, schema: literal } : null;
+  }
+
+  // Handlers that answer with a raw Response built from a local literal.
+  const stringify = callArgs(src, ["JSON.stringify("]);
+  if (stringify.length > 0) {
+    const arg = firstArg(stringify[stringify.length - 1].arg);
+    const schema = schemaForExpression(src, arg, serializerMap);
+    if (schema) return { status: defaultStatus, schema };
+  }
+  return null;
+}
+
+/** Serializer built into a local right before returning (timelines, edits). */
+function builtSerializerSchema(src, callAt, arg, serializerMap) {
+  const built = lastSerializerBefore(src, callAt, serializerMap);
+  if (!built || isPropertyValue(src, built.at)) return null;
+  const ident = /^[A-Za-z_$][\w$]*$/.test(arg) ? arg : null;
+  const preceding = src.slice(Math.max(0, built.at - 60), built.at);
+  if (ident && new RegExp(`\\b(?:const|let|var)\\s+${ident}\\s*=\\s*$`).test(preceding)) {
+    return refSchema(built.name);
+  }
+  if (isArrayElementReturn(src, built.at)) return { type: "array", items: refSchema(built.name) };
+  return null;
+}
+
 // WebSocket endpoints have no route.ts handler (the worker upgrades them).
 const MANUAL_PATHS = {
   "/api/v1/streaming": {
@@ -272,6 +710,7 @@ const ERROR_SCHEMA = {
 
 function buildDoc() {
   const files = findRouteFiles(appDir);
+  const { schemas, serializerMap } = buildTypeCatalog();
   const paths = {};
   const usedOperationIds = new Set();
   const usedTags = new Map();
@@ -337,9 +776,13 @@ function buildDoc() {
         };
       }
 
-      const okStatus = method === "DELETE" ? "204" : "200";
+      const response = responseSchemaFor(src, method, serializerMap);
+      const okStatus = String(response?.status ?? (method === "DELETE" ? 204 : 200));
       op.responses = {
-        [okStatus]: { description: method === "DELETE" ? "Successfully deleted." : "Successful response." },
+        [okStatus]: {
+          description: method === "DELETE" ? "Successfully deleted." : "Successful response.",
+          ...(response?.schema ? { content: { "application/json": { schema: response.schema } } } : {}),
+        },
         ...(security.length
           ? { 401: { description: "Unauthorized. Missing or invalid access token.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } } }
           : {}),
@@ -359,7 +802,7 @@ function buildDoc() {
       title: instanceTitle,
       version,
       description:
-        "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`; tags, auth requirements and parameters are read from the source.",
+        "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`: paths, tags, auth requirements and parameters are read from the source, and the response schemas are converted from the TypeScript types the serializers declare.",
     },
     servers: [{ url: "/" }],
     tags: [...usedTags].map(([name, description]) => ({ name, description })),
@@ -386,18 +829,18 @@ function buildDoc() {
           },
         },
       },
-      schemas: { Error: ERROR_SCHEMA },
+      schemas: { ...schemas, Error: ERROR_SCHEMA },
     },
   };
 
   let operationCount = 0;
   for (const p of Object.keys(paths)) operationCount += Object.keys(paths[p]).length;
-  return { doc, pathCount: Object.keys(paths).length, operationCount };
+  return { doc, pathCount: Object.keys(paths).length, operationCount, schemaCount: Object.keys(schemas).length };
 }
 
 function main() {
   const check = process.argv.includes("--check");
-  const { doc, pathCount, operationCount } = buildDoc();
+  const { doc, pathCount, operationCount, schemaCount } = buildDoc();
   const serialized = JSON.stringify(doc, null, 2) + "\n";
 
   if (check) {
@@ -411,14 +854,25 @@ function main() {
       console.error(`OpenAPI spec is out of date (${relative(root, outFile)}). Run: npm run generate:openapi`);
       process.exit(1);
     }
-    console.log(`OpenAPI spec is up to date: ${pathCount} paths, ${operationCount} operations.`);
+    console.log(`OpenAPI spec is up to date: ${pathCount} paths, ${operationCount} operations, ${schemaCount} schemas.`);
     return;
   }
 
   writeFileSync(outFile, serialized);
-  console.log(`OpenAPI generated: ${pathCount} paths, ${operationCount} operations → ${relative(root, outFile)}`);
+  console.log(`OpenAPI generated: ${pathCount} paths, ${operationCount} operations, ${schemaCount} schemas → ${relative(root, outFile)}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
 
-export { buildDoc, isProtected, hasAuthGuard };
+export {
+  buildDoc,
+  buildTypeCatalog,
+  isProtected,
+  hasAuthGuard,
+  responseSchemaFor,
+  schemaForExpression,
+  schemaForObject,
+  resolveLocalInitializer,
+  lastSuccessCall,
+  splitObjectEntries,
+};

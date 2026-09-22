@@ -7,9 +7,11 @@ import { buildDoc } from "../../scripts/generate-openapi.mjs";
 
 interface Operation {
   security?: unknown[];
+  responses?: Record<string, { content?: Record<string, { schema?: unknown }> }>;
 }
 interface Doc {
   paths: Record<string, Record<string, Operation>>;
+  components: { schemas: Record<string, unknown> };
 }
 
 const { doc } = buildDoc() as unknown as { doc: Doc };
@@ -17,6 +19,13 @@ const { doc } = buildDoc() as unknown as { doc: Doc };
 const securityOf = (path: string, method: string): unknown[] | null =>
   doc.paths[path]?.[method]?.security ?? null;
 
+const schemaOf = (path: string, method: string): unknown => {
+  const responses = doc.paths[path]?.[method]?.responses ?? {};
+  const code = Object.keys(responses).find((c) => c !== "401" && c !== "422");
+  return code ? responses[code]?.content?.["application/json"]?.schema : undefined;
+};
+
+const statusRef = { $ref: "#/components/schemas/MastodonStatus" };
 const locked = [{ bearerAuth: [] }];
 
 describe("generated OpenAPI security", () => {
@@ -69,5 +78,68 @@ describe("generated OpenAPI security", () => {
     ] as const) {
       expect(securityOf(path, method), `${method.toUpperCase()} ${path} must be public`).toEqual([]);
     }
+  });
+});
+
+describe("generated OpenAPI schemas", () => {
+  it("publishes the Mastodon schema catalog derived from the types", () => {
+    for (const name of [
+      "MastodonAccount",
+      "MastodonStatus",
+      "MastodonNotification",
+      "MastodonRelationship",
+      "MastodonInstance",
+      "MastodonCollection",
+      "Error",
+    ]) {
+      expect(doc.components.schemas[name], `${name} schema`).toBeTruthy();
+    }
+    expect(Object.keys(doc.components.schemas).length).toBeGreaterThan(30);
+  });
+
+  it("expands entity schemas with properties, refs and enums", () => {
+    const status = doc.components.schemas.MastodonStatus as {
+      properties?: Record<string, { type?: string; enum?: string[]; $ref?: string }>;
+    };
+    expect(status.properties?.id).toEqual({ type: "string" });
+    expect(status.properties?.visibility).toEqual({
+      type: "string",
+      enum: ["public", "unlisted", "private", "direct"],
+    });
+    expect(status.properties?.account).toEqual({ $ref: "#/components/schemas/MastodonAccount" });
+    const account = doc.components.schemas.MastodonAccount as { properties?: Record<string, unknown> };
+    expect(account.properties?.username).toEqual({ type: "string" });
+  });
+
+  it("wires response schemas from the serializer each handler calls", () => {
+    expect(schemaOf("/api/v1/timelines/home", "get")).toEqual({ type: "array", items: statusRef });
+    expect(schemaOf("/api/v1/timelines/public", "get")).toEqual({ type: "array", items: statusRef });
+    expect(schemaOf("/api/v1/statuses", "post")).toEqual(statusRef);
+    expect(schemaOf("/api/v1/statuses/{id}", "get")).toEqual(statusRef);
+    expect(schemaOf("/api/v1/statuses/{id}/reblogged_by", "get")).toEqual({
+      type: "array",
+      items: { $ref: "#/components/schemas/MastodonAccount" },
+    });
+    expect(schemaOf("/api/v1/accounts/verify_credentials", "get")).toEqual({
+      $ref: "#/components/schemas/MastodonAccount",
+    });
+    expect(schemaOf("/api/v1/notifications", "get")).toEqual({
+      type: "array",
+      items: { $ref: "#/components/schemas/MastodonNotification" },
+    });
+    expect(schemaOf("/api/v1/accounts/relationships", "get")).toEqual({
+      type: "array",
+      items: { $ref: "#/components/schemas/MastodonRelationship" },
+    });
+  });
+
+  it("describes envelope responses per property", () => {
+    const search = schemaOf("/api/v2/search", "get") as {
+      type: string;
+      properties?: Record<string, { type: string; items?: { $ref?: string } }>;
+    };
+    expect(search?.type).toBe("object");
+    expect(search?.properties?.accounts).toEqual({ type: "array", items: { $ref: "#/components/schemas/MastodonAccount" } });
+    expect(search?.properties?.statuses).toEqual({ type: "array", items: statusRef });
   });
 });

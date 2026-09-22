@@ -3,7 +3,7 @@
   "info": {
     "title": "CF ActivityPub API",
     "version": "1.3.1",
-    "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`; tags, auth requirements and parameters are read from the source."
+    "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`: paths, tags, auth requirements and parameters are read from the source, and the response schemas are converted from the TypeScript types the serializers declare."
   },
   "servers": [
     {
@@ -228,7 +228,20 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -259,7 +272,20 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -274,7 +300,53 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "issuer": {},
+                    "authorization_endpoint": {
+                      "type": "string"
+                    },
+                    "token_endpoint": {
+                      "type": "string"
+                    },
+                    "revocation_endpoint": {
+                      "type": "string"
+                    },
+                    "scopes_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "response_types_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "response_modes_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "grant_types_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "token_endpoint_auth_methods_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "code_challenge_methods_supported": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "service_documentation": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -312,8 +384,20 @@
         ],
         "security": [],
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "404": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -359,7 +443,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -434,8 +530,25 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "shortcode": {},
+                    "url": {},
+                    "static_url": {},
+                    "category": {},
+                    "visible_in_picker": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -478,8 +591,25 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "shortcode": {},
+                    "url": {},
+                    "static_url": {},
+                    "category": {},
+                    "visible_in_picker": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -531,7 +661,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -556,7 +698,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -588,7 +737,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -630,7 +791,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -655,7 +828,27 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authenticated": {
+                      "type": "boolean"
+                    },
+                    "actor": {
+                      "type": "object",
+                      "properties": {
+                        "id": {},
+                        "username": {},
+                        "displayName": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -710,8 +903,20 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -812,7 +1017,67 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {},
+                    "software": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {},
+                        "repository": {
+                          "type": "string"
+                        },
+                        "homepage": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "protocols": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "services": {
+                      "type": "object",
+                      "properties": {
+                        "inbound": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "outbound": {
+                          "type": "array",
+                          "items": {}
+                        }
+                      }
+                    },
+                    "usage": {
+                      "type": "object",
+                      "properties": {
+                        "users": {
+                          "type": "object",
+                          "properties": {
+                            "total": {},
+                            "activeMonth": {},
+                            "activeHalfyear": {}
+                          }
+                        },
+                        "localPosts": {},
+                        "localComments": {}
+                      }
+                    },
+                    "openRegistrations": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -844,7 +1109,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "actorId": {},
+                    "appId": {},
+                    "scope": {},
+                    "redirectUri": {},
+                    "codeChallenge": {},
+                    "codeChallengeMethod": {}
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -912,7 +1192,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connections": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -946,7 +1236,35 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "author_name": {},
+                    "author_url": {
+                      "type": "string"
+                    },
+                    "provider_name": {},
+                    "provider_url": {},
+                    "url": {},
+                    "html": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1051,8 +1369,15 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -1137,7 +1462,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "@context": {},
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "partOf": {},
+                    "orderedItems": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1275,7 +1618,39 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "interactionPolicy": {
+                      "type": "object",
+                      "properties": {
+                        "canFeature": {
+                          "type": "object",
+                          "properties": {
+                            "automaticApproval": {}
+                          }
+                        }
+                      }
+                    },
+                    "messages": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "totalItems": {},
+                        "id": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1304,7 +1679,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1357,7 +1739,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonCollection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1396,7 +1793,18 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "email": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1460,7 +1868,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1509,7 +1924,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1548,7 +1973,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1573,7 +2008,15 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           }
         }
       }
@@ -1612,7 +2055,22 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonCollection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1697,7 +2155,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1763,7 +2228,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1812,7 +2284,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1851,7 +2330,53 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "showing_reblogs": {
+                      "type": "boolean"
+                    },
+                    "notifying": {
+                      "type": "boolean"
+                    },
+                    "followed_by": {
+                      "type": "boolean"
+                    },
+                    "blocking": {
+                      "type": "boolean"
+                    },
+                    "blocked_by": {
+                      "type": "boolean"
+                    },
+                    "muting": {
+                      "type": "boolean"
+                    },
+                    "muting_notifications": {
+                      "type": "boolean"
+                    },
+                    "requested": {
+                      "type": "boolean"
+                    },
+                    "domain_blocking": {
+                      "type": "boolean"
+                    },
+                    "endorsed": {
+                      "type": "boolean"
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1890,7 +2415,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1957,7 +2489,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -1996,7 +2538,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2035,7 +2584,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2074,7 +2630,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonRelationship"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2113,7 +2676,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2141,15 +2711,27 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful response."
-          },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -2218,7 +2800,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2264,7 +2853,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "moved_to": {},
+                    "migrated_followers": {},
+                    "delivered_to": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2312,7 +2913,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonRelationship"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2354,7 +2965,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {},
+                    "token_type": {
+                      "type": "string"
+                    },
+                    "scope": {},
+                    "created_at": {}
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -2395,7 +3021,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2432,7 +3068,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2471,7 +3114,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2500,7 +3150,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2544,7 +3201,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAccount"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2593,7 +3257,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "account": {
+                      "$ref": "#/components/schemas/MastodonAccount"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2632,7 +3309,21 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "role": {},
+                    "changed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2671,7 +3362,21 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "role": {},
+                    "changed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2710,7 +3415,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2749,7 +3461,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2803,7 +3527,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2889,7 +3625,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "silenced": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2928,7 +3677,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "suspended": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -2967,7 +3729,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "silenced": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3006,7 +3781,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "suspended": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3086,7 +3874,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    },
+                    "total": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3164,7 +3968,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    },
+                    "total": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3202,7 +4022,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3255,7 +4087,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3339,7 +4183,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3392,7 +4248,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3467,7 +4335,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3511,7 +4391,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3559,7 +4451,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "purged": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3612,7 +4517,20 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "purged": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3687,7 +4605,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "removed": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3714,7 +4645,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "removed": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3809,7 +4753,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "removed": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3875,7 +4832,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "action_taken": {
+                      "type": "boolean"
+                    },
+                    "dismissed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3931,7 +4904,26 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "report_id": {},
+                    "content": {},
+                    "created_at": {},
+                    "account": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -3980,7 +4972,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "action_taken": {
+                      "type": "boolean"
+                    },
+                    "reopened": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4019,7 +5027,33 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "action_taken": {
+                      "type": "boolean"
+                    },
+                    "action_taken_at": {},
+                    "category": {},
+                    "comment": {},
+                    "forwarded": {},
+                    "created_at": {},
+                    "status_ids": {},
+                    "rule_ids": {},
+                    "target_account": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4058,7 +5092,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4124,7 +5171,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "reports": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    },
+                    "total": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4170,7 +5233,20 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "verifiedFields": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4219,7 +5295,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4287,7 +5370,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "content": {},
+                    "starts_at": {},
+                    "ends_at": {},
+                    "all_day": {
+                      "type": "boolean"
+                    },
+                    "published_at": {},
+                    "updated_at": {},
+                    "read": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4331,7 +5435,28 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "content": {},
+                    "starts_at": {},
+                    "ends_at": {},
+                    "all_day": {
+                      "type": "boolean"
+                    },
+                    "published_at": {},
+                    "updated_at": {},
+                    "read": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4383,7 +5508,23 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "website": {},
+                    "redirect_uri": {},
+                    "client_id": {},
+                    "client_secret": {},
+                    "vapid_key": {}
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -4412,7 +5553,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {},
+                    "website": {},
+                    "vapid_key": {},
+                    "client_id": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4457,7 +5611,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4495,7 +5659,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4534,7 +5708,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4588,7 +5774,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4664,7 +5862,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "iceServers": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4709,8 +5920,21 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4767,7 +5991,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4870,7 +6101,25 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collection_item": {
+                      "type": "object",
+                      "properties": {
+                        "id": {},
+                        "account_id": {},
+                        "state": {},
+                        "created_at": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -4915,7 +6164,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       },
@@ -4959,7 +6215,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5052,7 +6315,19 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "$ref": "#/components/schemas/MastodonCollection"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5101,7 +6376,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "accounts": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "last_status": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5140,7 +6433,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5216,7 +6516,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "last_status": {},
+                    "accounts": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5324,7 +6642,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5352,7 +6680,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5405,7 +6740,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5572,7 +6914,19 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5644,7 +6998,18 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {},
+                    "email_verified": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5690,7 +7055,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5729,7 +7101,15 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5796,7 +7176,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5864,7 +7254,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "statuses_count": {
+                      "type": "number"
+                    },
+                    "last_status_at": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5908,7 +7316,25 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "statuses_count": {
+                      "type": "number"
+                    },
+                    "last_status_at": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -5987,7 +7413,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6042,7 +7475,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6120,7 +7560,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "phrase": {},
+                    "context": {},
+                    "whole_word": {},
+                    "expires_at": {},
+                    "irreversible": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6165,7 +7620,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "phrase": {},
+                    "context": {},
+                    "whole_word": {},
+                    "expires_at": {},
+                    "irreversible": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6214,7 +7684,26 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "followed_by": {
+                      "type": "boolean"
+                    },
+                    "requested": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6253,7 +7742,26 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "following": {
+                      "type": "boolean"
+                    },
+                    "followed_by": {
+                      "type": "boolean"
+                    },
+                    "requested": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6291,7 +7799,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6320,7 +7838,15 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6345,7 +7871,22 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "instance": {},
+                    "nodes": {},
+                    "edges": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6381,7 +7922,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "counts": {},
+                    "total": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6416,7 +7972,15 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           }
         }
       }
@@ -6446,7 +8010,18 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updated_at": {},
+                    "content": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6491,7 +8066,18 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {},
+                    "updated_at": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6506,7 +8092,115 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "uri": {},
+                    "title": {},
+                    "description": {},
+                    "short_description": {},
+                    "email": {},
+                    "version": {
+                      "type": "string"
+                    },
+                    "urls": {
+                      "type": "object",
+                      "properties": {
+                        "streaming_api": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "user_count": {},
+                        "status_count": {},
+                        "domain_count": {}
+                      }
+                    },
+                    "thumbnail": {
+                      "type": "string"
+                    },
+                    "languages": {},
+                    "contact_account": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    },
+                    "vapid_public_key": {},
+                    "rules": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "registrations": {},
+                    "approval_required": {},
+                    "invites_enabled": {
+                      "type": "boolean"
+                    },
+                    "configuration": {
+                      "type": "object",
+                      "properties": {
+                        "accounts": {
+                          "type": "object",
+                          "properties": {
+                            "max_featured_tags": {},
+                            "max_pinned_statuses": {},
+                            "max_display_name_length": {},
+                            "max_note_length": {},
+                            "max_profile_fields": {},
+                            "profile_field_name_limit": {},
+                            "profile_field_value_limit": {}
+                          }
+                        },
+                        "statuses": {
+                          "type": "object",
+                          "properties": {
+                            "max_characters": {},
+                            "max_media_attachments": {},
+                            "characters_reserved_per_url": {}
+                          }
+                        },
+                        "media_attachments": {
+                          "type": "object",
+                          "properties": {
+                            "supported_mime_types": {},
+                            "description_limit": {},
+                            "image_size_limit": {},
+                            "image_matrix_limit": {},
+                            "video_size_limit": {},
+                            "video_frame_rate_limit": {},
+                            "video_matrix_limit": {}
+                          }
+                        },
+                        "polls": {
+                          "type": "object",
+                          "properties": {
+                            "max_options": {},
+                            "max_characters_per_option": {},
+                            "min_expiration": {},
+                            "max_expiration": {}
+                          }
+                        },
+                        "calls": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "limits": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6521,7 +8215,15 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           }
         }
       }
@@ -6536,7 +8238,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -6551,7 +8260,18 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {},
+                    "updated_at": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6566,7 +8286,24 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6602,7 +8339,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6663,7 +8407,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6756,7 +8507,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6810,7 +8568,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6886,7 +8651,20 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "title": {},
+                    "replies_policy": {},
+                    "exclusive": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6930,7 +8708,20 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "title": {},
+                    "replies_policy": {},
+                    "exclusive": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -6969,7 +8760,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7013,7 +8811,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7058,7 +8863,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAttachment"
+                }
+              }
+            }
           }
         }
       },
@@ -7102,7 +8914,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAttachment"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7195,7 +9014,27 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "type": {},
+                    "url": {},
+                    "preview_url": {},
+                    "remote_url": {},
+                    "description": {},
+                    "blurhash": {},
+                    "sensitive": {},
+                    "meta": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7243,7 +9082,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7282,7 +9131,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7321,7 +9177,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonNotification"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7350,7 +9213,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7395,7 +9265,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonNotification"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7424,7 +9304,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7459,7 +9349,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonPoll"
+                }
+              }
+            }
           }
         }
       }
@@ -7505,7 +9402,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonPoll"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7544,7 +9448,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7588,7 +9499,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7642,7 +9560,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7698,7 +9623,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7737,7 +9669,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7781,7 +9720,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7835,7 +9781,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7901,7 +9854,30 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "action_taken": {
+                      "type": "boolean"
+                    },
+                    "action_taken_at": {},
+                    "category": {},
+                    "comment": {},
+                    "forwarded": {},
+                    "created_at": {},
+                    "status_ids": {},
+                    "rule_ids": {},
+                    "target_account": {
+                      "$ref": "#/components/schemas/MastodonAccount"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7945,7 +9921,30 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "action_taken": {
+                      "type": "boolean"
+                    },
+                    "action_taken_at": {},
+                    "category": {},
+                    "comment": {},
+                    "forwarded": {},
+                    "created_at": {},
+                    "status_ids": {},
+                    "rule_ids": {},
+                    "target_account": {
+                      "$ref": "#/components/schemas/MastodonAccount"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -7994,7 +9993,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8048,7 +10054,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8172,7 +10185,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8207,7 +10227,18 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ancestors": {},
+                    "descendants": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -8236,7 +10267,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8278,7 +10316,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -8328,7 +10376,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
@@ -8357,7 +10412,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8396,7 +10458,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8449,7 +10518,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8488,7 +10567,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8530,7 +10616,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -8555,7 +10651,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           }
         }
       },
@@ -8599,7 +10702,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8681,7 +10791,30 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "text": {},
+                    "content_warning": {},
+                    "language": {},
+                    "poll": {},
+                    "media_attachments": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "sensitive": {},
+                    "spoiler_text": {},
+                    "created_at": {},
+                    "updated_at": {},
+                    "application": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -8727,7 +10860,28 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "content": {},
+                    "detected_source_language": {},
+                    "provider": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "domain": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8776,7 +10930,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8815,7 +10976,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8854,7 +11022,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8893,7 +11068,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8932,7 +11114,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -8978,7 +11167,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonStatus"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9043,7 +11239,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9121,7 +11324,29 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "statuses_count": {
+                      "type": "number"
+                    },
+                    "last_status_at": {},
+                    "history": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9160,7 +11385,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9199,7 +11445,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "history": {},
+                    "following": {}
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9238,7 +11500,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9277,7 +11546,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "name": {},
+                    "url": {
+                      "type": "string"
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "following": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9318,7 +11608,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonTag"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9360,7 +11660,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9385,7 +11695,15 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           }
         }
       }
@@ -9434,7 +11752,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9510,7 +11838,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9560,7 +11898,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9585,7 +11933,15 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
           }
         }
       }
@@ -9633,7 +11989,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonStatus"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9657,7 +12023,17 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonTag"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9692,7 +12068,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9731,7 +12117,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9785,7 +12178,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9871,7 +12271,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -9925,7 +12332,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10000,8 +12414,15 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Filter"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10044,8 +12465,15 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Filter"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10094,7 +12522,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10156,7 +12591,14 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonInstance"
+                }
+              }
+            }
           }
         }
       }
@@ -10192,7 +12634,14 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MastodonAttachment"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10231,7 +12680,42 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "for_not_following": {
+                      "type": "string"
+                    },
+                    "for_not_followers": {
+                      "type": "string"
+                    },
+                    "for_new_accounts": {
+                      "type": "string"
+                    },
+                    "for_private_mentions": {
+                      "type": "string"
+                    },
+                    "for_limited_accounts": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "pending_requests_count": {
+                          "type": "number"
+                        },
+                        "pending_notifications_count": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10258,7 +12742,42 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "for_not_following": {
+                      "type": "string"
+                    },
+                    "for_not_followers": {
+                      "type": "string"
+                    },
+                    "for_new_accounts": {
+                      "type": "string"
+                    },
+                    "for_private_mentions": {
+                      "type": "string"
+                    },
+                    "for_limited_accounts": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "pending_requests_count": {
+                          "type": "number"
+                        },
+                        "pending_notifications_count": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized. Missing or invalid access token.",
@@ -10283,7 +12802,40 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonAccount"
+                      }
+                    },
+                    "statuses": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonStatus"
+                      }
+                    },
+                    "hashtags": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonCollection"
+                      }
+                    },
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MastodonCollection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10370,8 +12922,20 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -10396,7 +12960,52 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {},
+                    "short_name": {},
+                    "description": {
+                      "type": "string"
+                    },
+                    "start_url": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "display": {
+                      "type": "string"
+                    },
+                    "background_color": {
+                      "type": "string"
+                    },
+                    "theme_color": {
+                      "type": "string"
+                    },
+                    "orientation": {
+                      "type": "string"
+                    },
+                    "icons": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "shortcuts": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "lang": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10422,7 +13031,67 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {},
+                    "software": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {},
+                        "repository": {
+                          "type": "string"
+                        },
+                        "homepage": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "protocols": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "services": {
+                      "type": "object",
+                      "properties": {
+                        "inbound": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "outbound": {
+                          "type": "array",
+                          "items": {}
+                        }
+                      }
+                    },
+                    "usage": {
+                      "type": "object",
+                      "properties": {
+                        "users": {
+                          "type": "object",
+                          "properties": {
+                            "total": {},
+                            "activeMonth": {},
+                            "activeHalfyear": {}
+                          }
+                        },
+                        "localPosts": {},
+                        "localComments": {}
+                      }
+                    },
+                    "openRegistrations": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10496,7 +13165,22 @@
         },
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {},
+                    "token_type": {
+                      "type": "string"
+                    },
+                    "scope": {},
+                    "created_at": {}
+                  }
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -10604,7 +13288,30 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "@context": {},
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "totalItems": {
+                      "type": "number"
+                    },
+                    "orderedItems": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10636,7 +13343,29 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "@context": {},
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "partOf": {},
+                    "totalItems": {},
+                    "orderedItems": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10661,7 +13390,30 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "@context": {},
+                    "id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "totalItems": {
+                      "type": "number"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10694,7 +13446,24 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Successful response."
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "@context": {},
+                    "id": {},
+                    "type": {
+                      "type": "string"
+                    },
+                    "attributedTo": {},
+                    "interactingObject": {},
+                    "interactionTarget": {}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10736,8 +13505,15 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response."
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation error.",
@@ -10776,6 +13552,2087 @@
       }
     },
     "schemas": {
+      "MastodonAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "acct": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "bot": {
+            "type": "boolean"
+          },
+          "group": {
+            "type": "boolean"
+          },
+          "discoverable": {
+            "type": "boolean"
+          },
+          "indexable": {
+            "type": "boolean"
+          },
+          "noindex": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "avatar_static": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "header_static": {
+            "type": "string"
+          },
+          "followers_count": {
+            "type": "number"
+          },
+          "following_count": {
+            "type": "number"
+          },
+          "statuses_count": {
+            "type": "number"
+          },
+          "last_status_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "hide_collections": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonEmoji"
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonField"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonRole"
+            },
+            "nullable": true
+          },
+          "verified": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "moved": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonAccount"
+              }
+            ],
+            "nullable": true
+          },
+          "suspended": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "limited": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "memorial": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonSource"
+              }
+            ],
+            "nullable": true
+          },
+          "supports_calls": {
+            "type": "boolean",
+            "nullable": true
+          }
+        }
+      },
+      "MastodonStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "in_reply_to_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "in_reply_to_account_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "spoiler_text": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "unlisted",
+              "private",
+              "direct"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "uri": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "replies_count": {
+            "type": "number"
+          },
+          "reblogs_count": {
+            "type": "number"
+          },
+          "favourites_count": {
+            "type": "number"
+          },
+          "edited_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "content": {
+            "type": "string"
+          },
+          "reblog": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonStatus"
+              }
+            ],
+            "nullable": true
+          },
+          "application": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "website": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "nullable": true
+          },
+          "account": {
+            "$ref": "#/components/schemas/MastodonAccount"
+          },
+          "media_attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonAttachment"
+            }
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonMention"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonTag"
+            }
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonEmoji"
+            }
+          },
+          "card": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonPreviewCard"
+              }
+            ],
+            "nullable": true
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "nullable": true
+              },
+              "latitude": {
+                "type": "number"
+              },
+              "longitude": {
+                "type": "number"
+              }
+            },
+            "nullable": true,
+            "description": "Geolocation (`Place`), a local extension Mastodon clients ignore."
+          },
+          "poll": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonPoll"
+              }
+            ],
+            "nullable": true
+          },
+          "filtered": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonFilterResult"
+            }
+          },
+          "quotes_count": {
+            "type": "number"
+          },
+          "quote": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonStatus"
+              }
+            ],
+            "nullable": true
+          },
+          "favourited": {
+            "type": "boolean"
+          },
+          "reblogged": {
+            "type": "boolean"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "bookmarked": {
+            "type": "boolean"
+          },
+          "pinned": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "ap_type": {
+            "type": "string",
+            "nullable": true,
+            "description": "The underlying ActivityStreams object type (e.g. \"Note\", \"Article\",\n\"Event\", \"Video\", \"Audio\", \"Image\", \"Place\", \"Page\", \"Question\").\nAlways present for locally-sourced statuses; used by the UI to render\ntype-specific blocks. Null/absent for legacy non-Note shapes."
+          },
+          "ap_meta": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/APObjectMeta"
+              }
+            ],
+            "nullable": true,
+            "description": "Type-specific metadata (title, time range, place, duration, links)."
+          }
+        }
+      },
+      "MastodonPoll": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "votes_count": {
+            "type": "number"
+          },
+          "voters_count": {
+            "type": "number"
+          },
+          "voted": {
+            "type": "boolean"
+          },
+          "own_votes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "votes_count": {
+                  "type": "number",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonEmoji"
+            }
+          }
+        }
+      },
+      "MastodonAttachment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gifv",
+              "video",
+              "audio",
+              "unknown"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "preview_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "remote_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "text_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "blurhash": {
+            "type": "string",
+            "nullable": true
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "meta": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonAttachmentMeta"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "MastodonAttachmentMeta": {
+        "type": "object",
+        "properties": {
+          "original": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "nullable": true
+              },
+              "height": {
+                "type": "number",
+                "nullable": true
+              },
+              "size": {
+                "type": "string",
+                "nullable": true
+              },
+              "aspect": {
+                "type": "number",
+                "nullable": true
+              },
+              "duration": {
+                "type": "number",
+                "nullable": true
+              },
+              "bitrate": {
+                "type": "number",
+                "nullable": true
+              },
+              "frame_rate": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "nullable": true
+          },
+          "small": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "nullable": true
+              },
+              "height": {
+                "type": "number",
+                "nullable": true
+              },
+              "size": {
+                "type": "string",
+                "nullable": true
+              },
+              "aspect": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "nullable": true
+          },
+          "focus": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "nullable": true
+          },
+          "colors": {
+            "type": "object",
+            "properties": {
+              "accent": {
+                "type": "string",
+                "nullable": true
+              },
+              "background": {
+                "type": "string",
+                "nullable": true
+              },
+              "foreground": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "nullable": true
+          }
+        }
+      },
+      "MastodonPreviewCard": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "video",
+              "link",
+              "photo",
+              "rich"
+            ]
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "author_url": {
+            "type": "string"
+          },
+          "provider_name": {
+            "type": "string"
+          },
+          "provider_url": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true
+          },
+          "image_description": {
+            "type": "string"
+          },
+          "embed_url": {
+            "type": "string"
+          },
+          "blurhash": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "published_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "account": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/MastodonAccount"
+                    }
+                  ],
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "MastodonRole": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonFilter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "filter_action": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "hide",
+              "blur"
+            ]
+          }
+        }
+      },
+      "MastodonFilterResult": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "$ref": "#/components/schemas/MastodonFilter"
+          },
+          "keyword_matches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "status_matches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        }
+      },
+      "MastodonQuote": {
+        "$ref": "#/components/schemas/MastodonStatus"
+      },
+      "MastodonMention": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "acct": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonTag": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonEmoji": {
+        "type": "object",
+        "properties": {
+          "shortcode": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "static_url": {
+            "type": "string"
+          },
+          "visible_in_picker": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MastodonField": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "verified_at": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "MastodonPreferences": {
+        "type": "object",
+        "properties": {
+          "posting:default:visibility": {
+            "type": "string"
+          },
+          "posting:default:sensitive": {
+            "type": "boolean"
+          },
+          "posting:default:language": {
+            "type": "string",
+            "nullable": true
+          },
+          "posting:default:quote_policy": {
+            "type": "string"
+          },
+          "reading:expand:media": {
+            "type": "string"
+          },
+          "reading:expand:spoilers": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MastodonMarker": {
+        "type": "object",
+        "properties": {
+          "last_read_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonWebPushSubscription": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "standard": {
+            "type": "boolean"
+          },
+          "alerts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "server_key": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonSource": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonField"
+            }
+          },
+          "privacy": {
+            "type": "string"
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "quote_policy": {
+            "type": "string",
+            "nullable": true
+          },
+          "bot": {
+            "type": "boolean"
+          },
+          "follow_requests_count": {
+            "type": "number"
+          },
+          "auto_delete_after": {
+            "type": "number",
+            "nullable": true
+          },
+          "hide_collections": {
+            "type": "boolean"
+          },
+          "discoverable": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "indexable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MastodonNotification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "account": {
+            "$ref": "#/components/schemas/MastodonAccount"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonStatus"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "MastodonInstance": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "limits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InstanceLimits"
+              }
+            ],
+            "nullable": true,
+            "description": "Effective instance limits (lib/constants), consumed by the web client."
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "users": {
+                "type": "object",
+                "properties": {
+                  "active_month": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "thumbnail": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vapid_public_key": {
+            "type": "string",
+            "nullable": true
+          },
+          "configuration": {
+            "type": "object",
+            "properties": {
+              "urls": {
+                "type": "object",
+                "properties": {
+                  "streaming": {
+                    "type": "string"
+                  }
+                }
+              },
+              "accounts": {
+                "type": "object",
+                "properties": {
+                  "max_featured_tags": {
+                    "type": "number"
+                  },
+                  "max_display_name_length": {
+                    "type": "number"
+                  },
+                  "max_note_length": {
+                    "type": "number"
+                  },
+                  "max_pinned_statuses": {
+                    "type": "number"
+                  },
+                  "max_profile_fields": {
+                    "type": "number"
+                  },
+                  "profile_field_name_limit": {
+                    "type": "number"
+                  },
+                  "profile_field_value_limit": {
+                    "type": "number"
+                  }
+                }
+              },
+              "vapid": {
+                "type": "object",
+                "properties": {
+                  "secret_key": {
+                    "type": "string"
+                  }
+                },
+                "nullable": true
+              },
+              "statuses": {
+                "type": "object",
+                "properties": {
+                  "max_characters": {
+                    "type": "number"
+                  },
+                  "max_media_attachments": {
+                    "type": "number"
+                  },
+                  "characters_reserved_per_url": {
+                    "type": "number"
+                  }
+                }
+              },
+              "media_attachments": {
+                "type": "object",
+                "properties": {
+                  "supported_mime_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "description_limit": {
+                    "type": "number"
+                  },
+                  "image_size_limit": {
+                    "type": "number"
+                  },
+                  "image_matrix_limit": {
+                    "type": "number"
+                  },
+                  "video_size_limit": {
+                    "type": "number"
+                  },
+                  "video_frame_rate_limit": {
+                    "type": "number"
+                  },
+                  "video_matrix_limit": {
+                    "type": "number"
+                  }
+                }
+              },
+              "polls": {
+                "type": "object",
+                "properties": {
+                  "max_options": {
+                    "type": "number"
+                  },
+                  "max_characters_per_option": {
+                    "type": "number"
+                  },
+                  "min_expiration": {
+                    "type": "number"
+                  },
+                  "max_expiration": {
+                    "type": "number"
+                  }
+                }
+              },
+              "translation": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "nullable": true
+              },
+              "timelines_access": {
+                "type": "object",
+                "properties": {
+                  "live_feeds": {
+                    "type": "object",
+                    "properties": {
+                      "local": {
+                        "type": "string"
+                      },
+                      "remote": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "hashtag_feeds": {
+                    "type": "object",
+                    "properties": {
+                      "local": {
+                        "type": "string"
+                      },
+                      "remote": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "trending_link_feeds": {
+                    "type": "object",
+                    "properties": {
+                      "local": {
+                        "type": "string"
+                      },
+                      "remote": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "nullable": true
+              },
+              "limited_federation": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "calls": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "nullable": true
+              }
+            }
+          },
+          "api_versions": {
+            "type": "object",
+            "properties": {
+              "mastodon": {
+                "type": "number"
+              }
+            },
+            "nullable": true
+          },
+          "registrations": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "approval_required": {
+                "type": "boolean"
+              },
+              "reason_required": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "message": {
+                "type": "string",
+                "nullable": true
+              },
+              "min_age": {
+                "type": "number",
+                "nullable": true
+              },
+              "url": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "contact": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string"
+              },
+              "account": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MastodonAccount"
+                  }
+                ],
+                "nullable": true
+              }
+            }
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "hint": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "MastodonConversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonAccount"
+            }
+          },
+          "last_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MastodonStatus"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "MastodonList": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "replies_policy": {
+            "type": "string"
+          },
+          "exclusive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MastodonCollectionItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonCollection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          },
+          "local": {
+            "type": "boolean"
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "discoverable": {
+            "type": "boolean"
+          },
+          "tag": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "item_count": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonCollectionItem"
+            }
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonFilterV2": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "filter_action": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "keyword": {
+                  "type": "string"
+                },
+                "whole_word": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MastodonFilterKeyword": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "whole_word": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MastodonFilterStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status_id": {
+            "type": "string"
+          }
+        }
+      },
+      "MastodonScheduledStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scheduled_at": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "nullable": true
+              },
+              "poll": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object"
+                },
+                "nullable": true
+              },
+              "media_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "nullable": true
+              },
+              "sensitive": {
+                "type": "boolean",
+                "nullable": true
+              },
+              "spoiler_text": {
+                "type": "string",
+                "nullable": true
+              },
+              "visibility": {
+                "type": "string",
+                "nullable": true
+              },
+              "in_reply_to_id": {
+                "type": "string",
+                "nullable": true
+              },
+              "language": {
+                "type": "string",
+                "nullable": true
+              },
+              "application_id": {
+                "type": "number",
+                "nullable": true
+              },
+              "scheduled_at": {
+                "type": "object"
+              },
+              "idempotency": {
+                "type": "string",
+                "nullable": true
+              },
+              "with_rate_limit": {
+                "type": "boolean"
+              }
+            }
+          },
+          "media_attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonAttachment"
+            }
+          }
+        }
+      },
+      "MastodonReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "action_taken": {
+            "type": "boolean"
+          },
+          "action_taken_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "forwarded": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "status_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "target_account": {
+            "$ref": "#/components/schemas/MastodonAccount"
+          }
+        }
+      },
+      "MastodonFeaturedTag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "statuses_count": {
+            "type": "number"
+          },
+          "last_status_at": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "MastodonSuggestion": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "account": {
+            "$ref": "#/components/schemas/MastodonAccount"
+          }
+        }
+      },
+      "MastodonAnnouncement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "starts_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "ends_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "all_day": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "acct": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "emojis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonEmoji"
+            }
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                },
+                "me": {
+                  "type": "boolean"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "static_url": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MastodonProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonField"
+            }
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "avatar_static": {
+            "type": "string"
+          },
+          "avatar_description": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "header_static": {
+            "type": "string"
+          },
+          "header_description": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "bot": {
+            "type": "boolean"
+          },
+          "hide_collections": {
+            "type": "boolean"
+          },
+          "discoverable": {
+            "type": "boolean"
+          },
+          "indexable": {
+            "type": "boolean"
+          },
+          "show_media": {
+            "type": "boolean"
+          },
+          "show_media_replies": {
+            "type": "boolean"
+          },
+          "show_featured": {
+            "type": "boolean"
+          },
+          "attribution_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "featured_tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MastodonFeaturedTag"
+            }
+          }
+        }
+      },
+      "MastodonRelationship": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "following": {
+            "type": "boolean"
+          },
+          "showing_reblogs": {
+            "type": "boolean"
+          },
+          "notifying": {
+            "type": "boolean"
+          },
+          "languages": {
+            "type": "object"
+          },
+          "followed_by": {
+            "type": "boolean"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "blocked_by": {
+            "type": "boolean"
+          },
+          "muting": {
+            "type": "boolean"
+          },
+          "muting_notifications": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "boolean"
+          },
+          "requested_by": {
+            "type": "boolean"
+          },
+          "domain_blocking": {
+            "type": "boolean"
+          },
+          "endorsed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "FilterKeyword": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "whole_word": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FilterStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status_id": {
+            "type": "string"
+          }
+        }
+      },
+      "Filter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "home",
+                "notifications",
+                "public",
+                "thread",
+                "account"
+              ]
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "filter_action": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "hide",
+              "blur"
+            ]
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterKeyword"
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterStatus"
+            }
+          }
+        }
+      },
+      "APObjectMeta": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Object title as a plain string (Article/Page/Note/Event name)."
+          },
+          "startTime": {
+            "type": "string",
+            "nullable": true,
+            "description": "Unix epoch millis for time-scoped objects (Event start)."
+          },
+          "endTime": {
+            "type": "string",
+            "nullable": true,
+            "description": "Unix epoch millis for time-scoped objects (Event end)."
+          },
+          "duration": {
+            "type": "number",
+            "nullable": true,
+            "description": "Playback duration in seconds (Audio/Video/Page)."
+          },
+          "location": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable location name (Place/Event)."
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true,
+            "description": "WGS84 latitude of the Place/Event."
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true,
+            "description": "WGS84 longitude of the Place/Event."
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "description": "Author-facing display URL (resolved from obj.url or AP object id)."
+          },
+          "mediaUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Direct media file URL for top-level Audio/Video/Image objects."
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Poster/preview thumbnail URL (resolved from the object's icon/image)."
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true,
+            "description": "Relationship: subject actor IRI (as:subject)."
+          },
+          "relationshipObject": {
+            "type": "string",
+            "nullable": true,
+            "description": "Relationship: object actor IRI (as:object)."
+          },
+          "relationship": {
+            "type": "string",
+            "nullable": true,
+            "description": "Relationship: verb/relationship type IRI (as:relationship)."
+          },
+          "formerType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tombstone: former type of the deleted object (as:formerType)."
+          },
+          "deleted": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tombstone: deletion timestamp (as:deleted)."
+          },
+          "totalItems": {
+            "type": "number",
+            "nullable": true,
+            "description": "Collection: totalItems (as:totalItems)."
+          },
+          "describes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Profile: the actor/entity the profile describes (as:describes)."
+          }
+        },
+        "description": "Type-specific metadata extracted from a remote ActivityStreams object."
+      },
+      "InstanceLimits": {
+        "type": "object",
+        "properties": {
+          "maxStatusChars": {
+            "type": "number"
+          },
+          "maxCwChars": {
+            "type": "number"
+          },
+          "maxAltTextChars": {
+            "type": "number"
+          },
+          "maxMediaAttachments": {
+            "type": "number"
+          },
+          "maxPollOptions": {
+            "type": "number"
+          },
+          "maxPollOptionChars": {
+            "type": "number"
+          },
+          "pollMinExpiration": {
+            "type": "number"
+          },
+          "pollMaxExpiration": {
+            "type": "number"
+          },
+          "maxFeaturedTags": {
+            "type": "number"
+          },
+          "charactersReservedPerUrl": {
+            "type": "number"
+          },
+          "maxProfileFields": {
+            "type": "number"
+          },
+          "maxProfileFieldChars": {
+            "type": "number"
+          },
+          "maxDisplayNameChars": {
+            "type": "number"
+          },
+          "maxPinnedStatuses": {
+            "type": "number"
+          },
+          "maxNoteChars": {
+            "type": "number"
+          },
+          "maxEmojiShortcodeChars": {
+            "type": "number"
+          },
+          "maxFeaturedTagNameChars": {
+            "type": "number"
+          },
+          "maxCollectionNameChars": {
+            "type": "number"
+          },
+          "maxCollectionDescriptionChars": {
+            "type": "number"
+          },
+          "maxAnnouncementChars": {
+            "type": "number"
+          },
+          "maxLangCodeChars": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "defaultTimelinePage": {
+            "type": "number"
+          },
+          "maxPageSize": {
+            "type": "number"
+          },
+          "maxCollectionPage": {
+            "type": "number"
+          },
+          "trendingTagsLimit": {
+            "type": "number"
+          },
+          "trendingTagsMax": {
+            "type": "number"
+          },
+          "adminLogPageSize": {
+            "type": "number"
+          },
+          "mlsMessagesPageSize": {
+            "type": "number"
+          },
+          "graphMaxNodes": {
+            "type": "number"
+          },
+          "maxImageSize": {
+            "type": "number"
+          },
+          "maxVideoSize": {
+            "type": "number"
+          },
+          "imageMatrixLimit": {
+            "type": "number"
+          },
+          "sharedInboxBatch": {
+            "type": "number"
+          },
+          "mediaCacheEnabled": {
+            "type": "boolean"
+          },
+          "mediaCacheDays": {
+            "type": "number"
+          },
+          "mediaCacheProfileDays": {
+            "type": "number"
+          },
+          "mediaCacheMaxBytes": {
+            "type": "number"
+          },
+          "mediaCacheMaxObjectBytes": {
+            "type": "number"
+          },
+          "mediaCacheFetchBatch": {
+            "type": "number"
+          },
+          "mediaCacheMinEntries": {
+            "type": "number"
+          },
+          "mediaCacheUserAgents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mediaCacheMaxHoldMinutes": {
+            "type": "number",
+            "description": "Safety valve: held statuses are released after this many minutes even if\ntheir media is still pending (0 disables the forced release)."
+          },
+          "linkPreviewEnabled": {
+            "type": "boolean"
+          },
+          "linkPreviewFetchBatch": {
+            "type": "number"
+          },
+          "linkPreviewDays": {
+            "type": "number"
+          },
+          "linkPreviewMaxBytes": {
+            "type": "number"
+          },
+          "instanceRefreshBatch": {
+            "type": "number"
+          },
+          "instanceRefreshDays": {
+            "type": "number"
+          },
+          "instanceDormantDays": {
+            "type": "number"
+          },
+          "videoFrameRateLimit": {
+            "type": "number"
+          },
+          "videoMatrixLimit": {
+            "type": "number"
+          }
+        },
+        "description": "Effective instance limits — the shape exposed to clients via /api/v1/instance."
+      },
       "Error": {
         "type": "object",
         "properties": {
