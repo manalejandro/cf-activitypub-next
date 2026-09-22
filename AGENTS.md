@@ -41,6 +41,8 @@ npx wrangler d1 execute <db> --remote --json --command="EXPLAIN QUERY PLAN SELEC
 
 `--file=` is broken in this environment (`fetch failed`); always use `--command=` for one statement and `scripts/upgrade-schema.mjs` for batches/backfills.
 
+- **API docs**: `npm run generate:openapi` (runs on predev/prebuild/prepreview/predeploy) writes `lib/api-docs/openapi.json` for the Swagger UI. It is **self-contained**: it scans `app/**/route.ts` and derives paths/methods, tags (from the path), auth requirements (by detecting the handler's `if (!actor) return unauthorized()` / `requireAdmin` guard), query params (`searchParams.get`), request bodies and the file's leading comment as description. No separate metadata file to keep in sync (delete of `scripts/openapi-metadata.mjs`).
+
 ## Architecture
 
 | Concern | Where |

@@ -1,33 +1,57 @@
 // Generates lib/api-docs/openapi.json from the real route handlers in app/**/route.ts.
-// Run with: node scripts/generate-openapi.mjs
-// Curated descriptions/tags/schemas live in scripts/openapi-metadata.mjs and are merged here,
-// so the spec always reflects the actual HTTP surface of the instance.
+// Run with: node scripts/generate-openapi.mjs (also runs on predev/prebuild/predeploy).
+//
+// Self-contained: everything is derived from the source itself —
+//   * paths + methods from the filesystem / exported handlers,
+//   * tags from the API path segments,
+//   * security by detecting the auth guards the handler actually calls,
+//   * query parameters from `searchParams.get(...)` calls,
+//   * summaries/descriptions from the handler's leading comments,
+//   * request bodies when the handler reads a body (json/formData/text).
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  TAGS,
-  PUBLIC,
-  PATH_TAGS,
-  OP_META,
-  SCHEMAS,
-  QUERY_PARAMETERS,
-  MANUAL_PATHS,
-} from "./openapi-metadata.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appDir = join(root, "app");
 const outFile = join(root, "lib", "api-docs", "openapi.json");
-const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version ?? "0.1.0";
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const version = packageJson.version ?? "0.1.0";
+const instanceTitle = "CF ActivityPub API";
 
 const METHOD_VERB = {
   GET: "Get",
-  POST: "Post",
+  POST: "Create",
   PUT: "Update",
-  PATCH: "Update",
+  PATCH: "Partial update",
   DELETE: "Delete",
 };
+
+/** Acronyms/oddities that a naive title-case would get wrong. */
+const TAG_OVERRIDES = {
+  e2ee: "E2EE",
+  oembed: "oEmbed",
+  map: "Maps",
+  mls: "MLS",
+  oauth: "OAuth",
+  api: "API",
+  emojis: "Emojis",
+  custom_emojis: "Custom Emojis",
+  featured_tags: "Featured Tags",
+  followed_tags: "Followed Tags",
+  follow_requests: "Follow Requests",
+  scheduled_statuses: "Scheduled Statuses",
+  instance_domains: "Instance Domains",
+  canonical_email_blocks: "Canonical Email Blocks",
+  media_cache: "Media Cache",
+};
+
+/** Query params whose values are numeric (used for the schema types). */
+const INTEGER_QUERY = new Set([
+  "limit", "offset", "max_id", "since_id", "min_id", "max_bookmarks",
+  "expires_in", "four_of_a_kind", "depth", "radius",
+]);
 
 function findRouteFiles(dir) {
   const out = [];
@@ -46,32 +70,9 @@ function findRouteFiles(dir) {
 function pathFromFile(file) {
   let rel = relative(appDir, file).split(sep).join("/");
   rel = rel.replace(/\/route\.ts$/, "");
-  let path = "/" + rel;
-  path = path.replace(/\[\.\.\.([^\]]+)\]/g, "{$1}");
-  path = path.replace(/\[([^\]]+)\]/g, "{$1}");
-  return path;
-}
-
-function leadingComments(src) {
-  const lines = src.split("\n");
-  const comments = [];
-  for (const line of lines) {
-    const t = line.trim();
-    if (t.startsWith("//")) comments.push(t.replace(/^\/\/\s*/, ""));
-    else if (t.startsWith("import ") || t.startsWith("import{")) break;
-  }
-  return comments
-    .filter((c) => c.length > 0 && !/^(GET|POST|PUT|PATCH|DELETE|OPTIONS)\s+\//.test(c))
-    .join(" ")
-    .slice(0, 300);
-}
-
-function queryParams(src) {
-  const names = new Set();
-  const re = /\.get(?:All)?\(['"]([A-Za-z0-9_]+)['"]\)/g;
-  let m;
-  while ((m = re.exec(src))) names.add(m[1]);
-  return [...names];
+  return ("/" + rel)
+    .replace(/\[\.\.\.([^\]]+)\]/g, "{$1}")
+    .replace(/\[([^\]]+)\]/g, "{$1}");
 }
 
 function methodsIn(src) {
@@ -83,32 +84,113 @@ function methodsIn(src) {
   return methods;
 }
 
+/** Handler body (from the exported function to the next top-level export). */
+function handlerBody(src, method) {
+  const start = src.search(new RegExp(`export\\s+(?:async\\s+)?function\\s+${method}\\b`));
+  if (start === -1) return src;
+  const next = src.slice(start + 10).search(/\nexport\s+/);
+  return next === -1 ? src.slice(start) : src.slice(start, start + 10 + next);
+}
+
+/**
+ * A handler is protected when it explicitly rejects missing auth. Routes that
+ * only read the viewer (public timelines, public statuses) call
+ * `getAuthenticatedActor` too, so the guard must be an `unauthorized()` (or an
+ * admin role check) tied to a missing actor.
+ */
+function isProtected(src, method) {
+  const body = handlerBody(src, method);
+  if (/require(?:Full)?Admin\s*\(/.test(body)) return true;
+  if (!/unauthorized\s*\(/.test(body) && !/\bstatus:\s*40[13]\b/.test(body)) return false;
+  // Only an unconditional `if (!actor) return unauthorized()` protects the
+  // whole endpoint; `if (local && !authActor)` (public timeline) stays public.
+  return /if\s*\(\s*!\s*(?:authActor|actor|me|user|session)\s*\)\s*(?:\{[^}]*\}\s*)?return\s+unauthorized/.test(body);
+}
+
+function queryParams(src) {
+  const names = new Set();
+  const re = /(?:searchParams|nextUrl\.searchParams)\.get(?:All)?\(['"]([A-Za-z0-9_]+)['"]\)/g;
+  let m;
+  while ((m = re.exec(src))) names.add(m[1]);
+  return [...names];
+}
+
 function hasBody(src) {
   return /request\.json\(\)|request\.formData\(|await request\.text\(\)/.test(src);
 }
 
-function isPublic(path, method) {
-  if (PUBLIC.all.some((prefix) => path === prefix || path.startsWith(prefix + "/"))) return true;
-  if (method === "GET" && PUBLIC.GET.includes(path)) return true;
-  if (method === "POST" && PUBLIC.POST.includes(path)) return true;
-  return false;
+function titleCase(segment) {
+  return (TAG_OVERRIDES[segment] ?? segment.replace(/[_-]/g, " ")).replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
+/** Tag derived from the API path: /api/v1/accounts/{id}/x → "Accounts". */
 function tagFor(path) {
-  for (const [prefix, tag] of PATH_TAGS) {
-    if (path === prefix || path.startsWith(prefix + "/")) return tag;
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] === "api" && /^v\d+$/.test(parts[1] ?? "")) {
+    const seg = parts[2] ?? "misc";
+    if (seg === "admin") return "Admin";
+    if (seg === "users" || seg === "inbox" || seg === "nodeinfo") return "ActivityPub";
+    return titleCase(seg);
+  }
+  if (parts[0] === "api") {
+    const seg = parts[1] ?? "misc";
+    if (seg === "users" || seg === "inbox" || seg === "nodeinfo") return "ActivityPub";
+    if (seg === "admin") return "Admin";
+    return titleCase(seg);
+  }
+  if (path.startsWith("/oauth")) return "OAuth";
+  if (path.startsWith("/.well-known") || path.startsWith("/nodeinfo") || path.startsWith("/users") || path.startsWith("/inbox") || path.startsWith("/objects")) {
+    return "ActivityPub";
   }
   return "Misc";
 }
 
+/** First comment block of the file, minus the "GET /path" route header lines. */
+function fileComments(src) {
+  const lines = src.split("\n");
+  const comments = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("//")) comments.push(trimmed.replace(/^\/\/\s?/, ""));
+    else if (trimmed.startsWith("import ") || trimmed.startsWith("import{")) break;
+    else if (comments.length > 0) break;
+  }
+  return comments
+    .filter((c) => c.length > 0 && !/^(GET|POST|PUT|PATCH|DELETE|OPTIONS)\s+\//.test(c))
+    .join(" ")
+    .slice(0, 300);
+}
+
+// WebSocket endpoints have no route.ts handler (the worker upgrades them).
+const MANUAL_PATHS = {
+  "/api/v1/streaming": {
+    GET: {
+      summary: "Streaming WebSocket endpoint",
+      description:
+        "Real-time WebSocket stream for timelines and notifications. Open a WebSocket to `/api/v1/streaming?stream=...&access_token=...` and listen for `update`, `notification`, `delete`, `status.update` and `conversation` events.",
+      operationId: "streamingWs",
+      tags: ["Streaming"],
+      security: [],
+      responses: { 101: { description: "WebSocket upgrade" } },
+    },
+  },
+};
+
+const ERROR_SCHEMA = {
+  type: "object",
+  properties: { error: { type: "string" }, error_code: { type: "string" } },
+};
+
 const files = findRouteFiles(appDir);
 const paths = {};
-const usedOpIds = new Set();
+const usedOperationIds = new Set();
+const usedTags = new Map();
 
-for (const [manualPath, manualOps] of Object.entries(MANUAL_PATHS)) {
+for (const [manualPath, ops] of Object.entries(MANUAL_PATHS)) {
   paths[manualPath] = {};
-  for (const [method, op] of Object.entries(manualOps)) {
+  for (const [method, op] of Object.entries(ops)) {
     paths[manualPath][method.toLowerCase()] = op;
+    if (!usedTags.has(op.tags[0])) usedTags.set(op.tags[0], "WebSocket streaming.");
   }
 }
 
@@ -116,68 +198,50 @@ for (const file of files) {
   const src = readFileSync(file, "utf8");
   const path = pathFromFile(file);
   const methods = methodsIn(src);
-  if (!methods.length) continue;
+  if (methods.length === 0) continue;
 
-  const fileComments = leadingComments(src);
+  const tag = tagFor(path);
+  if (!usedTags.has(tag)) usedTags.set(tag, `${tag} endpoints.`);
+  const description = fileComments(src);
   const autoQuery = queryParams(src);
-  const curated = OP_META[path] ?? {};
+  const readsBody = hasBody(src);
 
   for (const method of methods) {
-    const meta = curated[method] ?? {};
-    const security = meta.security !== undefined ? meta.security : isPublic(path, method) ? [] : [{ bearerAuth: [] }];
-    const summary = meta.summary ?? `${METHOD_VERB[method] ?? method} ${path}`;
-    const description = meta.description ?? (fileComments ? fileComments : summary);
+    const security = isProtected(src, method) ? [{ bearerAuth: [] }] : [];
+    const summary = `${METHOD_VERB[method] ?? method} ${path}`;
 
-    let baseOpId = meta.operationId;
-    if (!baseOpId) {
-      baseOpId = (method.toLowerCase() + path.replace(/\//g, "_").replace(/\{([^}]+)\}/g, "By$1").replace(/[^a-z0-9_]/gi, "")).replace(/_+/g, "_");
-    }
-    let operationId = baseOpId;
-    let i = 2;
-    while (usedOpIds.has(operationId)) operationId = `${baseOpId}_${i++}`;
-    usedOpIds.add(operationId);
+    let operationId = (method.toLowerCase() + path.replace(/\//g, "_").replace(/\{([^}]+)\}/g, "By$1").replace(/[^a-z0-9_]/gi, "")).replace(/_+/g, "_");
+    let suffix = 2;
+    while (usedOperationIds.has(operationId)) operationId = `${operationId}_${suffix++}`;
+    usedOperationIds.add(operationId);
 
     const parameters = [];
     for (const param of path.matchAll(/\{([^}]+)\}/g)) {
+      parameters.push({ name: param[1], in: "path", required: true, schema: { type: "string" } });
+    }
+    for (const q of autoQuery) {
       parameters.push({
-        name: param[1],
-        in: "path",
-        required: true,
-        schema: { type: "string" },
+        name: q,
+        in: "query",
+        schema: { type: INTEGER_QUERY.has(q) ? "integer" : "string" },
       });
     }
-    const usedQuery = new Set();
-    for (const q of autoQuery) {
-      if (QUERY_PARAMETERS[q]) {
-        parameters.push(QUERY_PARAMETERS[q]);
-        usedQuery.add(q);
-      }
-    }
-    for (const q of autoQuery) {
-      if (!usedQuery.has(q)) {
-        parameters.push({ name: q, in: "query", schema: { type: "string" } });
-      }
-    }
-    if (meta.parameters) parameters.push(...meta.parameters);
 
     const op = {
       summary,
-      ...(description !== summary ? { description } : {}),
+      ...(description ? { description } : {}),
       operationId,
-      tags: meta.tags ?? [tagFor(path)],
+      tags: [tag],
       ...(parameters.length ? { parameters } : {}),
       security,
     };
 
-    const requestBody = meta.requestBody;
-    if (requestBody) {
-      op.requestBody = requestBody;
-    } else if (["POST", "PUT", "PATCH"].includes(method) && hasBody(src)) {
+    if (["POST", "PUT", "PATCH"].includes(method) && readsBody) {
       op.requestBody = {
         required: false,
         content: {
-          "application/json": { schema: { type: "object" } },
-          "multipart/form-data": { schema: { type: "object" } },
+          "application/json": { schema: { type: "object", additionalProperties: true } },
+          "multipart/form-data": { schema: { type: "object", additionalProperties: true } },
         },
       };
     }
@@ -201,12 +265,13 @@ for (const file of files) {
 const doc = {
   openapi: "3.0.3",
   info: {
-    title: "CF ActivityPub API",
+    title: instanceTitle,
     version,
-    description: `Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from \`POST /oauth/token\` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation) do not require a token. Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in \`app/**/route.ts\`.`,
+    description:
+      "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`; tags, auth requirements and parameters are read from the source.",
   },
   servers: [{ url: "/" }],
-  tags: TAGS,
+  tags: [...usedTags].map(([name, description]) => ({ name, description })),
   paths,
   components: {
     securitySchemes: {
@@ -230,7 +295,7 @@ const doc = {
         },
       },
     },
-    schemas: SCHEMAS,
+    schemas: { Error: ERROR_SCHEMA },
   },
 };
 
