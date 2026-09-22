@@ -7,6 +7,7 @@ import {
   isTimelineCacheFresh,
   mergeTimelineItems,
   pruneMissingFromWindow,
+  pruneMissingInWindow,
   setTimelineCache,
 } from "./timeline-cache";
 
@@ -378,7 +379,9 @@ useIsomorphicLayoutEffect(() => {
       // them ordered even if a streamed status slipped in meanwhile. Items
       // inside the fetched window that the server no longer returns were
       // deleted: drop them instead of resurrecting them from the cache.
-      setStatuses((prev) => mergeTimelineItems(pruneMissingFromWindow(result.items, prev), result.items));
+      // Pagination window (not the feed start): only the fetched range is
+      // authoritative. Using the first-page prune here wiped the whole feed.
+      setStatuses((prev) => mergeTimelineItems(pruneMissingInWindow(result.items, prev), result.items));
       setHasMore(result.hasMore);
     } catch {
       // Keep the current page; the next sentinel hit retries.

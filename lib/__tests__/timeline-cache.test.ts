@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   mergeTimelineItems,
   pruneMissingFromWindow,
+  pruneMissingInWindow,
   handleStatusStreamEvent,
   setTimelineCache,
   getTimelineCache,
@@ -125,5 +126,17 @@ describe("handleStatusStreamEvent", () => {
     expect(holder.items.map((i) => i.id)).toEqual(["2"]);
     expect(seen.has("1")).toBe(false);
     expect(getTimelineCache<S>("home")?.items).toEqual([]);
+  });
+});
+
+describe("pruneMissingInWindow (pagination)", () => {
+  it("keeps the current feed and older cached pages, dropping only deleted items in the page window", () => {
+    const fetched = [s("p2-new", "2026-01-01T09:00:00Z"), s("p2-old", "2026-01-01T08:00:00Z")];
+    const cached = [
+      s("feed-newest", "2026-01-01T12:00:00Z"),
+      s("deleted-in-window", "2026-01-01T08:30:00Z"),
+      s("page3", "2026-01-01T07:00:00Z"),
+    ];
+    expect(pruneMissingInWindow(fetched, cached).map((i) => i.id)).toEqual(["feed-newest", "page3"]);
   });
 });

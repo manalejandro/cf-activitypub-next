@@ -98,6 +98,26 @@ export function pruneMissingFromWindow<T extends TimelineItem>(fetched: T[], cac
   });
 }
 
+/**
+ * Reconcile a *pagination* fetch: only items inside the fetched window
+ * (between the page's oldest and newest entries) are authoritative, so deleted
+ * items in that range are dropped; the current feed (newer) and later cached
+ * pages (older) are preserved.
+ */
+export function pruneMissingInWindow<T extends TimelineItem>(fetched: T[], cached: T[]): T[] {
+  if (fetched.length === 0 || cached.length === 0) return cached;
+  const newest = fetched[0]?.created_at;
+  const oldest = fetched[fetched.length - 1]?.created_at;
+  if (!newest || !oldest) return cached;
+  const ids = new Set(fetched.map((item) => item.id));
+  return cached.filter((item) => {
+    if (ids.has(item.id)) return true;
+    const created = item.created_at;
+    if (!created) return true;
+    return created > newest || created < oldest;
+  });
+}
+
 export function isTimelineCacheFresh<T>(entry: TimelineCacheEntry<T>): boolean {
   return entry.ready && Date.now() - entry.fetchedAt < TIMELINE_CACHE_TTL_MS;
 }
