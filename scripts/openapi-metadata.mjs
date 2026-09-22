@@ -414,7 +414,7 @@ export const OP_META = {
     GET: { summary: "View the public timeline", operationId: "getPublicTimeline", tags: ["Timelines"], security: [] },
   },
   "/api/v1/timelines/tag/{hashtag}": {
-    GET: { summary: "View statuses for a hashtag", operationId: "getHashtagTimeline", tags: ["Timelines"], security: [] },
+    GET: { summary: "View statuses for a hashtag", operationId: "getHashtagTimeline", tags: ["Timelines"] },
   },
   "/api/v1/timelines/list": {
     GET: { summary: "View a list timeline", operationId: "getListTimeline", tags: ["Timelines"] },
