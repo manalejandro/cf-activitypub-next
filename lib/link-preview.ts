@@ -20,12 +20,14 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type { LocalObject } from "@/lib/types";
 import type { InstanceLimits } from "@/lib/constants";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
 import {
   cleanupOrphanPreviewCards,
   deleteLinkPreviewQueue,
   enqueueLinkPreview,
   enqueueMediaCache,
+  getActorById,
   getAttachmentsByObjectId,
   getMediaCacheStatusBySourceUrl,
   getObjectById,
@@ -253,7 +255,10 @@ export function extractFirstLink(content: string | null | undefined, ownDomain?:
   const acceptable = (url: string): boolean => {
     if (!/^https?:\/\//i.test(url)) return false;
     if (PROFILE_HREF.test(url) || TAG_HREF.test(url)) return false;
-    return !isOwn(url);
+    // Own links are skipped (no self-crawling) except status permalinks: they
+    // expose oEmbed so pasting a local post builds a card like any other link.
+    if (isOwn(url)) return /\/(statuses|@[^/]+)\/[^/?#]+/.test(new URL(url).pathname);
+    return true;
   };
 
   if (content.includes("<a")) {
@@ -685,6 +690,70 @@ async function processJob(
         return false;
       }
     } catch { /* not a URL */ }
+  }
+
+  // Own status permalinks: a Worker fetching its own hostname times out
+  // (HTTP 522), so build the card straight from the database.
+  if (ownDomain) {
+    try {
+      const parsed = new URL(url);
+      const match = parsed.hostname === ownDomain
+        ? parsed.pathname.match(/^\/(?:statuses|@[^/]+)\/([^/?#]+)/)
+        : null;
+      if (match) {
+        const target = await getObjectById(db, decodeStatusId(match[1], ownDomain));
+        if (target) {
+          const [author, attachments] = await Promise.all([
+            getActorById(db, target.actorId),
+            getAttachmentsByObjectId(db, target.id),
+          ]);
+          const authorName = author?.displayName || author?.username || target.actorId;
+          const text = (target.content ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          const embed = `${parsed.origin}/embed/${encodeStatusId(target.id, target.local)}`;
+          const image = author?.avatarCacheUrl ?? author?.avatarUrl ?? attachments[0]?.url ?? null;
+          const cardId = await mediaCacheId(url);
+          const card: CardCandidate = {
+            title: `${authorName}: ${text}`.slice(0, 400),
+            description: text.slice(0, 1000),
+            type: "rich",
+            authorName,
+            authorUrl: author ? `${parsed.origin}/@${author.username}` : "",
+            providerName: "",
+            providerUrl: "",
+            html: buildIframe(embed, 400, 320),
+            width: 400,
+            height: 320,
+            imageUrl: image,
+            imageDescription: "",
+            embedUrl: embed,
+            language: target.language,
+            publishedAt: target.published,
+            canonicalUrl: url,
+          };
+          await upsertPreviewCard(db, {
+            id: cardId, sourceUrl: url, url,
+            title: card.title, description: card.description, type: card.type,
+            authorName: card.authorName, authorUrl: card.authorUrl,
+            providerName: "", providerUrl: "",
+            html: card.html, width: card.width, height: card.height,
+            imageUrl: image, imageDescription: "", embedUrl: embed,
+            language: card.language, publishedAt: card.publishedAt,
+          });
+          if (limits.mediaCacheEnabled && image) {
+            await enqueueMediaCache(db, image, "card", cardId);
+            const cache = await getMediaCacheStatusBySourceUrl(db, image);
+            if (cache?.status === "pending") return false;
+          }
+          const stored = await getPreviewCardBySourceUrl(db, url);
+          const servedImage = stored?.imageCacheUrl ?? stored?.imageUrl ?? image;
+          const snapshot = JSON.stringify(toSnapshot(card, url, servedImage));
+          await linkObjectPreviewCard(db, objectId, cardId, snapshot);
+          await updateObjectCardSnapshots(db, cardId, snapshot);
+          await deleteLinkPreviewQueue(db, objectId);
+          return true;
+        }
+      }
+    } catch { /* fall through to the network crawl */ }
   }
 
   const existing = await getPreviewCardBySourceUrl(db, url);
