@@ -367,6 +367,9 @@ useIsomorphicLayoutEffect(() => {
     if (loadingMoreRef.current || !hasMoreRef.current) return;
     const lastId = statusesRef.current[statusesRef.current.length - 1]?.id;
     if (!lastId) return;
+    // Set the ref synchronously: it only synced after a render, so fast
+    // scrolling fired several overlapping pages before the guard caught up.
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
       const result = await fetchPageRef.current(lastId);
@@ -377,6 +380,15 @@ useIsomorphicLayoutEffect(() => {
         setHasMore(result.hasMore);
         return;
       }
+      // Filtered pages (held media, blocks…) can be shorter than the limit
+      // without being the end of the timeline: stopping there left the feed
+      // "loading" forever. Only a page with nothing new means we are done;
+      // otherwise keep paginating until an empty page arrives.
+      const known = new Set(statusesRef.current.map((s) => s.id));
+      if (!result.items.some((item) => !known.has(item.id))) {
+        setHasMore(false);
+        return;
+      }
       // Paged items are older than the feed tail; the canonical merge keeps
       // them ordered even if a streamed status slipped in meanwhile. Items
       // inside the fetched window that the server no longer returns were
@@ -384,10 +396,11 @@ useIsomorphicLayoutEffect(() => {
       // Pagination window (not the feed start): only the fetched range is
       // authoritative. Using the first-page prune here wiped the whole feed.
       setStatuses((prev) => mergeTimelineItems(pruneMissingInWindow(result.items, prev), result.items));
-      setHasMore(result.hasMore);
+      setHasMore(true);
     } catch {
       // Keep the current page; the next sentinel hit retries.
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }, [setLoadingMore, setStatuses, setHasMore]);
