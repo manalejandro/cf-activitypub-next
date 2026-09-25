@@ -152,14 +152,34 @@ export async function fetchAndCacheRemoteActor(
       Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
     });
     if (!res?.ok) return null;
-    const p = await res.json() as Record<string, unknown>;
+    let p = await res.json() as Record<string, unknown>;
     // Cache-poisoning guard: the document fetched from `actorUrl` must claim
     // exactly that id. A host answering with another actor's id (key/inbox
     // swap) is rejected, never cached.
     const id = typeof p.id === "string" ? p.id : "";
     if (!id || id !== actorUrl) {
-      console.warn(`[remote] Refusing actor document: fetched ${actorUrl} claims id ${id || "(none)"}`);
-      return null;
+      // Web profile URLs (`/@user`) legitimately resolve to the canonical
+      // `/users/user` actor id on the same host: re-fetch that id and cache
+      // the document only when it confirms its own id (the first document is
+      // never trusted for a different actor id).
+      let sameHost = false;
+      try {
+        sameHost = Boolean(id) && new URL(id).hostname === new URL(actorUrl).hostname;
+      } catch { sameHost = false; }
+      if (!sameHost) {
+        console.warn(`[remote] Refusing actor document: fetched ${actorUrl} claims id ${id || "(none)"}`);
+        return null;
+      }
+      const canonical = await remoteFetch(id, {
+        Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+      });
+      if (!canonical?.ok) return null;
+      const doc = await canonical.json() as Record<string, unknown>;
+      if (doc.id !== id) {
+        console.warn(`[remote] Refusing canonical actor document: fetched ${id} claims id ${String(doc.id ?? "(none)")}`);
+        return null;
+      }
+      p = doc;
     }
     const username = (p.preferredUsername as string) ?? "unknown";
     const urlObj = new URL(id);
