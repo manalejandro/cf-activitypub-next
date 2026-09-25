@@ -4,7 +4,7 @@ import type { APDeliveryMessage } from "@/lib/activitypub/queue";
 
 const deliverToInbox = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
-vi.mock("@/lib/activitypub/federation", () => ({ deliverToInbox }));
+vi.mock("@/lib/activitypub/federation", () => ({ deliverToInbox, signedGetHeaders: vi.fn().mockResolvedValue({}) }));
 
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 

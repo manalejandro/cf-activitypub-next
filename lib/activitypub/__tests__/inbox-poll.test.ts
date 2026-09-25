@@ -21,6 +21,7 @@ vi.mock("@/lib/push", () => ({
 
 vi.mock("@/lib/activitypub/federation", () => ({
   deliverToInbox: vi.fn().mockResolvedValue(undefined),
+  signedGetHeaders: vi.fn().mockResolvedValue({}),
   fetchRemoteObject: vi.fn().mockResolvedValue(null),
 }));
 

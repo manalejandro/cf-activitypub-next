@@ -17,7 +17,7 @@ import {
   upsertCustomEmoji,
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
-import { validateOutboundUrl, fetchRemoteObject, safeFetch } from "@/lib/activitypub/federation";
+import { validateOutboundUrl, fetchRemoteObject, safeFetch, signedGetHeaders } from "@/lib/activitypub/federation";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
@@ -61,11 +61,14 @@ async function remoteFetch(
   timeoutMs = 8000
 ): Promise<Response | null> {
   const uas = [buildUserAgent(), UA_BROWSER];
+  // Authorized-fetch instances answer unsigned GETs with 401 "Request not
+  // signed"; sign once for both UA attempts (same Date header).
+  const signed = await signedGetHeaders(url);
   let last: Response | null = null;
   for (const ua of uas) {
     try {
       const res = await safeFetch(url, {
-        headers: { ...headers, "User-Agent": ua },
+        headers: { ...headers, "User-Agent": ua, ...signed },
       }, timeoutMs);
       if (res?.ok) return res;
       await discardBody(res);

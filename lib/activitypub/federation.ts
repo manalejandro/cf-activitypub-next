@@ -4,11 +4,60 @@
 
 import { signRequest } from "./security";
 import { discardBody } from "@/lib/http";
+import { getCloudflareContext } from "@/lib/cf";
 import type { APActivity, APActor, APObject } from "@/lib/types";
 
 const AP_CONTENT_TYPE = "application/activity+json";
 const AP_ACCEPT = 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
 const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Local actor signing outbound fetches when the caller has no key at hand.
+ * Authorized-fetch instances (mastodon.social) answer unsigned actor/object
+ * requests with 401 "Request not signed". Prefer the reserved instance actor,
+ * cached for the isolate's lifetime (keys change rarely).
+ */
+let fetchSigner: { id: string; privateKeyPem: string } | null | undefined;
+
+async function getFetchSigner(): Promise<{ id: string; privateKeyPem: string } | null> {
+  if (fetchSigner !== undefined) return fetchSigner;
+  try {
+    const { env } = getCloudflareContext();
+    const row = await env.DB
+      .prepare(
+        `SELECT id, private_key_pem FROM actors
+         WHERE is_local = 1 AND private_key_pem IS NOT NULL AND suspended = 0
+         ORDER BY COALESCE(reserved, 0) DESC LIMIT 1`
+      )
+      .first<{ id: string; private_key_pem: string }>();
+    fetchSigner = row?.private_key_pem ? { id: row.id, privateKeyPem: row.private_key_pem } : null;
+  } catch {
+    fetchSigner = null;
+  }
+  return fetchSigner;
+}
+
+/** Signature headers for an outbound GET, falling back to the instance signer. */
+export async function signedGetHeaders(
+  url: string,
+  keyId?: string,
+  privateKeyPem?: string
+): Promise<Record<string, string>> {
+  let kid = keyId;
+  let pem = privateKeyPem;
+  if (!kid || !pem) {
+    const signer = await getFetchSigner();
+    if (!signer) return {};
+    kid = `${signer.id}#main-key`;
+    pem = signer.privateKeyPem;
+  }
+  if (!kid.includes("#")) kid = `${kid}#main-key`;
+  try {
+    return await signRequest("GET", url, null, pem, kid);
+  } catch {
+    return {};
+  }
+}
 
 const PRIVATE_IP_RANGES = [
   /^127\./,
@@ -164,12 +213,9 @@ export async function fetchRemoteObject(
     return null;
   }
 
-  const additionalHeaders: Record<string, string> = {};
-
-  if (senderKeyId && privateKeyPem) {
-    const signed = await signRequest("GET", url, null, privateKeyPem, senderKeyId);
-    Object.assign(additionalHeaders, signed);
-  }
+  // Always sign: public resources ignore an unknown signature, while
+  // authorized-fetch instances require one.
+  const additionalHeaders = await signedGetHeaders(url, senderKeyId, privateKeyPem);
 
   try {
     const res = await safeFetch(url, {

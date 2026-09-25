@@ -1,7 +1,7 @@
 import { getCloudflareContext, json, getBaseUrl, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getMlsKeyPackagesByActor } from "@/lib/db";
-import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
+import { safeFetch, signedGetHeaders, validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { NextRequest } from "next/server";
 
 // GET /api/v1/e2ee/keypackage?iri=<actorIri>
@@ -109,7 +109,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response | null> {
   // safeFetch re-validates every redirect hop (SSRF) and bounds the exchange.
-  return await safeFetch(url, { headers }, 6000);
+  // Signed GET: authorized-fetch instances reject unsigned AP requests.
+  return await safeFetch(url, { headers: { ...headers, ...(await signedGetHeaders(url)) } }, 6000);
 }
 
 async function parseKeyPackageCollection(res: Response): Promise<Response | null> {

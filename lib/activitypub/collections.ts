@@ -23,7 +23,7 @@ import {
   upsertRemoteCollection,
   type CollectionRow,
 } from "@/lib/db";
-import { collectFollowerInboxes, safeFetch } from "./federation";
+import { collectFollowerInboxes, safeFetch, signedGetHeaders } from "./federation";
 import { enqueueDeliveries } from "./queue";
 import { DEFAULT_CONTEXT } from "./vocab";
 import { generateId } from "./utils";
@@ -248,7 +248,7 @@ export async function syncRemoteCollections(
 
 async function fetchListing(url: string): Promise<CollectionListingDoc | null> {
   try {
-    const res = await safeFetch(url, { headers: { Accept: AP_ACCEPT } }, 8000);
+    const res = await safeFetch(url, { headers: { Accept: AP_ACCEPT, ...(await signedGetHeaders(url)) } }, 8000);
     if (!res?.ok) {
       await discardBody(res);
       return null;

@@ -9,6 +9,7 @@ const safeFetch = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/activitypub/federation", () => ({
   safeFetch,
+  signedGetHeaders: vi.fn().mockResolvedValue({}),
   collectFollowerInboxes: vi.fn().mockResolvedValue([]),
   validateOutboundUrl: vi.fn().mockReturnValue({ valid: true }),
 }));

@@ -7,6 +7,7 @@ import type { D1Database, D1Result } from "@cloudflare/workers-types";
 
 const federation = vi.hoisted(() => ({
   safeFetch: vi.fn(),
+  signedGetHeaders: vi.fn().mockResolvedValue({}),
   validateOutboundUrl: vi.fn(() => ({ valid: true })),
   fetchRemoteObject: vi.fn(),
 }));
