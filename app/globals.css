@@ -163,7 +163,9 @@ a:hover { color: var(--accent); }
   transition: border-color 0.15s, box-shadow 0.15s; outline: none;
 }
 .input::placeholder { color: var(--text-muted); }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.2); }
+/* Focus glow follows the theme accent (was a hard-coded indigo that ignored
+   custom themes). */
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
 
 .status-card { padding: 1rem; border-bottom: 1px solid var(--border); transition: background 0.12s; }
 .status-card:hover { background: var(--accent-bg); }

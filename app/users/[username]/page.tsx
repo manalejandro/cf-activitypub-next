@@ -127,6 +127,7 @@ interface Relationship {
   following: boolean;
   requested: boolean;
   blocking: boolean;
+  blocked_by?: boolean;
   muting?: boolean;
   followed_by?: boolean;
 }
@@ -787,6 +788,14 @@ export default function ProfilePage() {
                   </button>
                 ) : token ? (
                   <>
+                    {relationship?.blocked_by && (
+                      <span
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.78rem", color: "var(--danger)" }}
+                        title={t.graph_blocked_by}
+                      >
+                        <Icon name="ban" size="0.8rem" color="var(--danger)" /> {t.graph_blocked_by}
+                      </span>
+                    )}
                     <button
                       className={relationship?.following || relationship?.requested ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"}
                       onClick={() => void toggleFollow()}

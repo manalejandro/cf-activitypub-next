@@ -332,9 +332,8 @@ export default function HomePage() {
             <div style={{ position: "relative" }}>
               <textarea
                 ref={textareaRef}
-                /* Same surface/border as the reply composer (the `.input` class
-                   hard-codes an indigo focus glow that ignores the theme). */
-                style={{ width: "100%", resize: "vertical", minHeight: 80, padding: "0.5rem 0.75rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: "0.95rem", fontFamily: "inherit" }}
+                className="input"
+                style={{ resize: "vertical", minHeight: 80, fontFamily: "inherit" }}
                 placeholder={t.compose_placeholder}
                 aria-label={t.compose_label}
                 value={composing}

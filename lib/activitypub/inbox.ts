@@ -38,6 +38,8 @@ import {
   markObjectMediaPending,
   getLastStatusAtMap,
   isActorBlockedBy,
+  createBlock,
+  deleteBlock,
   getInstanceDomainBlock,
   getCollectionById,
   deleteCollection,
@@ -279,6 +281,9 @@ export async function processInboxActivity(
         break;
       case "flag":
         await handleFlag(activity, ctx);
+        break;
+      case "block":
+        await handleBlock(activity, ctx);
         break;
       case "add":
         await handleAdd(activity, ctx);
@@ -858,6 +863,27 @@ async function handleReject(activity: APActivity, ctx: InboxContext): Promise<vo
   }
 }
 
+/**
+ * Inbound `Block`: a remote account blocked one of our local actors. Storing
+ * it makes `blocked_by` (relationships API) and the profile badge work, and
+ * removes any follow relationship in either direction.
+ */
+async function handleBlock(activity: APActivity, ctx: InboxContext): Promise<void> {
+  const actorId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
+  const targetId = typeof activity.object === "string" ? activity.object : (activity.object as APActor | undefined)?.id;
+  if (!targetId || targetId === actorId) return;
+  // Only blocks against local actors matter, and only a remote account can
+  // block one of them (self-blocks / remote-remote are ignored).
+  if (!targetId.startsWith(`${ctx.baseUrl}/`)) return;
+  try {
+    if (new URL(actorId).hostname === new URL(ctx.baseUrl).hostname) return;
+  } catch {
+    return;
+  }
+  await ensureActorCached(ctx.db, actorId);
+  await createBlock(ctx.db, generateId(), actorId, targetId);
+}
+
 async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APActivity | undefined;
   if (!obj || typeof obj !== "object") return;
@@ -909,6 +935,9 @@ async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void
         }
       }
     }
+  } else if (innerType === "block") {
+    const targetId = typeof obj.object === "string" ? obj.object : (obj.object as APActor)?.id;
+    if (targetId) await deleteBlock(ctx.db, actorId, targetId);
   } else if (innerType === "like") {
     const objectId = typeof obj.object === "string" ? obj.object : (obj.object as APNote)?.id;
     if (objectId) await deleteLike(ctx.db, actorId, objectId);
