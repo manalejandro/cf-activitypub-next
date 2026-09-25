@@ -972,5 +972,7 @@
   "compose_error_location": "Invalid location",
   "cancel": "Cancel",
   "save": "Save",
-  "status_not_found": "Post not found"
+  "status_not_found": "Post not found",
+  "remote_blocked": "This account's server is blocking you",
+  "remote_unreachable": "This account's server is unreachable"
 }

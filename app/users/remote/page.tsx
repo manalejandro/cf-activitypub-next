@@ -220,6 +220,7 @@ function RemoteProfileInner() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("posts");
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [relationship, setRelationship] = useState<Relationship | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
@@ -253,6 +254,8 @@ function RemoteProfileInner() {
     if (!acctRes.ok) {
       // Remote profiles require an authenticated session (401).
       if (acctRes.status === 401) { router.replace("/login"); return; }
+      const data = await acctRes.json().catch(() => null) as { error_code?: string } | null;
+      setLoadError(data?.error_code ?? null);
       setNotFound(true); setLoading(false); return;
     }
     const acct = await acctRes.json() as Account;
@@ -482,7 +485,7 @@ function RemoteProfileInner() {
       <PageLayout sidebar={<Sidebar me={me} currentPath={pathname} />}>
         <div style={{ padding: "3rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
           <span style={{ fontSize: "3rem" }}><Icon name="globe" size="3rem" /></span>
-          <p style={{ marginTop: "1rem" }}>{t.profile_not_found}</p>
+          <p style={{ marginTop: "1rem" }}>{loadError === "remote_blocked" ? t.remote_blocked : loadError === "remote_unreachable" ? t.remote_unreachable : t.profile_not_found}</p>
           <p style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>{actorUrl}</p>
         </div>
       </PageLayout>

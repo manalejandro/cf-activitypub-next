@@ -972,5 +972,7 @@
   "compose_error_location": "Неверное местоположение",
   "cancel": "Отмена",
   "save": "Сохранить",
-  "status_not_found": "Пост не найден"
+  "status_not_found": "Пост не найден",
+  "remote_blocked": "Сервер этого аккаунта блокирует вас",
+  "remote_unreachable": "Сервер этого аккаунта недоступен"
 }

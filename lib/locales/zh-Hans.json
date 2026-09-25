@@ -972,5 +972,7 @@
   "compose_error_location": "位置无效",
   "cancel": "取消",
   "save": "保存",
-  "status_not_found": "未找到帖子"
+  "status_not_found": "未找到帖子",
+  "remote_blocked": "该账号的服务器正在屏蔽你",
+  "remote_unreachable": "无法访问该账号的服务器"
 }

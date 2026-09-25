@@ -972,5 +972,7 @@
   "compose_error_location": "Ungültiger Standort",
   "cancel": "Abbrechen",
   "save": "Speichern",
-  "status_not_found": "Beitrag nicht gefunden"
+  "status_not_found": "Beitrag nicht gefunden",
+  "remote_blocked": "Der Server dieses Kontos blockiert dich",
+  "remote_unreachable": "Der Server dieses Kontos ist nicht erreichbar"
 }

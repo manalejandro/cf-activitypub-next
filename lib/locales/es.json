@@ -972,5 +972,7 @@
   "compose_error_location": "Ubicación no válida",
   "cancel": "Cancelar",
   "save": "Guardar",
-  "status_not_found": "Publicación no encontrada"
+  "status_not_found": "Publicación no encontrada",
+  "remote_blocked": "El servidor de esta cuenta te está bloqueando",
+  "remote_unreachable": "El servidor de esta cuenta no responde"
 }

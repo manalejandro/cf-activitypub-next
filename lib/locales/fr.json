@@ -972,5 +972,7 @@
   "compose_error_location": "Localisation invalide",
   "cancel": "Annuler",
   "save": "Enregistrer",
-  "status_not_found": "Publication introuvable"
+  "status_not_found": "Publication introuvable",
+  "remote_blocked": "Le serveur de ce compte vous bloque",
+  "remote_unreachable": "Le serveur de ce compte est injoignable"
 }

@@ -39,7 +39,30 @@ export async function GET(
     }
   }
 
-  if (!actor) return notFound("Account not found");
+  if (!actor) {
+    // Explain why an on-demand remote resolution failed: an instance that
+    // rejects our deliveries (403) is blocking us.
+    try {
+      const target = rawId.startsWith("http") ? new URL(rawId) : null;
+      if (target && target.hostname !== domain) {
+        const rej = await env.DB
+          .prepare(
+            `SELECT status FROM delivery_rejections
+             WHERE domain = ? AND status IN (0, 403)
+               AND (last_ok_at IS NULL OR last_at > last_ok_at)`
+          )
+          .bind(target.hostname)
+          .first<{ status: number }>();
+        if (rej?.status === 403) {
+          return json({ error: "This account's server is blocking you", error_code: "remote_blocked" }, 403);
+        }
+        if (rej?.status === 0) {
+          return json({ error: "This account's server is unreachable", error_code: "remote_unreachable" }, 502);
+        }
+      }
+    } catch { /* fall through to 404 */ }
+    return notFound("Account not found");
+  }
   if (!actor.isLocal && !me) return unauthorized();
 
   // These do outbound requests (verification, FEP-7aa9 collection sync).

@@ -972,5 +972,7 @@
   "compose_error_location": "位置が無効です",
   "cancel": "キャンセル",
   "save": "保存",
-  "status_not_found": "投稿が見つかりません"
+  "status_not_found": "投稿が見つかりません",
+  "remote_blocked": "このアカウントのサーバーがあなたをブロックしています",
+  "remote_unreachable": "このアカウントのサーバーに接続できません"
 }
