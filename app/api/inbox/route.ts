@@ -1,10 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
-import { verifySignature, extractSigningKeyId } from "@/lib/activitypub/security";
-import { fetchRemoteObject } from "@/lib/activitypub/federation";
-import { getActorById, upsertRemoteActor } from "@/lib/db";
-import type { APActor } from "@/lib/types";
+import { extractSigningKeyId } from "@/lib/activitypub/security";
+import { verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 
 // POST /inbox — Shared inbox for federation delivery
 export async function POST(request: NextRequest): Promise<Response> {
@@ -46,8 +44,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const sigKeyId = extractSigningKeyId(headers);
   const signingActorId = sigKeyId ? sigKeyId.replace(/#.*$/, "") : actorId;
 
-  // Fetch local signing key first — needed for authorized fetch (signed GET)
-  // when resolving remote actors on instances that require it.
+  // Local signing key used by the activity handlers for outbound fetches.
   let signingKey: { id: string; privateKeyPem: string } | undefined;
   try {
     const localRow = await env.DB
@@ -58,61 +55,20 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   } catch { /* ignore */ }
 
-  let senderActor: APActor | null = null;
-  try {
-    const cached = await getActorById(env.DB, signingActorId);
-    if (cached?.publicKeyPem) {
-      // Reconstruct a minimal APActor from the cached row so signature
-      // verification can use the stored public key.
-      senderActor = {
-        id: cached.id,
-        type: (cached.isBot ? "Service" : "Person") as APActor["type"],
-        preferredUsername: cached.username,
-        inbox: cached.inbox ?? `${signingActorId}/inbox`,
-        outbox: `${signingActorId}/outbox`,
-        followers: `${signingActorId}/followers`,
-        following: `${signingActorId}/following`,
-        publicKey: {
-          id: sigKeyId ?? `${signingActorId}#main-key`,
-          owner: signingActorId,
-          publicKeyPem: cached.publicKeyPem,
-        },
-      };
-    } else {
-      // Not cached or cached without a public key — fetch from remote.
-      // Pass the local signing key so the GET is signed (required by instances
-      // with authorized fetch / secure mode enabled).
-      const fetched = await fetchRemoteObject(
-        signingActorId,
-        signingKey ? `${signingKey.id}#main-key` : undefined,
-        signingKey?.privateKeyPem,
-      ) as APActor | null;
-      // Never cache a document whose id differs from the actor we asked for:
-      // a malicious server could otherwise return an actor document pointing at
-      // another (local or remote) account and poison the key cache.
-      if (fetched?.id === signingActorId && fetched.publicKey?.publicKeyPem) {
-        senderActor = fetched;
-        try { await upsertRemoteActor(env.DB, senderActor); } catch { /* ignore */ }
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  if (!senderActor?.publicKey?.publicKeyPem) {
-    return json({ error: "Cannot verify signature: no public key" }, 401);
-  }
-
-  // Mastodon spec step 5: the Date header is required and must be within 12 hours.
-  const dateHeader = headers["date"];
-  const requestDate = dateHeader ? new Date(dateHeader) : null;
-  if (!requestDate || isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
-    return json({ error: "Request date missing, invalid, or too old" }, 401);
-  }
-
-  const valid = await verifySignature("POST", `${baseUrl}/inbox`, headers, senderActor.publicKey.publicKeyPem, rawBody);
-  if (!valid) {
-    return json({ error: "Invalid HTTP signature" }, 401);
+  const verdict = await verifyIncomingSignature(env.DB, env.KV, {
+    method: "POST",
+    url: `${baseUrl}/inbox`,
+    headers,
+    body: rawBody,
+    signingKeyId: sigKeyId ?? `${actorId}#main-key`,
+  });
+  if (verdict !== "ok") {
+    console.warn(`[inbox] ${verdict === "no-key" ? "no public key" : "invalid signature"} for ${signingActorId}`);
+    // 503 for an unresolvable key: the sender retries with backoff instead of
+    // dropping the activity permanently (401 is treated as permanent).
+    return verdict === "no-key"
+      ? json({ error: "Cannot verify signature: no public key" }, 503)
+      : json({ error: "Invalid HTTP signature" }, 401);
   }
 
   try {

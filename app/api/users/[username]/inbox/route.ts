@@ -1,10 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorByUsername, upsertRemoteActor } from "@/lib/db";
-import { verifySignature, extractSigningKeyId } from "@/lib/activitypub/security";
+import { getActorByUsername } from "@/lib/db";
+import { extractSigningKeyId } from "@/lib/activitypub/security";
+import { verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
-import { fetchRemoteObject } from "@/lib/activitypub/federation";
-import type { APActor } from "@/lib/types";
 
 // POST /users/:username/inbox
 export async function POST(
@@ -57,62 +56,23 @@ export async function POST(
   const sigKeyId = extractSigningKeyId(headers);
   const signingActorId = sigKeyId ? sigKeyId.replace(/#.*$/, "") : actorId;
 
-  // Fetch remote actor to get public key
-  let remoteActor: APActor | null = null;
-  try {
-    // Check cache first
-    const cached = await env.DB
-      .prepare("SELECT * FROM actors WHERE id = ?")
-      .bind(signingActorId)
-      .first<{ public_key_pem: string; inbox: string }>();
-
-    if (cached?.public_key_pem) {
-      remoteActor = { id: signingActorId, publicKey: { id: sigKeyId ?? `${signingActorId}#main-key`, owner: signingActorId, publicKeyPem: cached.public_key_pem }, type: "Person", preferredUsername: "", inbox: cached.inbox, outbox: "", followers: "", following: "" };
-    } else {
-      const fetched = await fetchRemoteObject(
-        signingActorId,
-        `${recipient.id}#main-key`,
-        recipient.privateKeyPem
-      );
-      if (fetched && "publicKey" in fetched) {
-        const actor = fetched as APActor;
-        // Never cache a document whose id differs from the actor we asked for:
-        // it could point at another (local or remote) account and poison the
-        // key cache used for signature verification.
-        if (actor.id === signingActorId && actor.publicKey?.publicKeyPem) {
-          remoteActor = actor;
-          try { await upsertRemoteActor(env.DB, remoteActor); } catch { /* ignore */ }
-        }
-      }
-    }
-  } catch {
-    // ignore fetch errors, proceed with signature check
-  }
-
-  if (!remoteActor?.publicKey?.publicKeyPem) {
-    return json({ error: "Cannot verify signature: no public key" }, 401);
-  }
-
-  // Mastodon spec step 5: the Date header is required and must be within 12 hours.
-  const dateHeader = headers["date"];
-  const requestDate = dateHeader ? new Date(dateHeader) : null;
-  if (!requestDate || isNaN(requestDate.getTime()) || Math.abs(Date.now() - requestDate.getTime()) > 12 * 36e5) {
-    return json({ error: "Request date missing, invalid, or too old" }, 401);
-  }
-
-  // Use the canonical inbox URL (before middleware rewrite) for signature verification.
-  // Middleware rewrites /users/:username/inbox → /api/users/:username/inbox, but the
-  // sender signed against the original path.
+  // Use the canonical inbox URL (before middleware rewrite) for signature
+  // verification: the sender signed against the original path.
   const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
-  const valid = await verifySignature(
-    "POST",
-    canonicalUrl,
+  const verdict = await verifyIncomingSignature(env.DB, env.KV, {
+    method: "POST",
+    url: canonicalUrl,
     headers,
-    remoteActor.publicKey.publicKeyPem,
-    body
-  );
-  if (!valid) {
-    return json({ error: "Invalid signature" }, 401);
+    body,
+    signingKeyId: sigKeyId ?? `${actorId}#main-key`,
+  });
+  if (verdict !== "ok") {
+    console.warn(`[inbox] ${verdict === "no-key" ? "no public key" : "invalid signature"} for ${signingActorId}`);
+    // 503 for an unresolvable key: the sender retries with backoff instead of
+    // dropping the activity permanently (401 is treated as permanent).
+    return verdict === "no-key"
+      ? json({ error: "Cannot verify signature: no public key" }, 503)
+      : json({ error: "Invalid HTTP signature" }, 401);
   }
 
   try {

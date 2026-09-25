@@ -24,10 +24,49 @@ import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
 
+/**
+ * Status of the last failed actor fetch, keyed by the requested URL (0 =
+ * network error / blocked). Lets signature verification tell a permanent
+ * failure (4xx: the key will never exist) from a transient one (retry later).
+ */
+const actorFetchStatus = new Map<string, number>();
+
+export function lastActorFetchStatus(actorUrl: string): number {
+  return actorFetchStatus.get(actorUrl) ?? 0;
+}
+
 export interface RemoteActorResult {
   id: string;
   inbox: string;
   domain: string;
+  publicKeyPem?: string;
+}
+
+/**
+ * Pick the actor's signing key. Mastodon 4.6+ rotates keys and may expose
+ * `publicKey` as an array or the keys through `assertionMethod`; prefer the
+ * key whose id matches the keyId used in the signature, else the first one.
+ */
+export function pickActorPublicKey(doc: Record<string, unknown>, keyId?: string): string {
+  const candidates: { id: string; pem: string }[] = [];
+  const collect = (value: unknown): void => {
+    const list = Array.isArray(value) ? value : [value];
+    for (const item of list) {
+      if (!item || typeof item !== "object") continue;
+      const key = item as Record<string, unknown>;
+      const pem = typeof key.publicKeyPem === "string" ? key.publicKeyPem : "";
+      if (!pem) continue;
+      candidates.push({ id: typeof key.id === "string" ? key.id : "", pem });
+    }
+  };
+  collect(doc.publicKey);
+  collect(doc.assertionMethod);
+  if (candidates.length === 0) return "";
+  if (keyId) {
+    const exact = candidates.find((c) => c.id === keyId);
+    if (exact) return exact.pem;
+  }
+  return candidates[0].pem;
 }
 
 const UA_BROWSER =
@@ -143,7 +182,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
 export async function fetchAndCacheRemoteActor(
   db: D1Database,
   actorUrl: string,
-  kv?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> }
+  kv?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> },
+  preferredKeyId?: string
 ): Promise<RemoteActorResult | null> {
   const val = validateOutboundUrl(actorUrl);
   if (!val.valid) {
@@ -154,7 +194,11 @@ export async function fetchAndCacheRemoteActor(
     const res = await remoteFetch(actorUrl, {
       Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
     });
-    if (!res?.ok) return null;
+    if (!res?.ok) {
+      actorFetchStatus.set(actorUrl, res?.status ?? 0);
+      return null;
+    }
+    actorFetchStatus.delete(actorUrl);
     let p = await res.json() as Record<string, unknown>;
     // Cache-poisoning guard: the document fetched from `actorUrl` must claim
     // exactly that id. A host answering with another actor's id (key/inbox
@@ -176,7 +220,10 @@ export async function fetchAndCacheRemoteActor(
       const canonical = await remoteFetch(id, {
         Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
       });
-      if (!canonical?.ok) return null;
+      if (!canonical?.ok) {
+        actorFetchStatus.set(id, canonical?.status ?? 0);
+        return null;
+      }
       const doc = await canonical.json() as Record<string, unknown>;
       if (doc.id !== id) {
         console.warn(`[remote] Refusing canonical actor document: fetched ${id} claims id ${String(doc.id ?? "(none)")}`);
@@ -188,7 +235,7 @@ export async function fetchAndCacheRemoteActor(
     const urlObj = new URL(id);
     const domain = urlObj.hostname;
     const inbox = (p.inbox as string) ?? `${id}/inbox`;
-    const pubKey = (p.publicKey as Record<string, string> | undefined)?.publicKeyPem ?? "";
+    const pubKey = pickActorPublicKey(p, preferredKeyId);
 
     const usernameNorm = username.toLowerCase();
 
@@ -418,7 +465,7 @@ export async function fetchAndCacheRemoteActor(
     // Probe domain call support (fire-and-forget to avoid blocking the response)
     void probeDomainCallsSupport(db, domain);
 
-    return { id, inbox, domain };
+    return { id, inbox, domain, publicKeyPem: pubKey };
   } catch {
     return null;
   }

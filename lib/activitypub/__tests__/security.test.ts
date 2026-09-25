@@ -75,6 +75,57 @@ describe("HTTP signature verification", () => {
     headers.signature = headers.signature.replace('algorithm="rsa-sha256"', 'algorithm="ecdsa-sha256"');
     expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(false);
   });
+
+  it("accepts a legacy signature that signs digest but not (request-target)", async () => {
+    const { publicKeyPem, privateKeyPem } = await generateKeyPair();
+    const date = new Date().toUTCString();
+    const digest = `SHA-256=${await sha256Base64(BODY)}`;
+    const signingString = [`digest: ${digest}`, "host: remote.example", `date: ${date}`].join("\n");
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      pemToDer(privateKeyPem),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signatureBytes = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signingString));
+    const headers = {
+      host: "remote.example",
+      date,
+      digest,
+      signature: `keyId="${KEY_ID}",algorithm="rsa-sha256",headers="digest host date",signature="${Buffer.from(new Uint8Array(signatureBytes)).toString("base64")}"`,
+    };
+    expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(true);
+  });
+
+  it("accepts an RFC 9421 HTTP Message Signature (Mastodon 4.7+)", async () => {
+    const { publicKeyPem, privateKeyPem } = await generateKeyPair();
+    const contentDigest = `sha-256=:${await sha256Base64(BODY)}:`;
+    const created = Math.floor(Date.now() / 1000);
+    const params = `("@method" "@target-uri" "content-digest");created=${created};keyid="${KEY_ID}"`;
+    const signingString = [
+      '"@method": POST',
+      `"@target-uri": ${TARGET}`,
+      `"content-digest": ${contentDigest}`,
+      `"@signature-params": ${params}`,
+    ].join("\n");
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      pemToDer(privateKeyPem),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signatureBytes = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signingString));
+    const headers = {
+      "signature-input": `sig1=${params}`,
+      signature: `sig1=:${Buffer.from(new Uint8Array(signatureBytes)).toString("base64")}:`,
+      "content-digest": contentDigest,
+    };
+    expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(true);
+    // The content digest is signed, so a swapped body must fail.
+    expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY + "x")).toBe(false);
+  });
 });
 
 describe("validateOutboundUrl", () => {
