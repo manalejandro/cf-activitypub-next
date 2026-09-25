@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json } from "@/lib/cf";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
-import { verifyIncomingSignature } from "@/lib/activitypub/signer-key";
+import { purgeGoneSelfDelete, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 
 // POST /inbox — Shared inbox for federation delivery
 export async function POST(request: NextRequest): Promise<Response> {
@@ -55,18 +55,26 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   } catch { /* ignore */ }
 
-  const verdict = await verifyIncomingSignature(env.DB, env.KV, {
+  const check = await verifyIncomingSignature(env.DB, env.KV, {
     method: "POST",
     url: `${baseUrl}/inbox`,
     headers,
     body: rawBody,
     signingKeyId: sigKeyId ?? `${actorId}#main-key`,
   });
-  if (verdict !== "ok") {
-    console.warn(`[inbox] ${verdict === "no-key" ? "no public key" : "invalid signature"} for ${signingActorId}`);
-    // 503 for an unresolvable key: the sender retries with backoff instead of
-    // dropping the activity permanently (401 is treated as permanent).
-    return verdict === "no-key"
+  if (!check.ok) {
+    const detail = check.status ? ` (HTTP ${check.status})` : "";
+    const activityType = typeof body.type === "string" ? body.type : "";
+    const activityObject = body.object;
+    const activityObjectId = typeof activityObject === "string" ? activityObject : (activityObject as { id?: string } | undefined)?.id ?? "";
+    const purged = await purgeGoneSelfDelete(env.DB, check, body, signingActorId);
+    console.warn(
+      `[inbox] ${check.reason} for ${signingActorId}${detail} type=${activityType || "?"}` +
+      `${activityObjectId ? ` object=${activityObjectId}` : ""}${purged ? " (purged cached copy)" : ""}`
+    );
+    // `no-key` is retryable (503) so the sender retries with backoff instead of
+    // dropping the activity; a gone key or a bad signature is permanent (401).
+    return check.reason === "no-key"
       ? json({ error: "Cannot verify signature: no public key" }, 503)
       : json({ error: "Invalid HTTP signature" }, 401);
   }
