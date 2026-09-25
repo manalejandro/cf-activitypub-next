@@ -17,7 +17,7 @@ import {
   upsertCustomEmoji,
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
-import { validateOutboundUrl, fetchRemoteObject, safeFetch, signedGetHeaders } from "@/lib/activitypub/federation";
+import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders } from "@/lib/activitypub/federation";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
@@ -178,6 +178,42 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
   return supported;
 }
 
+/**
+ * Fetch an actor document, reporting a cross-host redirect. An instance that
+ * moved to another domain (301/308) no longer serves the keyId's identity, so
+ * callers must treat it as gone instead of caching the new host's actor under
+ * the old URL.
+ */
+async function remoteActorFetch(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 8000
+): Promise<{ res: Response | null; moved: boolean }> {
+  const uas = [buildUserAgent(), UA_BROWSER];
+  const signed = await signedGetHeaders(url);
+  const originalHost = new URL(url).hostname;
+  let last: Response | null = null;
+  let sawMove = false;
+  for (const ua of uas) {
+    try {
+      const { res, finalUrl } = await safeFetchTracked(url, { headers: { ...headers, "User-Agent": ua, ...signed } }, timeoutMs);
+      let moved = false;
+      try {
+        moved = new URL(finalUrl).hostname !== originalHost;
+      } catch { /* keep as not moved */ }
+      if (moved) sawMove = true;
+      if (res?.ok) return { res, moved };
+      await discardBody(res);
+      last = res;
+      // A moved host answers the same way for any UA: the old identity is gone.
+      if (moved) break;
+    } catch {
+      /* try next UA */
+    }
+  }
+  return { res: last, moved: sawMove };
+}
+
 /** Fetch a remote ActivityPub actor profile and cache it in D1. */
 export async function fetchAndCacheRemoteActor(
   db: D1Database,
@@ -191,11 +227,11 @@ export async function fetchAndCacheRemoteActor(
     return null;
   }
   try {
-    const res = await remoteFetch(actorUrl, {
+    const { res, moved } = await remoteActorFetch(actorUrl, {
       Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
     });
     if (!res?.ok) {
-      actorFetchStatus.set(actorUrl, res?.status ?? 0);
+      actorFetchStatus.set(actorUrl, moved ? 301 : res?.status ?? 0);
       return null;
     }
     actorFetchStatus.delete(actorUrl);
@@ -204,6 +240,14 @@ export async function fetchAndCacheRemoteActor(
     // exactly that id. A host answering with another actor's id (key/inbox
     // swap) is rejected, never cached.
     const id = typeof p.id === "string" ? p.id : "";
+    if (moved && id !== actorUrl) {
+      // The keyId's host permanently redirects to another domain: the old
+      // identity is gone (the new account has its own key), so never cache the
+      // redirected document under the old URL.
+      actorFetchStatus.set(actorUrl, 301);
+      console.warn(`[remote] Actor ${actorUrl} moved to another host (claims id ${id || "(none)"})`);
+      return null;
+    }
     if (!id || id !== actorUrl) {
       // Web profile URLs (`/@user`) legitimately resolve to the canonical
       // `/users/user` actor id on the same host: re-fetch that id and cache

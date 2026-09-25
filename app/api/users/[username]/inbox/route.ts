@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorByUsername } from "@/lib/db";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
-import { purgeGoneSelfDelete, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
+import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 
 // POST /users/:username/inbox
@@ -67,14 +67,24 @@ export async function POST(
     signingKeyId: sigKeyId ?? `${actorId}#main-key`,
   });
   if (!check.ok) {
-    const detail = check.status ? ` (HTTP ${check.status})` : "";
-    const activityType = typeof activity.type === "string" ? activity.type : "";
+    const activityType = typeof activity.type === "string" ? activity.type.toLowerCase() : "";
     const activityObject = activity.object;
     const activityObjectId = typeof activityObject === "string" ? activityObject : (activityObject as { id?: string } | undefined)?.id ?? "";
-    const purged = await purgeGoneSelfDelete(env.DB, check, activity, signingActorId);
+
+    // An unverifiable `Delete` from an account the origin reports as gone can
+    // only remove data (or nothing at all) and those deliveries keep coming
+    // from queued deletes of dead accounts, so treat it as a delivered no-op:
+    // purge any cached copy, ack it, and keep it out of the warning logs.
+    if (check.reason === "gone" && activityType === "delete") {
+      const purged = await purgeGoneSignerData(env.DB, check, signingActorId);
+      if (purged) console.warn(`[inbox] purged cached copy of gone actor ${signingActorId}`);
+      return json({ status: "accepted" }, 202);
+    }
+
+    const detail = check.status ? ` (HTTP ${check.status})` : "";
     console.warn(
       `[inbox] ${check.reason} for ${signingActorId}${detail} type=${activityType || "?"}` +
-      `${activityObjectId ? ` object=${activityObjectId}` : ""}${purged ? " (purged cached copy)" : ""}`
+      `${activityObjectId ? ` object=${activityObjectId}` : ""}`
     );
     // `no-key` is retryable (503) so the sender retries with backoff instead of
     // dropping the activity; a gone key or a bad signature is permanent (401).

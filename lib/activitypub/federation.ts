@@ -117,17 +117,27 @@ const MAX_REDIRECTS = 3;
  * timeout. Redirects are followed manually because `fetch` would otherwise
  * follow a `Location` into private space without re-validation.
  */
-export async function safeFetch(
+export interface TrackedFetchResult {
+  res: Response | null;
+  /** Final URL after redirects (the requested URL when there was none). */
+  finalUrl: string;
+}
+
+/**
+ * `safeFetch` variant that reports the final URL so callers can detect
+ * cross-host redirects (instance moves) instead of silently following them.
+ */
+export async function safeFetchTracked(
   url: string,
   init: RequestInit = {},
   timeoutMs = REQUEST_TIMEOUT_MS
-): Promise<Response | null> {
+): Promise<TrackedFetchResult> {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const validation = validateOutboundUrl(current);
     if (!validation.valid) {
       console.warn(`[federation] Blocked outbound request to ${current}: ${validation.reason}`);
-      return null;
+      return { res: null, finalUrl: current };
     }
     const res = await fetch(current, {
       ...init,
@@ -136,12 +146,12 @@ export async function safeFetch(
     });
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
-      if (!location) return res;
+      if (!location) return { res, finalUrl: current };
       await res.body?.cancel().catch(() => {});
       try {
         current = new URL(location, current).toString();
       } catch {
-        return null;
+        return { res: null, finalUrl: current };
       }
       continue;
     }
@@ -152,10 +162,18 @@ export async function safeFetch(
       // canceled to prevent deadlock").
       await res.body?.cancel().catch(() => {});
     }
-    return res;
+    return { res, finalUrl: current };
   }
   console.warn(`[federation] Too many redirects for ${url}`);
-  return null;
+  return { res: null, finalUrl: current };
+}
+
+export async function safeFetch(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response | null> {
+  return (await safeFetchTracked(url, init, timeoutMs)).res;
 }
 
 // ─────────────────────────────────────────

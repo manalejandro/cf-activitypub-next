@@ -32,7 +32,9 @@ export type SignerKeyResult = SignerKeySuccess | SignerKeyFailure;
  * later.
  */
 function isPermanentKeyFailure(status: number): boolean {
-  return status === 400 || status === 403 || status === 404 || status === 410 || status === 422;
+  // 301/308: the actor's host permanently redirects to another domain (the
+  // old identity is gone; the new account has its own key).
+  return status === 301 || status === 308 || status === 400 || status === 403 || status === 404 || status === 410 || status === 422;
 }
 
 function keyFailMarker(actorId: string): string {
@@ -93,24 +95,23 @@ export async function resolveSignerKey(
 }
 
 /**
- * A self-`Delete` (actor === object) whose signer key the origin reports as 410
- * Gone can no longer be verified, but it can only ever target the signer and
- * that account no longer exists at the origin: purge our cached copy so deleted
+ * An activity whose signer key the origin reports as 410 Gone cannot be
+ * verified any more, but the origin is stating the account does not exist: purge
+ * our cached copy (actor, posts, notifications and follows cascade) so deleted
  * accounts do not linger. Only an explicit 410 triggers this — never a 403/404
- * that may be a temporary block or a fetch problem.
+ * that may be a temporary block or a fetch problem. Returns true when a cached
+ * copy was purged.
  */
-export async function purgeGoneSelfDelete(
+export async function purgeGoneSignerData(
   db: D1Database,
   check: SignatureCheck,
-  activity: { type?: unknown; actor?: unknown; object?: unknown },
   signingActorId: string
 ): Promise<boolean> {
-  if (check.reason !== "gone" || check.status !== 410) return false;
-  const type = typeof activity.type === "string" ? activity.type.toLowerCase() : "";
-  if (type !== "delete") return false;
-  const actorValue = typeof activity.actor === "string" ? activity.actor : (activity.actor as { id?: string } | undefined)?.id;
-  const objectValue = typeof activity.object === "string" ? activity.object : (activity.object as { id?: string } | undefined)?.id;
-  if (actorValue !== signingActorId || objectValue !== signingActorId) return false;
+  if (check.reason !== "gone") return false;
+  const status = check.status ?? 0;
+  // 410: the origin declares the actor Gone. 301/308: the actor's host moved to
+  // another domain, so the old identity (and its cached copy) is dead.
+  if (status !== 410 && status !== 301 && status !== 308) return false;
   const cached = await getActorById(db, signingActorId);
   if (!cached || cached.isLocal) return false;
   await deleteRemoteActorData(db, signingActorId).catch(() => {});
