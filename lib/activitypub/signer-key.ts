@@ -6,11 +6,37 @@ import { verifySignature } from "@/lib/activitypub/security";
 interface KVLike {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete?(key: string): Promise<void>;
 }
 
-export interface ResolvedSignerKey {
+export interface SignerKeySuccess {
+  ok: true;
   id: string;
   publicKeyPem: string;
+}
+
+export interface SignerKeyFailure {
+  ok: false;
+  /** True when the key will never be resolvable (deleted/gone/malformed actor). */
+  permanent: boolean;
+  /** HTTP status of the actor fetch (0 = network error / blocked). */
+  status: number;
+}
+
+export type SignerKeyResult = SignerKeySuccess | SignerKeyFailure;
+
+/**
+ * Actor fetch statuses that mean the key can never be resolved (deleted or
+ * malformed actor URL, or the origin refuses to serve it). Anything else
+ * (0, 401, 429, 5xx) is retryable: a blocked or rate-limited fetch may succeed
+ * later.
+ */
+function isPermanentKeyFailure(status: number): boolean {
+  return status === 400 || status === 403 || status === 404 || status === 410 || status === 422;
+}
+
+function keyFailMarker(actorId: string): string {
+  return `sig:keyfail:${actorId}`;
 }
 
 /**
@@ -19,40 +45,62 @@ export interface ResolvedSignerKey {
  * that has migrated the actor URL, so the fetch reuses the same-host canonical
  * re-fetch of `fetchAndCacheRemoteActor` and picks the key matching the keyId
  * when the actor document exposes several (Mastodon 4.6+ key rotation).
+ *
+ * Failures are negatively cached (KV) so a sender whose key is gone or
+ * unreachable cannot trigger a fetch per delivery.
  */
 export async function resolveSignerKey(
   db: D1Database,
   kv: KVLike | undefined,
   keyId: string,
   options: { forceRefresh?: boolean } = {}
-): Promise<ResolvedSignerKey | null> {
+): Promise<SignerKeyResult> {
   const actorId = keyId.replace(/#.*$/, "");
-  if (!actorId.startsWith("https://")) return null;
+  if (!actorId.startsWith("https://")) return { ok: false, permanent: true, status: 0 };
 
   const cached = await getActorById(db, actorId);
   if (cached?.publicKeyPem && (!options.forceRefresh || cached.isLocal)) {
-    return { id: cached.id, publicKeyPem: cached.publicKeyPem };
+    return { ok: true, id: cached.id, publicKeyPem: cached.publicKeyPem };
   }
   // Never fetch a local actor over the network (a self-fetch would time out).
-  if (cached?.isLocal) return null;
+  if (cached?.isLocal) return { ok: false, permanent: true, status: 0 };
+
+  if (!options.forceRefresh) {
+    const marker = kv ? await kv.get(keyFailMarker(actorId)).catch(() => null) : null;
+    if (marker !== null) {
+      const status = Number(marker);
+      return { ok: false, permanent: isPermanentKeyFailure(status), status };
+    }
+  }
 
   const refreshed = await fetchAndCacheRemoteActor(db, actorId, kv, keyId);
-  if (!refreshed) return null;
-  if (refreshed.publicKeyPem) return { id: refreshed.id, publicKeyPem: refreshed.publicKeyPem };
+  if (!refreshed) {
+    const status = lastActorFetchStatus(actorId);
+    const permanent = isPermanentKeyFailure(status);
+    if (kv) {
+      await kv
+        .put(keyFailMarker(actorId), String(status), { expirationTtl: permanent ? 86400 : 300 })
+        .catch(() => {});
+    }
+    return { ok: false, permanent, status };
+  }
+  if (kv?.delete) await kv.delete(keyFailMarker(actorId)).catch(() => {});
 
+  if (refreshed.publicKeyPem) return { ok: true, id: refreshed.id, publicKeyPem: refreshed.publicKeyPem };
   const row = await getActorById(db, refreshed.id);
-  return row?.publicKeyPem ? { id: row.id, publicKeyPem: row.publicKeyPem } : null;
+  if (row?.publicKeyPem) return { ok: true, id: row.id, publicKeyPem: row.publicKeyPem };
+  return { ok: false, permanent: true, status: 0 };
 }
 
-export type SignatureVerdict = "ok" | "no-key" | "invalid";
-
-/**
- * Actor fetch statuses that mean the key can never be resolved (deleted or
- * malformed actor URL). Anything else (0, 401/403, 429, 5xx) is retryable:
- * a blocked or rate-limited fetch may succeed later.
- */
-function isPermanentKeyFailure(status: number): boolean {
-  return status === 400 || status === 404 || status === 410 || status === 422;
+export interface SignatureCheck {
+  ok: boolean;
+  /**
+   * `gone`: the key is permanently unavailable (deleted/suspended account);
+   * `no-key`: the key could not be fetched right now (retryable);
+   * `invalid`: a key was available and the signature does not match.
+   */
+  reason: "ok" | "gone" | "no-key" | "invalid";
+  status?: number;
 }
 
 /**
@@ -71,25 +119,30 @@ export async function verifyIncomingSignature(
     body: string | null;
     signingKeyId: string | null;
   }
-): Promise<SignatureVerdict> {
-  if (!params.signingKeyId) return "invalid";
+): Promise<SignatureCheck> {
+  if (!params.signingKeyId) return { ok: false, reason: "invalid" };
   const actorId = params.signingKeyId.replace(/#.*$/, "");
-  if (!actorId.startsWith("https://")) return "invalid";
+  if (!actorId.startsWith("https://")) return { ok: false, reason: "invalid" };
+
+  const failure = (result: SignerKeyFailure): SignatureCheck =>
+    result.permanent
+      ? { ok: false, reason: "gone", status: result.status }
+      : { ok: false, reason: "no-key", status: result.status };
 
   let signer = await resolveSignerKey(db, kv, params.signingKeyId);
-  if (!signer) return isPermanentKeyFailure(lastActorFetchStatus(actorId)) ? "invalid" : "no-key";
+  if (!signer.ok) return failure(signer);
   if (await verifySignature(params.method, params.url, params.headers, signer.publicKeyPem, params.body)) {
-    return "ok";
+    return { ok: true, reason: "ok" };
   }
 
   const marker = `sig:refresh:${params.signingKeyId}`;
   const recentlyRefreshed = kv ? await kv.get(marker).catch(() => null) : null;
-  if (recentlyRefreshed) return "invalid";
+  if (recentlyRefreshed) return { ok: false, reason: "invalid" };
   if (kv) await kv.put(marker, "1", { expirationTtl: 300 }).catch(() => {});
 
   signer = await resolveSignerKey(db, kv, params.signingKeyId, { forceRefresh: true });
-  if (!signer) return isPermanentKeyFailure(lastActorFetchStatus(actorId)) ? "invalid" : "no-key";
+  if (!signer.ok) return failure(signer);
   return (await verifySignature(params.method, params.url, params.headers, signer.publicKeyPem, params.body))
-    ? "ok"
-    : "invalid";
+    ? { ok: true, reason: "ok" }
+    : { ok: false, reason: "invalid" };
 }

@@ -59,18 +59,19 @@ export async function POST(
   // Use the canonical inbox URL (before middleware rewrite) for signature
   // verification: the sender signed against the original path.
   const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
-  const verdict = await verifyIncomingSignature(env.DB, env.KV, {
+  const check = await verifyIncomingSignature(env.DB, env.KV, {
     method: "POST",
     url: canonicalUrl,
     headers,
     body,
     signingKeyId: sigKeyId ?? `${actorId}#main-key`,
   });
-  if (verdict !== "ok") {
-    console.warn(`[inbox] ${verdict === "no-key" ? "no public key" : "invalid signature"} for ${signingActorId}`);
-    // 503 for an unresolvable key: the sender retries with backoff instead of
-    // dropping the activity permanently (401 is treated as permanent).
-    return verdict === "no-key"
+  if (!check.ok) {
+    const detail = check.status ? ` (HTTP ${check.status})` : "";
+    console.warn(`[inbox] ${check.reason} for ${signingActorId}${detail}`);
+    // `no-key` is retryable (503) so the sender retries with backoff instead of
+    // dropping the activity; a gone key or a bad signature is permanent (401).
+    return check.reason === "no-key"
       ? json({ error: "Cannot verify signature: no public key" }, 503)
       : json({ error: "Invalid HTTP signature" }, 401);
   }
