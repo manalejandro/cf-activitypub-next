@@ -43,6 +43,7 @@ import {
   getInstanceDomainBlock,
   getCollectionById,
   deleteCollection,
+  upsertCollectionItem,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -54,7 +55,7 @@ import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
-import { syncRemoteCollections } from "./collections";
+import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
@@ -65,7 +66,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
-import { isContentObjectType, mlsObjectTypeFromType } from "./vocab";
+import { DEFAULT_CONTEXT, isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
@@ -296,6 +297,12 @@ export async function processInboxActivity(
         break;
       case "move":
         await handleMove(activity, ctx);
+        break;
+      case "quoterequest":
+        await handleQuoteRequest(activity, ctx);
+        break;
+      case "featurerequest":
+        await handleFeatureRequest(activity, ctx);
         break;
       case "calloffer":
         await handleCallOffer(activity, ctx);
@@ -882,6 +889,112 @@ async function handleBlock(activity: APActivity, ctx: InboxContext): Promise<voi
   }
   await ensureActorCached(ctx.db, actorId);
   await createBlock(ctx.db, generateId(), actorId, targetId);
+}
+
+/** Shared FEP host checks: the activity must be served and signed by its actor. */
+function activityHostsMatch(activity: APActivity, actorId: string, ctx: InboxContext): boolean {
+  const activityId = typeof activity.id === "string" ? activity.id : "";
+  if (!activityId) return false;
+  try {
+    const actorHost = new URL(actorId).hostname;
+    return actorHost === new URL(activityId).hostname && actorHost !== new URL(ctx.baseUrl).hostname;
+  } catch {
+    return false;
+  }
+}
+
+function referenceUri(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === "string") return id;
+  }
+  return null;
+}
+
+/**
+ * FEP-044f `QuoteRequest`: a remote account asks to quote one of our posts.
+ * Accept when the post is quotable (public/unlisted, no block/silence) and
+ * answer `Accept`/`Reject` so remote Mastodon can show the quote.
+ */
+async function handleQuoteRequest(activity: APActivity, ctx: InboxContext): Promise<void> {
+  const requesterId = activityActorId(activity);
+  if (!requesterId || !activityHostsMatch(activity, requesterId, ctx)) return;
+  const objectUri = referenceUri(activity.object);
+  const instrumentUri = referenceUri((activity as unknown as { instrument?: unknown }).instrument);
+  if (!objectUri || !instrumentUri) return;
+
+  const quoted = await getObjectById(ctx.db, objectUri);
+  if (!quoted) return;
+  const author = await getActorById(ctx.db, quoted.actorId);
+  if (!author?.isLocal || !author.privateKeyPem) return;
+
+  const accepted = (quoted.visibility === "public" || quoted.visibility === "unlisted")
+    && !ctx.rejectMedia
+    && !(await isActorBlockedBy(ctx.db, quoted.actorId, requesterId))
+    && !(await isActorBlockedBy(ctx.db, requesterId, quoted.actorId));
+
+  const activityId = activity.id as string;
+  const reply = {
+    "@context": DEFAULT_CONTEXT,
+    id: `${author.id}#${accepted ? "accepts" : "rejects"}/quote_requests/${encodeURIComponent(activityId)}`,
+    type: accepted ? "Accept" : "Reject",
+    actor: author.id,
+    to: [requesterId],
+    object: activity,
+    ...(accepted ? { result: `${author.id}#quote_approvals/${encodeURIComponent(activityId)}` } : {}),
+  } as unknown as APActivity;
+
+  const requester = await getActorById(ctx.db, requesterId);
+  const inbox = requester?.inbox ?? `${requesterId}/inbox`;
+  if (ctx.deliveryQueue) {
+    await enqueueDeliveries(ctx.deliveryQueue, [inbox], JSON.stringify(reply), author.id, `${author.id}#main-key`, author.privateKeyPem).catch(() => {});
+  }
+}
+
+/**
+ * FEP-7aa9 `FeatureRequest`: a remote collection owner asks to feature one of
+ * our local accounts. Accept (storing the item and replying with the
+ * authorization URL) or reject, mirroring Mastodon 4.7+.
+ */
+async function handleFeatureRequest(activity: APActivity, ctx: InboxContext): Promise<void> {
+  const requesterId = activityActorId(activity);
+  if (!requesterId || !activityHostsMatch(activity, requesterId, ctx)) return;
+  const featuredUri = referenceUri(activity.object);
+  const collectionUri = referenceUri((activity as unknown as { instrument?: unknown }).instrument);
+  if (!featuredUri || !collectionUri) return;
+
+  const featured = await getActorById(ctx.db, featuredUri);
+  if (!featured?.isLocal || !featured.privateKeyPem) return;
+
+  let collection = await getCollectionById(ctx.db, collectionUri);
+  if (!collection) {
+    await syncRemoteCollections(ctx.db, ctx.kv, requesterId).catch(() => {});
+    collection = await getCollectionById(ctx.db, collectionUri);
+  }
+  if (!collection || collection.account_id !== requesterId) return;
+
+  const accepted = !ctx.rejectMedia
+    && !(await isActorBlockedBy(ctx.db, requesterId, featuredUri))
+    && !(await isActorBlockedBy(ctx.db, featuredUri, requesterId));
+  const itemId = generateId();
+  await upsertCollectionItem(ctx.db, itemId, collection.id, featuredUri, accepted ? "accepted" : "rejected");
+
+  const reply = {
+    "@context": DEFAULT_CONTEXT,
+    id: `${featured.id}#${accepted ? "accepts" : "rejects"}/feature_requests/${itemId}`,
+    type: accepted ? "Accept" : "Reject",
+    actor: featured.id,
+    to: [requesterId],
+    object: activity.id,
+    ...(accepted ? { result: featureAuthorizationIRI(ctx.baseUrl, featured.username, itemId) } : {}),
+  } as unknown as APActivity;
+
+  const requester = await getActorById(ctx.db, requesterId);
+  const inbox = requester?.inbox ?? `${requesterId}/inbox`;
+  if (ctx.deliveryQueue) {
+    await enqueueDeliveries(ctx.deliveryQueue, [inbox], JSON.stringify(reply), featured.id, `${featured.id}#main-key`, featured.privateKeyPem).catch(() => {});
+  }
 }
 
 async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void> {

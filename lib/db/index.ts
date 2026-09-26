@@ -1369,6 +1369,17 @@ export async function replaceRemoteCollectionItems(
   // Preserve the remote `orderedItems` order: SQL result order is not stable
   // (the planner may scan an index), so filter the original list instead.
   const ordered = unique.filter((id) => known.has(id));
+  // Local accounts authorized through a FeatureRequest keep their item (and its
+  // id: the authorization URL already sent to the remote must stay valid) even
+  // when the origin's listing omits them.
+  const localItems = await db
+    .prepare(
+      `SELECT id, account_id FROM collection_items
+       WHERE collection_id = ? AND state = 'accepted'
+         AND account_id IN (SELECT id FROM actors WHERE is_local = 1)`
+    )
+    .bind(collectionId)
+    .all<{ id: string; account_id: string }>();
   await db.prepare("DELETE FROM collection_items WHERE collection_id = ? AND state = 'accepted'").bind(collectionId).run();
   for (let i = 0; i < ordered.length; i++) {
     await db
@@ -1378,6 +1389,30 @@ export async function replaceRemoteCollectionItems(
       .bind(`${collectionId}:${ordered[i]}`, collectionId, ordered[i], new Date(Date.now() + i).toISOString())
       .run();
   }
+  for (const item of localItems.results ?? []) {
+    await db
+      .prepare("INSERT OR IGNORE INTO collection_items (id, collection_id, account_id, state, created_at) VALUES (?,?,?,'accepted',?)")
+      .bind(item.id, collectionId, item.account_id, new Date().toISOString())
+      .run();
+  }
+}
+
+/** Insert or update one collection item (FEP-7aa9 feature authorizations). */
+export async function upsertCollectionItem(
+  db: D1Database,
+  id: string,
+  collectionId: string,
+  accountId: string,
+  state: "accepted" | "rejected" | "pending"
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO collection_items (id, collection_id, account_id, state, created_at)
+       VALUES (?,?,?,?,datetime('now'))
+       ON CONFLICT(collection_id, account_id) DO UPDATE SET state = excluded.state`
+    )
+    .bind(id, collectionId, accountId, state)
+    .run();
 }
 
 export async function getCollectionItems(db: D1Database, collectionId: string): Promise<LocalCollectionItem[]> {
