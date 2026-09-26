@@ -897,6 +897,9 @@ function extractHashtags(content: string, raw?: string, localDomain?: string): {
   // The pattern also mirrors the linkifier and Mastodon: a hashtag must contain
   // at least one letter, so numeric-only tokens are not tags.
   const plain = content
+    // Code samples are not content: strip whole <pre>/<code> blocks first so
+    // `#quote` inside a code snippet never becomes a hashtag.
+    .replace(/<(?:pre|code)\b[^>]*>[\s\S]*?<\/(?:pre|code)>/gi, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/&[a-zA-Z#0-9]+;/g, " ");
   const matches = plain.match(/#([a-zA-Z\u00C0-\u024F\u0400-\u04FF][a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF_]*)/g) ?? [];

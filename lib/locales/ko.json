@@ -981,6 +981,5 @@
   "login_remote_button": "계속",
   "login_remote_hint": "이 게시물을 내 인스턴스에서 열어 로그인하고 상호작용할 수 있습니다.",
   "login_remote_invalid": "올바른 인스턴스 도메인을 입력하세요",
-  "login_remote_continue": "{instance}에서 계속",
-  "compose_markdown_hint": "Markdown 지원: **굵게**, *기울임*, `코드`, ### 제목"
+  "login_remote_continue": "{instance}에서 계속"
 }

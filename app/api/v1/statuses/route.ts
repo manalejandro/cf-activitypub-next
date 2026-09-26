@@ -357,7 +357,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     // account (santiago@mastodon.uy) instead of a dead local URL.
     const participants = await collectThreadParticipants(env.DB, parentNode, baseUrl);
     const localDomain = new URL(baseUrl).hostname;
-    content = expandBareMentions(content ?? "", participants, localDomain);
+    content = expandBareMentions(content ?? "", participants, localDomain, { markdown: markdownContent });
 
     // Which actors are already mentioned in the user's own text (avoid dupes)
     const { tags: userMentionTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent });

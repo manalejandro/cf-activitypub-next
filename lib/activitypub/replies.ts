@@ -17,6 +17,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { APTag } from "@/lib/types";
 import { getActorById, getObjectById } from "@/lib/db";
+import { isInsideMarkdownCode } from "@/lib/markdown-code";
 
 export interface ReplyParticipant {
   iri: string;
@@ -100,7 +101,8 @@ export async function collectThreadParticipants(
 
   const participants: ReplyParticipant[] = [];
   for (const [iri, info] of byIri) {
-    participants.push(await resolveParticipant(db, iri, info.name, localDomain));
+    const participant = await resolveParticipant(db, iri, info.name, localDomain);
+    if (participant) participants.push(participant);
   }
   return participants;
 }
@@ -110,7 +112,7 @@ async function resolveParticipant(
   iri: string,
   tagName: string | undefined,
   localDomain: string
-): Promise<ReplyParticipant> {
+): Promise<ReplyParticipant | null> {
   let username: string | null = null;
   let domain: string | null = null;
 
@@ -126,6 +128,9 @@ async function resolveParticipant(
     username = cached.username;
     domain = cached.domain;
   } else {
+    // A local IRI with no actor row is bogus data (e.g. code samples that were
+    // misparsed as mentions before): never address it in a reply.
+    if (hostname === localDomain) return null;
     const parsed = parseHandle(tagName);
     username = parsed.username;
     domain = parsed.domain ?? hostname;
@@ -233,7 +238,8 @@ export function mentionKey(tag: APTag): string | null {
 export function expandBareMentions(
   text: string,
   participants: ReplyParticipant[],
-  localDomain: string
+  localDomain: string,
+  options: { markdown?: boolean } = {}
 ): string {
   const remoteHandles = new Map<string, string>();
   for (const p of participants) {
@@ -247,6 +253,10 @@ export function expandBareMentions(
   if (remoteHandles.size === 0) return text;
   return text.replace(
     /(?<![a-zA-Z0-9_.-])@([a-zA-Z0-9_]+)(?![@a-zA-Z0-9_.-])/g,
-    (full, user: string) => remoteHandles.get(user.toLowerCase()) ?? full
+    (full, user: string, offset: number) => {
+      // `@account` inside a code sample is source code, not a bare mention.
+      if (options.markdown && isInsideMarkdownCode(text, offset)) return full;
+      return remoteHandles.get(user.toLowerCase()) ?? full;
+    }
   );
 }

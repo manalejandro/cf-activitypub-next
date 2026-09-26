@@ -45,6 +45,11 @@ describe("hashtag extraction from rendered HTML", () => {
     expect(status.tags).toEqual([]);
   });
 
+  it("ignores hashtags inside code samples", () => {
+    const status = statusWith('<p>Run <code>quote_request.rb #perform</code> and #security</p>');
+    expect(status.tags.map((t) => t.name)).toEqual(["security"]);
+  });
+
   it("still extracts real hashtags and links them locally", () => {
     const status = statusWith("<p>Hola #seguridad y #Café, issue #34480</p>");
     expect(status.tags.map((t) => t.name)).toEqual(["seguridad", "café"]);

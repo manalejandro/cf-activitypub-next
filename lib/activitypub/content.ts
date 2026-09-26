@@ -5,6 +5,7 @@
 
 import type { APTag } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
+import { maskMarkdownCode } from "@/lib/markdown-code";
 import type { LocalCustomEmoji } from "@/lib/types";
 
 function escapeHtml(text: string): string {
@@ -301,12 +302,17 @@ export function processStatusContent(
   const replacements = buildReplacements(text, baseUrl, customEmojis);
 
   if (options.markdown) {
+    // Tags come from the text OUTSIDE code samples: `@options` or `#quote`
+    // inside a fenced block is source code, never a mention or hashtag.
+    const tags = buildReplacements(maskMarkdownCode(text), baseUrl, customEmojis)
+      .filter((r) => r.tag)
+      .map((r) => r.tag!);
     return {
       html: renderMarkdown(text, {
         inline: (segment) => linkifyInline(segment, baseUrl, customEmojis),
         escape: escapeHtml,
       }),
-      tags: replacements.filter((r) => r.tag).map((r) => r.tag!),
+      tags,
     };
   }
 

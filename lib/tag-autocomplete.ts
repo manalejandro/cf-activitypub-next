@@ -1,3 +1,5 @@
+import { isInsideMarkdownCode } from "@/lib/markdown-code";
+
 /** Client-side tag shape returned by /api/v1/tags/search. */
 export interface TagSuggestion {
   id?: string;
@@ -17,8 +19,10 @@ export function findTagQuery(
   text: string,
   cursorPos: number
 ): { start: number; end: number; query: string } | null {
+  // Inside a code sample `#tag` is source code, not a hashtag.
+  if (isInsideMarkdownCode(text, cursorPos)) return null;
   const before = text.slice(0, cursorPos);
-  const m = /(^|[^\S\r\n])(#([^\s#]+))$/.exec(before);
+  const m = /(^|\s)(#([^\s#]+))$/.exec(before);
   if (!m) return null;
   const query = m[3];
   if (query.length < 2) return null;

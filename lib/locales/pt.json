@@ -981,6 +981,5 @@
   "login_remote_button": "Continuar",
   "login_remote_hint": "Vamos abrir esta publicação na sua instância para você entrar e interagir por lá.",
   "login_remote_invalid": "Informe um domínio de instância válido",
-  "login_remote_continue": "Continuar em {instance}",
-  "compose_markdown_hint": "Markdown suportado: **negrito**, *itálico*, `código`, ### título"
+  "login_remote_continue": "Continuar em {instance}"
 }

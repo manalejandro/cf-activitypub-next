@@ -981,6 +981,5 @@
   "login_remote_button": "続行",
   "login_remote_hint": "この投稿をお使いのインスタンスで開き、そこでログインして操作できます。",
   "login_remote_invalid": "有効なインスタンスのドメインを入力してください",
-  "login_remote_continue": "{instance} で続行",
-  "compose_markdown_hint": "Markdown 対応: **太字**、*斜体*、`コード`、### 見出し"
+  "login_remote_continue": "{instance} で続行"
 }

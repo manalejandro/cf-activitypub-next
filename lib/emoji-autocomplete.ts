@@ -1,4 +1,5 @@
 import { EMOJI_NAMES } from "@/lib/emoji-names";
+import { isInsideMarkdownCode } from "@/lib/markdown-code";
 
 export interface CustomEmoji {
   shortcode: string;
@@ -46,6 +47,8 @@ export function findEmojiQuery(
   text: string,
   cursorPos: number
 ): { start: number; end: number; query: string } | null {
+  // Inside a code sample `:shortcode:` is source code, not an emoji.
+  if (isInsideMarkdownCode(text, cursorPos)) return null;
   const before = text.slice(0, cursorPos);
   const m = /(^|[^a-zA-Z0-9])(:([a-zA-Z0-9_]*))$/.exec(before);
   if (!m) return null;

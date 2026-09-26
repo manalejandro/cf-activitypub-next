@@ -553,9 +553,6 @@ export default function HomePage() {
                 <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginRight: "auto" }}>
-                  {t.compose_markdown_hint}
-                </span>
                 <span style={{ fontSize: "0.8rem", color: composing.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>
                   {composing.length}/{limits.maxStatusChars}
                 </span>

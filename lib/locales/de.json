@@ -981,6 +981,5 @@
   "login_remote_button": "Weiter",
   "login_remote_hint": "Wir öffnen diesen Beitrag auf deiner Instanz, damit du dich dort anmelden und interagieren kannst.",
   "login_remote_invalid": "Gib eine gültige Instanz-Domain ein",
-  "login_remote_continue": "Weiter auf {instance}",
-  "compose_markdown_hint": "Markdown unterstützt: **fett**, *kursiv*, `Code`, ### Überschrift"
+  "login_remote_continue": "Weiter auf {instance}"
 }
