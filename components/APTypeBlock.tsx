@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { MediaPlayer } from "@/components/MediaPlayer";
 
 /**
  * ActivityStreams type-specific renderer.
@@ -318,16 +319,12 @@ export function APTypeBlock({
           </div>
         )}
         {src && apType === "Video" && (
-          <video
-            src={src}
-            controls
-            playsInline
-            poster={meta?.imageUrl ?? undefined}
-            style={{ width: "100%", borderRadius: "var(--radius)", maxHeight: 420 }}
-          />
+          <div style={{ borderRadius: "var(--radius)", overflow: "hidden", maxHeight: 420 }}>
+            <MediaPlayer src={src} kind="video" variant="inline" poster={meta?.imageUrl ?? undefined} description={meta?.name} />
+          </div>
         )}
         {src && apType === "Audio" && (
-          <audio src={src} controls style={{ width: "100%" }} />
+          <MediaPlayer src={src} kind="audio" variant="inline" description={meta?.name} />
         )}
         {page && !pageIsMedia && (
           <div style={{ marginTop: "0.35rem", display: "flex", flexWrap: "wrap", gap: "0.4rem", alignItems: "center" }}>

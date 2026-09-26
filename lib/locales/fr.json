@@ -981,5 +981,15 @@
   "login_remote_button": "Continuer",
   "login_remote_hint": "Nous ouvrirons cette publication sur votre instance pour que vous puissiez vous connecter et interagir depuis là-bas.",
   "login_remote_invalid": "Saisissez un domaine d'instance valide",
-  "login_remote_continue": "Continuer sur {instance}"
+  "login_remote_continue": "Continuer sur {instance}",
+  "media_play": "Lire",
+  "media_pause": "Pause",
+  "media_mute": "Couper le son",
+  "media_unmute": "Activer le son",
+  "media_volume": "Volume",
+  "media_fullscreen": "Plein écran",
+  "media_exit_fullscreen": "Quitter le plein écran",
+  "media_seek": "Déplacer",
+  "media_download": "Télécharger",
+  "media_expand": "Ouvrir la visionneuse"
 }

@@ -16,6 +16,7 @@ import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
 import { Icon } from "./Icon";
 import LocationPreview from "./LocationPreview";
+import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -249,7 +250,7 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
         }}
       >
         {attachments.map((att, i) => {
-          if (att.type === "image" || att.type === "gifv") {
+          if (att.type === "image") {
             return (
               <button
                 key={att.id}
@@ -278,57 +279,68 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
               </button>
             );
           }
-          if (att.type === "video") {
+          if (att.type === "video" || att.type === "gifv") {
+            const isGifv = att.type === "gifv";
             return (
-              <button
+              <div
                 key={att.id}
-                type="button"
-                onClick={() => { if (!blurred) setLbIdx(i); }}
-                aria-label={att.description ?? t.action_view_media}
                 style={{
-                  display: "block",
-                  aspectRatio: "16/9",
-                  overflow: "hidden",
-                  border: "none",
-                  padding: 0,
-                  cursor: blurred ? "default" : "pointer",
-                  background: "var(--bg-elevated)",
                   position: "relative",
+                  aspectRatio: isGifv && attachments.length > 1 ? "1/1" : "16/9",
+                  overflow: "hidden",
+                  background: "#000",
                 }}
               >
-                <video src={att.url} style={{ width: "100%", height: "100%", objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }} />
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="play" color="rgba(255,255,255,0.9)" /></div>
-              </button>
+                <div style={{ position: "absolute", inset: 0, filter: blurred ? "blur(12px)" : undefined }}>
+                  <MediaPlayer
+                    src={att.url}
+                    poster={att.preview_url ?? att.url}
+                    description={att.description}
+                    kind={isGifv ? "gifv" : "video"}
+                    variant="inline"
+                    autoPlay={isGifv}
+                    loop={isGifv}
+                    muted={isGifv}
+                  />
+                </div>
+                {isGifv ? (
+                  <button
+                    type="button"
+                    onClick={() => { if (!blurred) setLbIdx(i); }}
+                    aria-label={att.description ?? t.action_view_media}
+                    title={att.description ?? t.action_view_media}
+                    style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", border: "none", padding: 0, cursor: blurred ? "default" : "zoom-in" }}
+                  />
+                ) : blurred ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setLbIdx(i)}
+                    aria-label={t.media_expand}
+                    title={t.media_expand}
+                    style={{
+                      position: "absolute", top: "0.4rem", right: "0.4rem", zIndex: 3,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 30, height: 30, borderRadius: "var(--radius-sm)", border: "none",
+                      background: "rgba(0,0,0,0.55)", color: "#fff", cursor: "pointer",
+                    }}
+                  >
+                    <Icon name="arrows-alt" color="#fff" />
+                  </button>
+                )}
+              </div>
             );
           }
           if (att.type === "audio") {
             return (
-              <button
+              <div
                 key={att.id}
-                type="button"
-                onClick={() => { if (!blurred) setLbIdx(i); }}
-                aria-label={att.description ?? t.action_view_media}
                 style={{
-                  display: "block",
-                  aspectRatio: "3/1",
-                  overflow: "hidden",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  padding: 0,
-                  cursor: blurred ? "default" : "pointer",
-                  background: "var(--bg-elevated)",
-                  position: "relative",
+                  gridColumn: attachments.length === 1 ? "auto" : "1 / -1",
+                  filter: blurred ? "blur(12px)" : undefined,
                 }}
               >
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}>
-                  <span style={{ fontSize: "2rem", lineHeight: 1 }}><Icon name="music" size="2rem" /></span>
-                  {att.description && (
-                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", maxWidth: "90%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {att.description}
-                    </span>
-                  )}
-                </div>
-              </button>
+                <MediaPlayer src={att.url} kind="audio" variant="inline" description={att.description} />
+              </div>
             );
           }
           return null;

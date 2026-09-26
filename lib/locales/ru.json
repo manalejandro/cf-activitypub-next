@@ -981,5 +981,15 @@
   "login_remote_button": "Продолжить",
   "login_remote_hint": "Мы откроем эту публикацию на вашем сервере, чтобы вы могли войти и взаимодействовать там.",
   "login_remote_invalid": "Введите действительный домен сервера",
-  "login_remote_continue": "Продолжить на {instance}"
+  "login_remote_continue": "Продолжить на {instance}",
+  "media_play": "Воспроизвести",
+  "media_pause": "Пауза",
+  "media_mute": "Выключить звук",
+  "media_unmute": "Включить звук",
+  "media_volume": "Громкость",
+  "media_fullscreen": "Полный экран",
+  "media_exit_fullscreen": "Выйти из полноэкранного режима",
+  "media_seek": "Перемотка",
+  "media_download": "Скачать",
+  "media_expand": "Открыть просмотрщик"
 }

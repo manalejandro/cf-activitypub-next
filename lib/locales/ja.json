@@ -981,5 +981,15 @@
   "login_remote_button": "続行",
   "login_remote_hint": "この投稿をお使いのインスタンスで開き、そこでログインして操作できます。",
   "login_remote_invalid": "有効なインスタンスのドメインを入力してください",
-  "login_remote_continue": "{instance} で続行"
+  "login_remote_continue": "{instance} で続行",
+  "media_play": "再生",
+  "media_pause": "一時停止",
+  "media_mute": "ミュート",
+  "media_unmute": "ミュート解除",
+  "media_volume": "音量",
+  "media_fullscreen": "全画面",
+  "media_exit_fullscreen": "全画面を終了",
+  "media_seek": "シーク",
+  "media_download": "ダウンロード",
+  "media_expand": "メディアビューアを開く"
 }

@@ -981,5 +981,15 @@
   "login_remote_button": "Continuar",
   "login_remote_hint": "Vamos abrir esta publicação na sua instância para você entrar e interagir por lá.",
   "login_remote_invalid": "Informe um domínio de instância válido",
-  "login_remote_continue": "Continuar em {instance}"
+  "login_remote_continue": "Continuar em {instance}",
+  "media_play": "Reproduzir",
+  "media_pause": "Pausar",
+  "media_mute": "Silenciar",
+  "media_unmute": "Ativar som",
+  "media_volume": "Volume",
+  "media_fullscreen": "Tela cheia",
+  "media_exit_fullscreen": "Sair da tela cheia",
+  "media_seek": "Avançar",
+  "media_download": "Baixar",
+  "media_expand": "Abrir visualizador"
 }

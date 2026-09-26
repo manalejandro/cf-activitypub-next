@@ -981,5 +981,15 @@
   "login_remote_button": "계속",
   "login_remote_hint": "이 게시물을 내 인스턴스에서 열어 로그인하고 상호작용할 수 있습니다.",
   "login_remote_invalid": "올바른 인스턴스 도메인을 입력하세요",
-  "login_remote_continue": "{instance}에서 계속"
+  "login_remote_continue": "{instance}에서 계속",
+  "media_play": "재생",
+  "media_pause": "일시정지",
+  "media_mute": "음소거",
+  "media_unmute": "음소거 해제",
+  "media_volume": "볼륨",
+  "media_fullscreen": "전체 화면",
+  "media_exit_fullscreen": "전체 화면 종료",
+  "media_seek": "탐색",
+  "media_download": "다운로드",
+  "media_expand": "미디어 뷰어 열기"
 }

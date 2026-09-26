@@ -981,5 +981,15 @@
   "login_remote_button": "Weiter",
   "login_remote_hint": "Wir öffnen diesen Beitrag auf deiner Instanz, damit du dich dort anmelden und interagieren kannst.",
   "login_remote_invalid": "Gib eine gültige Instanz-Domain ein",
-  "login_remote_continue": "Weiter auf {instance}"
+  "login_remote_continue": "Weiter auf {instance}",
+  "media_play": "Abspielen",
+  "media_pause": "Pause",
+  "media_mute": "Stummschalten",
+  "media_unmute": "Ton einschalten",
+  "media_volume": "Lautstärke",
+  "media_fullscreen": "Vollbild",
+  "media_exit_fullscreen": "Vollbild beenden",
+  "media_seek": "Spulen",
+  "media_download": "Herunterladen",
+  "media_expand": "Medienbetrachter öffnen"
 }

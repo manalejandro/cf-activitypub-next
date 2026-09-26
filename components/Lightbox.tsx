@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
+import { MediaPlayer } from "@/components/MediaPlayer";
 
 interface LightboxItem {
   url: string;
@@ -109,7 +110,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
         style={{ maxWidth: "90vw", maxHeight: "88vh", position: "relative" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {!imgLoaded && item.type !== "video" && item.type !== "audio" && (
+        {!imgLoaded && !["video", "audio", "gifv"].includes(item.type) && (
           <div style={{
             position: "absolute", inset: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -118,30 +119,27 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
             <Icon name="hourglass" spin color="rgba(255,255,255,0.4)" size="2rem" />
           </div>
         )}
-        {item.type === "video" ? (
-          <video
-            src={item.url}
-            controls
-            autoPlay
-            style={{
-              maxWidth: "90vw", maxHeight: "85vh",
-              borderRadius: "var(--radius)", display: "block",
-            }}
-          />
-        ) : item.type === "audio" ? (
-          <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
-            <div style={{ fontSize: "5rem", marginBottom: "1.25rem" }}><Icon name="music" size="5rem" color="#fff" /></div>
-            <audio
+        {item.type === "video" || item.type === "gifv" ? (
+          <div style={{ width: "min(90vw, 1100px)", height: "min(85vh, 640px)" }}>
+            <MediaPlayer
               src={item.url}
-              controls
+              poster={item.preview_url}
+              description={item.description}
+              kind={item.type === "gifv" ? "gifv" : "video"}
+              variant="lightbox"
               autoPlay
-              style={{ width: "min(480px, 80vw)", outline: "none" }}
+              loop={item.type === "gifv"}
             />
-            {item.description && (
-              <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.82rem", marginTop: "0.75rem", maxWidth: "60ch" }}>
-                {item.description}
-              </p>
-            )}
+          </div>
+        ) : item.type === "audio" ? (
+          <div style={{ textAlign: "center", padding: "1rem 0" }}>
+            <MediaPlayer
+              src={item.url}
+              kind="audio"
+              variant="lightbox"
+              autoPlay
+              description={item.description}
+            />
           </div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element -- full-size viewer needs natural aspect ratio (maxWidth/maxHeight + objectFit contain), which next/image fill cannot express
@@ -159,10 +157,10 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
             }}
           />
         )}
-        {item.description && (
+        {item.description && item.type !== "audio" && (
           <p style={{
             textAlign: "center", color: "rgba(255,255,255,0.65)",
-            fontSize: "0.82rem", marginTop: "0.5rem", maxWidth: "60ch", margin: "0.5rem auto 0",
+            fontSize: "0.82rem", maxWidth: "60ch", margin: "0.5rem auto 0",
           }}>
             {item.description}
           </p>

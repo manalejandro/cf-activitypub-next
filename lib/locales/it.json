@@ -981,5 +981,15 @@
   "login_remote_button": "Continua",
   "login_remote_hint": "Apriremo questo post sulla tua istanza così potrai accedere e interagire da lì.",
   "login_remote_invalid": "Inserisci un dominio di istanza valido",
-  "login_remote_continue": "Continua su {instance}"
+  "login_remote_continue": "Continua su {instance}",
+  "media_play": "Riproduci",
+  "media_pause": "Pausa",
+  "media_mute": "Disattiva audio",
+  "media_unmute": "Attiva audio",
+  "media_volume": "Volume",
+  "media_fullscreen": "Schermo intero",
+  "media_exit_fullscreen": "Esci da schermo intero",
+  "media_seek": "Sposta",
+  "media_download": "Scarica",
+  "media_expand": "Apri visualizzatore"
 }

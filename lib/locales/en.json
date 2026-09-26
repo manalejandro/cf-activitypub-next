@@ -981,5 +981,15 @@
   "login_remote_button": "Continue",
   "login_remote_hint": "We'll open this post on your instance so you can sign in and interact from there.",
   "login_remote_invalid": "Enter a valid instance domain",
-  "login_remote_continue": "Continue on {instance}"
+  "login_remote_continue": "Continue on {instance}",
+  "media_play": "Play",
+  "media_pause": "Pause",
+  "media_mute": "Mute",
+  "media_unmute": "Unmute",
+  "media_volume": "Volume",
+  "media_fullscreen": "Fullscreen",
+  "media_exit_fullscreen": "Exit fullscreen",
+  "media_seek": "Seek",
+  "media_download": "Download",
+  "media_expand": "Open media viewer"
 }
