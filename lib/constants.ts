@@ -70,6 +70,9 @@ export const MEDIA_CACHE_FETCH_BATCH = 50;
 // Maintenance never takes the cache below this many entries: reaching a limit
 // replaces the OLDEST entries (FIFO), it never wipes the cache.
 export const MEDIA_CACHE_MIN_ENTRIES = 20;
+// Strip EXIF/XMP/IPTC/ID3/metadata from every object stored in R2 (cached
+// federated media and local uploads), like Mastodon's media processing.
+export const MEDIA_CACHE_STRIP_METADATA = true;
 export const MEDIA_CACHE_BROWSER_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
   "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
@@ -159,6 +162,8 @@ export interface InstanceLimits {
   mediaCacheMaxImageBytes: number;
   mediaCacheFetchBatch: number;
   mediaCacheMinEntries: number;
+  /** Strip EXIF/metadata from cached objects (Mastodon parity). */
+  mediaCacheStripMetadata: boolean;
   mediaCacheUserAgents: string[];
   /** Safety valve: held statuses are released after this many minutes even if
    *  their media is still pending (0 disables the forced release). */
@@ -217,6 +222,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheMaxImageBytes: MEDIA_CACHE_MAX_IMAGE_BYTES,
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
   mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
+  mediaCacheStripMetadata: MEDIA_CACHE_STRIP_METADATA,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
   mediaCacheMaxHoldMinutes: 30,
   linkPreviewEnabled: true,
@@ -310,6 +316,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheMaxImageBytes: num(env, "MEDIA_CACHE_MAX_IMAGE_BYTES", DEFAULT_LIMITS.mediaCacheMaxImageBytes),
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
     mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
+    mediaCacheStripMetadata: bool(env, "MEDIA_CACHE_STRIP_METADATA", DEFAULT_LIMITS.mediaCacheStripMetadata),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
     mediaCacheMaxHoldMinutes: nonNegativeNum(env, "MEDIA_CACHE_MAX_HOLD_MINUTES", DEFAULT_LIMITS.mediaCacheMaxHoldMinutes),
     linkPreviewEnabled: bool(env, "LINK_PREVIEW_ENABLED", DEFAULT_LIMITS.linkPreviewEnabled),

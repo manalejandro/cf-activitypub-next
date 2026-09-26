@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
 import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
+import { putMediaObject } from "@/lib/media/r2-put";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const id = crypto.randomUUID();
   const key = `media/${me.username}/${id}-${file.name}`;
   const buffer = await file.arrayBuffer();
-  await env.R2.put(key, buffer, { httpMetadata: { contentType: file.type } });
+  await putMediaObject(env.R2, key, buffer, { httpMetadata: { contentType: file.type } });
   const url = `https://${new URL(request.url).hostname}/api/media/${key}`;
   const att = {
     id,

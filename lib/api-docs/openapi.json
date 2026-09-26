@@ -15596,6 +15596,10 @@
           "mediaCacheMinEntries": {
             "type": "number"
           },
+          "mediaCacheStripMetadata": {
+            "type": "boolean",
+            "description": "Strip EXIF/metadata from cached objects (Mastodon parity)."
+          },
           "mediaCacheUserAgents": {
             "type": "array",
             "items": {

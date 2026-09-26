@@ -3,6 +3,7 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { getAllCustomEmojis, upsertCustomEmoji } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
+import { putMediaObject } from "@/lib/media/r2-put";
 
 // GET /api/admin/emojis — List all custom emoji (including disabled)
 export async function GET(request: NextRequest): Promise<Response> {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const key = `emoji/${shortcode}/${id}.${ext}`;
 
   const buffer = await file.arrayBuffer();
-  await env.R2.put(key, buffer, {
+  await putMediaObject(env.R2, key, buffer, {
     httpMetadata: { contentType: file.type },
   });
 

@@ -119,6 +119,41 @@ const LIMITS: MediaCacheLimits = {
   userAgents: ["bot-agent", "browser-agent"],
 };
 
+function jpegWithExif(): Uint8Array {
+  const text = new TextEncoder();
+  const exif = Array.from(text.encode("Exif\u0000\u0000GPS-INFO"));
+  return new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe1, 0x00, 0x10, ...exif,
+    0xff, 0xda, 0x00, 0x04, 0x01, 0x02, 0x11, 0x22, 0xff, 0xd9,
+  ]);
+}
+
+function mp4Box(type: string, payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(8 + payload.length);
+  const size = out.length;
+  out[0] = (size >>> 24) & 0xff;
+  out[1] = (size >>> 16) & 0xff;
+  out[2] = (size >>> 8) & 0xff;
+  out[3] = size & 0xff;
+  for (let k = 0; k < 4; k++) out[4 + k] = type.charCodeAt(k) & 0xff;
+  out.set(payload, 8);
+  return out;
+}
+
+function mp4WithUdta(): Uint8Array {
+  const text = new TextEncoder();
+  const ftyp = mp4Box("ftyp", text.encode("isomiso2"));
+  const xyz = mp4Box(String.fromCharCode(0xa9, 0x78, 0x79, 0x7a), text.encode("CameraCo-GPS"));
+  const moov = mp4Box("moov", mp4Box("udta", xyz));
+  const mdat = mp4Box("mdat", text.encode("PIXELDATA"));
+  const out = new Uint8Array(ftyp.length + moov.length + mdat.length);
+  out.set(ftyp, 0);
+  out.set(moov, ftyp.length);
+  out.set(mdat, ftyp.length + moov.length);
+  return out;
+}
+
 function okSizedStreamResponse(chunks: Uint8Array[], contentType: string, length: number): Response {
   const res = okStreamResponse(chunks, contentType);
   (res.headers as Headers).set("content-length", String(length));
@@ -667,10 +702,12 @@ describe("remote media cache", () => {
         start(controller) { controller.enqueue(new Uint8Array([1, 2, 3])); },
         cancel() { canceled = true; },
       });
+      // `image/avif` is not metadata-stripped, so it keeps the streaming path
+      // (images are buffered to rewrite their metadata).
       const res = {
         ok: true,
         status: 200,
-        headers: new Headers({ "content-type": "image/png", "content-length": "3" }),
+        headers: new Headers({ "content-type": "image/avif", "content-length": "3" }),
         body: stream,
       } as unknown as Response;
       await enqueueMediaCache(db, SRC, "attachment", ATTACH);
@@ -732,6 +769,49 @@ describe("remote media cache", () => {
 
     expect(await processMediaCacheQueue(bindings, defaults, "https://local.example")).toBe(1);
     expect(r2.store.size).toBe(1);
+  });
+
+  it("strips EXIF from cached images (Mastodon parity)", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    const withExif = jpegWithExif();
+    federation.safeFetch.mockResolvedValue(okResponse(withExif, "image/jpeg"));
+
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+    const [key] = [...r2.store.keys()];
+    const stored = r2.store.get(key)!;
+    expect(new TextDecoder().decode(stored)).not.toContain("Exif");
+    expect(stored.byteLength).toBeLessThan(withExif.byteLength);
+
+    const stats = await getMediaCacheStats(db);
+    expect(stats.bytes).toBe(stored.byteLength);
+    const att = await db
+      .prepare("SELECT file_size FROM attachments WHERE id = ?")
+      .bind(ATTACH)
+      .first<{ file_size: number }>();
+    expect(att?.file_size).toBe(stored.byteLength);
+  });
+
+  it("keeps metadata when stripping is disabled", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    const withExif = jpegWithExif();
+    federation.safeFetch.mockResolvedValue(okResponse(withExif, "image/jpeg"));
+
+    const limits = { ...LIMITS, stripMetadata: false };
+    expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(1);
+    const [key] = [...r2.store.keys()];
+    expect(r2.store.get(key)!.byteLength).toBe(withExif.byteLength);
+  });
+
+  it("zeroes MP4 metadata in place while keeping the byte length", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    const input = mp4WithUdta();
+    federation.safeFetch.mockResolvedValue(okResponse(input, "video/mp4"));
+
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+    const [key] = [...r2.store.keys()];
+    const stored = r2.store.get(key)!;
+    expect(stored.byteLength).toBe(input.byteLength);
+    expect(new TextDecoder().decode(stored)).not.toContain("CameraCo");
   });
 
   it("treats an ISO-8601 backoff timestamp as due (mixed date formats)", async () => {

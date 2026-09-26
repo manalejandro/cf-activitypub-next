@@ -9,6 +9,7 @@ import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/util
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
+import { putMediaObject } from "@/lib/media/r2-put";
 
 // GET /api/v1/accounts/verify_credentials
 export async function GET(request: NextRequest): Promise<Response> {
@@ -99,7 +100,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (avatarFile && avatarFile.size > 0) {
       const ext = avatarFile.name.split(".").pop() ?? "bin";
       const key = `avatars/${actor.username}.${ext}`;
-      await env.R2.put(key, await avatarFile.arrayBuffer(), {
+      await putMediaObject(env.R2, key, await avatarFile.arrayBuffer(), {
         httpMetadata: { contentType: avatarFile.type },
       });
       avatarUrl = `${baseUrl}/api/media/${key}`;
@@ -110,7 +111,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (headerFile && headerFile.size > 0) {
       const ext = headerFile.name.split(".").pop() ?? "bin";
       const key = `headers/${actor.username}.${ext}`;
-      await env.R2.put(key, await headerFile.arrayBuffer(), {
+      await putMediaObject(env.R2, key, await headerFile.arrayBuffer(), {
         httpMetadata: { contentType: headerFile.type },
       });
       headerUrl = `${baseUrl}/api/media/${key}`;

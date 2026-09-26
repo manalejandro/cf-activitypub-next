@@ -3,6 +3,7 @@ import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { chargeGlobalAI, AI_UNITS_VISION } from "@/lib/moderation/budget";
 import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
+import { putMediaObject } from "@/lib/media/r2-put";
 
 // POST /api/v1/media — Upload a media attachment (stored in R2)
 export async function POST(request: NextRequest): Promise<Response> {
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Capture bytes before R2.put in case the runtime detaches the underlying ArrayBuffer
   const imageBytes = [...new Uint8Array(buffer)];
 
-  await env.R2.put(key, buffer, {
+  await putMediaObject(env.R2, key, buffer, {
     httpMetadata: { contentType: file.type },
     customMetadata: { actorId: actor.id, description: description ?? "" },
   });

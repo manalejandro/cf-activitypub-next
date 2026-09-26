@@ -20,6 +20,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { resolveLimits, type InstanceLimits } from "@/lib/constants";
+import { metadataStripKind, metadataStripTransform, stripMetadataBytes } from "@/lib/media/strip-metadata";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
 import {
@@ -84,6 +85,8 @@ export interface NormalizedMediaCacheLimits {
   maxImageBytes: number;
   fetchBatch: number;
   minEntries: number;
+  /** Strip EXIF/metadata from the stored copy (Mastodon parity). */
+  stripMetadata: boolean;
   userAgents: string[];
 }
 
@@ -97,6 +100,7 @@ export interface MediaCacheLimits {
   fetchBatch?: number;
   /** Maintenance never shrinks the cache below this many entries. */
   minEntries?: number;
+  stripMetadata?: boolean;
   userAgents?: string[];
   mediaCacheEnabled?: boolean;
   mediaCacheDays?: number;
@@ -106,6 +110,7 @@ export interface MediaCacheLimits {
   mediaCacheMaxImageBytes?: number;
   mediaCacheFetchBatch?: number;
   mediaCacheMinEntries?: number;
+  mediaCacheStripMetadata?: boolean;
   mediaCacheUserAgents?: string[];
 }
 
@@ -131,6 +136,7 @@ export function mediaCacheLimitsFrom(limits: InstanceLimits): MediaCacheLimits {
     maxImageBytes: limits.mediaCacheMaxImageBytes,
     fetchBatch: limits.mediaCacheFetchBatch,
     minEntries: limits.mediaCacheMinEntries,
+    stripMetadata: limits.mediaCacheStripMetadata,
     userAgents: limits.mediaCacheUserAgents,
   };
 }
@@ -150,6 +156,7 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
   const maxImageBytes = Number(pick(limits.maxImageBytes, limits.mediaCacheMaxImageBytes));
   const fetchBatch = Number(pick(limits.fetchBatch, limits.mediaCacheFetchBatch));
   const minEntries = Number(pick(limits.minEntries, limits.mediaCacheMinEntries));
+  const stripMetadata = pick(limits.stripMetadata, limits.mediaCacheStripMetadata);
   const userAgents = pick(limits.userAgents, limits.mediaCacheUserAgents);
   const enabled = pick(limits.enabled, limits.mediaCacheEnabled);
   return {
@@ -162,6 +169,7 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
     fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
     // 0 is a valid floor (used by tests); anything invalid falls back to 20.
     minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
+    stripMetadata: stripMetadata !== false,
     userAgents: Array.isArray(userAgents) && userAgents.length > 0
       ? userAgents
       : ["CFActivityPub/0.1.0 (+https://localhost; federated media cache)"],
@@ -290,6 +298,10 @@ async function cacheOne(
     // a full body (up to 40 MB) plus the copy. Mocks/tests may return a
     // bodyless Response, so keep a bounded buffered fallback.
     const contentType = fetched.contentType;
+    // Mastodon re-encodes remote media, dropping EXIF/XMP/ID3 metadata. We
+    // cannot re-encode in a Worker, so images are rewritten losslessly (which
+    // shortens them) and MP4/MOV/MP3 are zero-filled in place (same length).
+    const stripKind = limits.stripMetadata ? metadataStripKind(contentType) : null;
     const r2Key = `cache/media/${job.id}.${extensionFor(contentType, job.sourceUrl)}`;
     let size = 0;
     let upload: Uint8Array | ReadableStream<Uint8Array> | null = null;
@@ -303,13 +315,16 @@ async function cacheOne(
       };
     }).FixedLengthStream;
 
-    if (body && fetched.declaredLength > 0 && FixedLength) {
+    if (body && fetched.declaredLength > 0 && FixedLength && stripKind !== "image") {
       // R2 rejects streams without a known length ("Provided readable stream
       // must have a known length"): FixedLengthStream declares the
       // content-length that `fetchWithUserAgents` already size-checked, and
-      // the runtime streams it through without buffering.
+      // the runtime streams it through without buffering. Length-preserving
+      // metadata stripping (MP4/MP3) rides along as a transform.
       const fixed = new FixedLength(fetched.declaredLength);
-      body.pipeTo(fixed.writable).catch(() => {});
+      const transform = stripKind === "stream" ? metadataStripTransform(contentType) : null;
+      const source = transform ? body.pipeThrough(transform) : body;
+      source.pipeTo(fixed.writable).catch(() => {});
       upload = fixed.readable;
       size = fetched.declaredLength;
     } else {
@@ -324,8 +339,11 @@ async function cacheOne(
           oversized = true;
           return;
         }
-        size = bytes.byteLength;
-        upload = bytes;
+        // Images get shorter when their metadata segments are dropped, so they
+        // always take this buffered path.
+        const stripped = stripKind ? await stripMetadataBytes(bytes, contentType) : bytes;
+        size = stripped.byteLength;
+        upload = stripped;
       });
     }
 

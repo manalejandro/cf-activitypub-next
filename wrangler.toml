@@ -49,6 +49,10 @@ MEDIA_CACHE_FETCH_BATCH = "50"
 # Maintenance never shrinks the cache below this many entries (FIFO eviction:
 # the oldest are replaced first when a limit is reached).
 MEDIA_CACHE_MIN_ENTRIES = "20"
+# Strip EXIF/XMP/IPTC (images) and udta/ID3 (MP4/MOV/MP3) metadata from every
+# object stored in R2 (cached federated media AND local uploads: avatars,
+# headers, attachments, custom emoji), like Mastodon's media processing.
+MEDIA_CACHE_STRIP_METADATA = "true"
 # Remote statuses are held out of timelines while their media is cached. If the
 # cache is degraded/behind, release them after this many minutes anyway (0 =
 # never force-release) so nothing stays hidden forever.
