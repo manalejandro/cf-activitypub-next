@@ -979,6 +979,7 @@
   "login_remote_title": "Entrar com a sua instância",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "Continuar",
-  "login_remote_hint": "Vamos levar você ao seu servidor para entrar e voltar aqui para interagir.",
-  "login_remote_invalid": "Informe um domínio de instância válido"
+  "login_remote_hint": "Vamos abrir esta publicação na sua instância para você entrar e interagir por lá.",
+  "login_remote_invalid": "Informe um domínio de instância válido",
+  "login_remote_continue": "Continuar em {instance}"
 }

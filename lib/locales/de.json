@@ -979,6 +979,7 @@
   "login_remote_title": "Mit deiner Instanz anmelden",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "Weiter",
-  "login_remote_hint": "Wir bringen dich zu deinem Server zum Anmelden und zurück hierher, um zu interagieren.",
-  "login_remote_invalid": "Gib eine gültige Instanz-Domain ein"
+  "login_remote_hint": "Wir öffnen diesen Beitrag auf deiner Instanz, damit du dich dort anmelden und interagieren kannst.",
+  "login_remote_invalid": "Gib eine gültige Instanz-Domain ein",
+  "login_remote_continue": "Weiter auf {instance}"
 }

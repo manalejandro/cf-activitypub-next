@@ -39,7 +39,6 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState("");
-  const [instance, setInstance] = useState("");
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const { t } = useLocale();
   const router = useRouter();
@@ -54,6 +53,16 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   // Object/actor URI from /authorize_interaction: forwarded to an external
   // instance so its user can interact from there.
   const interactionUri = searchParams.get("uri");
+  // Instance the visitor came from (Referer host): pre-fill and highlight
+  // "continue on <instance>" so they can go back to interact there.
+  const fromInstance = (() => {
+    const raw = searchParams.get("from");
+    if (!raw) return "";
+    return normalizeInstance(raw) ?? "";
+  })();
+  // Pre-filled with the instance the visitor came from (React state can't be
+  // set from an effect synchronously; derive the initial value instead).
+  const [instance, setInstance] = useState(fromInstance);
 
   // Already signed in? Send them straight to their feed. (Placed after all
   // hooks so the early return never skips a hook call.)
@@ -192,6 +201,51 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
 
   if (authLoading || authenticated) return null;
 
+  const remoteSection = (
+    <>
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: "0.75rem",
+          margin: "1.25rem 0 1rem", color: "var(--text-muted)",
+          fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em",
+        }}
+      >
+        <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        {t.login_remote_or}
+        <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
+
+      <form onSubmit={handleRemoteLogin} className="flex flex-col gap-3">
+        <label htmlFor="login-remote-instance" style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+          {fromInstance ? t.login_remote_continue.replace("{instance}", fromInstance) : t.login_remote_title}
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="login-remote-instance"
+            className="input"
+            placeholder={t.login_remote_placeholder}
+            value={instance}
+            onChange={(e) => setInstance(e.target.value)}
+            autoComplete="url"
+          />
+          <button
+            type="submit"
+            className="btn btn-outline"
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {t.login_remote_button}
+          </button>
+        </div>
+        {remoteError && (
+          <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }}>{remoteError}</p>
+        )}
+        <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", margin: 0 }}>
+          {t.login_remote_hint}
+        </p>
+      </form>
+    </>
+  );
+
   return (
     <>
       {/* Load Turnstile script with explicit render mode */}
@@ -297,46 +351,8 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
               </button>
             </form>
 
-            <div
-              style={{
-                display: "flex", alignItems: "center", gap: "0.75rem",
-                margin: "1.25rem 0 1rem", color: "var(--text-muted)",
-                fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em",
-              }}
-            >
-              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              {t.login_remote_or}
-              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            </div>
-
-            <form onSubmit={handleRemoteLogin} className="flex flex-col gap-3">
-              <label htmlFor="login-remote-instance" style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-                {t.login_remote_title}
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="login-remote-instance"
-                  className="input"
-                  placeholder={t.login_remote_placeholder}
-                  value={instance}
-                  onChange={(e) => setInstance(e.target.value)}
-                  autoComplete="url"
-                />
-                <button
-                  type="submit"
-                  className="btn btn-outline"
-                  style={{ whiteSpace: "nowrap" }}
-                >
-                  {t.login_remote_button}
-                </button>
-              </div>
-              {remoteError && (
-                <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }}>{remoteError}</p>
-              )}
-              <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", margin: 0 }}>
-                {t.login_remote_hint}
-              </p>
-            </form>
+            {Boolean(fromInstance) && remoteSection}
+            {!fromInstance && remoteSection}
           </div>
 
           <p style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.875rem", color: "var(--text-secondary)" }}>

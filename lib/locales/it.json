@@ -979,6 +979,7 @@
   "login_remote_title": "Accedi con la tua istanza",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "Continua",
-  "login_remote_hint": "Ti porteremo sul tuo server per accedere e tornerai qui per interagire.",
-  "login_remote_invalid": "Inserisci un dominio di istanza valido"
+  "login_remote_hint": "Apriremo questo post sulla tua istanza così potrai accedere e interagire da lì.",
+  "login_remote_invalid": "Inserisci un dominio di istanza valido",
+  "login_remote_continue": "Continua su {instance}"
 }

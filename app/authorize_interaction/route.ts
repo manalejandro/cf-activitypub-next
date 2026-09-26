@@ -61,9 +61,16 @@ export async function GET(request: NextRequest): Promise<Response> {
   // sign in here, or continue on the visitor's own instance.
   const me = await getAuthenticatedActor(request, env.DB).catch(() => null);
   if (!me) {
+    // Detect the instance the visitor came from so the login page can offer
+    // continuing there (the browser sends the origin on cross-site hops).
+    let from = "";
+    try {
+      const host = new URL(request.headers.get("referer") ?? "").hostname;
+      if (host && host !== request.nextUrl.hostname) from = `&from=${encodeURIComponent(host)}`;
+    } catch { /* no referrer */ }
     return redirectTo(
       request,
-      `/login?redirect=${encodeURIComponent(target)}&uri=${encodeURIComponent(uri)}`
+      `/login?redirect=${encodeURIComponent(target)}&uri=${encodeURIComponent(uri)}${from}`
     );
   }
 

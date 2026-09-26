@@ -979,6 +979,7 @@
   "login_remote_title": "自分のインスタンスでログイン",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "続行",
-  "login_remote_hint": "ログインのためお使いのサーバーへ移動し、その後ここに戻って操作できます。",
-  "login_remote_invalid": "有効なインスタンスのドメインを入力してください"
+  "login_remote_hint": "この投稿をお使いのインスタンスで開き、そこでログインして操作できます。",
+  "login_remote_invalid": "有効なインスタンスのドメインを入力してください",
+  "login_remote_continue": "{instance} で続行"
 }

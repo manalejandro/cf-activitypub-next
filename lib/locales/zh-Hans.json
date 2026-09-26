@@ -979,6 +979,7 @@
   "login_remote_title": "使用你的实例登录",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "继续",
-  "login_remote_hint": "我们会带你去你的服务器登录，然后返回这里进行互动。",
-  "login_remote_invalid": "请输入有效的实例域名"
+  "login_remote_hint": "我们会在你的实例上打开该帖子，你可以在那里登录并互动。",
+  "login_remote_invalid": "请输入有效的实例域名",
+  "login_remote_continue": "在 {instance} 继续"
 }

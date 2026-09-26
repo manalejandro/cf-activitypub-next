@@ -979,6 +979,7 @@
   "login_remote_title": "Connectez-vous avec votre instance",
   "login_remote_placeholder": "mastodon.social",
   "login_remote_button": "Continuer",
-  "login_remote_hint": "Nous vous emmènerons sur votre serveur pour vous connecter, puis vous reviendrez ici pour interagir.",
-  "login_remote_invalid": "Saisissez un domaine d'instance valide"
+  "login_remote_hint": "Nous ouvrirons cette publication sur votre instance pour que vous puissiez vous connecter et interagir depuis là-bas.",
+  "login_remote_invalid": "Saisissez un domaine d'instance valide",
+  "login_remote_continue": "Continuer sur {instance}"
 }

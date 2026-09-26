@@ -14,8 +14,8 @@ vi.mock("@/lib/auth", () => ({ getAuthenticatedActor }));
 
 import { GET } from "@/app/authorize_interaction/route";
 
-function req(url: string): NextRequest {
-  return { nextUrl: new URL(url), headers: new Headers(), url } as unknown as NextRequest;
+function req(url: string, headers: Record<string, string> = {}): NextRequest {
+  return { nextUrl: new URL(url), headers: new Headers(headers), url } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -57,6 +57,20 @@ describe("authorize_interaction", () => {
     const location = new URL(res.headers.get("location")!);
     expect(location.pathname).toBe("/users/remote");
     expect(location.searchParams.get("url")).toBe(uri);
+  });
+
+  it("forwards the referring instance to the login page", async () => {
+    getObjectById.mockResolvedValue(null);
+    getActorById.mockResolvedValue(null);
+    getAuthenticatedActor.mockResolvedValue(null);
+    const remote = "https://remote.example/users/a/statuses/1";
+    const res = await GET(req(
+      `https://local.example/authorize_interaction?uri=${encodeURIComponent(remote)}`,
+      { referer: "https://cf-ap.example/users/me/statuses/2" }
+    ));
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("from")).toBe("cf-ap.example");
   });
 
   it("falls back to login when no uri is given", async () => {
