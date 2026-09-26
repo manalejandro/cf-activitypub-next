@@ -65,8 +65,19 @@ const nextConfig: NextConfig = {
         source: "/sw.js",
         headers: [{ key: "Cache-Control", value: "no-cache, max-age=0" }],
       },
+      // Embeddable status pages: they are meant to be framed by other sites,
+      // so they get their own CSP (frame-ancestors *) and no X-Frame-Options.
       {
-        source: "/:path*",
+        source: "/embed/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; frame-ancestors *; base-uri 'self'" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+      {
+        // Everything else keeps the strict policy; /embed is handled above.
+        source: "/:path((?!embed/).*)",
         headers: [
           { key: "Content-Security-Policy", value: cspHeader },
           { key: "X-Frame-Options", value: "DENY" },
