@@ -992,5 +992,6 @@
   "media_seek": "シーク",
   "media_download": "ダウンロード",
   "media_expand": "メディアビューアを開く",
-  "compose_upload_error": "アップロードに失敗しました"
+  "compose_upload_error": "アップロードに失敗しました",
+  "compose_uploading": "アップロード中…"
 }

@@ -992,5 +992,6 @@
   "media_seek": "탐색",
   "media_download": "다운로드",
   "media_expand": "미디어 뷰어 열기",
-  "compose_upload_error": "업로드 실패"
+  "compose_upload_error": "업로드 실패",
+  "compose_uploading": "업로드 중…"
 }

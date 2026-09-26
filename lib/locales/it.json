@@ -992,5 +992,6 @@
   "media_seek": "Sposta",
   "media_download": "Scarica",
   "media_expand": "Apri visualizzatore",
-  "compose_upload_error": "Caricamento non riuscito"
+  "compose_upload_error": "Caricamento non riuscito",
+  "compose_uploading": "Caricamento…"
 }

@@ -992,5 +992,6 @@
   "media_seek": "Avançar",
   "media_download": "Baixar",
   "media_expand": "Abrir visualizador",
-  "compose_upload_error": "Falha no envio"
+  "compose_upload_error": "Falha no envio",
+  "compose_uploading": "Enviando…"
 }

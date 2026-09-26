@@ -992,5 +992,6 @@
   "media_seek": "Déplacer",
   "media_download": "Télécharger",
   "media_expand": "Ouvrir la visionneuse",
-  "compose_upload_error": "Échec de l'envoi"
+  "compose_upload_error": "Échec de l'envoi",
+  "compose_uploading": "Envoi…"
 }

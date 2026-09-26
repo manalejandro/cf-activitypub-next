@@ -992,5 +992,6 @@
   "media_seek": "Spulen",
   "media_download": "Herunterladen",
   "media_expand": "Medienbetrachter öffnen",
-  "compose_upload_error": "Upload fehlgeschlagen"
+  "compose_upload_error": "Upload fehlgeschlagen",
+  "compose_uploading": "Wird hochgeladen…"
 }

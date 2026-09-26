@@ -992,5 +992,6 @@
   "media_seek": "进度",
   "media_download": "下载",
   "media_expand": "打开媒体查看器",
-  "compose_upload_error": "上传失败"
+  "compose_upload_error": "上传失败",
+  "compose_uploading": "上传中…"
 }

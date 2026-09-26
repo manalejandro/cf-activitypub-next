@@ -992,5 +992,6 @@
   "media_seek": "Seek",
   "media_download": "Download",
   "media_expand": "Open media viewer",
-  "compose_upload_error": "Upload failed"
+  "compose_upload_error": "Upload failed",
+  "compose_uploading": "Uploading…"
 }

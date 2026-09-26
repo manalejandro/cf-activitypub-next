@@ -992,5 +992,6 @@
   "media_seek": "Перемотка",
   "media_download": "Скачать",
   "media_expand": "Открыть просмотрщик",
-  "compose_upload_error": "Не удалось загрузить файл"
+  "compose_upload_error": "Не удалось загрузить файл",
+  "compose_uploading": "Загрузка…"
 }

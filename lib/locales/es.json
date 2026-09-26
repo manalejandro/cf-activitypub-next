@@ -992,5 +992,6 @@
   "media_seek": "Buscar",
   "media_download": "Descargar",
   "media_expand": "Abrir visor de medios",
-  "compose_upload_error": "Error al subir el archivo"
+  "compose_upload_error": "Error al subir el archivo",
+  "compose_uploading": "Subiendo…"
 }

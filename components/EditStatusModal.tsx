@@ -38,6 +38,7 @@ export function EditStatusModal({
   const [media, setMedia] = useState<MediaAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
@@ -121,29 +122,34 @@ export function EditStatusModal({
   }
 
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || !token || media.length >= limits.maxMediaAttachments) return;
+    if (!files || !token || uploading || media.length >= limits.maxMediaAttachments) return;
     setUploadError(null);
-    for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("locale", locale);
-      if (spoiler && showCw) form.append("sensitive", "true");
-      try {
-        const res = await fetch("/api/v1/media", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
-        });
-        if (res.ok) {
-          const att = await res.json() as MediaAttachment;
-          setMedia((prev) => [...prev, att]);
-        } else {
-          const data = await res.json().catch(() => null) as { error?: string } | null;
-          setUploadError(data?.error ?? t.compose_upload_error);
+    setUploading(true);
+    try {
+      for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("locale", locale);
+        if (spoiler && showCw) form.append("sensitive", "true");
+        try {
+          const res = await fetch("/api/v1/media", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          });
+          if (res.ok) {
+            const att = await res.json() as MediaAttachment;
+            setMedia((prev) => [...prev, att]);
+          } else {
+            const data = await res.json().catch(() => null) as { error?: string } | null;
+            setUploadError(data?.error ?? t.compose_upload_error);
+          }
+        } catch {
+          setUploadError(t.compose_upload_error);
         }
-      } catch {
-        setUploadError(t.compose_upload_error);
       }
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -285,6 +291,19 @@ export function EditStatusModal({
                 </button>
               </div>
             ))}
+            {uploading && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon name="hourglass" spin size="1.4rem" />
+                </div>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{t.compose_uploading}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {uploading && media.length === 0 && (
+          <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="hourglass" spin size="1.4rem" />
           </div>
         )}
 
@@ -310,11 +329,11 @@ export function EditStatusModal({
             className="btn btn-ghost btn-sm"
             style={{ fontSize: "1rem", padding: "0.3rem 0.5rem" }}
             onClick={() => fileRef.current?.click()}
-            disabled={media.length >= limits.maxMediaAttachments || pollMode || busy}
+            disabled={media.length >= limits.maxMediaAttachments || pollMode || busy || uploading}
             title={t.compose_attach}
             aria-label={t.compose_attach}
           >
-            <Icon name="paperclip" size="1rem" />
+            {uploading ? <Icon name="hourglass" spin size="1rem" /> : <Icon name="paperclip" size="1rem" />}
           </button>
           <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
           <button
