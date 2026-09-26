@@ -80,6 +80,50 @@ export async function signRequest(
   };
 }
 
+/**
+ * RFC 9421 (HTTP Message Signatures) for outgoing requests. Mastodon 4.7+
+ * verifies draft-cavage first and only falls back to this scheme when a
+ * receiver rejects it, so callers retry with these headers on 400/401.
+ * Signs `@method`, `@target-uri` and — for bodies — `content-digest`, which is
+ * exactly what Mastodon's Linzer verifier requires.
+ */
+export async function signRequestRfc9421(
+  method: string,
+  url: string,
+  body: string | null,
+  privateKeyPem: string,
+  keyId: string
+): Promise<Record<string, string>> {
+  const created = Math.floor(Date.now() / 1000);
+  const components = body != null ? ["@method", "@target-uri", "content-digest"] : ["@method", "@target-uri"];
+  const contentDigest = body != null ? `sha-256=:${await sha256Base64(body)}:` : null;
+  const params = `(${components.map((c) => `"${c}"`).join(" ")});created=${created};keyid="${keyId}"`;
+
+  const signingString = [
+    ...components.map((c) => {
+      if (c === "@method") return `"@method": ${method.toUpperCase()}`;
+      if (c === "@target-uri") return `"@target-uri": ${url}`;
+      return `"content-digest": ${contentDigest}`;
+    }),
+    `"@signature-params": ${params}`,
+  ].join("\n");
+
+  const privateKey = await importPrivateKey(privateKeyPem);
+  const signatureBytes = await crypto.subtle.sign(
+    ALGORITHM,
+    privateKey,
+    new TextEncoder().encode(signingString)
+  );
+  const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)));
+
+  return {
+    Date: new Date().toUTCString(),
+    "Signature-Input": `sig1=${params}`,
+    Signature: `sig1=:${signature}:`,
+    ...(contentDigest ? { "Content-Digest": contentDigest } : {}),
+  };
+}
+
 // ─────────────────────────────────────────
 // Verifying incoming signatures
 // ─────────────────────────────────────────

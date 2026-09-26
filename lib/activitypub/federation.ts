@@ -2,7 +2,7 @@
  * Federation: deliver activities to remote servers and resolve remote actors/objects.
  */
 
-import { signRequest } from "./security";
+import { signRequest, signRequestRfc9421 } from "./security";
 import { discardBody } from "@/lib/http";
 import { getCloudflareContext } from "@/lib/cf";
 import type { APActivity, APActor, APObject } from "@/lib/types";
@@ -54,6 +54,28 @@ export async function signedGetHeaders(
   if (!kid.includes("#")) kid = `${kid}#main-key`;
   try {
     return await signRequest("GET", url, null, pem, kid);
+  } catch {
+    return {};
+  }
+}
+
+/** RFC 9421 counterpart of `signedGetHeaders` for the fallback retry. */
+export async function signedGetHeadersRfc9421(
+  url: string,
+  keyId?: string,
+  privateKeyPem?: string
+): Promise<Record<string, string>> {
+  let kid = keyId;
+  let pem = privateKeyPem;
+  if (!kid || !pem) {
+    const signer = await getFetchSigner();
+    if (!signer) return {};
+    kid = `${signer.id}#main-key`;
+    pem = signer.privateKeyPem;
+  }
+  if (!kid.includes("#")) kid = `${kid}#main-key`;
+  try {
+    return await signRequestRfc9421("GET", url, null, pem, kid);
   } catch {
     return {};
   }
@@ -176,6 +198,37 @@ export async function safeFetch(
   return (await safeFetchTracked(url, init, timeoutMs)).res;
 }
 
+/**
+ * POST an activity to an inbox. Signs with draft-cavage first and retries with
+ * RFC 9421 (HTTP Message Signatures) when the receiver answers 400/401 — the
+ * same "double-knock" Mastodon 4.7+ performs, so receivers that only verify
+ * HTTP Message Signatures keep working.
+ */
+export async function postToInboxSigned(
+  inboxUrl: string,
+  body: string,
+  keyId: string,
+  privateKeyPem: string,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response | null> {
+  const baseHeaders = { "Content-Type": AP_CONTENT_TYPE, Accept: AP_ACCEPT };
+  let res = await safeFetch(inboxUrl, {
+    method: "POST",
+    headers: { ...baseHeaders, ...(await signRequest("POST", inboxUrl, body, privateKeyPem, keyId)) },
+    body,
+  }, timeoutMs);
+
+  if (res && (res.status === 400 || res.status === 401)) {
+    await res.body?.cancel().catch(() => {});
+    res = await safeFetch(inboxUrl, {
+      method: "POST",
+      headers: { ...baseHeaders, ...(await signRequestRfc9421("POST", inboxUrl, body, privateKeyPem, keyId)) },
+      body,
+    }, timeoutMs);
+  }
+  return res;
+}
+
 // ─────────────────────────────────────────
 // Deliver to a single inbox
 // ─────────────────────────────────────────
@@ -193,18 +246,9 @@ export async function deliverToInbox(
   }
 
   const body = JSON.stringify(activity);
-  const headers = await signRequest("POST", inboxUrl, body, privateKeyPem, senderKeyId);
 
   try {
-    const res = await safeFetch(inboxUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": AP_CONTENT_TYPE,
-        Accept: AP_ACCEPT,
-        ...headers,
-      },
-      body,
-    });
+    const res = await postToInboxSigned(inboxUrl, body, senderKeyId, privateKeyPem);
     if (!res) return { ok: false, status: 0, error: "Blocked or unreachable" };
     // We only care about the status. Cancel the body so the connection is
     // released — delivering to many inboxes in parallel without reading the
@@ -236,12 +280,23 @@ export async function fetchRemoteObject(
   const additionalHeaders = await signedGetHeaders(url, senderKeyId, privateKeyPem);
 
   try {
-    const res = await safeFetch(url, {
+    let res = await safeFetch(url, {
       headers: {
         Accept: AP_ACCEPT,
         ...additionalHeaders,
       },
     });
+    // Receivers that verify HTTP Message Signatures only answer 400/401 to a
+    // draft-cavage signature: retry with RFC 9421 (Mastodon's double-knock).
+    if (res && (res.status === 400 || res.status === 401)) {
+      await res.body?.cancel().catch(() => {});
+      res = await safeFetch(url, {
+        headers: {
+          Accept: AP_ACCEPT,
+          ...(await signedGetHeadersRfc9421(url, senderKeyId, privateKeyPem)),
+        },
+      });
+    }
     if (!res?.ok) {
       await discardBody(res);
       return null;

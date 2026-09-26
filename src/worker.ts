@@ -19,9 +19,8 @@ import openNextDefault from "../.open-next/worker.js";
 
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
-import { signRequest } from "../lib/activitypub/security";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
-import { collectFollowerInboxes, fetchRemoteObject, safeFetch, validateOutboundUrl } from "../lib/activitypub/federation";
+import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
@@ -381,10 +380,6 @@ function forwardToTimelineDO(env: Env, request: Request, channel: string, authed
   return stub.fetch(doUrl, { method: request.method, headers: request.headers }) as Promise<Response>;
 }
 
-const AP_CONTENT_TYPE = "application/activity+json";
-const AP_ACCEPT =
-  'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
-
 /** Permanent HTTP failure codes — don't retry, just ack. */
 const PERMANENT_ERRORS = new Set([400, 401, 403, 404, 410, 422]);
 
@@ -415,19 +410,11 @@ async function deliverOne(
   }
 
   const keyId = `${actorId}#main-key`;
-  const headers = await signRequest("POST", inboxUrl, activityJson, row.private_key_pem, keyId);
 
   try {
-    // safeFetch re-validates redirect hops (SSRF) and bounds the timeout.
-    const res = await safeFetch(inboxUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": AP_CONTENT_TYPE,
-        Accept: AP_ACCEPT,
-        ...headers,
-      },
-      body: activityJson,
-    }, 15_000);
+    // Signed POST (safeFetch re-validates redirect hops and bounds the
+    // timeout): draft-cavage first, retrying with RFC 9421 on 400/401.
+    const res = await postToInboxSigned(inboxUrl, activityJson, keyId, row.private_key_pem, 15_000);
     if (!res) {
       const domain = new URL(inboxUrl).hostname.toLowerCase();
       await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");

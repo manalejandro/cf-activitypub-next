@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { generateKeyPair, signRequest, verifySignature } from "@/lib/activitypub/security";
-import { validateOutboundUrl } from "@/lib/activitypub/federation";
+import { generateKeyPair, signRequest, signRequestRfc9421, verifySignature } from "@/lib/activitypub/security";
+import { fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "@/lib/activitypub/federation";
 
 const TARGET = "https://remote.example/inbox";
 const KEY_ID = "https://local.example/users/alice#main-key";
@@ -96,6 +96,59 @@ describe("HTTP signature verification", () => {
       signature: `keyId="${KEY_ID}",algorithm="rsa-sha256",headers="digest host date",signature="${Buffer.from(new Uint8Array(signatureBytes)).toString("base64")}"`,
     };
     expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(true);
+  });
+
+  it("signs outgoing requests with RFC 9421 that its own verifier accepts", async () => {
+    const { publicKeyPem, privateKeyPem } = await generateKeyPair();
+    const headers = lower(await signRequestRfc9421("POST", TARGET, BODY, privateKeyPem, KEY_ID));
+    expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(true);
+    expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY + "x")).toBe(false);
+
+    const getHeaders = lower(await signRequestRfc9421("GET", TARGET, null, privateKeyPem, KEY_ID));
+    expect(await verifySignature("GET", TARGET, getHeaders, publicKeyPem, null)).toBe(true);
+  });
+
+  it("retries a signed GET with RFC 9421 when the receiver rejects draft-cavage", async () => {
+    const { privateKeyPem } = await generateKeyPair();
+    const calls: RequestInit[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      const sent = new Headers(init.headers);
+      if (sent.has("signature-input")) {
+        return new Response(JSON.stringify({ id: TARGET }), { status: 200, headers: { "content-type": "application/activity+json" } });
+      }
+      return new Response(null, { status: 401 });
+    }) as typeof fetch;
+    try {
+      const doc = await fetchRemoteObject(TARGET, KEY_ID, privateKeyPem);
+      expect(doc?.id).toBe(TARGET);
+      expect(calls).toHaveLength(2);
+      expect(new Headers(calls[0].headers).has("signature-input")).toBe(false);
+      expect(new Headers(calls[1].headers).has("signature-input")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("retries an inbox POST with RFC 9421 when the receiver rejects draft-cavage", async () => {
+    const { privateKeyPem } = await generateKeyPair();
+    const calls: RequestInit[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      const sent = new Headers(init.headers);
+      return new Response(null, { status: sent.has("signature-input") ? 202 : 401 });
+    }) as typeof fetch;
+    try {
+      const res = await postToInboxSigned(TARGET, BODY, KEY_ID, privateKeyPem);
+      expect(res?.status).toBe(202);
+      expect(calls).toHaveLength(2);
+      expect(new Headers(calls[0].headers).has("signature-input")).toBe(false);
+      expect(new Headers(calls[1].headers).has("signature-input")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("accepts an RFC 9421 HTTP Message Signature (Mastodon 4.7+)", async () => {

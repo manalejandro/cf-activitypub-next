@@ -17,7 +17,7 @@ import {
   upsertCustomEmoji,
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
-import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders } from "@/lib/activitypub/federation";
+import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders, signedGetHeadersRfc9421 } from "@/lib/activitypub/federation";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
@@ -209,6 +209,25 @@ async function remoteActorFetch(
       if (moved) break;
     } catch {
       /* try next UA */
+    }
+  }
+
+  // Receivers that only verify HTTP Message Signatures reject the draft-cavage
+  // request with 400/401: retry once with RFC 9421 like Mastodon 4.7+ does.
+  if (last && (last.status === 400 || last.status === 401)) {
+    const rfcHeaders = await signedGetHeadersRfc9421(url);
+    if (Object.keys(rfcHeaders).length > 0) {
+      try {
+        const { res, finalUrl } = await safeFetchTracked(url, { headers: { ...headers, "User-Agent": uas[0], ...rfcHeaders } }, timeoutMs);
+        let moved = false;
+        try {
+          moved = new URL(finalUrl).hostname !== originalHost;
+        } catch { /* keep as not moved */ }
+        if (moved) sawMove = true;
+        if (res?.ok) return { res, moved };
+        await discardBody(res);
+        last = res;
+      } catch { /* keep the draft-cavage failure */ }
     }
   }
   return { res: last, moved: sawMove };
