@@ -442,6 +442,18 @@ describe("card serializer", () => {
     expect(card?.image).toBe("https://cdn.example/cover.jpg");
     expect(card?.width).toBe(480);
   });
+
+  it("maps an embeddable YouTube card with a malformed type to video", () => {
+    const card = parsePreviewCard(
+      JSON.stringify({
+        url: "https://www.youtube.com/watch?v=abc123",
+        type: "https://www.youtube-nocookie.com/embed/abc123",
+        embed_url: "https://www.youtube-nocookie.com/embed/abc123",
+      })
+    );
+    expect(card?.type).toBe("video");
+    expect(card?.embed_url).toBe("https://www.youtube-nocookie.com/embed/abc123");
+  });
 });
 
 describe("YouTube fallback", () => {

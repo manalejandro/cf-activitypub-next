@@ -28,6 +28,7 @@ import type {
   APObjectMeta,
   MastodonPreviewCard,
 } from "@/lib/types";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { getPollsByObjectIds, getPollVotesByObjectIds } from "@/lib/db";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
@@ -273,7 +274,11 @@ export function parsePreviewCard(raw: string | null | undefined): MastodonPrevie
   try {
     const card = JSON.parse(raw) as Partial<MastodonPreviewCard> | null;
     if (!card || typeof card.url !== "string" || !card.url) return null;
-    const type = card.type === "photo" || card.type === "video" || card.type === "rich" ? card.type : "link";
+    const storedType = card.type === "photo" || card.type === "video" || card.type === "rich" ? card.type : null;
+    // A card with a playable YouTube embed is a video card even if the stored
+    // type is missing or malformed (older snapshots).
+    const type = storedType
+      ?? (youTubeEmbedUrl(card.embed_url, card.url) ? "video" : "link");
     return {
       url: card.url,
       title: typeof card.title === "string" ? card.title : "",

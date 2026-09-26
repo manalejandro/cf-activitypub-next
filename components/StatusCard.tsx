@@ -497,7 +497,9 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
   const title = card.title || host;
   // Video previews we can embed (YouTube) play in place, like Mastodon: the
   // play button opens the provider's player instead of leaving the site.
-  const embedUrl = card.type === "video" ? youTubeEmbedUrl(card.embed_url, card.url) : null;
+  // Any YouTube card plays embedded, whatever `type` the crawled snapshot
+  // carries (older cards were stored as "link"/"rich").
+  const embedUrl = youTubeEmbedUrl(card.embed_url, card.url);
   const playButton = (
     <span
       style={{
