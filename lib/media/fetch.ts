@@ -14,8 +14,12 @@ export interface FetchWithUserAgentsOptions {
   userAgents: string[];
   accept: string;
   timeoutMs?: number;
-  /** Reject responses above this declared size before reading the body. */
-  maxBytes?: number;
+  /**
+   * Reject responses above this declared size before reading the body. A
+   * function receives the response content type, so callers can apply
+   * per-type limits (Mastodon: images 16 MiB, video/GIF/audio 99 MiB).
+   */
+  maxBytes?: number | ((contentType: string) => number);
   /** Content types worth keeping; anything else is a permanent failure. */
   isAcceptableType?: (contentType: string) => boolean;
 }
@@ -80,7 +84,8 @@ export async function fetchWithUserAgents(
       return { ok: false, error: `Unsupported content type ${contentType || "unknown"}`, permanent: true };
     }
     const declaredLength = Number(res.headers.get("content-length") ?? "0");
-    if (options.maxBytes && declaredLength > options.maxBytes) {
+    const maxBytes = typeof options.maxBytes === "function" ? options.maxBytes(contentType) : options.maxBytes;
+    if (maxBytes && declaredLength > maxBytes) {
       await res.body?.cancel().catch(() => {});
       return { ok: false, error: `Too large (${declaredLength} bytes)`, permanent: true };
     }

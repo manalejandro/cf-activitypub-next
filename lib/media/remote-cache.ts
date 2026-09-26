@@ -78,7 +78,10 @@ export interface NormalizedMediaCacheLimits {
   days: number;
   profileDays: number;
   maxBytes: number;
+  /** Large media (video/GIF/audio) cap — Mastodon VIDEO_LIMIT. */
   maxObjectBytes: number;
+  /** Image cap (attachments, avatars, card images) — Mastodon IMAGE_LIMIT. */
+  maxImageBytes: number;
   fetchBatch: number;
   minEntries: number;
   userAgents: string[];
@@ -90,6 +93,7 @@ export interface MediaCacheLimits {
   profileDays?: number;
   maxBytes?: number;
   maxObjectBytes?: number;
+  maxImageBytes?: number;
   fetchBatch?: number;
   /** Maintenance never shrinks the cache below this many entries. */
   minEntries?: number;
@@ -99,6 +103,7 @@ export interface MediaCacheLimits {
   mediaCacheProfileDays?: number;
   mediaCacheMaxBytes?: number;
   mediaCacheMaxObjectBytes?: number;
+  mediaCacheMaxImageBytes?: number;
   mediaCacheFetchBatch?: number;
   mediaCacheMinEntries?: number;
   mediaCacheUserAgents?: string[];
@@ -123,6 +128,7 @@ export function mediaCacheLimitsFrom(limits: InstanceLimits): MediaCacheLimits {
     profileDays: limits.mediaCacheProfileDays,
     maxBytes: limits.mediaCacheMaxBytes,
     maxObjectBytes: limits.mediaCacheMaxObjectBytes,
+    maxImageBytes: limits.mediaCacheMaxImageBytes,
     fetchBatch: limits.mediaCacheFetchBatch,
     minEntries: limits.mediaCacheMinEntries,
     userAgents: limits.mediaCacheUserAgents,
@@ -141,6 +147,7 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
   const profileDays = Number(pick(limits.profileDays, limits.mediaCacheProfileDays));
   const maxBytes = Number(pick(limits.maxBytes, limits.mediaCacheMaxBytes));
   const maxObjectBytes = Number(pick(limits.maxObjectBytes, limits.mediaCacheMaxObjectBytes));
+  const maxImageBytes = Number(pick(limits.maxImageBytes, limits.mediaCacheMaxImageBytes));
   const fetchBatch = Number(pick(limits.fetchBatch, limits.mediaCacheFetchBatch));
   const minEntries = Number(pick(limits.minEntries, limits.mediaCacheMinEntries));
   const userAgents = pick(limits.userAgents, limits.mediaCacheUserAgents);
@@ -150,7 +157,8 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
     days: days > 0 ? days : 7,
     profileDays: profileDays > 0 ? profileDays : 30,
     maxBytes: maxBytes > 0 ? maxBytes : 10 * 1024 * 1024 * 1024,
-    maxObjectBytes: maxObjectBytes > 0 ? maxObjectBytes : 40 * 1024 * 1024,
+    maxObjectBytes: maxObjectBytes > 0 ? maxObjectBytes : 103_809_024,
+    maxImageBytes: maxImageBytes > 0 ? maxImageBytes : 16 * 1024 * 1024,
     fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
     // 0 is a valid floor (used by tests); anything invalid falls back to 20.
     minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
@@ -158,6 +166,17 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
       ? userAgents
       : ["CFActivityPub/0.1.0 (+https://localhost; federated media cache)"],
   };
+}
+
+/**
+ * Mastodon's per-type remote media limits: video/GIF/audio (its
+ * `larger_media_format?`) get VIDEO_LIMIT, anything else IMAGE_LIMIT; the
+ * absolute `maxObjectBytes` ceiling still applies to every type.
+ */
+function mediaCacheSizeLimit(contentType: string, limits: NormalizedMediaCacheLimits): number {
+  const type = (contentType || "").toLowerCase();
+  const isLarge = type.startsWith("video/") || type.startsWith("audio/") || type === "image/gif";
+  return isLarge ? limits.maxObjectBytes : Math.min(limits.maxObjectBytes, limits.maxImageBytes);
 }
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -181,6 +200,10 @@ const MAX_ATTEMPTS = 3;
 // Bodies without content-length (chunked) must be buffered; cap them so the
 // 2x copy of a single body can never approach the Worker memory limit, and
 // serialize them (one at a time) since the streaming path can't be used.
+// Chunked responses (no `content-length`) are buffered through memory, so they
+// keep a hard 16 MiB cap regardless of the per-type limit: a 99 MiB video
+// buffered twice would exceed the Worker memory limit. Origins serving media
+// always send `content-length`, so Mastodon's limits apply in practice.
 const UNKNOWN_LENGTH_MAX_BYTES = 16 * 1024 * 1024;
 let bufferedSlot: Promise<void> = Promise.resolve();
 async function withBufferedSlot<T>(fn: () => Promise<T>): Promise<T> {
@@ -254,7 +277,7 @@ async function cacheOne(
     userAgents: limits.userAgents,
     accept: "image/avif,image/webp,image/*,video/*,audio/*,*/*;q=0.8",
     timeoutMs: FETCH_TIMEOUT_MS,
-    maxBytes: limits.maxObjectBytes,
+    maxBytes: (contentType: string) => mediaCacheSizeLimit(contentType, limits),
     isAcceptableType: isCacheableType,
   });
 
@@ -295,7 +318,7 @@ async function cacheOne(
       await withBufferedSlot(async () => {
         const bytes = await readBoundedBytes(
           fetched.response,
-          Math.min(limits.maxObjectBytes, UNKNOWN_LENGTH_MAX_BYTES)
+          Math.min(mediaCacheSizeLimit(fetched.contentType, limits), UNKNOWN_LENGTH_MAX_BYTES)
         );
         if (!bytes) {
           oversized = true;

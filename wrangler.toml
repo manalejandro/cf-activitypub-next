@@ -34,13 +34,17 @@ SHARED_INBOX_BATCH = "5"
 # MEDIA_CACHE_PROFILE_DAYS (profiles), and the cache is trimmed to
 # MEDIA_CACHE_MAX_BYTES (oldest first). MEDIA_CACHE_USER_AGENTS overrides
 # the whole UA list; unset, it is built as
-# "cf-activitypub/$INSTANCE_VERSION (+$INSTANCE_URL; federated media cache)"
+# "CFActivityPub/$INSTANCE_VERSION (+$INSTANCE_URL; federated media cache)"
 # followed by browser fallbacks.
 MEDIA_CACHE_ENABLED = "true"
 MEDIA_CACHE_DAYS = "7"
 MEDIA_CACHE_PROFILE_DAYS = "30"
 MEDIA_CACHE_MAX_BYTES = "10737418240"
-MEDIA_CACHE_MAX_OBJECT_BYTES = "41943040"
+# Object size limits mirror Mastodon's media attachment limits: video/GIF/
+# audio up to 99 MiB (VIDEO_LIMIT), images up to 16 MiB (IMAGE_LIMIT).
+# MEDIA_CACHE_MAX_OBJECT_BYTES is also the absolute ceiling for every type.
+MEDIA_CACHE_MAX_OBJECT_BYTES = "103809024"
+MEDIA_CACHE_MAX_IMAGE_BYTES = "16777216"
 MEDIA_CACHE_FETCH_BATCH = "50"
 # Maintenance never shrinks the cache below this many entries (FIFO eviction:
 # the oldest are replaced first when a limit is reached).

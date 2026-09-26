@@ -59,7 +59,13 @@ export const MEDIA_CACHE_ENABLED = true;
 export const MEDIA_CACHE_DAYS = 7;
 export const MEDIA_CACHE_PROFILE_DAYS = 30;
 export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
-export const MEDIA_CACHE_MAX_OBJECT_BYTES = 40 * 1024 * 1024; // 40 MB
+// Object size limits for the remote media cache, mirroring Mastodon's remote
+// media downloads (`MediaAttachment::IMAGE_LIMIT` / `VIDEO_LIMIT`,
+// `larger_media_format?` = video/GIF/audio): IMAGE_LIMIT applies to images
+// (attachments, avatars, card images) and VIDEO_LIMIT to video/GIF/audio.
+// `MEDIA_CACHE_MAX_OBJECT_BYTES` is also the absolute ceiling for every type.
+export const MEDIA_CACHE_MAX_OBJECT_BYTES = 103_809_024; // 99 MiB — Mastodon VIDEO_LIMIT
+export const MEDIA_CACHE_MAX_IMAGE_BYTES = 16 * 1024 * 1024; // 16 MiB — Mastodon IMAGE_LIMIT
 export const MEDIA_CACHE_FETCH_BATCH = 50;
 // Maintenance never takes the cache below this many entries: reaching a limit
 // replaces the OLDEST entries (FIFO), it never wipes the cache.
@@ -150,6 +156,7 @@ export interface InstanceLimits {
   mediaCacheProfileDays: number;
   mediaCacheMaxBytes: number;
   mediaCacheMaxObjectBytes: number;
+  mediaCacheMaxImageBytes: number;
   mediaCacheFetchBatch: number;
   mediaCacheMinEntries: number;
   mediaCacheUserAgents: string[];
@@ -207,6 +214,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheProfileDays: MEDIA_CACHE_PROFILE_DAYS,
   mediaCacheMaxBytes: MEDIA_CACHE_MAX_BYTES,
   mediaCacheMaxObjectBytes: MEDIA_CACHE_MAX_OBJECT_BYTES,
+  mediaCacheMaxImageBytes: MEDIA_CACHE_MAX_IMAGE_BYTES,
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
   mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
@@ -299,6 +307,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheProfileDays: num(env, "MEDIA_CACHE_PROFILE_DAYS", DEFAULT_LIMITS.mediaCacheProfileDays),
     mediaCacheMaxBytes: num(env, "MEDIA_CACHE_MAX_BYTES", DEFAULT_LIMITS.mediaCacheMaxBytes),
     mediaCacheMaxObjectBytes: num(env, "MEDIA_CACHE_MAX_OBJECT_BYTES", DEFAULT_LIMITS.mediaCacheMaxObjectBytes),
+    mediaCacheMaxImageBytes: num(env, "MEDIA_CACHE_MAX_IMAGE_BYTES", DEFAULT_LIMITS.mediaCacheMaxImageBytes),
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
     mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),

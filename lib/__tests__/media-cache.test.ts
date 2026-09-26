@@ -113,6 +113,7 @@ const LIMITS: MediaCacheLimits = {
   profileDays: 30,
   maxBytes: 10 * 1024 * 1024,
   maxObjectBytes: 1024 * 1024,
+  maxImageBytes: 1024 * 1024,
   fetchBatch: 5,
   minEntries: 0,
   userAgents: ["bot-agent", "browser-agent"],
@@ -702,11 +703,35 @@ describe("remote media cache", () => {
       okStreamResponse([new Uint8Array(600_000), new Uint8Array(600_000)], "image/png")
     );
 
-    const limits = { ...LIMITS, maxObjectBytes: 500_000 };
+    const limits = { ...LIMITS, maxObjectBytes: 500_000, maxImageBytes: 500_000 };
     expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(0);
     expect(r2.store.size).toBe(0);
     const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
     expect(row?.status).toBe("failed");
+  });
+
+  it("applies Mastodon's image limit to remote images (16 MiB default)", async () => {
+    // No explicit sizes → module defaults, which mirror Mastodon.
+    const defaults: MediaCacheLimits = { enabled: true, userAgents: ["bot-agent"] };
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(
+      okSizedStreamResponse([new Uint8Array(8)], "image/png", 17 * 1024 * 1024)
+    );
+
+    expect(await processMediaCacheQueue(bindings, defaults, "https://local.example")).toBe(0);
+    const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
+    expect(row?.status).toBe("failed");
+  });
+
+  it("accepts video/GIF/audio up to Mastodon's VIDEO_LIMIT (99 MiB default)", async () => {
+    const defaults: MediaCacheLimits = { enabled: true, userAgents: ["bot-agent"] };
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    federation.safeFetch.mockResolvedValue(
+      okSizedStreamResponse([new Uint8Array(8)], "video/mp4", 99 * 1024 * 1024)
+    );
+
+    expect(await processMediaCacheQueue(bindings, defaults, "https://local.example")).toBe(1);
+    expect(r2.store.size).toBe(1);
   });
 
   it("treats an ISO-8601 backoff timestamp as due (mixed date formats)", async () => {

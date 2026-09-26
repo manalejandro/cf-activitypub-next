@@ -15587,6 +15587,9 @@
           "mediaCacheMaxObjectBytes": {
             "type": "number"
           },
+          "mediaCacheMaxImageBytes": {
+            "type": "number"
+          },
           "mediaCacheFetchBatch": {
             "type": "number"
           },
