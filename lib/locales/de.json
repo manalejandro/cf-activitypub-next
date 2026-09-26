@@ -974,5 +974,11 @@
   "save": "Speichern",
   "status_not_found": "Beitrag nicht gefunden",
   "remote_blocked": "Der Server dieses Kontos blockiert dich",
-  "remote_unreachable": "Der Server dieses Kontos ist nicht erreichbar"
+  "remote_unreachable": "Der Server dieses Kontos ist nicht erreichbar",
+  "login_remote_or": "oder",
+  "login_remote_title": "Mit deiner Instanz anmelden",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Weiter",
+  "login_remote_hint": "Wir bringen dich zu deinem Server zum Anmelden und zurück hierher, um zu interagieren.",
+  "login_remote_invalid": "Gib eine gültige Instanz-Domain ein"
 }

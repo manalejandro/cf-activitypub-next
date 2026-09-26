@@ -974,5 +974,11 @@
   "save": "Guardar",
   "status_not_found": "Publicación no encontrada",
   "remote_blocked": "El servidor de esta cuenta te está bloqueando",
-  "remote_unreachable": "El servidor de esta cuenta no responde"
+  "remote_unreachable": "El servidor de esta cuenta no responde",
+  "login_remote_or": "o",
+  "login_remote_title": "Inicia sesión con tu instancia",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Continuar",
+  "login_remote_hint": "Te llevaremos a tu servidor para iniciar sesión y volverás aquí para interactuar.",
+  "login_remote_invalid": "Introduce un dominio de instancia válido"
 }

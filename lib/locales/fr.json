@@ -974,5 +974,11 @@
   "save": "Enregistrer",
   "status_not_found": "Publication introuvable",
   "remote_blocked": "Le serveur de ce compte vous bloque",
-  "remote_unreachable": "Le serveur de ce compte est injoignable"
+  "remote_unreachable": "Le serveur de ce compte est injoignable",
+  "login_remote_or": "ou",
+  "login_remote_title": "Connectez-vous avec votre instance",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Continuer",
+  "login_remote_hint": "Nous vous emmènerons sur votre serveur pour vous connecter, puis vous reviendrez ici pour interagir.",
+  "login_remote_invalid": "Saisissez un domaine d'instance valide"
 }

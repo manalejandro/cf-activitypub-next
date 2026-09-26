@@ -974,5 +974,11 @@
   "save": "保存",
   "status_not_found": "投稿が見つかりません",
   "remote_blocked": "このアカウントのサーバーがあなたをブロックしています",
-  "remote_unreachable": "このアカウントのサーバーに接続できません"
+  "remote_unreachable": "このアカウントのサーバーに接続できません",
+  "login_remote_or": "または",
+  "login_remote_title": "自分のインスタンスでログイン",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "続行",
+  "login_remote_hint": "ログインのためお使いのサーバーへ移動し、その後ここに戻って操作できます。",
+  "login_remote_invalid": "有効なインスタンスのドメインを入力してください"
 }

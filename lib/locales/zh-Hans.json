@@ -974,5 +974,11 @@
   "save": "保存",
   "status_not_found": "未找到帖子",
   "remote_blocked": "该账号的服务器正在屏蔽你",
-  "remote_unreachable": "无法访问该账号的服务器"
+  "remote_unreachable": "无法访问该账号的服务器",
+  "login_remote_or": "或",
+  "login_remote_title": "使用你的实例登录",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "继续",
+  "login_remote_hint": "我们会带你去你的服务器登录，然后返回这里进行互动。",
+  "login_remote_invalid": "请输入有效的实例域名"
 }

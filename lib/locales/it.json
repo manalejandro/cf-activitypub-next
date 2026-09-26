@@ -974,5 +974,11 @@
   "save": "Salva",
   "status_not_found": "Post non trovato",
   "remote_blocked": "Il server di questo account ti sta bloccando",
-  "remote_unreachable": "Il server di questo account non è raggiungibile"
+  "remote_unreachable": "Il server di questo account non è raggiungibile",
+  "login_remote_or": "oppure",
+  "login_remote_title": "Accedi con la tua istanza",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Continua",
+  "login_remote_hint": "Ti porteremo sul tuo server per accedere e tornerai qui per interagire.",
+  "login_remote_invalid": "Inserisci un dominio di istanza valido"
 }

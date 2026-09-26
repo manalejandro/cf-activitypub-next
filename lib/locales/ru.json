@@ -974,5 +974,11 @@
   "save": "Сохранить",
   "status_not_found": "Пост не найден",
   "remote_blocked": "Сервер этого аккаунта блокирует вас",
-  "remote_unreachable": "Сервер этого аккаунта недоступен"
+  "remote_unreachable": "Сервер этого аккаунта недоступен",
+  "login_remote_or": "или",
+  "login_remote_title": "Войти через свой сервер",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Продолжить",
+  "login_remote_hint": "Мы перенаправим вас на ваш сервер для входа и вернём сюда для взаимодействия.",
+  "login_remote_invalid": "Введите действительный домен сервера"
 }

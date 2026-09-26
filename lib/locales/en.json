@@ -974,5 +974,11 @@
   "save": "Save",
   "status_not_found": "Post not found",
   "remote_blocked": "This account's server is blocking you",
-  "remote_unreachable": "This account's server is unreachable"
+  "remote_unreachable": "This account's server is unreachable",
+  "login_remote_or": "or",
+  "login_remote_title": "Log in with your instance",
+  "login_remote_placeholder": "mastodon.social",
+  "login_remote_button": "Continue",
+  "login_remote_hint": "We'll take you to your server to sign in and back here to interact.",
+  "login_remote_invalid": "Enter a valid instance domain"
 }

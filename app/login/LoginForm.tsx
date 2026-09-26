@@ -39,16 +39,28 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [instance, setInstance] = useState("");
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const { t } = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Same-origin redirect target (?redirect=…): after signing in go back to the
+  // interaction the visitor came for. Never follow cross-origin targets.
+  const rawRedirect = searchParams.get("redirect");
+  const redirectTarget = rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+    ? rawRedirect
+    : "/home";
+  // Object/actor URI from /authorize_interaction: forwarded to an external
+  // instance so its user can interact from there.
+  const interactionUri = searchParams.get("uri");
 
   // Already signed in? Send them straight to their feed. (Placed after all
   // hooks so the early return never skips a hook call.)
   const { authenticated, loading: authLoading } = useAuth();
   useEffect(() => {
-    if (!authLoading && authenticated) router.replace("/home");
-  }, [authLoading, authenticated, router]);
+    if (!authLoading && authenticated) router.replace(redirectTarget);
+  }, [authLoading, authenticated, router, redirectTarget]);
 
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -129,13 +141,35 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
         return;
       }
 
-      window.location.href = "/home";
+      window.location.href = redirectTarget;
     } catch {
       resetTurnstile();
       setError(t.network_error);
     } finally {
       setLoading(false);
     }
+  }
+
+  /** Accepts a domain, a URL or @user@domain and returns the bare host. */
+  function normalizeInstance(input: string): string | null {
+    let value = input.trim().replace(/^@+/, "");
+    if (value.includes("@")) value = value.split("@").pop() ?? "";
+    value = value.replace(/^https?:\/\//i, "").split("/")[0].trim().toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(value)) return null;
+    return value;
+  }
+
+  function handleRemoteLogin(e: React.FormEvent) {
+    e.preventDefault();
+    const host = normalizeInstance(instance);
+    if (!host) {
+      setRemoteError(t.login_remote_invalid);
+      return;
+    }
+    setRemoteError(null);
+    window.location.href = interactionUri
+      ? `https://${host}/authorize_interaction?uri=${encodeURIComponent(interactionUri)}`
+      : `https://${host}`;
   }
 
   const inlineError = {
@@ -261,6 +295,47 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
               >
                 {loading ? t.login_submitting : t.login_submit}
               </button>
+            </form>
+
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: "0.75rem",
+                margin: "1.25rem 0 1rem", color: "var(--text-muted)",
+                fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em",
+              }}
+            >
+              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              {t.login_remote_or}
+              <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+
+            <form onSubmit={handleRemoteLogin} className="flex flex-col gap-3">
+              <label htmlFor="login-remote-instance" style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                {t.login_remote_title}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="login-remote-instance"
+                  className="input"
+                  placeholder={t.login_remote_placeholder}
+                  value={instance}
+                  onChange={(e) => setInstance(e.target.value)}
+                  autoComplete="url"
+                />
+                <button
+                  type="submit"
+                  className="btn btn-outline"
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  {t.login_remote_button}
+                </button>
+              </div>
+              {remoteError && (
+                <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }}>{remoteError}</p>
+              )}
+              <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", margin: 0 }}>
+                {t.login_remote_hint}
+              </p>
             </form>
           </div>
 
