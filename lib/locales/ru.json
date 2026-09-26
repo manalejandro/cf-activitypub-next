@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "Выйти из полноэкранного режима",
   "media_seek": "Перемотка",
   "media_download": "Скачать",
-  "media_expand": "Открыть просмотрщик"
+  "media_expand": "Открыть просмотрщик",
+  "compose_upload_error": "Не удалось загрузить файл"
 }

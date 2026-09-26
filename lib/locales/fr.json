@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "Quitter le plein écran",
   "media_seek": "Déplacer",
   "media_download": "Télécharger",
-  "media_expand": "Ouvrir la visionneuse"
+  "media_expand": "Ouvrir la visionneuse",
+  "compose_upload_error": "Échec de l'envoi"
 }

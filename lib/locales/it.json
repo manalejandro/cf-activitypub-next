@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "Esci da schermo intero",
   "media_seek": "Sposta",
   "media_download": "Scarica",
-  "media_expand": "Apri visualizzatore"
+  "media_expand": "Apri visualizzatore",
+  "compose_upload_error": "Caricamento non riuscito"
 }

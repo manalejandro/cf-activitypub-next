@@ -589,7 +589,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       const parentObj = await getObjectById(env.DB, inReplyToId);
       const parentAuthor = parentObj ? await getActorById(env.DB, parentObj.actorId) : null;
       if (parentObj && parentAuthor) {
-        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, {});
+        const parentAttachments = await getAttachmentsByObjectId(env.DB, parentObj.id);
+        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, { attachments: parentAttachments });
         await broadcastStatusInteraction(env.TIMELINE_STREAM, parentSerialized, parentAuthor);
         await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, parentAuthor.id, parentSerialized);
       }

@@ -37,6 +37,7 @@ export function EditStatusModal({
   const [showCw, setShowCw] = useState(false);
   const [media, setMedia] = useState<MediaAttachment[]>([]);
   const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pollMode, setPollMode] = useState(false);
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
@@ -121,6 +122,7 @@ export function EditStatusModal({
 
   async function addFiles(files: FileList | File[] | null) {
     if (!files || !token || media.length >= limits.maxMediaAttachments) return;
+    setUploadError(null);
     for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
       const form = new FormData();
       form.append("file", file);
@@ -135,8 +137,13 @@ export function EditStatusModal({
         if (res.ok) {
           const att = await res.json() as MediaAttachment;
           setMedia((prev) => [...prev, att]);
+        } else {
+          const data = await res.json().catch(() => null) as { error?: string } | null;
+          setUploadError(data?.error ?? t.compose_upload_error);
         }
-      } catch { /* ignore */ }
+      } catch {
+        setUploadError(t.compose_upload_error);
+      }
     }
   }
 
@@ -334,6 +341,10 @@ export function EditStatusModal({
             <Icon name="bar-chart" size="1rem" />
           </button>
         </div>
+
+        {uploadError && (
+          <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }}>{uploadError}</p>
+        )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{limits.maxStatusChars}</span>

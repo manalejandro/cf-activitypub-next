@@ -229,6 +229,8 @@ export async function PUT(
       if (!pendingRaw) continue;
       try {
         const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+        // Only the uploader may attach a pending upload (same check as POST).
+        if (pending.actorId && pending.actorId !== actor.id) continue;
         const att = {
           id: mediaId,
           objectId: obj.id,
@@ -333,7 +335,13 @@ export async function PUT(
 
   const updatedObj = await getObjectById(env.DB, obj.id);
   const allEmojis = await getAllCustomEmojis(env.DB);
-  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain, { emojis: allEmojis });
+  // `currentAttachments` was re-read after the media replacement above: the
+  // response (and the streaming payload) must carry the edited media, not the
+  // pre-update list — omitting it made freshly uploaded media vanish on save.
+  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain, {
+    emojis: allEmojis,
+    attachments: currentAttachments,
+  });
 
   // Broadcast status.update event to streaming clients
   if (env.TIMELINE_STREAM) {

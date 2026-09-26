@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversationById, deleteConversation, getObjectById, getActorById, getActorByUri } from "@/lib/db";
+import { getConversationById, deleteConversation, getObjectById, getActorById, getActorByUri, getAttachmentsByObjectId } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 
@@ -55,7 +55,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (obj) {
       const author = await getActorById(env.DB, obj.actorId);
       if (author) {
-        lastStatus = serializeStatus(obj, author, domain, { filtered: (await getFilterResultsForStatuses(env.DB, actor.id, [obj])).get(obj.id) ?? [] });
+        const lastAttachments = await getAttachmentsByObjectId(env.DB, obj.id);
+        lastStatus = serializeStatus(obj, author, domain, { attachments: lastAttachments, filtered: (await getFilterResultsForStatuses(env.DB, actor.id, [obj])).get(obj.id) ?? [] });
         if (obj.visibility === "direct") {
           const others = otherParticipantIds(obj.raw, actor.id);
           let other = null;

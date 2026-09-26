@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversations, getObjectById, getActorById, getActorByUri, getLastStatusAtMap, deleteConversation } from "@/lib/db";
+import { getConversations, getObjectById, getActorById, getActorByUri, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectId } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -64,7 +64,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       if (author) {
         const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
         const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-        lastStatus = serializeStatus(obj, author, domain, { filtered: lastStatusFiltered, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+        const lastAttachments = await getAttachmentsByObjectId(env.DB, obj.id);
+        lastStatus = serializeStatus(obj, author, domain, { attachments: lastAttachments, filtered: lastStatusFiltered, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
         if (obj.visibility === "direct") {
           // The conversation is "with" everyone addressed except the viewer;
           // fall back to the last author when no other participant resolves.

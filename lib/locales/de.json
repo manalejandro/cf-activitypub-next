@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "Vollbild beenden",
   "media_seek": "Spulen",
   "media_download": "Herunterladen",
-  "media_expand": "Medienbetrachter öffnen"
+  "media_expand": "Medienbetrachter öffnen",
+  "compose_upload_error": "Upload fehlgeschlagen"
 }

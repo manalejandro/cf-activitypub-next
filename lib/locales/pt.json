@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "Sair da tela cheia",
   "media_seek": "Avançar",
   "media_download": "Baixar",
-  "media_expand": "Abrir visualizador"
+  "media_expand": "Abrir visualizador",
+  "compose_upload_error": "Falha no envio"
 }

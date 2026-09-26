@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "全画面を終了",
   "media_seek": "シーク",
   "media_download": "ダウンロード",
-  "media_expand": "メディアビューアを開く"
+  "media_expand": "メディアビューアを開く",
+  "compose_upload_error": "アップロードに失敗しました"
 }

@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "전체 화면 종료",
   "media_seek": "탐색",
   "media_download": "다운로드",
-  "media_expand": "미디어 뷰어 열기"
+  "media_expand": "미디어 뷰어 열기",
+  "compose_upload_error": "업로드 실패"
 }

@@ -991,5 +991,6 @@
   "media_exit_fullscreen": "退出全屏",
   "media_seek": "进度",
   "media_download": "下载",
-  "media_expand": "打开媒体查看器"
+  "media_expand": "打开媒体查看器",
+  "compose_upload_error": "上传失败"
 }

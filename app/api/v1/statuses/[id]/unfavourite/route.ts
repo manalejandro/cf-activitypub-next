@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteLike } from "@/lib/db";
+import { getObjectById, getActorById, deleteLike, getAttachmentsByObjectId } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -43,7 +43,8 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
-  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: false });
+  const attachments = await getAttachmentsByObjectId(env.DB, obj.id);
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: false, attachments });
   if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
   if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
   return json(serialized);

@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, createLike, getLike, isAcceptedFollower, canViewStatus,
-  getLastStatusAtMap} from "@/lib/db";
+  getLastStatusAtMap,
+  getAttachmentsByObjectId,
+} from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -73,9 +75,10 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
+  const attachments = await getAttachmentsByObjectId(env.DB, obj.id);
     const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
   const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: true, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: true, attachments, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
   // Live counters: refresh the status in every subscribed timeline.
   if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
   if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);

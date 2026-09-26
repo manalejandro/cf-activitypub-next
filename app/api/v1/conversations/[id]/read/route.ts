@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversationById, markConversationRead, getObjectById, getActorById } from "@/lib/db";
+import { getConversationById, markConversationRead, getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -26,7 +26,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (obj) {
       const author = await getActorById(env.DB, obj.actorId);
       if (author) {
-        lastStatus = serializeStatus(obj, author, domain);
+        const attachments = await getAttachmentsByObjectId(env.DB, obj.id);
+        lastStatus = serializeStatus(obj, author, domain, { attachments });
         if (obj.visibility === "direct") {
           accounts = [serializeAccount(author, domain)];
         }
