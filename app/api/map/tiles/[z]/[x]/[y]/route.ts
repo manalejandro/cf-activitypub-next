@@ -39,7 +39,7 @@ export async function GET(
   const version = (env as unknown as Record<string, string>).INSTANCE_VERSION ?? "0";
   const res = await fetch(`https://tile.openstreetmap.org/${zi}/${xi}/${yi}.png`, {
     headers: {
-      "User-Agent": `cf-activitypub/${version} (+${base}; map tiles)`,
+      "User-Agent": `CFActivityPub/${version} (+${base}; map tiles)`,
       Accept: "image/png,image/*;q=0.8",
       Referer: `${base}/`,
     },

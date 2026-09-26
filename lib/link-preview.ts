@@ -110,7 +110,7 @@ function normalizeLimits(limits: LinkPreviewLimits): NormalizedLinkPreviewLimits
     maxBytes: maxBytes > 0 ? maxBytes : 2 * 1024 * 1024,
     userAgents: Array.isArray(userAgents) && userAgents.length > 0
       ? userAgents
-      : ["cf-activitypub/0.1.0 (+https://localhost; federated media cache)"],
+      : ["CFActivityPub/0.1.0 (+https://localhost; federated media cache)"],
     mediaCacheEnabled: mediaCacheEnabled !== false,
   };
 }

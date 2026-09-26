@@ -103,6 +103,7 @@ export interface Status {
   card?: LinkPreviewCardData | null;
   location?: { name: string | null; latitude: number; longitude: number } | null;
   emojis?: EmojiData[];
+  tags?: { name: string; url: string }[];
   ap_type?: string | null;
   quote?: Status | null;
   quotes_count?: number;
@@ -910,6 +911,19 @@ export function StatusCard({
         )}
         {showContent && status.card && (
           <LinkPreview card={status.card} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} />
+        )}
+        {showContent && (status.tags?.length ?? 0) > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.4rem" }}>
+            {status.tags!.map((tag) => (
+              <Link
+                key={tag.name}
+                href={`/tags/${encodeURIComponent(tag.name)}`}
+                style={{ color: "var(--accent)", fontSize: "0.85rem", textDecoration: "none" }}
+              >
+                #{tag.name}
+              </Link>
+            ))}
+          </div>
         )}
         {status.edited_at && (
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.3rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><Icon name="pencil" size="0.7rem" /> {t.status_edited}</div>

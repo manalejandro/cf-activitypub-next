@@ -33,7 +33,7 @@ interface AdminInstance {
   dormant: boolean;
 }
 
-const PAGE_LIMIT = 40;
+const PAGE_LIMIT = 50;
 
 export default function AdminInstancesPage() {
   const router = useRouter();
@@ -140,8 +140,8 @@ export default function AdminInstancesPage() {
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString(i18next.language || "en", {
-      year: "numeric", month: "short", day: "numeric",
+    return new Date(dateStr).toLocaleString(i18next.language || "en", {
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
   }
 

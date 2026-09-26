@@ -5,7 +5,7 @@ describe("media cache limits", () => {
   it("builds the bot user agent from INSTANCE_VERSION and INSTANCE_URL", () => {
     const limits = resolveLimits({ INSTANCE_VERSION: "9.9.9", INSTANCE_URL: "https://example.social" });
     expect(limits.mediaCacheUserAgents[0]).toBe(
-      "cf-activitypub/9.9.9 (+https://example.social; federated media cache)"
+      "CFActivityPub/9.9.9 (+https://example.social; federated media cache)"
     );
     // Browser fallbacks follow the instance bot UA.
     expect(limits.mediaCacheUserAgents.length).toBeGreaterThan(1);
@@ -18,7 +18,7 @@ describe("media cache limits", () => {
 
   it("falls back safely when the env carries no instance metadata", () => {
     expect(defaultMediaCacheUserAgents({})[0]).toBe(
-      "cf-activitypub/0.1.0 (+https://localhost; federated media cache)"
+      "CFActivityPub/0.1.0 (+https://localhost; federated media cache)"
     );
   });
 

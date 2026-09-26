@@ -10,7 +10,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { Pagination } from "@/components/Pagination";
 
-const REPORTS_PAGE_LIMIT = 40;
+const REPORTS_PAGE_LIMIT = 50;
 
 interface Report {
   id: string;
@@ -212,7 +212,7 @@ export default function AdminReportsPage() {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {

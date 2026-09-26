@@ -1553,6 +1553,94 @@ export async function upsertDirectConversation(
     .run();
 }
 
+/**
+ * Recipients addressed by a direct status (to/cc plus Mention tags), lowercased.
+ */
+function directStatusRecipients(raw: string): Set<string> {
+  const out = new Set<string>();
+  try {
+    const o = JSON.parse(raw) as { to?: unknown; cc?: unknown; tag?: unknown };
+    const add = (v: unknown) => {
+      if (typeof v === "string" && v.startsWith("http")) out.add(v.toLowerCase());
+    };
+    for (const key of ["to", "cc"] as const) {
+      const v = o[key];
+      if (Array.isArray(v)) v.forEach(add);
+      else add(v);
+    }
+    if (Array.isArray(o.tag)) {
+      for (const tag of o.tag) {
+        if (tag && typeof tag === "object" && (tag as { type?: string }).type === "Mention") {
+          add((tag as { href?: unknown }).href);
+        }
+      }
+    }
+  } catch { /* malformed raw */ }
+  return out;
+}
+
+/**
+ * Point a conversation at its newest remaining direct status after its
+ * `last_status_id` was deleted, or drop it when the thread has no messages
+ * left. The conversation id encodes the participants (`dm:<owner>::<others…>`),
+ * which is what lets us find the previous message of the same thread. Together
+ * this stops the private-messages list from showing empty entries.
+ */
+async function repointOrDropConversation(
+  db: D1Database,
+  conversationId: string,
+  excludeStatusId: string | null
+): Promise<void> {
+  const [ownerPart, othersPart] = conversationId.split("::");
+  const ownerId = (ownerPart ?? "").replace(/^dm:/, "").toLowerCase();
+  const others = (othersPart ?? "").split("+").filter(Boolean).map((v) => v.toLowerCase());
+  if (!ownerId || others.length === 0) {
+    await db.prepare("DELETE FROM conversations WHERE id = ?").bind(conversationId).run();
+    return;
+  }
+
+  const participants = [ownerId, ...others];
+  const placeholders = participants.map(() => "?").join(",");
+  const rows = await db
+    .prepare(
+      `SELECT id, actor_id, raw, published FROM objects
+       WHERE visibility = 'direct' AND actor_id IN (${placeholders})
+         ${excludeStatusId ? "AND id != ?" : ""}
+       ORDER BY published DESC LIMIT 25`
+    )
+    .bind(...participants, ...(excludeStatusId ? [excludeStatusId] : []))
+    .all<{ id: string; actor_id: string; raw: string; published: string }>();
+
+  for (const row of rows.results ?? []) {
+    const author = row.actor_id.toLowerCase();
+    const recipients = directStatusRecipients(row.raw);
+    const addressed = (id: string) => recipients.has(id);
+    const authorIsOwner = author === ownerId;
+    const authorIsOther = others.includes(author);
+    const recipientIsOwner = addressed(ownerId);
+    const recipientIsOther = others.some(addressed);
+    if ((recipientIsOwner && recipientIsOther) || (authorIsOwner && recipientIsOther) || (authorIsOther && recipientIsOwner)) {
+      await db
+        .prepare("UPDATE conversations SET last_status_id = ?, updated_at = ? WHERE id = ?")
+        .bind(row.id, row.published, conversationId)
+        .run();
+      return;
+    }
+  }
+  await db.prepare("DELETE FROM conversations WHERE id = ?").bind(conversationId).run();
+}
+
+/** Repoint or drop every conversation whose latest message is `deletedStatusId`. */
+async function repointConversationsAfterDelete(db: D1Database, deletedStatusId: string): Promise<void> {
+  const rows = await db
+    .prepare("SELECT id FROM conversations WHERE last_status_id = ?")
+    .bind(deletedStatusId)
+    .all<{ id: string }>();
+  for (const row of rows.results ?? []) {
+    await repointOrDropConversation(db, row.id, deletedStatusId);
+  }
+}
+
 // ─────────────────────────────────────────
 // Filters v2
 // ─────────────────────────────────────────
@@ -2368,9 +2456,12 @@ export async function deleteObject(db: D1Database, id: string): Promise<void> {
     db.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id),
     db.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id),
     db.prepare("DELETE FROM notifications WHERE object_id = ?").bind(id),
-    db.prepare("UPDATE conversations SET last_status_id = NULL WHERE last_status_id = ?").bind(id),
     db.prepare("DELETE FROM objects WHERE id = ?").bind(id),
   ]);
+  // Conversations point at their latest message without an FK: they must fall
+  // back to the previous message (or disappear) instead of lingering as empty
+  // entries in the private-messages list.
+  await repointConversationsAfterDelete(db, id);
   // Deleting a reply must release the parent's reply counter (handleCreate
   // increments it on ingest; nothing else ever decremented it).
   if (row?.in_reply_to_id) {
@@ -2416,12 +2507,21 @@ export async function deleteRemoteActorData(db: D1Database, actorId: string): Pr
        WHERE account_id = ? OR target_account_id = ?
           OR object_id IN (SELECT id FROM objects WHERE actor_id = ?)`
     ).bind(actorId, actorId, actorId),
-    db.prepare(
-      `UPDATE conversations SET last_status_id = NULL
-       WHERE last_status_id IN (SELECT id FROM objects WHERE actor_id = ?)`
-    ).bind(actorId),
     db.prepare("DELETE FROM actors WHERE id = ? AND is_local = 0").bind(actorId),
   ]);
+  // The actor's objects cascaded away: conversations whose latest message was
+  // one of them must fall back to the previous message or disappear.
+  const orphaned = await db
+    .prepare(
+      `SELECT c.id FROM conversations c
+       WHERE c.last_status_id IS NULL
+          OR NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = c.last_status_id)`
+    )
+    .bind()
+    .all<{ id: string }>();
+  for (const conv of orphaned.results ?? []) {
+    await repointOrDropConversation(db, conv.id, null);
+  }
 }
 
 // ─────────────────────────────────────────

@@ -156,7 +156,7 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
     minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
     userAgents: Array.isArray(userAgents) && userAgents.length > 0
       ? userAgents
-      : ["cf-activitypub/0.1.0 (+https://localhost; federated media cache)"],
+      : ["CFActivityPub/0.1.0 (+https://localhost; federated media cache)"],
   };
 }
 

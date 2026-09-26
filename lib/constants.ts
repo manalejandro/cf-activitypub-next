@@ -46,7 +46,7 @@ export const MAX_PAGE_SIZE = 40;
 export const MAX_COLLECTION_PAGE = 80;
 export const TRENDING_TAGS_LIMIT = 10;
 export const TRENDING_TAGS_MAX = 20;
-export const ADMIN_LOG_PAGE_SIZE = 100;
+export const ADMIN_LOG_PAGE_SIZE = 50;
 export const MLS_MESSAGES_PAGE_SIZE = 50; // AP /messages collection page size
 export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation graph
 
@@ -80,7 +80,7 @@ export function defaultMediaCacheUserAgents(env: Record<string, unknown>): strin
   const url = typeof env.INSTANCE_URL === "string" && env.INSTANCE_URL.trim()
     ? env.INSTANCE_URL.trim()
     : "https://localhost";
-  return [`cf-activitypub/${version} (+${url}; federated media cache)`, ...MEDIA_CACHE_BROWSER_USER_AGENTS];
+  return [`CFActivityPub/${version} (+${url}; federated media cache)`, ...MEDIA_CACHE_BROWSER_USER_AGENTS];
 }
 
 // Federation engine (instance registry)

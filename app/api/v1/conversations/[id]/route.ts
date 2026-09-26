@@ -41,6 +41,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const conv = await getConversationById(env.DB, id);
   if (!conv || conv.actor_id !== actor.id) return notFound();
 
+  // The latest message can be gone (deleted from anywhere): drop the stale
+  // conversation instead of rendering an empty thread.
+  if (conv.last_status_id && !(await getObjectById(env.DB, conv.last_status_id))) {
+    await deleteConversation(env.DB, conv.id);
+    return notFound();
+  }
+
   let lastStatus = null;
   let accounts: unknown[] = [];
   if (conv.last_status_id) {

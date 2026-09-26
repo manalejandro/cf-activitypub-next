@@ -36,7 +36,7 @@ interface ListResponse {
   total: number;
 }
 
-const PAGE_LIMIT = 80;
+const PAGE_LIMIT = 50;
 
 export default function AdminAccountsPage() {
   const router = useRouter();
@@ -110,7 +110,7 @@ export default function AdminAccountsPage() {
   }
 
   function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric" });
+    return new Date(dateStr).toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
   function formatLastActive(dateStr: string | null) {
