@@ -86,6 +86,7 @@ export default function ConversationDetailPage() {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         status: text,
+        content_type: "text/markdown",
         visibility: "direct",
         in_reply_to_id: conv.last_status?.id ?? undefined,
       }),

@@ -4,6 +4,7 @@
  */
 
 import type { APTag } from "@/lib/types";
+import { renderMarkdown } from "@/lib/markdown";
 import type { LocalCustomEmoji } from "@/lib/types";
 
 function escapeHtml(text: string): string {
@@ -272,12 +273,32 @@ export function apAttachmentType(
  * Returns the HTML string and an array of AP tags (Mention / Hashtag / Emoji)
  * for use in the ActivityPub Note `tag` field.
  */
+export interface ProcessStatusContentOptions {
+  /**
+   * Author content as Markdown (the glitch-soc / GoToSocial / Akkoma
+   * `content_type: text/markdown` convention). The rendered HTML stays within
+   * the subset Mastodon can display.
+   */
+  markdown?: boolean;
+}
+
 export function processStatusContent(
   text: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[]
+  customEmojis?: LocalCustomEmoji[],
+  options: ProcessStatusContentOptions = {}
 ): { html: string; tags: APTag[] } {
   const replacements = buildReplacements(text, baseUrl, customEmojis);
+
+  if (options.markdown) {
+    return {
+      html: renderMarkdown(text, {
+        inline: (segment) => linkifyInline(segment, baseUrl, customEmojis),
+        escape: escapeHtml,
+      }),
+      tags: replacements.filter((r) => r.tag).map((r) => r.tag!),
+    };
+  }
 
   // Sort by start position and build HTML
   let result = "";

@@ -228,6 +228,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   let spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
   const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+  // Rich-text authoring (glitch-soc / GoToSocial / Akkoma convention): the web
+  // composer and compatible clients send `content_type: text/markdown`.
+  const requestContentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
+  const markdownContent = requestContentType === "text/markdown" || requestContentType === "text/x-markdown";
   // Optional geolocation (ActivityStreams Place); an invalid object is rejected.
   const locationJson = normalizeLocationInput(body.location);
   if (body.location !== undefined && locationJson === undefined) {
@@ -356,7 +360,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     content = expandBareMentions(content ?? "", participants, localDomain);
 
     // Which actors are already mentioned in the user's own text (avoid dupes)
-    const { tags: userMentionTags } = processStatusContent(content ?? "", baseUrl, localEmojis);
+    const { tags: userMentionTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent });
     const alreadyMentioned = new Set<string>();
     for (const tag of userMentionTags) {
       const key = mentionKey(tag);
@@ -366,7 +370,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     replyMentionTags = mentions.tags;
   }
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent });
 
   // Merge tag-only mention additions and de-duplicate Mention tags by actor
   const seenMentionKeys = new Set<string>();

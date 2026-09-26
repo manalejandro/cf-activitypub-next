@@ -981,5 +981,6 @@
   "login_remote_button": "Continua",
   "login_remote_hint": "Apriremo questo post sulla tua istanza così potrai accedere e interagire da lì.",
   "login_remote_invalid": "Inserisci un dominio di istanza valido",
-  "login_remote_continue": "Continua su {instance}"
+  "login_remote_continue": "Continua su {instance}",
+  "compose_markdown_hint": "Markdown supportato: **grassetto**, *corsivo*, `codice`, ### titolo"
 }

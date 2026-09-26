@@ -981,5 +981,6 @@
   "login_remote_button": "继续",
   "login_remote_hint": "我们会在你的实例上打开该帖子，你可以在那里登录并互动。",
   "login_remote_invalid": "请输入有效的实例域名",
-  "login_remote_continue": "在 {instance} 继续"
+  "login_remote_continue": "在 {instance} 继续",
+  "compose_markdown_hint": "支持 Markdown：**粗体**、*斜体*、`代码`、### 标题"
 }

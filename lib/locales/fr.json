@@ -981,5 +981,6 @@
   "login_remote_button": "Continuer",
   "login_remote_hint": "Nous ouvrirons cette publication sur votre instance pour que vous puissiez vous connecter et interagir depuis là-bas.",
   "login_remote_invalid": "Saisissez un domaine d'instance valide",
-  "login_remote_continue": "Continuer sur {instance}"
+  "login_remote_continue": "Continuer sur {instance}",
+  "compose_markdown_hint": "Markdown pris en charge : **gras**, *italique*, `code`, ### titre"
 }

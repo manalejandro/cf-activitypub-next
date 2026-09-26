@@ -156,6 +156,9 @@ export async function PUT(
   }
 
   const content = (body.status as string | undefined)?.trim();
+  // Same rich-text convention as the create endpoint.
+  const requestContentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
+  const markdownContent = requestContentType === "text/markdown" || requestContentType === "text/x-markdown";
   const pollProvided = "poll" in body;
   const pollRaw = (body.poll ?? null) as { options?: unknown; expires_in?: number; multiple?: boolean } | null;
   const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
@@ -170,7 +173,7 @@ export async function PUT(
     return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);
   }
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, undefined, { markdown: markdownContent });
   const updatedAt = new Date().toISOString();
 
   // Preserve the original mentions and cc (reply participants) so edits don't

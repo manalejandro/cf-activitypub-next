@@ -91,6 +91,7 @@ export function EditStatusModal({
       const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text,
+        content_type: "text/markdown",
         spoiler_text: showCw ? spoiler : "",
         sensitive: !!spoiler && showCw,
         media_ids: media.map((m) => m.id),

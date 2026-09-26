@@ -286,6 +286,7 @@ function ReplyBox({
       const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
         status: text.trim(),
+        content_type: "text/markdown",
         visibility,
         media_ids: mediaFiles.map((f) => f.id),
       };

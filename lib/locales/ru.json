@@ -981,5 +981,6 @@
   "login_remote_button": "Продолжить",
   "login_remote_hint": "Мы откроем эту публикацию на вашем сервере, чтобы вы могли войти и взаимодействовать там.",
   "login_remote_invalid": "Введите действительный домен сервера",
-  "login_remote_continue": "Продолжить на {instance}"
+  "login_remote_continue": "Продолжить на {instance}",
+  "compose_markdown_hint": "Поддерживается Markdown: **жирный**, *курсив*, `код`, ### заголовок"
 }
