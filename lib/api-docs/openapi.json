@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "CF ActivityPub API",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "description": "Mastodon-compatible ActivityPub API for this instance.\n\nAuthentication uses OAuth 2.0 bearer tokens obtained from `POST /oauth/token` (password grant). Public endpoints (instance metadata, public timelines, WebFinger, ActivityPub federation, oEmbed) do not require a token. Operations marked with a padlock need `Authorization: Bearer <token>`; everything under **Admin** additionally requires the administrator or moderator role (full administrator for privileged mutations). Click **Authorize** and paste your access token to try authenticated endpoints.\n\nThis document is generated from the actual route handlers in `app/**/route.ts`: paths, tags, auth requirements and parameters are read from the source, and the response schemas are converted from the TypeScript types the serializers declare."
   },
   "servers": [
