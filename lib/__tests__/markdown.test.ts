@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { processStatusContent } from "@/lib/activitypub/content";
+import { linkifyHtmlText, processStatusContent } from "@/lib/activitypub/content";
 
 const MD = { markdown: true } as const;
 const BASE = "https://local.example";
@@ -68,6 +68,19 @@ describe("Markdown authoring (content_type: text/markdown)", () => {
     const { html } = processStatusContent("<script>alert(1)</script>", BASE, undefined, MD);
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("does not turn block separators into stray line breaks when serializing", () => {
+    const { html } = processStatusContent(
+      "### A\n\nText with https://example.org",
+      BASE,
+      undefined,
+      MD
+    );
+    const serialized = linkifyHtmlText(html, BASE);
+    expect(serialized).not.toContain("</p><br");
+    expect(serialized).toContain("</p>\n<p>");
+    expect(serialized).toContain('href="https://example.org"');
   });
 
   it("keeps plain text unchanged when markdown is not requested", () => {

@@ -131,7 +131,11 @@ function buildReplacements(
  * Joins a sorted list of replacements with the surrounding escaped plain text,
  * preserving single newlines (converted to <br /> inline).
  */
-function buildHtml(text: string, replacements: Replacement[]): string {
+function buildHtml(
+  text: string,
+  replacements: Replacement[],
+  options: { convertNewlines?: boolean } = {}
+): string {
   let result = "";
   let cursor = 0;
   for (const { start, end, html } of replacements) {
@@ -140,7 +144,10 @@ function buildHtml(text: string, replacements: Replacement[]): string {
     cursor = end;
   }
   result += escapeHtml(text.slice(cursor));
-  return result.replace(/\n/g, "<br />");
+  // Plain-text input relies on newlines becoming <br />; real HTML text nodes
+  // must keep them as whitespace (a newline between </p> and <p> is not a line
+  // break, and converting it added stray <br /> in serialized content).
+  return options.convertNewlines === false ? result : result.replace(/\n/g, "<br />");
 }
 
 /**
@@ -190,9 +197,10 @@ export function statusHtmlToPlain(html: string): string {
 export function linkifyInline(
   text: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[]
+  customEmojis?: LocalCustomEmoji[],
+  options: { convertNewlines?: boolean } = {}
 ): string {
-  return buildHtml(text, buildReplacements(text, baseUrl, customEmojis));
+  return buildHtml(text, buildReplacements(text, baseUrl, customEmojis), options);
 }
 
 const HTML_WALK_RE = /<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
@@ -221,7 +229,9 @@ export function linkifyHtmlText(
     const text = match[4];
     if (text != null) {
       if (skip === 0) {
-        out += linkifyInline(decodeHtmlEscapes(text), baseUrl, customEmojis);
+        // Real HTML text nodes: keep newlines as whitespace (browsers collapse
+        // them) instead of turning them into line breaks.
+        out += linkifyInline(decodeHtmlEscapes(text), baseUrl, customEmojis, { convertNewlines: false });
       } else {
         out += text;
       }

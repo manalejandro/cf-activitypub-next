@@ -891,7 +891,15 @@ function extractHashtags(content: string, raw?: string, localDomain?: string): {
     } catch { /* fall through to regex */ }
   }
 
-  const matches = content.match(/#([^\s<,.:;!?]+)/g) ?? [];
+  // Strip markup and HTML entities before matching: the old loose pattern ran
+  // over the rendered HTML, so a hashtag-like token followed by an entity was
+  // captured with it (`#34480&quot;` → tag `34480&quot`, `/tags/34480%26quot`).
+  // The pattern also mirrors the linkifier and Mastodon: a hashtag must contain
+  // at least one letter, so numeric-only tokens are not tags.
+  const plain = content
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[a-zA-Z#0-9]+;/g, " ");
+  const matches = plain.match(/#([a-zA-Z\u00C0-\u024F\u0400-\u04FF][a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF_]*)/g) ?? [];
   return [...new Set(matches.map((tag) => tag.slice(1).toLowerCase()))].map((name) => ({
     name,
     url: urlOf(name),
