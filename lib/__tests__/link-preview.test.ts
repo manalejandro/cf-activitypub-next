@@ -460,4 +460,16 @@ describe("YouTube fallback", () => {
     expect(card?.type).toBe("video");
     expect(card?.html).toContain("https://www.youtube-nocookie.com/embed/abc123");
   });
+
+  it("still exposes embed_url when oEmbed already supplied the iframe html", () => {
+    const card = parseOpenGraph("<html><head><title>Video</title></head></html>", "https://www.youtube.com/watch?v=oembed1");
+    expect(card).not.toBeNull();
+    // oEmbed/open graph provided the iframe but no embed URL (old snapshots).
+    card!.html = '<iframe src="https://www.youtube.com/embed/oembed1" width="480" height="270"></iframe>';
+    card!.embedUrl = "";
+    card!.type = "rich";
+    applyYouTubeFallback(card!, "https://www.youtube.com/watch?v=oembed1");
+    expect(card?.embedUrl).toBe("https://www.youtube-nocookie.com/embed/oembed1");
+    expect(card?.type).toBe("video");
+  });
 });

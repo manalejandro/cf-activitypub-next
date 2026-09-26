@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 import { MediaPlayer } from "@/components/MediaPlayer";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 
 interface LightboxItem {
   url: string;
@@ -12,24 +13,6 @@ interface LightboxItem {
   type: string;
   /** Provider embed URL (YouTube) rendered as an iframe player. */
   embed_url?: string | null;
-}
-
-/**
- * Validate an embeddable player URL: only the YouTube privacy-enhanced player
- * (and youtube.com) may be framed, matching the CSP `frame-src` allowlist.
- */
-export function youTubeEmbedUrl(embedUrl: string | null | undefined): string | null {
-  if (!embedUrl) return null;
-  try {
-    const url = new URL(embedUrl);
-    if (url.protocol !== "https:") return null;
-    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
-    if (host !== "youtube-nocookie.com" && host !== "youtube.com") return null;
-    if (!url.pathname.startsWith("/embed/")) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 interface LightboxProps {
@@ -139,11 +122,11 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
             <Icon name="hourglass" spin color="rgba(255,255,255,0.4)" size="2rem" />
           </div>
         )}
-        {youTubeEmbedUrl(item.embed_url) ? (
+        {youTubeEmbedUrl(item.embed_url, item.url) ? (
           <div style={{ width: "min(90vw, 1100px)" }}>
             <div style={{ width: "100%", aspectRatio: "16/9", background: "#000", borderRadius: "var(--radius)", overflow: "hidden" }}>
               <iframe
-                src={youTubeEmbedUrl(item.embed_url)!}
+                src={youTubeEmbedUrl(item.embed_url, item.url)!}
                 title={item.description ?? t.a11y_media_viewer}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen

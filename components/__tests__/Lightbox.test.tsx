@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { Lightbox, youTubeEmbedUrl } from "@/components/Lightbox";
+import { Lightbox } from "@/components/Lightbox";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 
 vi.mock("@/lib/i18n", () => ({
   useLocale: () => ({
@@ -64,6 +65,18 @@ describe("Lightbox embeds", () => {
     expect(iframe).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc");
     expect(iframe).toHaveAttribute("allowfullscreen");
     expect(screen.getByText(/Open original/)).toBeInTheDocument();
+  });
+
+  it("derives the embed player from the card URL when embed_url is empty", () => {
+    render(
+      <Lightbox
+        {...base}
+        media={[{ url: "https://www.youtube.com/watch?v=abc", type: "video", embed_url: "", description: "Old card" }]}
+      />
+    );
+    const iframe = screen.getByTitle("Old card");
+    expect(iframe.tagName).toBe("IFRAME");
+    expect(iframe).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc");
   });
 
   it("falls back to the custom player for disallowed embed hosts", () => {

@@ -17,6 +17,9 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { youTubeVideoId } from "@/lib/youtube";
+// Re-exported for callers/tests that imported it from this module.
+export { youTubeVideoId } from "@/lib/youtube";
 import type { LocalObject } from "@/lib/types";
 import type { InstanceLimits } from "@/lib/constants";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
@@ -542,21 +545,6 @@ function plusHours(hours: number, from = Date.now()): string {
   return new Date(from + hours * 3_600_000).toISOString();
 }
 
-/** Video id of a YouTube URL (watch, youtu.be, shorts, embed). */
-export function youTubeVideoId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.replace(/^www\.|^m\./, "").toLowerCase();
-    if (host === "youtu.be") return parsed.pathname.slice(1).split("/")[0] || null;
-    if (host !== "youtube.com" && host !== "youtube-nocookie.com") return null;
-    if (parsed.pathname === "/watch") return parsed.searchParams.get("v");
-    const match = parsed.pathname.match(/^\/(?:shorts|embed|v)\/([^/?#]+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * YouTube's watch page (consent wall in the EU) and oEmbed endpoint can be
  * blocked from datacenter IPs; the video id is enough to build a usable card:
@@ -566,13 +554,15 @@ export function applyYouTubeFallback(card: CardCandidate, url: string): void {
   const videoId = youTubeVideoId(url);
   if (!videoId) return;
   if (!card.imageUrl) card.imageUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  // Always expose the embed player: oEmbed may have filled `html` without an
+  // `embed_url`, and the web UI frames `embed_url` (never `card.html`).
+  if (!card.embedUrl) card.embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+  card.type = "video";
   if (!card.html) {
     const width = card.width || 480;
     const height = card.height || 270;
     card.width = width;
     card.height = height;
-    card.type = "video";
-    card.embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
     card.html = buildIframe(card.embedUrl, width, height);
   }
 }

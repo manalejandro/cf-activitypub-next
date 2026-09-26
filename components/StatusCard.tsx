@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Lightbox, youTubeEmbedUrl } from "./Lightbox";
+import { Lightbox } from "./Lightbox";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 import { InteractionList } from "./InteractionList";
 import { MemoRichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
@@ -496,7 +497,7 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
   const title = card.title || host;
   // Video previews we can embed (YouTube) play in place, like Mastodon: the
   // play button opens the provider's player instead of leaving the site.
-  const embedUrl = card.type === "video" ? youTubeEmbedUrl(card.embed_url) : null;
+  const embedUrl = card.type === "video" ? youTubeEmbedUrl(card.embed_url, card.url) : null;
   const playButton = (
     <span
       style={{
