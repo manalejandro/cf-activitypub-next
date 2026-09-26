@@ -13,7 +13,8 @@ const cspHeader = [
   "font-src 'self'",
   // Allow connections to our own origin, the visit tracker, and Google Analytics
   "connect-src 'self' https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com https://nominatim.openstreetmap.org",
-  "frame-src https://challenges.cloudflare.com",
+  // Turnstile plus the YouTube embed player (link previews / video modal).
+  "frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://www.youtube.com",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",

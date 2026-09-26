@@ -10,6 +10,26 @@ interface LightboxItem {
   preview_url?: string | null;
   description?: string | null;
   type: string;
+  /** Provider embed URL (YouTube) rendered as an iframe player. */
+  embed_url?: string | null;
+}
+
+/**
+ * Validate an embeddable player URL: only the YouTube privacy-enhanced player
+ * (and youtube.com) may be framed, matching the CSP `frame-src` allowlist.
+ */
+export function youTubeEmbedUrl(embedUrl: string | null | undefined): string | null {
+  if (!embedUrl) return null;
+  try {
+    const url = new URL(embedUrl);
+    if (url.protocol !== "https:") return null;
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host !== "youtube-nocookie.com" && host !== "youtube.com") return null;
+    if (!url.pathname.startsWith("/embed/")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 interface LightboxProps {
@@ -119,7 +139,30 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
             <Icon name="hourglass" spin color="rgba(255,255,255,0.4)" size="2rem" />
           </div>
         )}
-        {item.type === "video" || item.type === "gifv" ? (
+        {youTubeEmbedUrl(item.embed_url) ? (
+          <div style={{ width: "min(90vw, 1100px)" }}>
+            <div style={{ width: "100%", aspectRatio: "16/9", background: "#000", borderRadius: "var(--radius)", overflow: "hidden" }}>
+              <iframe
+                src={youTubeEmbedUrl(item.embed_url)!}
+                title={item.description ?? t.a11y_media_viewer}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
+                style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              />
+            </div>
+            <a
+              href={item.url}
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+              style={{ display: "block", marginTop: "0.6rem", textAlign: "center", color: "rgba(255,255,255,0.65)", fontSize: "0.8rem", textDecoration: "none" }}
+            >
+              <Icon name="external-link" size="0.75rem" color="currentColor" /> {t.ap_open_original}
+              {" · "}
+              {(() => { try { return new URL(item.url).hostname; } catch { return item.url; } })()}
+            </a>
+          </div>
+        ) : item.type === "video" || item.type === "gifv" ? (
           <div style={{ width: "min(90vw, 1100px)", height: "min(85vh, 640px)" }}>
             <MediaPlayer
               src={item.url}

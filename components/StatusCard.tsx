@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Lightbox } from "./Lightbox";
+import { Lightbox, youTubeEmbedUrl } from "./Lightbox";
 import { InteractionList } from "./InteractionList";
 import { MemoRichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
@@ -488,20 +488,34 @@ export function QuoteInline({ quote }: { quote: Status }) {
 function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive: boolean }) {
   const { t } = useLocale();
   const [revealed, setRevealed] = useState(false);
+  const [embedOpen, setEmbedOpen] = useState(false);
   const blurred = sensitive && !revealed;
   const host = (() => {
     try { return new URL(card.url).hostname; } catch { return card.url; }
   })();
   const title = card.title || host;
-  return (
-    <a
-      href={card.url}
-      target="_blank"
-      rel="nofollow noopener noreferrer"
+  // Video previews we can embed (YouTube) play in place, like Mastodon: the
+  // play button opens the provider's player instead of leaving the site.
+  const embedUrl = card.type === "video" ? youTubeEmbedUrl(card.embed_url) : null;
+  const playButton = (
+    <span
       style={{
-        display: "block",
-        textDecoration: "none",
-        color: "inherit",
+        background: "rgba(0,0,0,0.6)",
+        borderRadius: "50%",
+        width: "2.6rem",
+        height: "2.6rem",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Icon name="play" size="1.1rem" color="#fff" />
+    </span>
+  );
+
+  return (
+    <div
+      style={{
         marginTop: "0.6rem",
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
@@ -518,17 +532,39 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
             sizes="(max-width: 768px) 100vw, 600px"
             style={{ objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }}
           />
-          {card.type === "video" && !blurred && (
-            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: "2.6rem", height: "2.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon name="play" size="1.1rem" color="#fff" />
-              </span>
+          {!blurred && embedUrl && (
+            <button
+              type="button"
+              onClick={() => setEmbedOpen(true)}
+              aria-label={t.media_play}
+              title={t.media_play}
+              style={{
+                position: "absolute", inset: 0, zIndex: 2, display: "flex",
+                alignItems: "center", justifyContent: "center", border: "none",
+                background: "transparent", cursor: "pointer",
+              }}
+            >
+              {playButton}
+            </button>
+          )}
+          {!blurred && !embedUrl && (
+            <a
+              href={card.url}
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+              aria-label={title}
+              style={{ position: "absolute", inset: 0, zIndex: 1 }}
+            />
+          )}
+          {!blurred && !embedUrl && card.type === "video" && (
+            <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              {playButton}
             </span>
           )}
           {blurred && (
             <button
               type="button"
-              onClick={(event) => { event.preventDefault(); setRevealed(true); }}
+              onClick={() => setRevealed(true)}
               aria-label={t.media_reveal}
               style={{ position: "absolute", inset: 0, zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.4rem", background: "rgba(0,0,0,0.55)", color: "#fff", border: "none", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}
             >
@@ -538,7 +574,25 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
           )}
         </div>
       )}
-      <span style={{ display: "flex", flexDirection: "column", gap: "0.15rem", padding: "0.6rem 0.75rem" }}>
+      {!card.image && embedUrl && !blurred && (
+        <button
+          type="button"
+          onClick={() => setEmbedOpen(true)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
+            width: "100%", padding: "0.75rem", border: "none", background: "transparent",
+            color: "var(--accent)", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600,
+          }}
+        >
+          {playButton} {t.media_play}
+        </button>
+      )}
+      <a
+        href={card.url}
+        target="_blank"
+        rel="nofollow noopener noreferrer"
+        style={{ display: "flex", flexDirection: "column", gap: "0.15rem", padding: "0.6rem 0.75rem", textDecoration: "none", color: "inherit" }}
+      >
         <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {card.provider_name || host}
         </span>
@@ -548,8 +602,16 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
             {card.description}
           </span>
         )}
-      </span>
-    </a>
+      </a>
+      {embedOpen && embedUrl && (
+        <Lightbox
+          media={[{ url: card.url, preview_url: card.image, description: title, type: "video", embed_url: embedUrl }]}
+          index={0}
+          onClose={() => setEmbedOpen(false)}
+          onNav={() => {}}
+        />
+      )}
+    </div>
   );
 }
 
