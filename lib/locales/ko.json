@@ -973,6 +973,7 @@
   "location_route_walking": "도보",
   "location_route_clear": "경로 지우기",
   "location_route_straight": "직선 거리(경로를 사용할 수 없음)",
+  "location_route_partial": "도로 경로는 연결된 마지막 지점까지이며, 남은 {value}는 직선으로 표시됩니다",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value}분",

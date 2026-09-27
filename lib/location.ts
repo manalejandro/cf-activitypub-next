@@ -133,6 +133,94 @@ export function distanceMeters(a: GeoLocation, b: GeoLocation): number {
   return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+export type RouteProfile = "driving" | "foot";
+
+/** Beyond this the OSRM snap landed in another area of the road network. */
+export const ROUTE_START_TOLERANCE_METERS = 25_000;
+
+/** Beyond this the routed line does not reach the destination. */
+export const ROUTE_END_TOLERANCE_METERS = 2_000;
+
+/** Parse a `lat,lng` pair (route API query parameter). */
+export function parseCoordinatePair(value: string | null): GeoLocation | null {
+  if (!value) return null;
+  const parts = value.split(",");
+  if (parts.length !== 2) return null;
+  const latitude = Number(parts[0].trim());
+  const longitude = Number(parts[1].trim());
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { name: null, latitude, longitude };
+}
+
+/**
+ * Same-origin routing URL for the location page. Coordinates are rounded to
+ * five decimals (~1 m) so repeated visits and profile switches hit the proxy
+ * cache instead of the upstream routing service.
+ */
+export function routeApiUrl(
+  profile: RouteProfile,
+  from: GeoLocation,
+  to: GeoLocation
+): string {
+  const pair = (point: GeoLocation) =>
+    `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
+  return `/api/route?profile=${profile}&from=${pair(from)}&to=${pair(to)}`;
+}
+
+/**
+ * Upstream OSRM Route service URLs for a travel profile, in fallback order.
+ *
+ * The API (`/route/v1/{profile}/{lon},{lat};{lon},{lat}`) is the one documented
+ * at https://project-osrm.org/docs/v26.6.1/http#route-service. We route on the
+ * FOSSGIS community server (global OSM planet, per-profile datasets): the
+ * `router.project-osrm.org` demo answers every path with the car profile, so
+ * "walking" there is really a car route. The demo stays as a second attempt for
+ * driving.
+ */
+export function routeRequestUrls(
+  profile: RouteProfile,
+  from: GeoLocation,
+  to: GeoLocation
+): string[] {
+  const coordinates = `${from.longitude},${from.latitude};${to.longitude},${to.latitude}`;
+  const query = "?overview=full&geometries=geojson";
+  const bases =
+    profile === "foot"
+      ? ["https://routing.openstreetmap.de/routed-foot/route/v1/foot"]
+      : [
+          "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+          "https://router.project-osrm.org/route/v1/driving",
+        ];
+  return bases.map((base) => `${base}/${coordinates}${query}`);
+}
+
+/**
+ * OSRM reports in `waypoints[].distance` how far the input coordinate landed
+ * from the snapped one. A huge value means the server moved the point into
+ * another connected component of the network — e.g. it snaps an overseas
+ * address to the closest road of the continent it knows how to reach.
+ */
+export function routeSnapTooFar(
+  snapMeters: number | null | undefined,
+  toleranceMeters: number
+): boolean {
+  return typeof snapMeters === "number" && snapMeters > toleranceMeters;
+}
+
+/**
+ * Whether a road route stops before the destination: either the geometry ends
+ * far from it, or the routed distance is shorter than the direct line (which
+ * roads cannot be, so the server cut the trip), e.g. Spain → Costa Rica.
+ */
+export function routeEndsShort(
+  endGapMeters: number,
+  routeDistanceMeters: number,
+  directMeters: number
+): boolean {
+  return endGapMeters > ROUTE_END_TOLERANCE_METERS || routeDistanceMeters < directMeters * 0.9;
+}
+
 /** Human-readable label for a location (place name or rounded coordinates). */
 export function locationLabel(location: GeoLocation): string {
   return location.name || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;

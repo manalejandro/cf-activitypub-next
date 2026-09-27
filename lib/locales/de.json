@@ -973,6 +973,7 @@
   "location_route_walking": "Zu Fuß",
   "location_route_clear": "Route entfernen",
   "location_route_straight": "Luftlinie (keine Route verfügbar)",
+  "location_route_partial": "Die Straßenroute endet am letzten verbundenen Punkt; {value} verbleiben als Luftlinie",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value} Min.",

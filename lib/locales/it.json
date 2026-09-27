@@ -973,6 +973,7 @@
   "location_route_walking": "A piedi",
   "location_route_clear": "Rimuovi percorso",
   "location_route_straight": "Distanza in linea d’aria (nessun percorso disponibile)",
+  "location_route_partial": "Il percorso stradale termina nell’ultimo punto collegato; restano {value} in linea retta",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value} min",

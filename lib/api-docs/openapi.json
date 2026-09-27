@@ -44,6 +44,10 @@
       "description": "OEmbed endpoints."
     },
     {
+      "name": "Route",
+      "description": "Route endpoints."
+    },
+    {
       "name": "Accounts",
       "description": "Accounts endpoints."
     },
@@ -1259,6 +1263,33 @@
                     "provider_url": {},
                     "url": {},
                     "html": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/route": {
+      "get": {
+        "summary": "Get /api/route",
+        "operationId": "get_api_route",
+        "tags": [
+          "Route"
+        ],
+        "security": [],
+        "responses": {
+          "502": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
                       "type": "string"
                     }
                   }

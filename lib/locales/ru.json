@@ -973,6 +973,7 @@
   "location_route_walking": "Пешком",
   "location_route_clear": "Убрать маршрут",
   "location_route_straight": "Расстояние по прямой (маршрут недоступен)",
+  "location_route_partial": "Маршрут по дорогам заканчивается в последней связанной точке; остаётся {value} по прямой",
   "location_route_km": "{value} км",
   "location_route_m": "{value} м",
   "location_route_minutes": "{value} мин",

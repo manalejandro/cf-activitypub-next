@@ -973,6 +973,7 @@
   "location_route_walking": "A pé",
   "location_route_clear": "Limpar rota",
   "location_route_straight": "Distância em linha reta (rota indisponível)",
+  "location_route_partial": "A rota por estrada termina no último ponto conectado; restam {value} em linha reta",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value} min",

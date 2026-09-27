@@ -973,6 +973,7 @@
   "location_route_walking": "À pied",
   "location_route_clear": "Effacer l’itinéraire",
   "location_route_straight": "Distance à vol d’oiseau (itinéraire indisponible)",
+  "location_route_partial": "L’itinéraire routier s’arrête au dernier point connecté ; il reste {value} en ligne droite",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value} min",

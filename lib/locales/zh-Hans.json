@@ -973,6 +973,7 @@
   "location_route_walking": "步行",
   "location_route_clear": "清除路线",
   "location_route_straight": "直线距离（无法获取路线）",
+  "location_route_partial": "公路路线只到最后连接点，剩余 {value} 以直线显示",
   "location_route_km": "{value} 公里",
   "location_route_m": "{value} 米",
   "location_route_minutes": "{value} 分钟",

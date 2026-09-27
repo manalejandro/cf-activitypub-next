@@ -5,17 +5,27 @@ import Link from "next/link";
 import type { Map as LeafletMap, LayerGroup, Marker } from "leaflet";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
-import { distanceMeters, locationLabel, type GeoLocation } from "@/lib/location";
-
-type RouteProfile = "driving" | "foot";
+import {
+  distanceMeters,
+  locationLabel,
+  routeApiUrl,
+  routeEndsShort,
+  routeSnapTooFar,
+  ROUTE_END_TOLERANCE_METERS,
+  ROUTE_START_TOLERANCE_METERS,
+  type GeoLocation,
+  type RouteProfile,
+} from "@/lib/location";
 
 interface RouteInfo {
   distance: number;
   duration: number | null;
   straight: boolean;
+  /** The road route ends short of the destination (oceans, islands…). */
+  partial: boolean;
+  /** Straight-line remainder when `partial`, in meters. */
+  gap: number;
 }
-
-const OSRM_BASE = "https://router.project-osrm.org/route/v1";
 
 /**
  * Full-screen destination map with an optional route from the visitor's
@@ -35,6 +45,9 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
   const [profile, setProfile] = useState<RouteProfile>("driving");
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const [origin, setOrigin] = useState<GeoLocation | null>(null);
+  // The map is created asynchronously (Leaflet is code-split): a click that
+  // arrives first must not be lost.
+  const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const formatDistance = (meters: number): string => {
@@ -79,42 +92,86 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
             { color: accent, weight: 3, dashArray: "6 8", opacity: 0.85 }
           )
         );
-        setRoute({ distance: meters, duration: null, straight: true });
+        setRoute({ distance: meters, duration: null, straight: true, partial: false, gap: 0 });
       };
 
+      interface OsrmRoute {
+        distance?: number;
+        duration?: number;
+        geometry?: { coordinates?: [number, number][] };
+      }
+      interface OsrmResponse {
+        code?: string;
+        routes?: OsrmRoute[];
+        waypoints?: { distance?: number }[];
+      }
+
+      // The proxy asks the OSRM servers; here we only draw what came back.
+      let routed = false;
       try {
-        const url =
-          `${OSRM_BASE}/${withProfile === "foot" ? "foot" : "driving"}/` +
-          `${origin.longitude},${origin.latitude};${location.longitude},${location.latitude}` +
-          `?overview=full&geometries=geojson`;
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as {
-          code?: string;
-          routes?: { distance?: number; duration?: number; geometry?: { coordinates?: [number, number][] } }[];
-        };
-        const best = data.code === "Ok" ? data.routes?.[0] : undefined;
-        const coords = best?.geometry?.coordinates;
-        if (!best || !coords || coords.length < 2 || typeof best.distance !== "number") {
-          straight();
-        } else {
+        const res = await fetch(routeApiUrl(withProfile, origin, location), {
+          signal: controller.signal,
+        });
+        const data: OsrmResponse | null = res.ok ? ((await res.json()) as OsrmResponse) : null;
+        const best = data?.code === "Ok" ? data.routes?.[0] : undefined;
+        const distance = best?.distance;
+        const coordinates = best?.geometry?.coordinates;
+        const usable =
+          typeof distance === "number" &&
+          !!coordinates &&
+          coordinates.length >= 2 &&
+          // The server moved the visitor elsewhere: no road coverage there.
+          !routeSnapTooFar(data?.waypoints?.[0]?.distance, ROUTE_START_TOLERANCE_METERS);
+
+        if (usable && typeof distance === "number" && coordinates) {
           layer.addLayer(
-            L.polyline(coords.map(([lng, lat]) => [lat, lng] as [number, number]), {
-              color: accent,
-              weight: 4,
-              opacity: 0.9,
-            })
+            L.polyline(
+              coordinates.map(([lng, lat]) => [lat, lng] as [number, number]),
+              { color: accent, weight: 4, opacity: 0.9 }
+            )
           );
+          const last = coordinates[coordinates.length - 1];
+          const snappedEnd: GeoLocation = { name: null, latitude: last[1], longitude: last[0] };
+          const gap = distanceMeters(snappedEnd, location);
+          // The destination snapped to another component (Spain → Costa Rica
+          // ends at Cabo de São Vicente): draw the road part and link it.
+          const partial =
+            routeSnapTooFar(data?.waypoints?.[1]?.distance, ROUTE_END_TOLERANCE_METERS) ||
+            routeEndsShort(gap, distance, distanceMeters(origin, location));
+          if (partial) {
+            layer.addLayer(
+              L.circleMarker([snappedEnd.latitude, snappedEnd.longitude], {
+                radius: 5,
+                color: accent,
+                weight: 2,
+                fillColor: "#fff",
+                fillOpacity: 1,
+              })
+            );
+            layer.addLayer(
+              L.polyline(
+                [
+                  [snappedEnd.latitude, snappedEnd.longitude],
+                  [location.latitude, location.longitude],
+                ],
+                { color: accent, weight: 2, dashArray: "4 8", opacity: 0.7 }
+              )
+            );
+          }
           setRoute({
-            distance: best.distance,
-            duration: typeof best.duration === "number" ? best.duration : null,
+            distance,
+            duration: typeof best?.duration === "number" ? best.duration : null,
             straight: false,
+            partial,
+            gap: partial ? gap : 0,
           });
+          routed = true;
         }
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
-        straight();
       }
+
+      if (!routed) straight();
 
       const bounds = L.latLngBounds([
         [origin.latitude, origin.longitude],
@@ -133,27 +190,13 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
     setLocating(true);
     setError(null);
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         setLocating(false);
-        const origin: GeoLocation = {
+        setOrigin({
           name: null,
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
-        };
-        setOrigin(origin);
-        const map = mapRef.current;
-        if (map) {
-          const { default: L } = await import("leaflet");
-          const icon = L.divIcon({
-            className: "",
-            html:
-              '<div style="width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent),0 1px 4px rgba(0,0,0,.4)"></div>',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
-          });
-          userMarkerRef.current?.remove();
-          userMarkerRef.current = L.marker([origin.latitude, origin.longitude], { icon }).addTo(map);
-        }
+        });
       },
       (err) => {
         setLocating(false);
@@ -174,11 +217,34 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
     mapRef.current?.setView([location.latitude, location.longitude], 15);
   }, [location]);
 
-  // Draw the route once the visitor's position is known and redraw it when the
-  // travel profile changes.
+  // Draw the route once the visitor's position is known (and the map exists)
+  // and redraw it when the travel profile changes.
   useEffect(() => {
-    if (origin) void drawRoute(origin, profile);
-  }, [origin, profile, drawRoute]);
+    if (mapReady && origin) void drawRoute(origin, profile);
+  }, [mapReady, origin, profile, drawRoute]);
+
+  // Marker for the visitor's own position, added as soon as both are known.
+  useEffect(() => {
+    if (!mapReady || !origin) return;
+    let cancelled = false;
+    (async () => {
+      const { default: L } = await import("leaflet");
+      const map = mapRef.current;
+      if (cancelled || !map) return;
+      const icon = L.divIcon({
+        className: "",
+        html:
+          '<div style="width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent),0 1px 4px rgba(0,0,0,.4)"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = L.marker([origin.latitude, origin.longitude], { icon }).addTo(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapReady, origin]);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +269,7 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
       });
       L.marker(center, { icon }).addTo(map);
       mapRef.current = map;
+      setMapReady(true);
     })();
     return () => {
       cancelled = true;
@@ -211,6 +278,7 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
       mapRef.current = null;
       routeLayerRef.current = null;
       userMarkerRef.current = null;
+      setMapReady(false);
     };
   }, [location.latitude, location.longitude]);
 
@@ -293,6 +361,11 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
             {route.straight && (
               <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{t.location_route_straight}</span>
             )}
+            {route.partial && (
+              <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                {t.location_route_partial.replace("{value}", formatDistance(route.gap))}
+              </span>
+            )}
             {!route.straight && (
               <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>
                 <Link
@@ -302,6 +375,15 @@ export default function LocationMapFull({ location }: { location: GeoLocation })
                   style={{ color: "inherit" }}
                 >
                   OSRM
+                </Link>
+                {" · "}
+                <Link
+                  href="https://routing.openstreetmap.de/"
+                  target="_blank"
+                  rel="nofollow noopener noreferrer"
+                  style={{ color: "inherit" }}
+                >
+                  FOSSGIS
                 </Link>
               </span>
             )}

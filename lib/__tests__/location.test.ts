@@ -3,6 +3,12 @@ import { describe, it, expect } from "vitest";
 import {
   distanceMeters,
   isLocationPageUrl,
+  parseCoordinatePair,
+  routeApiUrl,
+  routeEndsShort,
+  routeRequestUrls,
+  routeSnapTooFar,
+  ROUTE_END_TOLERANCE_METERS,
   locationEmbedUrl,
   locationPageUrl,
   parseLocationQuery,
@@ -43,6 +49,55 @@ describe("location pages and preview cards", () => {
     expect(meters).toBeGreaterThan(490_000);
     expect(meters).toBeLessThan(520_000);
     expect(distanceMeters(madrid, madrid)).toBe(0);
+  });
+
+  it("builds the documented OSRM route requests (lon,lat order, geojson)", () => {
+    const sevilla = { name: null, latitude: 37.3891, longitude: -5.9845 };
+    const sanJose = { name: null, latitude: 9.9281, longitude: -84.0907 };
+    // FOSSGIS carries real per-profile datasets; the OSRM demo answers every
+    // profile path with its car data, so it is only a driving fallback.
+    expect(routeRequestUrls("driving", sevilla, sanJose)).toEqual([
+      "https://routing.openstreetmap.de/routed-car/route/v1/driving/-5.9845,37.3891;-84.0907,9.9281?overview=full&geometries=geojson",
+      "https://router.project-osrm.org/route/v1/driving/-5.9845,37.3891;-84.0907,9.9281?overview=full&geometries=geojson",
+    ]);
+    expect(routeRequestUrls("foot", sevilla, sanJose)).toEqual([
+      "https://routing.openstreetmap.de/routed-foot/route/v1/foot/-5.9845,37.3891;-84.0907,9.9281?overview=full&geometries=geojson",
+    ]);
+  });
+
+  it("treats a far snap or a too-short route as not reaching the destination", () => {
+    const sevilla = { name: null, latitude: 37.3891, longitude: -5.9845 };
+    const sanJose = { name: null, latitude: 9.9281, longitude: -84.0907 };
+    const direct = distanceMeters(sevilla, sanJose);
+    // Real capture: Spain → Costa Rica ends at Cabo de São Vicente with a
+    // waypoint snap distance of 8 237 658 m and a 309 km route.
+    expect(direct).toBeGreaterThan(7_000_000);
+    expect(routeSnapTooFar(8_237_658, ROUTE_END_TOLERANCE_METERS)).toBe(true);
+    expect(routeEndsShort(8_237_658, 309_105, direct)).toBe(true);
+    // A normal route: the endpoint snaps within metres and is longer than the
+    // direct line.
+    expect(routeSnapTooFar(0.67, ROUTE_END_TOLERANCE_METERS)).toBe(false);
+    expect(routeSnapTooFar(null, ROUTE_END_TOLERANCE_METERS)).toBe(false);
+    expect(routeEndsShort(70, direct * 1.15, direct)).toBe(false);
+  });
+
+  it("parses lat,lng query pairs and builds the same-origin routing URL", () => {
+    expect(parseCoordinatePair("37.3891,-5.9845")).toEqual({
+      name: null,
+      latitude: 37.3891,
+      longitude: -5.9845,
+    });
+    expect(parseCoordinatePair("37.3891")).toBeNull();
+    expect(parseCoordinatePair("91,0")).toBeNull();
+    expect(parseCoordinatePair("0,181")).toBeNull();
+    expect(parseCoordinatePair("a,b")).toBeNull();
+    expect(parseCoordinatePair(null)).toBeNull();
+
+    const sevilla = { name: null, latitude: 37.38912345, longitude: -5.98456789 };
+    const lisboa = { name: null, latitude: 38.7223, longitude: -9.1393 };
+    expect(routeApiUrl("foot", sevilla, lisboa)).toBe(
+      "/api/route?profile=foot&from=37.38912,-5.98457&to=38.72230,-9.13930"
+    );
   });
 
   it("detects location page URLs on any instance", () => {

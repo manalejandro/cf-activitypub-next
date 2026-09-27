@@ -973,6 +973,7 @@
   "location_route_walking": "Walking",
   "location_route_clear": "Clear route",
   "location_route_straight": "Straight-line distance (no route available)",
+  "location_route_partial": "Road route ends at the last connected point; {value} remain in a straight line",
   "location_route_km": "{value} km",
   "location_route_m": "{value} m",
   "location_route_minutes": "{value} min",
