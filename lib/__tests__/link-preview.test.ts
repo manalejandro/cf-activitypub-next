@@ -345,15 +345,17 @@ describe("link preview queue", () => {
 
     expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
     const card = await db
-      .prepare("SELECT type, title, html, width, image_url FROM preview_cards WHERE source_url = ?")
+      .prepare("SELECT type, title, html, width, image_url, embed_url FROM preview_cards WHERE source_url = ?")
       .bind("https://video.example/watch/1")
-      .first<{ type: string; title: string; html: string; width: number; image_url: string }>();
+      .first<{ type: string; title: string; html: string; width: number; image_url: string; embed_url: string }>();
     expect(card?.type).toBe("video");
     expect(card?.title).toBe("oEmbed title");
     expect(card?.width).toBe(480);
     expect(card?.image_url).toBe("https://video.example/thumb.jpg");
     expect(card?.html).toContain('src="https://player.example/embed/1"');
     expect(card?.html).not.toContain("<script");
+    // The web UI frames `embed_url` for provider players (Vimeo/PeerTube…).
+    expect(card?.embed_url).toBe("https://player.example/embed/1");
   });
 
   it("waits for the card image and only then attaches it with the R2 URL", async () => {

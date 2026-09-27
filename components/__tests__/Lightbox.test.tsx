@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Lightbox } from "@/components/Lightbox";
 import { youTubeEmbedUrl } from "@/lib/youtube";
+import { embeddableUrl } from "@/components/Lightbox";
 
 vi.mock("@/lib/i18n", () => ({
   useLocale: () => ({
@@ -40,6 +41,16 @@ describe("youTubeEmbedUrl", () => {
     expect(youTubeEmbedUrl("http://www.youtube.com/embed/x")).toBeNull();
     expect(youTubeEmbedUrl("https://www.youtube.com/watch?v=x")).toBeNull();
     expect(youTubeEmbedUrl(null)).toBeNull();
+  });
+});
+
+describe("embeddableUrl", () => {
+  it("accepts provider iframes and rejects unsafe schemes", () => {
+    expect(embeddableUrl("https://koreus.tv/videos/embed/abc")).toBe("https://koreus.tv/videos/embed/abc");
+    expect(embeddableUrl("https://www.youtube.com/watch?v=abc")).toBe("https://www.youtube-nocookie.com/embed/abc");
+    expect(embeddableUrl("http://player.example/embed/1")).toBeNull();
+    expect(embeddableUrl("javascript:alert(1)")).toBeNull();
+    expect(embeddableUrl(null, "https://www.youtube.com/watch?v=abc")).toBe("https://www.youtube-nocookie.com/embed/abc");
   });
 });
 
@@ -83,7 +94,7 @@ describe("Lightbox embeds", () => {
     const { container } = render(
       <Lightbox
         {...base}
-        media={[{ url: "https://example.com/w", type: "video", embed_url: "https://evil.example/embed/x" }]}
+        media={[{ url: "https://example.com/w", type: "video", embed_url: "http://evil.example/embed/x" }]}
       />
     );
     expect(container.querySelector("iframe")).toBeNull();

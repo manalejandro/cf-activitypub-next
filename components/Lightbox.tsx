@@ -4,7 +4,25 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 import { MediaPlayer } from "@/components/MediaPlayer";
-import { youTubeEmbedUrl } from "@/lib/youtube";
+import { youTubeEmbedUrl, youTubeEmbedUrlFromUrl } from "@/lib/youtube";
+
+/**
+ * Framable player URL: a YouTube card embed (stored or derived from the card
+ * URL) or any HTTPS provider embed (PeerTube/Vimeo/Dailymotion…). The CSP
+ * `frame-src https:` allowlist matches Mastodon's.
+ */
+export function embeddableUrl(embedUrl: string | null | undefined, cardUrl?: string | null): string | null {
+  const youTube = youTubeEmbedUrl(embedUrl, cardUrl) ?? youTubeEmbedUrlFromUrl(embedUrl);
+  if (youTube) return youTube;
+  if (!embedUrl) return null;
+  try {
+    const url = new URL(embedUrl);
+    if (url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 interface LightboxItem {
   url: string;
@@ -122,11 +140,11 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
             <Icon name="hourglass" spin color="rgba(255,255,255,0.4)" size="2rem" />
           </div>
         )}
-        {youTubeEmbedUrl(item.embed_url, item.url) ? (
+        {embeddableUrl(item.embed_url, item.url) ? (
           <div style={{ width: "min(90vw, 1100px)" }}>
             <div style={{ width: "100%", aspectRatio: "16/9", background: "#000", borderRadius: "var(--radius)", overflow: "hidden" }}>
               <iframe
-                src={youTubeEmbedUrl(item.embed_url, item.url)!}
+                src={embeddableUrl(item.embed_url, item.url)!}
                 title={item.description ?? t.a11y_media_viewer}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen

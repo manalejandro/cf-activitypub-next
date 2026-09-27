@@ -574,6 +574,30 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
   // still links to its canonical object URL instead of rendering a dead link.
   if (!url && typeof obj.url === "string" && obj.url) url = obj.url;
 
+  // Provider embed player: PeerTube exposes `embedUrl`, other providers use
+  // the oEmbed iframe. Without a directly playable file the UI frames it.
+  let embedUrl: string | null = null;
+  const rawEmbed = raw.embedUrl;
+  if (typeof rawEmbed === "string") embedUrl = rawEmbed;
+  else if (Array.isArray(rawEmbed)) {
+    const first = rawEmbed.find((x) => typeof x === "string");
+    if (typeof first === "string") embedUrl = first;
+  } else if (rawEmbed && typeof rawEmbed === "object") {
+    const href = (rawEmbed as Record<string, unknown>).href;
+    if (typeof href === "string") embedUrl = href;
+  }
+  // Never frame a non-HTTPS embed; fall back to deriving a safe one.
+  if (embedUrl && !/^https:\/\//i.test(embedUrl)) embedUrl = null;
+  if (!embedUrl && url) {
+    // PeerTube canonical watch URLs map to their embed player.
+    try {
+      const parsed = new URL(url);
+      const watch = parsed.pathname.match(/^\/videos\/watch\/([^/?#]+)/);
+      if (watch) embedUrl = `${parsed.origin}/videos/embed/${watch[1]}`;
+    } catch { /* ignore malformed URLs */ }
+  }
+
+
   // Relationship (as:subject / as:object / as:relationship)
   const subject = typeof raw.subject === "string" ? raw.subject : null;
   let relationshipObject: string | null = null;
@@ -614,6 +638,7 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
     longitude,
     url,
     mediaUrl,
+    embedUrl,
     imageUrl,
     subject,
     relationshipObject,

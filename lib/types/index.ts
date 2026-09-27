@@ -27,6 +27,8 @@ export interface APObjectMeta {
   url?: string | null;
   /** Direct media file URL for top-level Audio/Video/Image objects. */
   mediaUrl?: string | null;
+  /** Provider embed player (PeerTube `embedUrl`, Vimeo/Dailymotion players). */
+  embedUrl?: string | null;
   /** Poster/preview thumbnail URL (resolved from the object's icon/image). */
   imageUrl?: string | null;
   /** Relationship: subject actor IRI (as:subject). */

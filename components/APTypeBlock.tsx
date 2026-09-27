@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { MediaPlayer } from "@/components/MediaPlayer";
+import { Lightbox, embeddableUrl } from "@/components/Lightbox";
 
 /**
  * ActivityStreams type-specific renderer.
@@ -23,6 +25,8 @@ export interface APMeta {
   longitude?: number | null;
   url?: string | null;
   mediaUrl?: string | null;
+  /** Provider embed player (PeerTube, Vimeo…). */
+  embedUrl?: string | null;
   imageUrl?: string | null;
   subject?: string | null;
   relationshipObject?: string | null;
@@ -120,6 +124,52 @@ export function TypeBadge({ apType }: { apType?: string | null }) {
   const { t } = useLocale();
   if (!apType || apType === "Note") return null;
   return <span style={badgeStyle()}>{typeLabel(t, apType)}</span>;
+}
+
+/** Poster + play overlay that opens the provider's embedded player. */
+function ProviderEmbedPlayer({
+  embedUrl,
+  poster,
+  title,
+  pageUrl,
+}: {
+  embedUrl: string;
+  poster?: string;
+  title?: string;
+  pageUrl?: string;
+}) {
+  const { t } = useLocale();
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative", aspectRatio: "16/9", background: "#000", borderRadius: "var(--radius)", overflow: "hidden" }}>
+      {poster && (
+        <Image src={poster} alt={title ?? ""} fill sizes="(max-width: 768px) 100vw, 600px" style={{ objectFit: "cover" }} />
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={t.media_play}
+        title={t.media_play}
+        style={{
+          position: "absolute", inset: 0, zIndex: 2, display: "flex",
+          alignItems: "center", justifyContent: "center", border: "none",
+          background: "transparent", cursor: "pointer",
+        }}
+      >
+        <span style={{ background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: "2.6rem", height: "2.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon name="play" size="1.1rem" color="#fff" />
+        </span>
+      </button>
+      {open && (
+        <Lightbox
+          media={[{ url: pageUrl ?? embedUrl, type: "video", embed_url: embedUrl, preview_url: poster ?? null, description: title ?? null }]}
+          index={0}
+          onClose={() => setOpen(false)}
+          onNav={() => {}}
+        />
+      )}
+    </div>
+  );
 }
 
 export function APTypeBlock({
@@ -325,6 +375,16 @@ export function APTypeBlock({
         )}
         {src && apType === "Audio" && (
           <MediaPlayer src={src} kind="audio" variant="inline" description={meta?.name} />
+        )}
+        {/* PeerTube/Vimeo-style objects expose only an embed player (and often
+            an HLS playlist no browser can play natively): frame it. */}
+        {!src && apType === "Video" && embeddableUrl(meta?.embedUrl, page ?? null) && (
+          <ProviderEmbedPlayer
+            embedUrl={embeddableUrl(meta?.embedUrl, page ?? null)!}
+            poster={meta?.imageUrl ?? undefined}
+            title={meta?.name ?? undefined}
+            pageUrl={page ?? undefined}
+          />
         )}
         {page && !pageIsMedia && (
           <div style={{ marginTop: "0.35rem", display: "flex", flexWrap: "wrap", gap: "0.4rem", alignItems: "center" }}>

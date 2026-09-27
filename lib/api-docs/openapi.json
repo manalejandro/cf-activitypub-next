@@ -15424,6 +15424,11 @@
             "nullable": true,
             "description": "Direct media file URL for top-level Audio/Video/Image objects."
           },
+          "embedUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Provider embed player (PeerTube `embedUrl`, Vimeo/Dailymotion players)."
+          },
           "imageUrl": {
             "type": "string",
             "nullable": true,

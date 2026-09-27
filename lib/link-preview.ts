@@ -428,7 +428,9 @@ export function parseOpenGraph(html: string, pageUrl: string): CardCandidate | n
     height,
     imageUrl,
     imageDescription: decodeHtmlEntities(meta.get("og:image:alt") ?? ""),
-    embedUrl: httpsUrl(meta.get("twitter:player:stream"), pageUrl) ?? "",
+    // Prefer the framable player iframe; the raw `twitter:player:stream` file
+    // is not an embed and the web UI never frames it.
+    embedUrl: playerUrl ?? "",
     language: normalizeLocale(structured?.language ?? meta.get("og:locale") ?? html.match(/<html[^>]*\blang\s*=\s*["']([^"']+)["']/i)?.[1]),
     publishedAt: normalizeDate(structured?.datePublished ?? meta.get("article:published_time")),
     canonicalUrl,
@@ -497,7 +499,12 @@ export async function parseOEmbed(
     const rawHtml = typeof payload.html === "string" ? payload.html : "";
     const src = rawHtml.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
     const iframeSrc = httpsUrl(src ? decodeHtmlEntities(src) : null, pageUrl);
-    if (iframeSrc) embedHtml = buildIframe(iframeSrc, width, height);
+    if (iframeSrc) {
+      embedHtml = buildIframe(iframeSrc, width, height);
+      // Framable provider player (Vimeo/PeerTube/Dailymotion…): the web UI
+      // frames `embed_url` (card.html is for API clients).
+      embedUrl = iframeSrc;
+    }
     imageUrl = httpsUrl(payload.thumbnail_url as string | undefined, origin);
   } else if (type === "photo") {
     const photo = httpsUrl(payload.url as string | undefined, origin);
