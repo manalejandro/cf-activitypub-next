@@ -14,7 +14,7 @@ import { DisplayName } from "@/components/DisplayName";
 import type { EmojiData } from "@/lib/emoji";
 import type { Status as SharedStatus } from "@/components/StatusCard";
 import type { APMeta } from "@/components/APTypeBlock";
-import { useLocale } from "@/lib/i18n";
+import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { externalProfileUrl } from "@/lib/remote-link";
 import { Icon } from "@/components/Icon";
@@ -557,8 +557,8 @@ export default function ProfilePage() {
       setAccount(updated);
       setEditOpen(false);
     } else {
-      const err = await res.json() as { error?: string };
-      setEditError(err.error ?? "Failed to save");
+      const err = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+      setEditError(translateKey(t, err?.error_code, err?.error ?? t.error_network) ?? t.error_network);
     }
     setSaving(false);
   }

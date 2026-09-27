@@ -26,7 +26,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
-    return json({ error: "multipart/form-data required" }, 422);
+    return json({ error: "multipart/form-data required", error_code: "media_error_form" }, 422);
   }
 
   const form = await request.formData();
@@ -35,21 +35,21 @@ export async function POST(request: NextRequest): Promise<Response> {
   const category = (form.get("category") as string ?? "").trim() || null;
 
   if (!file || file.size === 0) {
-    return json({ error: "file is required" }, 422);
+    return json({ error: "file is required", error_code: "media_error_required" }, 422);
   }
   if (!shortcode || !/^[a-zA-Z0-9_]+$/.test(shortcode)) {
-    return json({ error: "shortcode must contain only letters, numbers, and underscores" }, 422);
+    return json({ error: "shortcode must contain only letters, numbers, and underscores", error_code: "emoji_error_shortcode" }, 422);
   }
   if (shortcode.length > limits.maxEmojiShortcodeChars) {
-    return json({ error: `shortcode must be ${limits.maxEmojiShortcodeChars} characters or less` }, 422);
+    return json({ error: `shortcode must be ${limits.maxEmojiShortcodeChars} characters or less`, error_code: "emoji_error_shortcode" }, 422);
   }
 
   const ALLOWED_TYPES = ["image/png", "image/gif", "image/webp"];
   if (!ALLOWED_TYPES.includes(file.type)) {
-    return json({ error: "Unsupported file type (use PNG, GIF, or WebP)" }, 422);
+    return json({ error: "Unsupported file type (use PNG, GIF, or WebP)", error_code: "media_error_type" }, 422);
   }
   if (file.size > 2 * 1024 * 1024) {
-    return json({ error: "File too large (max 2 MB)" }, 422);
+    return json({ error: "File too large (max 2 MB)", error_code: "media_error_too_large" }, 422);
   }
 
   const ext = file.name.split(".").pop() ?? "png";

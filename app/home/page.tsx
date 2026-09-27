@@ -5,9 +5,10 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
-import { useLocale } from "@/lib/i18n";
+import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { clipboardFiles } from "@/lib/clipboard-media";
+import { uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
@@ -41,6 +42,7 @@ export default function HomePage() {
   const [posting, setPosting] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<MediaAttachment[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "private" | "direct">("public");
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
@@ -180,28 +182,36 @@ export default function HomePage() {
         }
       }));
     }
-    const res = await fetch("/api/v1/statuses", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const data = await res.json() as Record<string, unknown>;
-      if (data && data.scheduled_at) {
-        setPosting(false);
-        router.push("/scheduled");
-        return;
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/statuses", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json() as Record<string, unknown>;
+        if (data && data.scheduled_at) {
+          setPosting(false);
+          router.push("/scheduled");
+          return;
+        }
+        setComposing("");
+        setMediaFiles([]);
+        mediaDescRefs.current = {};
+        setShowCw(false);
+        setCwText("");
+        setPollMode(false);
+        setPollOptions(["", ""]);
+        setPollMultiple(false);
+        await refresh();
+      } else {
+        const data = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+        setError(translateKey(t, data?.error_code, data?.error ?? t.error_network) ?? t.error_network);
       }
-      setComposing("");
-      setMediaFiles([]);
-      mediaDescRefs.current = {};
-      setShowCw(false);
-      setCwText("");
-      setPollMode(false);
-      setPollOptions(["", ""]);
-      setPollMultiple(false);
-      await refresh();
+    } catch {
+      setError(t.error_network);
     }
     setPosting(false);
   }
@@ -224,30 +234,23 @@ export default function HomePage() {
 
   /** Upload files from the picker or the clipboard (paste in the composer). */
   async function uploadFiles(selected: File[]) {
-    if (!getToken() || selected.length === 0) return;
-    const files = selected.slice(0, limits.maxMediaAttachments - mediaFiles.length);
-    if (files.length === 0) return;
+    const token = getToken();
+    const remaining = limits.maxMediaAttachments - mediaFiles.length;
+    if (!token || selected.length === 0 || remaining <= 0) return;
+    setError(null);
     setUploadingMedia(true);
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("locale", locale);
+    const { attachments, error: uploadError } = await uploadMediaFiles(selected, {
+      token,
+      locale,
       // CW on, or the "mark media as sensitive" preference → media blurred by default
-      if (showCw || defaultSensitive) form.append("sensitive", "true");
-      try {
-        const res = await fetch("/api/v1/media", {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        if (res.ok) {
-          const att = await res.json() as MediaAttachment;
-          setMediaFiles((prev) => [...prev, att]);
-        }
-      } catch {
-        // ignore individual upload errors
-      }
-    }
+      sensitive: showCw || defaultSensitive,
+      remaining,
+      maxAttachments: limits.maxMediaAttachments,
+      maxBytes: limits.maxImageSize,
+      t,
+    });
+    setMediaFiles((prev) => [...prev, ...attachments]);
+    if (uploadError) setError(uploadError);
     setUploadingMedia(false);
   }
 
@@ -458,6 +461,8 @@ export default function HomePage() {
               </div>
             )}
 
+            {error && <div style={{ color: "var(--danger)", fontSize: "0.82rem" }}>{error}</div>}
+
             {/* Toolbar + counter + submit */}
             <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
               <div style={{ display: "flex", gap: "0.25rem", alignItems: "center", position: "relative", flexWrap: "wrap" }}>
@@ -488,8 +493,8 @@ export default function HomePage() {
                   style={{ fontSize: "1.15rem", padding: "0.3rem 0.5rem" }}
                   onClick={() => fileInputRef.current?.click()}
                   disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia}
-                  title={t.compose_attach}
-                  aria-label={t.compose_attach}
+                  title={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}
+                  aria-label={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}
                 >
                   {uploadingMedia ? <Icon name="hourglass" spin size="1.15rem" /> : <Icon name="paperclip" size="1.15rem" />}
                 </button>

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
-import { useLocale } from "@/lib/i18n";
+import { translateKey, useLocale } from "@/lib/i18n";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 
@@ -86,8 +86,11 @@ export default function EmojisPage() {
         setFile(null);
         await loadEmojis();
       } else {
-        const err = await res.json() as { error?: string };
-        setMessage({ type: "error", text: err.error ?? t.emojis_upload_error });
+        const err = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+        setMessage({
+          type: "error",
+          text: translateKey(t, err?.error_code, err?.error ?? t.emojis_upload_error) ?? t.emojis_upload_error,
+        });
       }
     } catch {
       setMessage({ type: "error", text: t.network_error });

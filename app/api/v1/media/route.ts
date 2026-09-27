@@ -15,30 +15,33 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
-    return json({ error: "multipart/form-data required" }, 422);
+    return json({ error: "multipart/form-data required", error_code: "media_error_form" }, 422);
   }
 
   const form = await request.formData();
   const file = form.get("file") as File | null;
   const description = (form.get("description") as string | null) ?? null;
   if (description && description.length > limits.maxAltTextChars) {
-    return json({ error: `description is too long (max ${limits.maxAltTextChars} chars)` }, 422);
+    return json({ error: `description is too long (max ${limits.maxAltTextChars} chars)`, error_code: "media_error_description" }, 422);
   }
   const sensitive = form.get("sensitive") === "true";
   // UI locale sent by the client to determine auto-description prefix language
   const locale = (form.get("locale") as string | null) ?? "en";
 
   if (!file || file.size === 0) {
-    return json({ error: "file is required" }, 422);
+    return json({ error: "file is required", error_code: "media_error_required" }, 422);
   }
 
   if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) {
-    return json({ error: "Unsupported file type" }, 422);
+    return json({ error: "Unsupported file type", error_code: "media_error_type" }, 422);
   }
 
   const MAX_SIZE = limits.maxImageSize; // images/uploads capped at the instance image limit
   if (file.size > MAX_SIZE) {
-    return json({ error: `File too large (max ${Math.floor(MAX_SIZE / (1024 * 1024))} MB)` }, 422);
+    return json(
+      { error: `File too large (max ${Math.floor(MAX_SIZE / (1024 * 1024))} MB)`, error_code: "media_error_too_large" },
+      422
+    );
   }
 
   // Generate a unique key for R2

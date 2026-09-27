@@ -18,9 +18,10 @@ import { renderEmojiInHtml } from "@/lib/emoji";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import type { APMeta } from "@/components/APTypeBlock";
-import { useLocale } from "@/lib/i18n";
+import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { clipboardFiles } from "@/lib/clipboard-media";
+import { uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { mergeStatusUpdate, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
@@ -221,30 +222,22 @@ function ReplyBox({
 
   /** Upload files from the picker or the clipboard (paste in the composer). */
   async function uploadFiles(selected: File[]) {
-    if (!token || selected.length === 0) return;
-    const files = selected.slice(0, limits.maxMediaAttachments - mediaFiles.length);
-    if (files.length === 0) return;
+    const remaining = limits.maxMediaAttachments - mediaFiles.length;
+    if (!token || selected.length === 0 || remaining <= 0) return;
+    setError(null);
     setUploadingMedia(true);
-    for (const file of files) {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("locale", locale);
+    const { attachments, error: uploadError } = await uploadMediaFiles(selected, {
+      token,
+      locale,
       // CW on, or the "mark media as sensitive" preference → media blurred by default
-      if (showCw || defaultSensitive) form.append("sensitive", "true");
-      try {
-        const res = await fetch("/api/v1/media", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: form,
-        });
-        if (res.ok) {
-          const att = await res.json() as MediaAttachment;
-          setMediaFiles((prev) => [...prev, att]);
-        }
-      } catch {
-        // ignore
-      }
-    }
+      sensitive: showCw || defaultSensitive,
+      remaining,
+      maxAttachments: limits.maxMediaAttachments,
+      maxBytes: limits.maxImageSize,
+      t,
+    });
+    setMediaFiles((prev) => [...prev, ...attachments]);
+    if (uploadError) setError(uploadError);
     setUploadingMedia(false);
   }
 
@@ -319,8 +312,8 @@ function ReplyBox({
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        setError(err.error ?? "Failed to post reply");
+        const err = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+        setError(translateKey(t, err?.error_code, err?.error ?? t.error_network) ?? t.error_network);
       } else {
         const newStatus = await res.json() as Status;
         setText("");
@@ -489,7 +482,7 @@ function ReplyBox({
                   />
                 </div>
               ))}
-              {uploadingMedia && <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="hourglass" spin /></div>}
+              {uploadingMedia && <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="hourglass" spin size="1.5rem" /></div>}
             </div>
           )}
           {error && <div style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: "0.25rem" }}>{error}</div>}
@@ -505,7 +498,7 @@ function ReplyBox({
                   direction="up"
                 />
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia || pollMode} title={t.composer_attach} aria-label={t.composer_attach}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia || pollMode} title={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))} aria-label={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
@@ -519,7 +512,7 @@ function ReplyBox({
                 {t.profile_cancel}
               </button>
               <button type="submit" className="btn btn-primary btn-sm" disabled={submitting || uploadingMedia || (!text.trim() && mediaFiles.length === 0 && !pollMode)}>
-                {submitting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin /> : t.reply_button}
+                {submitting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.reply_button}
               </button>
             </div>
           </div>

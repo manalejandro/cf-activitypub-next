@@ -12,6 +12,7 @@ import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
 import { useLimits } from "@/lib/limits-client";
+import { uploadMediaFiles } from "@/lib/media/upload-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 
@@ -122,32 +123,23 @@ export function EditStatusModal({
   }
 
   async function addFiles(files: FileList | File[] | null) {
-    if (!files || !token || uploading || media.length >= limits.maxMediaAttachments) return;
+    const selected = files ? Array.from(files) : [];
+    const remaining = limits.maxMediaAttachments - media.length;
+    if (!token || uploading || selected.length === 0 || remaining <= 0) return;
     setUploadError(null);
     setUploading(true);
     try {
-      for (const file of Array.from(files).slice(0, limits.maxMediaAttachments - media.length)) {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("locale", locale);
-        if (spoiler && showCw) form.append("sensitive", "true");
-        try {
-          const res = await fetch("/api/v1/media", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: form,
-          });
-          if (res.ok) {
-            const att = await res.json() as MediaAttachment;
-            setMedia((prev) => [...prev, att]);
-          } else {
-            const data = await res.json().catch(() => null) as { error?: string } | null;
-            setUploadError(data?.error ?? t.compose_upload_error);
-          }
-        } catch {
-          setUploadError(t.compose_upload_error);
-        }
-      }
+      const { attachments, error } = await uploadMediaFiles(selected, {
+        token,
+        locale,
+        sensitive: Boolean(spoiler && showCw),
+        remaining,
+        maxAttachments: limits.maxMediaAttachments,
+        maxBytes: limits.maxImageSize,
+        t,
+      });
+      setMedia((prev) => [...prev, ...attachments]);
+      if (error) setUploadError(error);
     } finally {
       setUploading(false);
     }
@@ -292,18 +284,15 @@ export function EditStatusModal({
               </div>
             ))}
             {uploading && (
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon name="hourglass" spin size="1.4rem" />
-                </div>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{t.compose_uploading}</span>
+              <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon name="hourglass" spin size="1.5rem" />
               </div>
             )}
           </div>
         )}
         {uploading && media.length === 0 && (
-          <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="hourglass" spin size="1.4rem" />
+          <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="hourglass" spin size="1.5rem" />
           </div>
         )}
 
@@ -330,8 +319,8 @@ export function EditStatusModal({
             style={{ fontSize: "1rem", padding: "0.3rem 0.5rem" }}
             onClick={() => fileRef.current?.click()}
             disabled={media.length >= limits.maxMediaAttachments || pollMode || busy || uploading}
-            title={t.compose_attach}
-            aria-label={t.compose_attach}
+            title={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}
+            aria-label={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}
           >
             {uploading ? <Icon name="hourglass" spin size="1rem" /> : <Icon name="paperclip" size="1rem" />}
           </button>
