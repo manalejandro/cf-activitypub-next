@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
+import {
+  mediaPreference,
+  mediaPreferenceServerSnapshot,
+  setMediaPreference,
+  subscribeMediaPreference,
+} from "@/lib/media/player-preferences";
 
 export type MediaPlayerKind = "video" | "audio" | "gifv";
 
@@ -202,10 +208,18 @@ export function MediaPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<number | null>(null);
 
+  const preference = useSyncExternalStore(
+    subscribeMediaPreference,
+    mediaPreference,
+    mediaPreferenceServerSnapshot
+  );
+  // Muting anywhere (timeline, viewer, another status) applies to every player
+  // on the page; GIFVs autoplay, so they always stay muted.
+  const muted = initiallyMuted || preference.muted;
+  const volume = preference.volume;
+
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [muted, setMuted] = useState(initiallyMuted);
-  const [volume, setVolume] = useState(1);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -257,31 +271,92 @@ export function MediaPlayer({
   }, [poke]);
 
   const toggleMute = useCallback(() => {
-    const el = mediaRef.current;
-    if (!el) return;
-    el.muted = !el.muted;
-    setMuted(el.muted);
-    if (!el.muted && el.volume === 0) {
-      el.volume = 1;
-      setVolume(1);
-    }
-  }, []);
+    if (muted && volume === 0) setMediaPreference({ muted: false, volume: 1 });
+    else setMediaPreference({ muted: !muted });
+  }, [muted, volume]);
 
   const changeVolume = useCallback((value: number) => {
+    const next = clampRatio(value);
+    setMediaPreference({ volume: next, muted: next === 0 });
+  }, []);
+
+  // The preference lives in the store; the element follows it. Re-applied after
+  // the fullscreen transition because some browsers drop `muted` there (the
+  // user reported the sound coming back after muting + fullscreen).
+  const applyAudioState = useCallback(() => {
     const el = mediaRef.current;
     if (!el) return;
-    el.volume = clampRatio(value);
-    el.muted = el.volume === 0;
-    setVolume(el.volume);
-    setMuted(el.muted);
+    if (el.muted !== muted) el.muted = muted;
+    if (el.volume !== volume) el.volume = volume;
+  }, [muted, volume]);
+
+  const syncDuration = useCallback((el: HTMLMediaElement) => {
+    const next = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
+    setDuration((prev) => (prev === next ? prev : next));
   }, []);
+
+  // A streamed response without a known length makes the browser report an
+  // infinite duration (and our total time stays at 0:00). Seeking past the end
+  // once forces it to resolve the real length; the browser then rewinds.
+  const durationProbed = useRef(false);
+  const probeInfiniteDuration = useCallback((el: HTMLMediaElement) => {
+    if (durationProbed.current || el.duration !== Number.POSITIVE_INFINITY) return;
+    durationProbed.current = true;
+    try {
+      el.currentTime = Number.MAX_SAFE_INTEGER;
+      window.setTimeout(() => {
+        if (Number.isFinite(el.duration)) {
+          el.currentTime = 0;
+          syncDuration(el);
+        }
+      }, 0);
+    } catch {
+      /* the element refuses the seek: keep the 0:00 fallback */
+    }
+  }, [syncDuration]);
+
+  useEffect(() => {
+    applyAudioState();
+  }, [applyAudioState, isFullscreen]);
+
+  // The metadata can load before hydration (`preload="metadata"` starts with
+  // the server HTML), and the React handler would never fire: the duration
+  // stayed at 0:00. Read it on mount too, and keep listening on the element.
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    const sync = () => {
+      syncDuration(el);
+      probeInfiniteDuration(el);
+      setCurrent(el.currentTime || 0);
+      if (el.buffered.length > 0) setBuffered(el.buffered.end(el.buffered.length - 1));
+    };
+    sync();
+    el.addEventListener("loadedmetadata", sync);
+    el.addEventListener("durationchange", sync);
+    el.addEventListener("canplay", sync);
+    return () => {
+      el.removeEventListener("loadedmetadata", sync);
+      el.removeEventListener("durationchange", sync);
+      el.removeEventListener("canplay", sync);
+    };
+  }, [src, syncDuration, probeInfiniteDuration]);
+
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
       void document.exitFullscreen?.();
       return;
     }
-    void containerRef.current?.requestFullscreen?.().catch(() => {});
+    const container = containerRef.current;
+    if (container?.requestFullscreen) {
+      void container.requestFullscreen().catch(() => {});
+      return;
+    }
+    // iOS Safari has no Element.requestFullscreen: the video's own native
+    // player is the only fullscreen it offers.
+    const el = mediaRef.current as (HTMLMediaElement & { webkitEnterFullscreen?: () => void }) | null;
+    el?.webkitEnterFullscreen?.();
   }, []);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -329,17 +404,24 @@ export function MediaPlayer({
   const mediaEvents = {
     onPlay: () => { setPlaying(true); setWaiting(false); poke(); },
     onPause: () => { setPlaying(false); setControlsVisible(true); },
-    onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => setCurrent(e.currentTarget.currentTime || 0),
-    onDurationChange: (e: React.SyntheticEvent<HTMLMediaElement>) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0),
+    onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      setCurrent(e.currentTarget.currentTime || 0);
+      syncDuration(e.currentTarget);
+    },
+    onDurationChange: (e: React.SyntheticEvent<HTMLMediaElement>) => {
+      syncDuration(e.currentTarget);
+      probeInfiniteDuration(e.currentTarget);
+    },
     onProgress: (e: React.SyntheticEvent<HTMLMediaElement>) => {
       const el = e.currentTarget;
       if (el.buffered.length > 0) setBuffered(el.buffered.end(el.buffered.length - 1));
     },
     onWaiting: () => setWaiting(true),
-    onPlaying: () => setWaiting(false),
-    onVolumeChange: (e: React.SyntheticEvent<HTMLMediaElement>) => { setMuted(e.currentTarget.muted); setVolume(e.currentTarget.volume); },
+    onPlaying: () => { setWaiting(false); applyAudioState(); },
+    onCanPlay: () => applyAudioState(),
     onLoadedMetadata: (e: React.SyntheticEvent<HTMLMediaElement>) => {
-      setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0);
+      syncDuration(e.currentTarget);
+      applyAudioState();
     },
     onEnded: () => setControlsVisible(true),
   };
@@ -500,7 +582,7 @@ export function MediaPlayer({
         poster={poster ?? undefined}
         autoPlay={autoPlay}
         loop={loop}
-        muted={initiallyMuted}
+        muted={muted}
         playsInline
         preload="metadata"
         aria-label={description ?? t.action_view_media}
