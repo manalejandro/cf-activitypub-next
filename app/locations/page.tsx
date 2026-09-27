@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBaseUrl, getCloudflareContext } from "@/lib/cf";
 import {
@@ -9,7 +8,7 @@ import {
   parseLocationQuery,
   staticLocationTileUrl,
 } from "@/lib/location";
-import LocationPreview from "@/components/LocationPreview";
+import LocationMapFull from "@/components/LocationMapFull";
 
 /**
  * Public map page for a geolocated status.
@@ -73,43 +72,5 @@ export default async function LocationPage({
   const location = await loadLocation(searchParams);
   if (!location) notFound();
 
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1.5rem",
-        background: "var(--bg)",
-      }}
-    >
-      <div
-        style={{
-          width: "min(560px, 100%)",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "var(--shadow)",
-          padding: "1rem 1.25rem 1.25rem",
-        }}
-      >
-        <p style={{ margin: 0, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-          OpenStreetMap
-        </p>
-        <h1 style={{ margin: "0.15rem 0 0.75rem", fontSize: "1.15rem" }}>{locationLabel(location)}</h1>
-        <LocationPreview location={location} />
-        <p style={{ margin: "0.75rem 0 0", fontSize: "0.8rem" }}>
-          <Link
-            href={`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=14/${location.latitude}/${location.longitude}`}
-            target="_blank"
-            rel="nofollow noopener noreferrer"
-            style={{ color: "var(--accent)" }}
-          >
-            openstreetmap.org
-          </Link>
-        </p>
-      </div>
-    </main>
-  );
+  return <LocationMapFull location={location} />;
 }

@@ -91,6 +91,48 @@ export function staticLocationTileUrl(
   return `${base(baseUrl)}/api/map/tiles/${zoom}/${x}/${y}.png`;
 }
 
+/**
+ * Whether a URL is a location page (`/locations?lat=…&lng=…`), regardless of
+ * the instance hosting it. Used to avoid rendering the preview card when the
+ * status already shows the map from its `Place`.
+ */
+export function isLocationPageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.replace(/\/+$/, "") !== "/locations") return false;
+    return parseLocationQuery(parsed.searchParams) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Preview card to render for a status. A geolocated status already shows the
+ * map from its `Place`, so the card of that same location page is dropped
+ * (otherwise the timeline prints the map twice); cards for other links stay.
+ */
+export function previewCardFor<T extends { url: string }>(
+  card: T | null | undefined,
+  location: unknown
+): T | null {
+  if (!card) return null;
+  if (location && isLocationPageUrl(card.url)) return null;
+  return card;
+}
+
+/** Great-circle distance in meters between two points (fallback for routes). */
+export function distanceMeters(a: GeoLocation, b: GeoLocation): number {
+  const earthRadius = 6_371_000;
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = rad(b.latitude - a.latitude);
+  const dLon = rad(b.longitude - a.longitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 /** Human-readable label for a location (place name or rounded coordinates). */
 export function locationLabel(location: GeoLocation): string {
   return location.name || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;

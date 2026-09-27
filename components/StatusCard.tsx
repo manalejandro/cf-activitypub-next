@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lightbox, embeddableUrl } from "./Lightbox";
+import { previewCardFor } from "@/lib/location";
 import { InteractionList } from "./InteractionList";
 import { MemoRichText } from "./RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
@@ -771,6 +772,8 @@ export function StatusCard({
     : `/users/${status.account.username}`;
   const threadHref = `/statuses/${encodeURIComponent(status.id)}`;
   const showContent = !status.spoiler_text || cwExpanded;
+  // A geolocated status already renders the map: no duplicate location card.
+  const previewCard = previewCardFor(status.card, status.location);
 
   const visibilityInfo = (() => {
     switch (status.visibility) {
@@ -985,8 +988,8 @@ export function StatusCard({
         {showContent && status.location && (
           <LocationPreview location={status.location} />
         )}
-        {showContent && status.card && (
-          <LinkPreview card={status.card} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} />
+        {showContent && previewCard && (
+          <LinkPreview card={previewCard} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} />
         )}
         {showContent && (status.tags?.length ?? 0) > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.4rem" }}>

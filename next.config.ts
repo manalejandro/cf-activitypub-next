@@ -13,8 +13,9 @@ const cspHeader = [
   "font-src 'self'",
   // Allow connections to our own origin, the visit tracker, and Google Analytics
   "connect-src 'self' https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com https://nominatim.openstreetmap.org",
-  // Turnstile plus the YouTube embed player (link previews / video modal).
-  "frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://www.youtube.com",
+  // Turnstile plus federated provider embeds (YouTube/PeerTube/Vimeo…),
+  // matching Mastodon's `frame-src https:`.
+  "frame-src https:",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
@@ -71,7 +72,7 @@ const nextConfig: NextConfig = {
       {
         source: "/embed/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; frame-ancestors *; base-uri 'self'" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; frame-src https:; frame-ancestors *; base-uri 'self'" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],

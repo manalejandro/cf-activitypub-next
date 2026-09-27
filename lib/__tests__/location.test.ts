@@ -1,9 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import {
+  distanceMeters,
+  isLocationPageUrl,
   locationEmbedUrl,
   locationPageUrl,
   parseLocationQuery,
+  previewCardFor,
   staticLocationTileUrl,
 } from "@/lib/location";
 import { buildNote } from "@/lib/activitypub/utils";
@@ -29,6 +32,35 @@ describe("location URLs", () => {
 
   it("computes the static tile used as OG image / oEmbed thumbnail", () => {
     expect(staticLocationTileUrl("https://cf-ap.com/", MADRID)).toBe("https://cf-ap.com/api/map/tiles/14/8023/6177.png");
+  });
+});
+
+describe("location pages and preview cards", () => {
+  it("measures great-circle distances for the straight-line fallback", () => {
+    const madrid = { name: null, latitude: 40.4168, longitude: -3.7038 };
+    const barcelona = { name: null, latitude: 41.3874, longitude: 2.1686 };
+    const meters = distanceMeters(madrid, barcelona);
+    expect(meters).toBeGreaterThan(490_000);
+    expect(meters).toBeLessThan(520_000);
+    expect(distanceMeters(madrid, madrid)).toBe(0);
+  });
+
+  it("detects location page URLs on any instance", () => {
+    expect(isLocationPageUrl("https://cf-ap.com/locations?lat=37.39&lng=-5.97&name=X")).toBe(true);
+    expect(isLocationPageUrl("https://other.example/locations/?lat=1&lng=2")).toBe(true);
+    expect(isLocationPageUrl("https://cf-ap.com/locations")).toBe(false);
+    expect(isLocationPageUrl("https://cf-ap.com/statuses/1")).toBe(false);
+    expect(isLocationPageUrl(null)).toBe(false);
+  });
+
+  it("drops the duplicate location card when the status renders the map", () => {
+    const card = { url: "https://cf-ap.com/locations?lat=37.39&lng=-5.97&name=X", title: "X" };
+    expect(previewCardFor(card, { name: "X", latitude: 37.39, longitude: -5.97 })).toBeNull();
+    // Cards for other links stay even when the status has a location.
+    const youTube = { url: "https://www.youtube.com/watch?v=abc", title: "Video" };
+    expect(previewCardFor(youTube, { name: "X", latitude: 37.39, longitude: -5.97 })).toBe(youTube);
+    // No location: the card renders as usual.
+    expect(previewCardFor(card, null)).toBe(card);
   });
 });
 
