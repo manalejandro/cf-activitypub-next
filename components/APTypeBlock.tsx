@@ -7,6 +7,7 @@ import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { Lightbox, embeddableUrl } from "@/components/Lightbox";
+import { locationPath } from "@/lib/location";
 
 /**
  * ActivityStreams type-specific renderer.
@@ -21,6 +22,8 @@ export interface APMeta {
   endTime?: string | null;
   duration?: number | null;
   location?: string | null;
+  /** Location page of the instance hosting the Place, when federated. */
+  locationUrl?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   url?: string | null;
@@ -195,7 +198,16 @@ export function APTypeBlock({
           <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text)" }}><Icon name="calendar" /> {title}</span>
         )}
         {start && <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}><Icon name="clock-o" /> {start}{end ? ` → ${end}` : ""}</span>}
-        {apMeta?.location && <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}><Icon name="map-marker" /> {apMeta.location}</span>}
+        {apMeta?.location && (
+          <Link
+            href={apMeta.locationUrl ?? locationPath({ name: apMeta.location, latitude: apMeta.latitude ?? 0, longitude: apMeta.longitude ?? 0 })}
+            target="_blank"
+            rel="nofollow noopener noreferrer"
+            style={{ fontSize: "0.85rem", color: "var(--text-secondary)", textDecoration: "none" }}
+          >
+            <Icon name="map-marker" /> {apMeta.location}
+          </Link>
+        )}
         {apMeta?.duration && (
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }} className="flex items-center gap-1">
             <Icon name="hourglass-o" /> {formatDuration(apMeta.duration)}
@@ -209,9 +221,12 @@ export function APTypeBlock({
   // ── Place ────────────────────────────────────────────────────────────────
   if (apType === "Place") {
     const hasCoords = apMeta?.latitude != null && apMeta?.longitude != null;
-    const mapsUrl = hasCoords
-      ? `https://www.openstreetmap.org/?mlat=${apMeta!.latitude}&mlon=${apMeta!.longitude}#map=16/${apMeta!.latitude}/${apMeta!.longitude}`
-      : undefined;
+    // The map page of the instance that hosts the Place (federated `url`), or
+    // ours when only the coordinates are known.
+    const mapsUrl = apMeta?.locationUrl
+      ?? (hasCoords
+        ? locationPath({ name: apMeta?.name ?? null, latitude: apMeta!.latitude!, longitude: apMeta!.longitude! })
+        : undefined);
     return (
       <div style={cardStyle()}>
         <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text)" }}><Icon name="map-marker" /> {apMeta?.name ?? t.ap_type_place}</span>

@@ -12,7 +12,7 @@ const cspHeader = [
   "img-src 'self' data: blob: https:",
   "font-src 'self'",
   // Allow connections to our own origin, the visit tracker, and Google Analytics
-  "connect-src 'self' https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com https://nominatim.openstreetmap.org",
+  "connect-src 'self' https://cloudflareinsights.com https://static.cloudflareinsights.com https://challenges.cloudflare.com https://nominatim.openstreetmap.org https://router.project-osrm.org",
   // Turnstile plus federated provider embeds (YouTube/PeerTube/Vimeo…),
   // matching Mastodon's `frame-src https:`.
   "frame-src https:",

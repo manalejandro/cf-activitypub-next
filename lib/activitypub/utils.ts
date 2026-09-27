@@ -1,5 +1,5 @@
 import { DEFAULT_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
-import { locationLabel, locationPageUrl } from "@/lib/location";
+import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
 
 // ─────────────────────────────────────────
@@ -176,7 +176,7 @@ export function buildNote(
     cc?: string[];
     tags?: import("@/lib/types").APTag[];
     attachments?: import("@/lib/types").APAttachment[];
-    location?: { name: string | null; latitude: number; longitude: number } | null;
+    location?: GeoLocation | null;
   }
 ): APNote {
   const actorId = actorIRI(baseUrl, options.actorUsername);
@@ -253,6 +253,9 @@ export function buildNote(
             name: options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`,
             latitude: options.location.latitude,
             longitude: options.location.longitude,
+            // Remote clients (and our own timeline) use it to open the map on
+            // the instance that hosts the location page.
+            url: locationUrl,
           } as unknown as import("@/lib/types").APObject,
         }
       : {}),
@@ -570,7 +573,8 @@ export function extractLocationJson(obj: Record<string, unknown>): string | null
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
   const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 200) : null;
-  return JSON.stringify({ name, latitude, longitude });
+  const url = safeLocationUrl(raw.url);
+  return JSON.stringify({ name, latitude, longitude, ...(url ? { url } : {}) });
 }
 
 /** Validate a client-provided location (POST body) into a `Place` snapshot. */
@@ -589,14 +593,19 @@ export function normalizeLocationInput(value: unknown): string | null | undefine
 }
 
 /** Parse a stored location snapshot for serialization. */
-export function parseLocationJson(raw: string | null | undefined): { name: string | null; latitude: number; longitude: number } | null {
+export function parseLocationJson(raw: string | null | undefined): GeoLocation | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { name?: unknown; latitude?: unknown; longitude?: unknown };
+    const parsed = JSON.parse(raw) as { name?: unknown; latitude?: unknown; longitude?: unknown; url?: unknown };
     const latitude = Number(parsed.latitude);
     const longitude = Number(parsed.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-    return { name: typeof parsed.name === "string" ? parsed.name : null, latitude, longitude };
+    return {
+      name: typeof parsed.name === "string" ? parsed.name : null,
+      latitude,
+      longitude,
+      url: safeLocationUrl(parsed.url),
+    };
   } catch {
     return null;
   }

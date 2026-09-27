@@ -11,11 +11,12 @@ import {
   ROUTE_END_TOLERANCE_METERS,
   locationEmbedUrl,
   locationPageUrl,
+  locationPath,
   parseLocationQuery,
   previewCardFor,
   staticLocationTileUrl,
 } from "@/lib/location";
-import { buildNote } from "@/lib/activitypub/utils";
+import { buildNote, extractLocationJson, parseLocationJson } from "@/lib/activitypub/utils";
 import type { APAttachment } from "@/lib/types";
 
 const MADRID = { name: "Puerta del Sol", latitude: 40.4168, longitude: -3.7038 };
@@ -136,6 +137,37 @@ describe("buildNote location federation", () => {
     expect(link?.href).toBe("https://cf-ap.com/locations?lat=40.416800&lng=-3.703800&name=Puerta+del+Sol");
     expect(link?.mediaType).toBe("text/html");
     expect(note.content).toContain('href="https://cf-ap.com/locations?lat=40.416800&lng=-3.703800&name=Puerta+del+Sol"');
+  });
+
+  it("federates the page URL in the Place so remote maps link there too", () => {
+    const note = buildNote("https://cf-ap.com", "abc", {
+      actorUsername: "ale",
+      content: "<p>Hola</p>",
+      published: "2026-09-27T00:00:00.000Z",
+      visibility: "public",
+      location: MADRID,
+    });
+    const place = note.location as unknown as { type: string; url?: string };
+    expect(place.type).toBe("Place");
+    expect(place.url).toBe("https://cf-ap.com/locations?lat=40.416800&lng=-3.703800&name=Puerta+del+Sol");
+  });
+
+  it("keeps a valid page URL on ingest and drops other schemes", () => {
+    const place = { type: "Place", name: "X", latitude: 40.4, longitude: -3.7 };
+    const stored = extractLocationJson({
+      location: { ...place, url: "https://remote.example/locations?lat=40.4&lng=-3.7" },
+    });
+    expect(JSON.parse(String(stored)).url).toBe("https://remote.example/locations?lat=40.4&lng=-3.7");
+    expect(parseLocationJson(stored)?.url).toBe("https://remote.example/locations?lat=40.4&lng=-3.7");
+
+    const unsafe = extractLocationJson({ location: { ...place, url: "javascript:alert(1)" } });
+    expect(JSON.parse(String(unsafe)).url).toBeUndefined();
+    // Rows stored before the URL was federated serialize without one.
+    expect(parseLocationJson(JSON.stringify(place))?.url).toBeNull();
+  });
+
+  it("falls back to the viewer's own location page path", () => {
+    expect(locationPath(MADRID)).toBe("/locations?lat=40.416800&lng=-3.703800&name=Puerta+del+Sol");
   });
 
   it("keeps media attachments and appends the location link", () => {

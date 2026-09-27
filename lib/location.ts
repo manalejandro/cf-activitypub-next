@@ -12,6 +12,8 @@ export interface GeoLocation {
   name: string | null;
   latitude: number;
   longitude: number;
+  /** Location page of the instance that posted it (federated in the `Place`). */
+  url?: string | null;
 }
 
 /** Tile zoom used for the static mosaic, the OG image and the oEmbed card. */
@@ -30,9 +32,26 @@ function locationQuery(location: GeoLocation): string {
   return params.toString();
 }
 
+/** Keep a `Place`'s page URL only when it is an absolute http(s) URL. */
+export function safeLocationUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.toString().slice(0, 500);
+  } catch {
+    return null;
+  }
+}
+
+/** Path of the public location page, relative to the instance serving it. */
+export function locationPath(location: GeoLocation): string {
+  return `/locations?${locationQuery(location)}`;
+}
+
 /** Public location page (the crawler target federated in the Note). */
 export function locationPageUrl(baseUrl: string, location: GeoLocation): string {
-  return `${base(baseUrl)}/locations?${locationQuery(location)}`;
+  return `${base(baseUrl)}${locationPath(location)}`;
 }
 
 /** Minimal map page used as the oEmbed iframe. */

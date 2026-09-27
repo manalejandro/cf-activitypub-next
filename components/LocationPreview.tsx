@@ -2,13 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { LOCATION_MAP_ZOOM, tileX, tileY } from "@/lib/location";
-
-export interface GeoLocation {
-  name: string | null;
-  latitude: number;
-  longitude: number;
-}
+import { LOCATION_MAP_ZOOM, locationPath, tileX, tileY, type GeoLocation } from "@/lib/location";
 
 const TILE = 256;
 const ZOOM = LOCATION_MAP_ZOOM;
@@ -22,6 +16,10 @@ const ROWS = 3;
  * Small static OSM map (a tile mosaic with a pin) shown on a geolocated status.
  * No JS map instance: the point is centered with slippy-map math so several
  * statuses stay cheap to render.
+ *
+ * The mosaic links to the same place as the 📍 link in the content: the
+ * origin's public map page (`location.url`), or our own path when the status
+ * was posted here (or predates the federated URL).
  */
 export default function LocationPreview({ location }: { location: GeoLocation }) {
   const x = tileX(location.longitude, ZOOM);
@@ -72,7 +70,7 @@ export default function LocationPreview({ location }: { location: GeoLocation })
 
   return (
     <a
-      href={`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=${ZOOM}/${location.latitude}/${location.longitude}`}
+      href={location.url ?? locationPath(location)}
       target="_blank"
       rel="nofollow noopener noreferrer"
       style={{ display: "block", marginTop: "0.6rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", textDecoration: "none", color: "inherit" }}

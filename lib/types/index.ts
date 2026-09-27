@@ -19,6 +19,8 @@ export interface APObjectMeta {
   duration?: number | null;
   /** Human-readable location name (Place/Event). */
   location?: string | null;
+  /** Location page of the instance hosting the Place, when federated. */
+  locationUrl?: string | null;
   /** WGS84 latitude of the Place/Event. */
   latitude?: number | null;
   /** WGS84 longitude of the Place/Event. */
@@ -499,7 +501,7 @@ export interface MastodonStatus {
   emojis: MastodonEmoji[];
   card: MastodonPreviewCard | null;
   /** Geolocation (`Place`), a local extension Mastodon clients ignore. */
-  location?: { name: string | null; latitude: number; longitude: number } | null;
+  location?: { name: string | null; latitude: number; longitude: number; url?: string | null } | null;
   poll: MastodonPoll | null;
   filtered: MastodonFilterResult[];
   quotes_count: number;

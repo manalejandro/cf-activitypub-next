@@ -35,6 +35,7 @@ import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
 import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
 import { parseLocationJson } from "@/lib/activitypub/utils";
+import { safeLocationUrl } from "@/lib/location";
 import {
   INSTANCE_LANGUAGES,
   MASTODON_COMPAT_VERSION,
@@ -505,6 +506,7 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
   // `location` may be a Place object (with its own name/latitude/longitude)
   const locationObj = typeof raw.location === "object" && raw.location !== null ? raw.location as Record<string, unknown> : null;
   const locationName = locationObj && typeof locationObj.name === "string" ? locationObj.name : typeof raw.location === "string" ? raw.location : null;
+  const locationUrl = locationObj ? safeLocationUrl(locationObj.url) : null;
   if (locationObj) {
     if (Array.isArray(locationObj.latitude)) {
       const lat = (locationObj.latitude as unknown[])[0];
@@ -634,6 +636,7 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
     endTime: endTime ?? null,
     duration,
     location: locationName,
+    locationUrl,
     latitude,
     longitude,
     url,

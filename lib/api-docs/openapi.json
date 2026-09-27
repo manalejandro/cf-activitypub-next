@@ -13841,6 +13841,10 @@
               },
               "longitude": {
                 "type": "number"
+              },
+              "url": {
+                "type": "string",
+                "nullable": true
               }
             },
             "nullable": true,
@@ -15434,6 +15438,11 @@
             "type": "string",
             "nullable": true,
             "description": "Human-readable location name (Place/Event)."
+          },
+          "locationUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "Location page of the instance hosting the Place, when federated."
           },
           "latitude": {
             "type": "number",
