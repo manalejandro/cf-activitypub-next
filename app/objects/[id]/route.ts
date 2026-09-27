@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
-import { buildNote } from "@/lib/activitypub/utils";
+import { buildNote, parseLocationJson } from "@/lib/activitypub/utils";
 import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
@@ -80,6 +80,7 @@ export async function GET(
     tags,
     to,
     cc,
+    location: parseLocationJson(obj.locationJson),
   });
 
   // FEP-044f: expose the quoted post so remote instances can verify the quote

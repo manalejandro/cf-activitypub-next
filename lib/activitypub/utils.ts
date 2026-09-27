@@ -1,4 +1,5 @@
 import { DEFAULT_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
+import { locationLabel, locationPageUrl } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
 
 // ─────────────────────────────────────────
@@ -207,8 +208,22 @@ export function buildNote(
   // location page exposes oEmbed + OpenGraph with the map tile.
   // The map link points at OpenStreetMap (same target as the preview image) so
   // every client can open the location, even if it ignores the `Place` object.
-  const locationLink = options.location
-    ? `<p><a href="https://www.openstreetmap.org/?mlat=${options.location.latitude}&mlon=${options.location.longitude}#map=14/${options.location.latitude}/${options.location.longitude}" rel="nofollow noopener noreferrer">\u{1F4CD} ${(options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a></p>`
+  // The location link points at our own public map page: Mastodon's crawler
+  // only inspects Link attachments, and the page exposes the oEmbed player
+  // that renders the map on the remote instance.
+  const locationUrl = options.location ? locationPageUrl(baseUrl, options.location) : null;
+  const locationAttachments = options.location && locationUrl
+    ? [
+        {
+          type: "Link",
+          mediaType: "text/html",
+          href: locationUrl,
+          name: `\u{1F4CD} ${locationLabel(options.location)}`,
+        } as unknown as import("@/lib/types").APAttachment,
+      ]
+    : [];
+  const locationLink = options.location && locationUrl
+    ? `<p><a href="${locationUrl}" rel="nofollow noopener noreferrer">\u{1F4CD} ${locationLabel(options.location).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a></p>`
     : "";
   const note: APNote = {
     "@context": DEFAULT_CONTEXT,
@@ -247,7 +262,8 @@ export function buildNote(
   if (options.sensitive && options.summary) note.summary = options.summary;
   if (options.language) note.contentMap = { [options.language]: options.content };
   if (options.tags && options.tags.length > 0) note.tag = options.tags;
-  if (options.attachments && options.attachments.length > 0) note.attachment = options.attachments;
+  const apAttachments = [...(options.attachments ?? []), ...locationAttachments];
+  if (apAttachments.length > 0) note.attachment = apAttachments;
 
   return note;
 }

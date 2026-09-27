@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
 import { getActorById, getObjectById } from "@/lib/db";
 import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
+import { locationEmbedUrl, locationLabel, locationPageUrl, parseLocationQuery, staticLocationTileUrl } from "@/lib/location";
 
 /**
  * oEmbed provider for local statuses (Mastodon's `/api/oembed`).
@@ -21,6 +22,28 @@ export async function GET(request: NextRequest): Promise<Response> {
   try {
     const parsed = new URL(target);
     if (parsed.hostname !== host) return json({ error: "Not found" }, 404);
+    // Location pages embed as a rich map player (federated via the status'
+    // Link attachment, which is what Mastodon's crawler inspects).
+    if (parsed.pathname === "/locations") {
+      const location = parseLocationQuery(parsed.searchParams);
+      if (!location) return json({ error: "Not found" }, 404);
+      const canonical = locationPageUrl(base, location);
+      const embed = locationEmbedUrl(base, location);
+      return json({
+        version: "1.0",
+        type: "rich",
+        title: locationLabel(location),
+        provider_name: (env as unknown as Record<string, string>).INSTANCE_TITLE ?? "ActivityPub",
+        provider_url: base,
+        url: canonical,
+        thumbnail_url: staticLocationTileUrl(base, location),
+        thumbnail_width: 256,
+        thumbnail_height: 256,
+        width: 480,
+        height: 320,
+        html: `<iframe src="${embed}" width="480" height="320" style="border:0;max-width:100%" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`,
+      });
+    }
     const match = parsed.pathname.match(/\/(?:statuses|@[^/]+)\/([^/?#]+)/);
     if (!match) return json({ error: "Not found" }, 404);
     statusId = decodeURIComponent(match[1]);

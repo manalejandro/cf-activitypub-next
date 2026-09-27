@@ -33,7 +33,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
-import { normalizeLocationInput } from "../lib/activitypub/utils";
+import { normalizeLocationInput, parseLocationJson } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
 import {
   backfillRemoteSharedInboxes,
@@ -605,6 +605,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const inReplyToId = (body.in_reply_to_id as string | undefined) ?? null;
       const published = new Date().toISOString();
       const noteId = generateId();
+      const locationJson = normalizeLocationInput((body as Record<string, unknown>).location) ?? null;
 
       const note = buildNote(baseUrl, noteId, {
         actorUsername: actor.username,
@@ -616,6 +617,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         summary: sensitive ? spoilerText : undefined,
         language,
         tags: [],
+        location: locationJson ? parseLocationJson(locationJson) : null,
       });
 
       // Link pending media uploads (same `pending_media:` KV contract as
@@ -706,7 +708,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         favouritesCount: 0,
         published,
         local: true,
-        locationJson: normalizeLocationInput((body as Record<string, unknown>).location) ?? null,
+        locationJson,
         raw: JSON.stringify(note),
       });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { LOCATION_MAP_ZOOM, tileX, tileY } from "@/lib/location";
 
 export interface GeoLocation {
   name: string | null;
@@ -10,20 +11,12 @@ export interface GeoLocation {
 }
 
 const TILE = 256;
-const ZOOM = 14;
+const ZOOM = LOCATION_MAP_ZOOM;
 // 4x3 tiles (1024x768) cover the card (max ~640px wide) with room to spare for
 // the centered point and the rounding shift, with far fewer OSM requests than
 // a larger mosaic (the tile proxy caches each tile at the edge).
 const COLS = 4;
 const ROWS = 3;
-
-function tileX(lon: number, zoom: number): number {
-  return ((lon + 180) / 360) * 2 ** zoom;
-}
-function tileY(lat: number, zoom: number): number {
-  const rad = (lat * Math.PI) / 180;
-  return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** zoom;
-}
 
 /**
  * Small static OSM map (a tile mosaic with a pin) shown on a geolocated status.
