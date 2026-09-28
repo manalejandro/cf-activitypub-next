@@ -6,7 +6,9 @@ import { createOAuthApp } from "@/lib/db";
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const { allowed } = await checkRateLimit(env.KV, `apps:${clientIp}`, 10, 60);
+  // Mastodon clients register one app per installation; the tighter window
+  // keeps crawlers from filling the table while normal onboarding still fits.
+  const { allowed } = await checkRateLimit(env.KV, `apps:${clientIp}`, 10, 1800);
   if (!allowed) {
     return json({ error: "Too many requests. Please try again later." }, 429);
   }

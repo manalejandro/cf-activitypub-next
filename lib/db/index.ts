@@ -4313,6 +4313,76 @@ export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): 
   return result.meta?.changes ?? 0;
 }
 
+export interface OAuthCleanupResult {
+  /** Probe applications deleted. */
+  apps: number;
+  /** App-level / expired tokens deleted. */
+  tokens: number;
+}
+
+/**
+ * Prune OAuth applications no registered user ever authorized.
+ *
+ * `POST /api/v1/apps` is public because Mastodon clients register their app
+ * before the user logs in, so crawlers probing the instance fill `oauth_apps`
+ * with throwaway apps (and get an app-level token through the
+ * `client_credentials` grant). An app survives while it has **any user-bound
+ * token** (a registered user logged in through it) or an unexpired app-level
+ * token (onboarding in progress, its app-level token lives an hour). Only
+ * app-level tokens are dropped: user tokens are the record that keeps an app
+ * alive, even for accounts later suspended — deleting them once removed apps
+ * a real integration was using.
+ */
+export async function cleanupUnusedOAuthApps(
+  db: D1Database,
+  options: { appAgeDays?: number; probeTokenAgeHours?: number; limit?: number } = {}
+): Promise<OAuthCleanupResult> {
+  // A legitimate client registers its app right before opening the OAuth flow
+  // (its app-level token then protects it for the hour it lives, and the user
+  // token protects it forever). Anything older that never saw a verified user
+  // is crawler noise.
+  const appAgeDays = options.appAgeDays ?? 1;
+  const probeTokenAgeHours = options.probeTokenAgeHours ?? 24;
+  const limit = options.limit ?? 200;
+
+  const tokens = await db
+    .prepare(
+      `DELETE FROM oauth_tokens WHERE id IN (
+         SELECT id FROM oauth_tokens
+         WHERE actor_id IS NULL
+           AND (
+             datetime(created_at) < datetime('now', ?)
+             OR (expires_at IS NOT NULL AND datetime(expires_at) < datetime('now'))
+           )
+         LIMIT ?
+       )`
+    )
+    .bind(`-${probeTokenAgeHours} hours`, limit)
+    .run();
+
+  const apps = await db
+    .prepare(
+      `DELETE FROM oauth_apps WHERE id IN (
+         SELECT a.id FROM oauth_apps a
+         WHERE datetime(a.created_at) < datetime('now', ?)
+           AND NOT EXISTS (
+             SELECT 1 FROM oauth_tokens t
+             WHERE t.app_id = a.id AND t.actor_id IS NOT NULL
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM oauth_tokens t
+             WHERE t.app_id = a.id AND t.actor_id IS NULL
+               AND (t.expires_at IS NULL OR datetime(t.expires_at) > datetime('now'))
+           )
+         LIMIT ?
+       )`
+    )
+    .bind(`-${appAgeDays} days`, limit)
+    .run();
+
+  return { apps: apps.meta?.changes ?? 0, tokens: tokens.meta?.changes ?? 0 };
+}
+
 /** Point every actor using `sourceUrl` as avatar/header at the cached copy. */
 export async function applyMediaCacheToActorsByUrl(
   db: D1Database,

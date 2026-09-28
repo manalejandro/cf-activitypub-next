@@ -134,6 +134,9 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
     }
 
+    // App-level tokens have no user behind them (anonymous public reads): never
+    // grant them write scope, whatever the app registered for.
+    const scope = clampScope("read", app.scopes, "read");
     const accessToken = generateSecureToken();
     const now = Math.floor(Date.now() / 1000);
 
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       actorId: null,
       accessToken,
       refreshToken: null,
-      scope: clampScope(body.scope, app.scopes, "read"),
+      scope,
       expiresAt: new Date((now + 3600) * 1000).toISOString(),
       createdAt: new Date().toISOString(),
     });
@@ -151,7 +154,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({
       access_token: accessToken,
       token_type: "Bearer",
-      scope: clampScope(body.scope, app.scopes, "read"),
+      scope,
       created_at: now,
     });
   }

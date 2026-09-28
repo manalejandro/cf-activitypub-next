@@ -430,6 +430,9 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_tokens_token  ON oauth_tokens(access_token);
 CREATE INDEX IF NOT EXISTS idx_tokens_actor  ON oauth_tokens(actor_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_app    ON oauth_tokens(app_id);
+-- Crawler-registered probe apps are pruned by the cron (cleanupUnusedOAuthApps).
+CREATE INDEX IF NOT EXISTS idx_oauth_apps_created ON oauth_apps(created_at);
 
 -- ─────────────────────────────────────────
 -- Delivery queue state (fallback for failed deliveries)

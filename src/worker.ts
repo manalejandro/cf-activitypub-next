@@ -25,7 +25,7 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -1256,6 +1256,20 @@ async function executeScheduled(env: Env): Promise<void> {
     await verifyAccountFieldsCron(env);
   } catch (err) {
     console.error("[cron] verifyAccountFieldsCron failed", err);
+  }
+
+  // OAuth apps: crawlers probe the instance by self-registering an app (the
+  // Mastodon client flow needs anonymous registration) and taking a
+  // client_credentials token; drop those tokens and the apps that never got a
+  // token for a registered local user.
+  await setStage("oauth");
+  try {
+    const cleaned = await cleanupUnusedOAuthApps(env.DB);
+    if (cleaned.apps > 0 || cleaned.tokens > 0) {
+      console.log(`[cron] oauth cleanup: ${cleaned.apps} apps, ${cleaned.tokens} tokens`);
+    }
+  } catch (err) {
+    console.error("[cron] oauth cleanup failed", err);
   }
   } catch (err) {
     console.error("[cron] executeScheduled failed", err);
