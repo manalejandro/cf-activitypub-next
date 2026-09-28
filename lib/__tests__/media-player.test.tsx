@@ -89,3 +89,46 @@ describe("media player duration", () => {
     }
   });
 });
+
+describe("media player progress", () => {
+  it("moves the progress bar every animation frame while playing", () => {
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const original = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "duration");
+    Object.defineProperty(HTMLMediaElement.prototype, "duration", {
+      configurable: true,
+      get: () => 50,
+    });
+    try {
+      const { container } = render(<MediaPlayer src="/a.mp4" />);
+      const video = container.querySelector("video") as HTMLVideoElement;
+
+      // `timeupdate` alone fires ~4x/s and made the bar jump; the frame loop
+      // must read the element while playing.
+      act(() => {
+        video.dispatchEvent(new Event("play"));
+      });
+      video.currentTime = 12.5;
+      act(() => {
+        frames.shift()?.(performance.now());
+      });
+
+      // duration 50 s, currentTime 12.5 s → the played fill sits at 25%.
+      expect(container.querySelector('[style*="width: 25%"]')).toBeTruthy();
+      expect(frames.length).toBeGreaterThan(0);
+
+      act(() => {
+        video.dispatchEvent(new Event("pause"));
+      });
+      expect(cancel).toHaveBeenCalled();
+    } finally {
+      if (original) Object.defineProperty(HTMLMediaElement.prototype, "duration", original);
+      raf.mockRestore();
+      cancel.mockRestore();
+    }
+  });
+});

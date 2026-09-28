@@ -231,6 +231,25 @@ export function MediaPlayer({
   const playedRatio = duration > 0 ? clampRatio(current / duration) : 0;
   const bufferedRatio = duration > 0 ? clampRatio(buffered / duration) : 0;
 
+  // `timeupdate` fires ~4 times per second (and irregularly), which made the
+  // progress bar advance in visible jumps. While playing, read the media
+  // element every animation frame so the bar moves linearly; `timeupdate`
+  // still covers seeks, pauses and throttled/background tabs.
+  useEffect(() => {
+    if (!playing) return;
+    let frame = 0;
+    const tick = () => {
+      const el = mediaRef.current;
+      if (el) {
+        const next = el.currentTime || 0;
+        setCurrent((prev) => (Math.abs(prev - next) < 0.005 ? prev : next));
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [playing]);
+
   const poke = useCallback(() => {
     setControlsVisible(true);
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
