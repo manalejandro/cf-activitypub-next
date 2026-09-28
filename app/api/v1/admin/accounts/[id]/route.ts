@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
 import { getActorById, setActorApproval } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
@@ -121,14 +121,21 @@ export async function PATCH(
  * the sessions/activities/moderation entries that reference it without an FK.
  * This mirrors POST /api/v1/accounts/delete (self-delete) but for an admin.
  */
+/**
+ * DELETE /api/v1/admin/accounts/:id — remove an account and its data.
+ *
+ * Moderation action: moderators may delete regular accounts, like suspend and
+ * silence. `accountActionGuard` still blocks self-actions, the reserved
+ * instance actor, administrator targets (full admin required) and removing the
+ * last administrator's access.
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { env } = getCloudflareContext();
-  const role = await getAdminRole(request, env);
-  if (role !== "admin") {
-    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
   }
 
   const { id } = await params;

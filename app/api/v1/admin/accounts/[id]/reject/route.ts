@@ -1,31 +1,33 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, countUsableAdmins } from "@/lib/db";
-import { getAdminRole } from "@/lib/admin-auth";
+import { getActorById } from "@/lib/db";
+import { requireAdmin } from "@/lib/admin-auth";
+import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 
 /**
  * POST /api/v1/admin/accounts/:id/reject — deny a pending registration and
- * remove the account. Full-admin only, never the reserved actor nor the last
- * usable administrator, and only for accounts that are still unverified or
- * unapproved (established accounts must go through the audited delete flow).
+ * remove the account.
+ *
+ * Moderation action (a moderator may accept sign-ups, so they may reject them
+ * too): the shared guard blocks the reserved actor, self-actions, administrator
+ * targets and removing the last administrator's access. Only accounts that are
+ * still unverified or unapproved qualify — established accounts must go
+ * through the audited delete flow.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { env } = getCloudflareContext();
 
-  const role = await getAdminRole(request, env);
-  if (role !== "admin") {
-    return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
+  if (!(await requireAdmin(request, env))) {
+    return json({ error: "Unauthorized" }, 401);
   }
 
   const { id } = await params;
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
-  if (actor.reserved) return json({ error: "The instance actor cannot be modified" }, 422);
-  if (actor.role === "admin" && (await countUsableAdmins(env.DB, id)) === 0) {
-    return json({ error: "Cannot remove the last administrator's access" }, 422);
-  }
+  const denied = await accountActionGuard(request, env, actor, { removesAccess: true });
+  if (denied) return denied;
   if (actor.approved !== false && actor.emailVerified) {
     return json({ error: "Only pending registrations can be rejected — use DELETE for established accounts" }, 422);
   }
