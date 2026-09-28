@@ -936,6 +936,7 @@
   "pagination_page": "{pages}페이지 중 {page}페이지",
   "admin_instances_col_followers": "팔로워",
   "register_error_email_taken": "이미 사용 중인 이메일입니다",
+  "register_error_email_domain": "일회용 이메일 주소는 사용할 수 없습니다",
   "register_error_username_taken": "이미 사용 중인 사용자 이름입니다",
   "register_error_fields_required": "사용자 이름, 이메일, 비밀번호가 필요합니다",
   "register_error_username_invalid": "사용자 이름은 1~30자의 영숫자 또는 밑줄이어야 합니다",

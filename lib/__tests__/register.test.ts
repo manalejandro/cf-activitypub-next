@@ -201,6 +201,32 @@ describe("POST /api/v1/accounts", () => {
     expect(mocks.createCanonicalEmailBlock).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects disposable mail domains without creating the account", async () => {
+    const { status, body } = await post({
+      username: "newbie",
+      email: "bot@tempmail.ai",
+      password: "password123",
+      "cf-turnstile-response": "turnstile-token",
+    });
+
+    expect(status).toBe(422);
+    expect(body.error_code).toBe("register_error_email_domain");
+    expect(mocks.createActor).not.toHaveBeenCalled();
+    expect(mocks.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("rejects subdomains of blocked mail domains", async () => {
+    const { status, body } = await post({
+      username: "newbie",
+      email: "bot@relay.tempmail.ai",
+      password: "password123",
+      "cf-turnstile-response": "turnstile-token",
+    });
+
+    expect(status).toBe(422);
+    expect(body.error_code).toBe("register_error_email_domain");
+  });
+
   it("returns error codes the web form can translate", async () => {
     mocks.getActorByEmail.mockResolvedValue({ id: "https://local.example/users/taken" });
     const { status, body } = await post({

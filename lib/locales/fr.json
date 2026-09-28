@@ -936,6 +936,7 @@
   "pagination_page": "Page {page} sur {pages}",
   "admin_instances_col_followers": "Abonnés",
   "register_error_email_taken": "E-mail déjà utilisé",
+  "register_error_email_domain": "Les adresses e-mail jetables ne sont pas autorisées",
   "register_error_username_taken": "Nom d'utilisateur déjà utilisé",
   "register_error_fields_required": "nom d'utilisateur, e-mail et mot de passe sont requis",
   "register_error_username_invalid": "Le nom d'utilisateur doit comporter 1 à 30 caractères alphanumériques ou traits de soulignement",

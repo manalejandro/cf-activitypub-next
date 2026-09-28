@@ -7,6 +7,39 @@
 // Server code resolves the effective values with resolveLimits(env); client
 // components read the same values via /api/v1/instance (see lib/limits-client).
 
+/**
+ * Throwaway-mail domains: registrations from these are rejected outright (the
+ * mass-registration waves that filled the instance used relay/discard
+ * mailboxes). `REGISTRATION_BLOCKED_EMAIL_DOMAINS` (comma separated) extends
+ * the list without a deploy.
+ */
+export const DISPOSABLE_EMAIL_DOMAINS = [
+  "tempmail.ai", "tempmail.com", "temp-mail.org", "temp-mail.io", "mailinator.com",
+  "guerrillamail.com", "guerrillamail.net", "sharklasers.com", "10minutemail.com",
+  "yopmail.com", "yopmail.fr", "trashmail.com", "throwawaymail.com", "discard.email",
+  "getnada.com", "maildrop.cc", "ittiv.com", "tempinbox.com", "fakeinbox.com",
+  "mailnesia.com", "spamgourmet.com", "mytemp.email",
+];
+
+/** Blocked registration domains: built-in disposable list + instance extras. */
+export function registrationBlockedEmailDomains(env: Record<string, unknown>): string[] {
+  const raw = typeof env.REGISTRATION_BLOCKED_EMAIL_DOMAINS === "string" ? env.REGISTRATION_BLOCKED_EMAIL_DOMAINS : "";
+  const extra = raw.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+  return [...new Set([...DISPOSABLE_EMAIL_DOMAINS, ...extra])];
+}
+
+/** Domain matches the blocked list (subdomains included). */
+export function isBlockedEmailDomain(domain: string, blocked: string[]): boolean {
+  const d = domain.trim().toLowerCase();
+  return d !== "" && blocked.some((b) => d === b || d.endsWith(`.${b}`));
+}
+
+/** Email domain (`example.com`) in lowercase. */
+export function emailDomain(email: string): string {
+  const at = email.lastIndexOf("@");
+  return at === -1 ? "" : email.slice(at + 1).trim().toLowerCase();
+}
+
 export const MAX_STATUS_CHARS = 500;
 export const MAX_CW_CHARS = 200;
 export const MAX_ALT_TEXT_CHARS = 420;

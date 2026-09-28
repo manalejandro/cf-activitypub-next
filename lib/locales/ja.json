@@ -936,6 +936,7 @@
   "pagination_page": "{pages} ページ中 {page} ページ目",
   "admin_instances_col_followers": "フォロワー",
   "register_error_email_taken": "メールアドレスは既に使用されています",
+  "register_error_email_domain": "使い捨てメールアドレスは使用できません",
   "register_error_username_taken": "ユーザー名は既に使用されています",
   "register_error_fields_required": "ユーザー名、メールアドレス、パスワードが必要です",
   "register_error_username_invalid": "ユーザー名は1〜30文字の英数字またはアンダースコアで入力してください",

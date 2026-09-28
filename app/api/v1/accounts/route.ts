@@ -23,7 +23,7 @@ import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
 import { canonicalEmailHash } from "@/lib/canonical-email";
 import { recordModeration } from "@/lib/moderation/log";
-import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
+import { emailDomain, isBlockedEmailDomain, MIN_PASSWORD_LENGTH, registrationBlockedEmailDomains } from "@/lib/constants";
 import { clampScope } from "@/lib/oauth-scopes";
 
 // POST /api/v1/accounts — Register a new account
@@ -106,6 +106,32 @@ export async function POST(request: NextRequest): Promise<Response> {
   const existing = await getActorByEmail(env.DB, email);
   if (existing) {
     return json({ error: "Email already taken", error_code: "register_error_email_taken" }, 422);
+  }
+
+  // Disposable mail domains are blocked outright: mass registrations use
+  // relay/discard mailboxes, and leaving it to the AI pre-screen meant the
+  // account was created whenever the budget was spent or the model found
+  // nothing to judge in an empty profile.
+  const domainOfEmail = emailDomain(email);
+  if (isBlockedEmailDomain(domainOfEmail, registrationBlockedEmailDomains(env as unknown as Record<string, unknown>))) {
+    await recordModeration(env, {
+      id: generateId(),
+      source: "heuristic",
+      targetType: "email",
+      targetId: domainOfEmail.slice(0, 60),
+      action: "registration_blocked",
+      reason: "Disposable email domain.",
+      confidence: "high",
+      model: "heuristic",
+      details: { domain: domainOfEmail },
+      emailSent: false,
+      emailTo: null,
+      relatedId: null,
+    });
+    return json(
+      { error: "Disposable email addresses are not allowed", error_code: "register_error_email_domain" },
+      422
+    );
   }
 
   // ── Canonical mailbox checks (anti-abuse) ────────────────────────────────

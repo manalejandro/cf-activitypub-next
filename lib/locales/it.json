@@ -936,6 +936,7 @@
   "pagination_page": "Pagina {page} di {pages}",
   "admin_instances_col_followers": "Follower",
   "register_error_email_taken": "Email già in uso",
+  "register_error_email_domain": "Gli indirizzi email temporanei non sono consentiti",
   "register_error_username_taken": "Nome utente già in uso",
   "register_error_fields_required": "nome utente, email e password sono obbligatori",
   "register_error_username_invalid": "Il nome utente deve contenere 1-30 caratteri alfanumerici o underscore",

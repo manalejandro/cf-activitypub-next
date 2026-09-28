@@ -936,6 +936,7 @@
   "pagination_page": "Página {page} de {pages}",
   "admin_instances_col_followers": "Seguidores",
   "register_error_email_taken": "El correo ya está en uso",
+  "register_error_email_domain": "No se permiten direcciones de correo desechables",
   "register_error_username_taken": "El nombre de usuario ya está en uso",
   "register_error_fields_required": "se requieren nombre de usuario, correo y contraseña",
   "register_error_username_invalid": "El nombre de usuario debe tener entre 1 y 30 caracteres alfanuméricos o guiones bajos",

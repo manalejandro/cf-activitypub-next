@@ -15,6 +15,7 @@ import { screenStatus } from "./pipeline";
 import { warnAccount, suspendAccount, blockDomain, recordNoAction, type ModerationEnv } from "./actions";
 import { recordModeration, countWarnings } from "./log";
 import { isTrustedAuthor, chargeAI, chargeGlobalAI, AI_UNITS_REASON } from "./budget";
+import { runRegistrationSweep } from "./registration-sweep";
 
 export interface GuardianCycleEnv extends ModerationEnv {
   KV?: KVNamespace;
@@ -483,4 +484,8 @@ export async function runModerationCycle(env: GuardianCycleEnv): Promise<void> {
   await screenSuspiciousAccounts(env).catch((e) => console.error("[moderation] account scan failed", e));
   await detectRepeatedSpam(env).catch((e) => console.error("[moderation] repeated spam failed", e));
   await detectSpamDomains(env).catch((e) => console.error("[moderation] domain scan failed", e));
+  // Deterministic registration hygiene: disposable mail domains and mailbox
+  // farms are suspended, never-confirmed silent accounts are purged. Runs
+  // without AI (the wave that filled the instance slipped past the AI review).
+  await runRegistrationSweep(env).catch((e) => console.error("[moderation] registration sweep failed", e));
 }

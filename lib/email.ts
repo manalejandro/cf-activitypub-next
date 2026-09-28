@@ -9,6 +9,15 @@
  * Docs: https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/
  */
 
+/** Operational notice for the instance admins (bot sweeps, waves…). */
+export async function sendAdminAlertEmail(
+  emailBinding: SendEmail,
+  opts: { to: string; from: string; subject: string; lines: string[] }
+): Promise<void> {
+  const { to, from, subject, lines } = opts;
+  await emailBinding.send({ from, to, subject, text: lines.join("\n") });
+}
+
 export async function sendVerificationEmail(
   emailBinding: SendEmail,
   opts: {

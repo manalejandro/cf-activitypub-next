@@ -936,6 +936,7 @@
   "pagination_page": "Seite {page} von {pages}",
   "admin_instances_col_followers": "Follower",
   "register_error_email_taken": "E-Mail bereits vergeben",
+  "register_error_email_domain": "Wegwerf-E-Mail-Adressen sind nicht erlaubt",
   "register_error_username_taken": "Benutzername bereits vergeben",
   "register_error_fields_required": "Benutzername, E-Mail und Passwort sind erforderlich",
   "register_error_username_invalid": "Der Benutzername darf 1–30 alphanumerische Zeichen oder Unterstriche enthalten",

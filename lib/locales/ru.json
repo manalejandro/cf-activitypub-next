@@ -936,6 +936,7 @@
   "pagination_page": "Страница {page} из {pages}",
   "admin_instances_col_followers": "Подписчики",
   "register_error_email_taken": "Email уже используется",
+  "register_error_email_domain": "Одноразовые адреса электронной почты запрещены",
   "register_error_username_taken": "Имя пользователя уже занято",
   "register_error_fields_required": "требуются имя пользователя, email и пароль",
   "register_error_username_invalid": "Имя пользователя должно содержать от 1 до 30 букв, цифр или подчёркиваний",

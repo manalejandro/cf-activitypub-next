@@ -936,6 +936,7 @@
   "pagination_page": "第 {page} 页，共 {pages} 页",
   "admin_instances_col_followers": "粉丝",
   "register_error_email_taken": "电子邮件已被使用",
+  "register_error_email_domain": "不允许使用一次性邮箱地址",
   "register_error_username_taken": "用户名已被占用",
   "register_error_fields_required": "需要用户名、电子邮件和密码",
   "register_error_username_invalid": "用户名必须为 1-30 个字母、数字或下划线",
