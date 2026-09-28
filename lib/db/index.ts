@@ -4328,20 +4328,22 @@ export interface OAuthCleanupResult {
  * with throwaway apps (and get an app-level token through the
  * `client_credentials` grant). An app survives while it has **any user-bound
  * token** (a registered user logged in through it) or an unexpired app-level
- * token (onboarding in progress, its app-level token lives an hour). Only
+ * token (onboarding in progress, its app-level token lives an hour; the
+ * app-age grace window matches that hour). Only
  * app-level tokens are dropped: user tokens are the record that keeps an app
  * alive, even for accounts later suspended — deleting them once removed apps
  * a real integration was using.
  */
 export async function cleanupUnusedOAuthApps(
   db: D1Database,
-  options: { appAgeDays?: number; probeTokenAgeHours?: number; limit?: number } = {}
+  options: { appAgeHours?: number; probeTokenAgeHours?: number; limit?: number } = {}
 ): Promise<OAuthCleanupResult> {
-  // A legitimate client registers its app right before opening the OAuth flow
-  // (its app-level token then protects it for the hour it lives, and the user
-  // token protects it forever). Anything older that never saw a verified user
-  // is crawler noise.
-  const appAgeDays = options.appAgeDays ?? 1;
+  // A legitimate client registers its app right before opening the OAuth flow:
+  // its app-level token (1 h TTL, unexpired-token rule) protects it while the
+  // user logs in, and the user token protects it afterwards. Anything older
+  // than the grace window without either is crawler noise — keeping a day of
+  // registrations around left the table looking full.
+  const appAgeHours = options.appAgeHours ?? 1;
   const probeTokenAgeHours = options.probeTokenAgeHours ?? 24;
   const limit = options.limit ?? 200;
 
@@ -4377,7 +4379,7 @@ export async function cleanupUnusedOAuthApps(
          LIMIT ?
        )`
     )
-    .bind(`-${appAgeDays} days`, limit)
+    .bind(`-${appAgeHours} hours`, limit)
     .run();
 
   return { apps: apps.meta?.changes ?? 0, tokens: tokens.meta?.changes ?? 0 };

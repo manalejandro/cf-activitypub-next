@@ -434,6 +434,26 @@ CREATE INDEX IF NOT EXISTS idx_tokens_app    ON oauth_tokens(app_id);
 -- Crawler-registered probe apps are pruned by the cron (cleanupUnusedOAuthApps).
 CREATE INDEX IF NOT EXISTS idx_oauth_apps_created ON oauth_apps(created_at);
 
+-- Belt and braces: prune unused crawler apps on every insert, so the table
+-- cannot fill between cron ticks. A legit client registers its app right before
+-- the OAuth flow (its app-level token keeps it for the hour it lives; the user
+-- token afterwards), so anything past the grace window without either is noise.
+CREATE TRIGGER IF NOT EXISTS prune_unused_oauth_apps
+AFTER INSERT ON oauth_apps
+BEGIN
+  DELETE FROM oauth_apps
+   WHERE datetime(created_at) < datetime('now', '-1 hour')
+     AND NOT EXISTS (
+       SELECT 1 FROM oauth_tokens t
+       WHERE t.app_id = oauth_apps.id AND t.actor_id IS NOT NULL
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM oauth_tokens t
+       WHERE t.app_id = oauth_apps.id AND t.actor_id IS NULL
+         AND (t.expires_at IS NULL OR datetime(t.expires_at) > datetime('now'))
+     );
+END;
+
 -- ─────────────────────────────────────────
 -- Delivery queue state (fallback for failed deliveries)
 -- ─────────────────────────────────────────

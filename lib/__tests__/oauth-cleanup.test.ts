@@ -38,10 +38,14 @@ class D1Adapter {
 }
 
 const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
+// The schema ships the insert-time prune trigger; the cron tests exercise the
+// batch cleanup, so they drop it (the trigger has its own describe below).
+const schemaWithoutTrigger = `${schema}\nDROP TRIGGER IF EXISTS prune_unused_oauth_apps;`;
 const LOCAL_ACTOR = "https://cf-ap.com/users/ale";
 const REMOTE_ACTOR = "https://remote.example/users/fan";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
 const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000).toISOString();
 const hoursFromNow = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString();
 
@@ -90,7 +94,7 @@ describe("cleanupUnusedOAuthApps", () => {
   let db: D1Database;
 
   beforeEach(async () => {
-    db = new D1Adapter(schema) as unknown as D1Database & D1Adapter;
+    db = new D1Adapter(schemaWithoutTrigger) as unknown as D1Database;
     await db
       .prepare(
         "INSERT INTO actors (id, username, domain, public_key_pem, is_local, email, email_verified) VALUES (?, ?, ?, ?, 1, ?, 1)"
@@ -128,7 +132,7 @@ describe("cleanupUnusedOAuthApps", () => {
     expect(cleaned.tokens).toBe(0);
   });
 
-  it("removes probe apps: app-level token only, app older than a week", async () => {
+  it("removes probe apps: app-level token only, app past the grace window", async () => {
     const probe = await seedApp(db, "Mastodon Web", daysAgo(10));
     await seedToken(db, probe, null, hoursAgo(30), hoursAgo(29));
 
@@ -151,13 +155,22 @@ describe("cleanupUnusedOAuthApps", () => {
     expect(cleaned.tokens).toBe(0);
   });
 
-  it("keeps recent apps and drops old ones without tokens", async () => {
-    await seedApp(db, "recent", hoursAgo(2));
+  it("keeps apps inside the one-hour grace window and drops older unused ones", async () => {
+    await seedApp(db, "recent", minutesAgo(10));
     await seedApp(db, "old", daysAgo(20));
 
     const cleaned = await cleanupUnusedOAuthApps(db);
 
     expect(await appNames(db)).toEqual(["recent"]);
+    expect(cleaned.apps).toBe(1);
+  });
+
+  it("drops an app left over an hour without tokens (crawler registrations)", async () => {
+    await seedApp(db, "crawler", hoursAgo(2));
+
+    const cleaned = await cleanupUnusedOAuthApps(db);
+
+    expect(await appNames(db)).toEqual([]);
     expect(cleaned.apps).toBe(1);
   });
 
@@ -182,5 +195,43 @@ describe("cleanupUnusedOAuthApps", () => {
     const second = await cleanupUnusedOAuthApps(db, { limit: 10 });
     expect(second.apps).toBe(2);
     expect(await appNames(db)).toEqual([]);
+  });
+});
+
+describe("prune trigger (schema)", () => {
+  let db: D1Database;
+
+  beforeEach(() => {
+    db = new D1Adapter(schema) as unknown as D1Database;
+  });
+
+  it("prunes an unused app older than the grace window on insert", async () => {
+    await seedApp(db, "crawler", hoursAgo(2));
+
+    expect(await appNames(db)).toEqual([]);
+  });
+
+  it("keeps fresh apps and apps with a user token", async () => {
+    await seedApp(db, "fresh", minutesAgo(5));
+
+    const token = "legit-token";
+    // Seed inside the grace window (the insert trigger would prune an old app
+    // before its token existed), then backdate: the user token keeps it alive.
+    const app = await seedApp(db, "legit", minutesAgo(5));
+    await db
+      .prepare(
+        `INSERT INTO oauth_tokens (id, actor_id, app_id, access_token, scope, created_at, expires_at)
+         VALUES (?, ?, ?, ?, 'read', ?, NULL)`
+      )
+      .bind(token, "https://cf-ap.com/users/ale", app, `access-${token}`, daysAgo(30))
+      .run();
+    await db
+      .prepare("UPDATE oauth_apps SET created_at = ? WHERE id = ?")
+      .bind(daysAgo(30), app)
+      .run();
+    // Any further insert runs the trigger again.
+    await seedApp(db, "another-crawler", hoursAgo(3));
+
+    expect(await appNames(db)).toEqual(["fresh", "legit"]);
   });
 });
