@@ -17,7 +17,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { youTubeVideoId } from "@/lib/youtube";
+import { youTubeOEmbedEndpoint, youTubeThumbnailUrl, youTubeVideoId } from "@/lib/youtube";
 // Re-exported for callers/tests that imported it from this module.
 export { youTubeVideoId } from "@/lib/youtube";
 import type { LocalObject } from "@/lib/types";
@@ -553,14 +553,21 @@ function plusHours(hours: number, from = Date.now()): string {
 }
 
 /**
- * YouTube's watch page (consent wall in the EU) and oEmbed endpoint can be
+ * YouTube's watch page (consent wall / bot check) and oEmbed endpoint can be
  * blocked from datacenter IPs; the video id is enough to build a usable card:
  * the CDN thumbnail plus a nocookie embed.
  */
 export function applyYouTubeFallback(card: CardCandidate, url: string): void {
   const videoId = youTubeVideoId(url);
   if (!videoId) return;
-  if (!card.imageUrl) card.imageUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  card.title = cleanYouTubeTitle(card.title);
+  if (!card.title) {
+    // Consent/bot stub: its description is YouTube's boilerplate, not the
+    // video's, and it would show unattached to any title.
+    card.description = "";
+    card.imageDescription = "";
+  }
+  if (!card.imageUrl) card.imageUrl = youTubeThumbnailUrl(videoId);
   // Always expose the embed player: oEmbed may have filled `html` without an
   // `embed_url`, and the web UI frames `embed_url` (never `card.html`).
   if (!card.embedUrl) card.embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
@@ -572,6 +579,45 @@ export function applyYouTubeFallback(card: CardCandidate, url: string): void {
     card.height = height;
     card.html = buildIframe(card.embedUrl, width, height);
   }
+}
+
+/**
+ * Placeholder titles of YouTube's consent/bot pages ("- YouTube", or the
+ * site suffix of the bare `<title>`): drop them so the card shows the player
+ * instead of a fake name.
+ */
+function cleanYouTubeTitle(title: string): string {
+  const trimmed = title.replace(/\s*[-–]\s*YouTube\s*$/i, "").trim();
+  return /^YouTube$/i.test(trimmed) ? "" : trimmed;
+}
+
+/** Skeleton card so the YouTube fallback can build one from the URL alone. */
+function emptyCardCandidate(): CardCandidate {
+  return {
+    title: "", description: "", type: "link",
+    authorName: "", authorUrl: "", providerName: "", providerUrl: "",
+    html: "", width: 0, height: 0, imageUrl: null, imageDescription: "",
+    embedUrl: "", language: null, publishedAt: null, canonicalUrl: null,
+  };
+}
+
+/**
+ * Card for a YouTube link built without crawling the watch page: the direct
+ * oEmbed endpoint answers from datacenter IPs (the page often does not) and
+ * the thumbnail/player are always derivable from the video id. Returns null
+ * for non-YouTube URLs.
+ */
+async function youTubeFallbackCard(url: string, userAgents: string[]): Promise<CardCandidate | null> {
+  const endpoint = youTubeOEmbedEndpoint(url);
+  if (!endpoint) return null;
+  // Reuse the oEmbed discovery + mapping with a synthetic page that links the
+  // endpoint directly (no watch-page fetch needed).
+  const oembed = await parseOEmbed(
+    `<link rel="alternate" type="application/json+oembed" href="${endpoint.replace(/&/g, "&amp;")}">`,
+    url,
+    userAgents
+  );
+  return oembed?.card ?? emptyCardCandidate();
 }
 
 type CrawlOutcome =
@@ -587,6 +633,13 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
     isAcceptableType: isHtmlType,
   });
   if (!fetched.ok) {
+    // YouTube 429/403s datacenter IPs and its short links 404 without a
+    // browser session: the video id plus oEmbed still yield a full card.
+    const youtube = await youTubeFallbackCard(url, userAgents);
+    if (youtube) {
+      applyYouTubeFallback(youtube, url);
+      return { ok: true, card: youtube, canonicalUrl: youtube.canonicalUrl ?? url };
+    }
     if (fetched.permanent) console.warn(`[link-preview] Not crawlerable ${url}: ${fetched.error}`);
     return { ok: false, permanent: fetched.permanent, error: fetched.error };
   }
@@ -596,7 +649,16 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
   const html = decodeHtml(bytes, contentTypeHeader);
 
   const oembed = await parseOEmbed(html, url, userAgents);
-  const card = oembed?.card ?? parseOpenGraph(html, url);
+  let card = oembed?.card ?? parseOpenGraph(html, url);
+  if (!card && youTubeVideoId(url)) {
+    // Consent/bot pages carry no metadata at all: the URL alone is enough.
+    card = await youTubeFallbackCard(url, userAgents);
+  } else if (card && youTubeVideoId(url) && !cleanYouTubeTitle(card.title)) {
+    // A stub page named nothing ("- YouTube") while YouTube's boilerplate
+    // description leaked in: the direct oEmbed endpoint knows the video.
+    const youtube = await youTubeFallbackCard(url, userAgents);
+    if (youtube?.title) card = youtube;
+  }
   if (card) applyYouTubeFallback(card, url);
   if (!card || (!card.title && !card.html)) {
     return { ok: false, permanent: true, error: "no preview metadata" };

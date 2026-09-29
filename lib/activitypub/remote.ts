@@ -939,6 +939,14 @@ export async function fetchAndCacheRemoteActorFeatured(
             } catch { /* ignore */ }
           }
         }
+
+        // Pinned posts surface in profiles without passing through the inbox.
+        await maybeEnqueueLinkPreview(db, {
+          id: oid,
+          content: sanitized.content,
+          quoteId: extractQuoteId(item as Record<string, unknown>),
+          hasAttachments: Array.isArray(item.attachment) && item.attachment.length > 0,
+        });
       } catch {
         /* insert may race; ignore */
       }

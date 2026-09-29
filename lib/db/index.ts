@@ -4407,6 +4407,10 @@ export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): 
          SELECT pc.id FROM preview_cards pc
          WHERE pc.created_at < datetime('now', '-1 hour')
            AND NOT EXISTS (SELECT 1 FROM objects o WHERE o.card_id = pc.id)
+           -- A live negative cache is an orphan by definition: keep it until
+           -- its window expires, or every status linking to the dead URL
+           -- would re-crawl the origin.
+           AND NOT (pc.status = 'failed' AND datetime(pc.next_attempt_at) > datetime('now'))
          LIMIT ?
        )`
     )

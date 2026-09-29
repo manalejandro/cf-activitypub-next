@@ -486,4 +486,169 @@ describe("YouTube fallback", () => {
     expect(card?.embedUrl).toBe("https://www.youtube-nocookie.com/embed/oembed1");
     expect(card?.type).toBe("video");
   });
+
+  it("drops YouTube's placeholder title from consent/bot pages", () => {
+    const card = parseOpenGraph("<html><head><title>- YouTube</title></head></html>", "https://youtu.be/abc123");
+    expect(card).not.toBeNull();
+    applyYouTubeFallback(card!, "https://youtu.be/abc123");
+    expect(card?.title).toBe("");
+    expect(card?.html).toContain("https://www.youtube-nocookie.com/embed/abc123");
+  });
+
+  it("recognises live, music, nocookie and rejects non-video paths", () => {
+    expect(youTubeVideoId("https://youtube.com/live/live12345")).toBe("live12345");
+    expect(youTubeVideoId("https://music.youtube.com/watch?v=music123")).toBe("music123");
+    expect(youTubeVideoId("https://www.youtube-nocookie.com/embed/nc123")).toBe("nc123");
+    expect(youTubeVideoId("https://youtu.be/channel/UC123")).toBeNull();
+    expect(youTubeVideoId("https://example.com/youtu.be/abc123")).toBeNull();
+  });
+});
+
+describe("YouTube cards without a crawlable page", () => {
+  const OEMBED = {
+    version: "1.0",
+    type: "video",
+    width: 480,
+    height: 270,
+    title: "Mi vídeo",
+    author_name: "Un canal",
+    author_url: "https://www.youtube.com/@canal",
+    provider_name: "YouTube",
+    provider_url: "https://www.youtube.com/",
+    thumbnail_url: "https://i.ytimg.com/vi/9-hgsC-JxaI/hqdefault.jpg",
+    html:
+      '<iframe width="480" height="270" src="https://www.youtube.com/embed/9-hgsC-JxaI?feature=oembed" allowfullscreen></iframe>',
+  };
+
+  function forbidden(): Response {
+    return { ok: false, status: 403, headers: new Headers(), body: undefined } as unknown as Response;
+  }
+
+  it("builds the card from oEmbed when YouTube blocks the watch page", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://youtu.be/9-hgsC-JxaI">video</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockImplementation(async (url: string) =>
+      url.includes("/oembed") ? okJson(OEMBED) : forbidden()
+    );
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT * FROM preview_cards WHERE source_url = ?")
+      .bind("https://youtu.be/9-hgsC-JxaI")
+      .first<{ title: string; type: string; embed_url: string; image_url: string; status: string }>();
+    expect(card?.status).toBe("ready");
+    expect(card?.title).toBe("Mi vídeo");
+    expect(card?.type).toBe("video");
+    expect(card?.embed_url).toBe("https://www.youtube.com/embed/9-hgsC-JxaI?feature=oembed");
+    expect(card?.image_url).toBe(OEMBED.thumbnail_url);
+
+    const snapshot = await db
+      .prepare("SELECT card_json FROM objects WHERE id = ?")
+      .bind("https://remote.example/objects/1")
+      .first<{ card_json: string }>();
+    expect(JSON.parse(snapshot!.card_json).embed_url).toBe("https://www.youtube.com/embed/9-hgsC-JxaI?feature=oembed");
+    const queued = await db.prepare("SELECT COUNT(*) AS n FROM link_preview_queue").bind().first<{ n: number }>();
+    expect(queued?.n).toBe(0);
+  });
+
+  it("falls back to the video id when oEmbed is blocked too", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://youtu.be/9-hgsC-JxaI">video</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockResolvedValue(forbidden());
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT * FROM preview_cards WHERE source_url = ?")
+      .bind("https://youtu.be/9-hgsC-JxaI")
+      .first<{ title: string; type: string; embed_url: string; image_url: string; html: string }>();
+    expect(card?.type).toBe("video");
+    expect(card?.title).toBe("");
+    expect(card?.embed_url).toBe("https://www.youtube-nocookie.com/embed/9-hgsC-JxaI");
+    expect(card?.image_url).toBe("https://i.ytimg.com/vi/9-hgsC-JxaI/hqdefault.jpg");
+    expect(card?.html).toContain("youtube-nocookie.com/embed/9-hgsC-JxaI");
+  });
+
+  it("recovers the video from a 200 consent page (junk title, no metadata)", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://www.youtube.com/watch?v=9-hgsC-JxaI">video</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockImplementation(async (url: string) =>
+      url.includes("/oembed")
+        ? forbidden()
+        : okHtml(
+            `<html><head><title>- YouTube</title>
+             <meta property="og:title" content="- YouTube">
+             <meta property="og:description" content="Disfruta de los vídeos y la música que te gustan…">
+             </head><body>Before you continue</body></html>`
+          )
+    );
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT title, description, type, embed_url, image_url FROM preview_cards WHERE source_url = ?")
+      .bind("https://www.youtube.com/watch?v=9-hgsC-JxaI")
+      .first<{ title: string; description: string; type: string; embed_url: string; image_url: string }>();
+    expect(card?.title).toBe("");
+    // YouTube's boilerplate description must not survive without a title.
+    expect(card?.description).toBe("");
+    expect(card?.type).toBe("video");
+    expect(card?.embed_url).toBe("https://www.youtube-nocookie.com/embed/9-hgsC-JxaI");
+    expect(card?.image_url).toBe("https://i.ytimg.com/vi/9-hgsC-JxaI/hqdefault.jpg");
+  });
+
+  it("prefers the direct oEmbed over a stub page that names nothing", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://youtu.be/9-hgsC-JxaI">video</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockImplementation(async (url: string) =>
+      url.includes("/oembed")
+        ? okJson(OEMBED)
+        : okHtml(
+            `<html><head><title>- YouTube</title>
+             <meta property="og:title" content="- YouTube">
+             <meta property="og:description" content="Disfruta de los vídeos y la música que te gustan…">
+             </head></html>`
+          )
+    );
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT title, description, embed_url FROM preview_cards WHERE source_url = ?")
+      .bind("https://youtu.be/9-hgsC-JxaI")
+      .first<{ title: string; description: string; embed_url: string }>();
+    expect(card?.title).toBe("Mi vídeo");
+    expect(card?.description).toBe("");
+    expect(card?.embed_url).toBe("https://www.youtube.com/embed/9-hgsC-JxaI?feature=oembed");
+  });
+
+  it("keeps a live negative cache while sweeping orphan cards", async () => {
+    // A URL that failed permanently has no owner by definition: the sweep must
+    // keep it until its window expires, or every status linking to it would
+    // re-crawl a dead origin. Unattached ready cards are still collected.
+    await db
+      .prepare(
+        `INSERT INTO preview_cards (id, source_url, url, title, type, status, attempts, next_attempt_at, created_at)
+         VALUES ('failed-1', 'https://news.example/dead', 'https://news.example/dead', '', 'link', 'failed', 1, datetime('now', '+6 days'), datetime('now', '-2 hours'))`
+      )
+      .bind()
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO preview_cards (id, source_url, url, title, type, status, created_at)
+         VALUES ('orphan-1', 'https://news.example/gone', 'https://news.example/gone', 'Gone', 'link', 'ready', datetime('now', '-2 hours'))`
+      )
+      .bind()
+      .run();
+
+    await processLinkPreviewQueue(bindings, LIMITS, "local.example");
+
+    const kept = await db
+      .prepare("SELECT COUNT(*) AS n FROM preview_cards WHERE id = 'failed-1'")
+      .bind()
+      .first<{ n: number }>();
+    expect(kept?.n).toBe(1);
+    const swept = await db
+      .prepare("SELECT COUNT(*) AS n FROM preview_cards WHERE id = 'orphan-1'")
+      .bind()
+      .first<{ n: number }>();
+    expect(swept?.n).toBe(0);
+  });
 });

@@ -1224,6 +1224,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
           });
           if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, fetched.id, fetched.attachment, fetched.sensitive === true);
           await ensurePollRowsForQuestion(ctx, fetched);
+          await enqueueNoteLinkPreview(ctx, fetched, content);
           likedObject = await getObjectById(ctx.db, objectId);
         }
       }
@@ -1266,6 +1267,16 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
   }
+}
+
+/** Queue a just-stored remote note for link crawling (idempotent, best-effort). */
+async function enqueueNoteLinkPreview(ctx: InboxContext, note: APNote, content: string | null): Promise<void> {
+  await maybeEnqueueLinkPreview(ctx.db, {
+    id: note.id,
+    content,
+    quoteId: extractQuoteId(note as Record<string, unknown>),
+    hasAttachments: Array.isArray(note.attachment) && note.attachment.length > 0,
+  });
 }
 
 // Persist a remote note-like object (used for boosted posts). Prefers the
@@ -1311,6 +1322,7 @@ async function persistRemoteNote(
       });
     }
     if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
+    await enqueueNoteLinkPreview(ctx, note, content);
     return;
   }
 
@@ -1335,6 +1347,10 @@ async function persistRemoteNote(
   });
   if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
   await ensurePollRowsForQuestion(ctx, note);
+  // Boosted posts (and other embedded objects) never pass through
+  // `handleCreate`, so their first link is queued here: Mastodon crawls cards
+  // for remote statuses too, and without this a boost arrived card-less.
+  await enqueueNoteLinkPreview(ctx, note, content);
 }
 
 async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<void> {
@@ -1578,6 +1594,7 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
           local: false,
           raw: JSON.stringify(fetched),
         });
+        await enqueueNoteLinkPreview(ctx, fetched, content);
         if (!targets.has(ownerId)) targets.set(ownerId, { id: ownerId, statusUris: [] });
         if (!seenStatuses.has(uri)) {
           seenStatuses.add(uri);
@@ -1711,6 +1728,8 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
         });
         if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
         await ensurePollRowsForQuestion(ctx, note);
+        // A brand-new object stored from an Update was never crawled either.
+        await enqueueNoteLinkPreview(ctx, note, content);
       }
       return;
     }
