@@ -56,7 +56,7 @@ export default function Home() {
       <nav style={{ position: "sticky", top: 0, zIndex: 40, borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-4">
           <div className="flex items-center gap-3">
-            <Image src="/logo.svg" alt={brand} width={36} height={36} />
+            <Image src="/logo.svg" alt={brand} width={36} height={36} unoptimized />
             <span className="hidden sm:inline font-bold text-lg" style={{ color: "var(--text-primary)" }}>
               {brand}
             </span>
@@ -75,26 +75,52 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="flex flex-col items-center justify-center text-center py-28 px-6 flex-1 relative overflow-hidden">
-        {/* glow */}
+      {/* Hero: the instance cover art with the brand mark */}
+      <section
+        className="flex flex-col items-center justify-center text-center py-24 px-6 flex-1 relative overflow-hidden"
+        style={{ isolation: "isolate" }}
+      >
+        <Image
+          src="/default-header.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          style={{ objectFit: "cover", objectPosition: "center", zIndex: -2 }}
+        />
         <div
+          aria-hidden
           style={{
-            position: "absolute", inset: 0, background:
-              "radial-gradient(ellipse 70% 50% at 50% 20%, rgba(99,102,241,0.15) 0%, transparent 70%)",
-            pointerEvents: "none",
+            position: "absolute", inset: 0, zIndex: -1,
+            background: "linear-gradient(180deg, rgba(15,23,42,0.5) 0%, rgba(15,23,42,0.78) 100%)",
           }}
         />
 
         <div className="animate-fade-in relative z-10 flex flex-col items-center gap-6 max-w-3xl">
-          <span className="badge badge-accent mb-2">{t.landing_badge}</span>
-          <h1 style={{ fontSize: "clamp(2.5rem, 5vw, 4rem)", margin: 0 }}>
+          <Image src="/logo.svg" alt={brand} width={104} height={104} priority unoptimized />
+          <span
+            className="badge mb-2"
+            style={{
+              background: "rgba(255,255,255,0.14)", color: "#e0e7ff",
+              border: "1px solid rgba(255,255,255,0.2)",
+            }}
+          >
+            {t.landing_badge}
+          </span>
+          <h1 style={{ fontSize: "clamp(2.5rem, 5vw, 4rem)", margin: 0, color: "#fff" }}>
             {t.landing_hero_1}{" "}
-            <span className="gradient-text">{t.landing_hero_2}</span>
+            <span
+              style={{
+                background: "linear-gradient(90deg, #a5b4fc 0%, #67e8f9 100%)",
+                WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+              }}
+            >
+              {t.landing_hero_2}
+            </span>
             <br />
             {t.landing_hero_3}
           </h1>
-          <p style={{ fontSize: "1.2rem", color: "var(--text-secondary)", maxWidth: 560, margin: 0 }}>
+          <p style={{ fontSize: "1.2rem", color: "rgba(255,255,255,0.82)", maxWidth: 560, margin: 0 }}>
             {t.landing_hero_desc}
           </p>
 
@@ -110,7 +136,11 @@ export default function Home() {
               href="https://github.com/manalejandro/cf-activitypub-next"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-outline btn-lg"
+              className="btn btn-lg"
+              style={{
+                background: "rgba(255,255,255,0.12)", color: "#fff",
+                border: "1px solid rgba(255,255,255,0.35)",
+              }}
             >
               {t.landing_github}
             </a>

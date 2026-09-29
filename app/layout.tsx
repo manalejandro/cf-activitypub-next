@@ -45,16 +45,23 @@ export async function generateMetadata(): Promise<Metadata> {
       title: brand,
       description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
       siteName: brand,
-      images: [{ url: "/logo.svg", width: 120, height: 120, alt: `${brand} logo` }],
+      images: [{ url: "/logo-512.png", width: 512, height: 512, alt: `${brand} logo` }],
     },
     twitter: {
       card: "summary",
       title: brand,
       description: "A Mastodon-compatible ActivityPub server running on Cloudflare Workers.",
-      images: ["/logo.svg"],
+      images: ["/logo-512.png"],
     },
     manifest: "/manifest.webmanifest",
-    icons: { icon: "/logo.svg", shortcut: "/logo.svg", apple: "/logo.svg" },
+    icons: {
+      icon: [
+        { url: "/logo.svg", type: "image/svg+xml" },
+        { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      ],
+      shortcut: "/logo.svg",
+      apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    },
     appleWebApp: {
       capable: true,
       statusBarStyle: "default",

@@ -219,7 +219,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
     >
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 px-2">
-        <Image src="/logo.svg" alt={brand} width={32} height={32} />
+        <Image src="/logo.svg" alt={brand} width={32} height={32}  unoptimized />
         <span style={{ fontWeight: 700, fontSize: "1rem" }}>{brand}</span>
         {version && (
           <span style={{ fontSize: "0.7rem", fontWeight: 400, color: "var(--accent-light)", opacity: 0.75 }}>v{version}</span>
@@ -366,7 +366,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
               {menuOpen ? <Icon name="times" color="var(--accent)" /> : <Icon name="bars" color="var(--accent)" />}
             </button>
             <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--accent-light)", textDecoration: "none" }}>
-              <Image src="/logo.svg" alt={brand} width={26} height={26} />
+              <Image src="/logo.svg" alt={brand} width={26} height={26} unoptimized />
               <span style={{ fontSize: "1rem" }}>{brand}</span>
               {version && (
                 <span style={{ fontSize: "0.68rem", fontWeight: 400, opacity: 0.75 }}>v{version}</span>

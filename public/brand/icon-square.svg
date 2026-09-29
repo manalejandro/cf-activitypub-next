@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CF ActivityPub">
+  <title>CF ActivityPub</title>
+  <defs>
+    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="net" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#c7d2fe" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#a5f3fc" stop-opacity="0.9"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.22" cy="0.12" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#badge)"/>
+  <rect width="512" height="512" fill="url(#sheen)"/>
+
+  <g transform="translate(256 262) scale(5.4) translate(-60 -65)">
+    <g stroke="url(#net)" stroke-width="2.2" stroke-linecap="round" fill="none">
+      <path d="M38 86 L60 86 L82 86 L92 70 L78 52 L58 44 L38 52 L28 70 Z"/>
+      <path d="M60 68 L60 86"/>
+      <path d="M60 68 L58 44"/>
+      <path d="M60 68 L92 70"/>
+      <path d="M60 68 L38 52"/>
+    </g>
+    <g fill="#ffffff">
+      <circle cx="38" cy="86" r="3.6"/>
+      <circle cx="60" cy="86" r="3.6"/>
+      <circle cx="82" cy="86" r="3.6"/>
+      <circle cx="92" cy="70" r="3.6"/>
+      <circle cx="58" cy="44" r="3.6"/>
+      <circle cx="38" cy="52" r="3.6"/>
+      <circle cx="28" cy="70" r="3.6"/>
+    </g>
+    <circle cx="78" cy="52" r="3.8" fill="#fdba74"/>
+    <circle cx="60" cy="68" r="15" fill="#ffffff" opacity="0.12"/>
+    <circle cx="60" cy="68" r="10.5" fill="none" stroke="#ffffff" stroke-width="1.6" opacity="0.35"/>
+    <circle cx="60" cy="68" r="6.4" fill="#ffffff"/>
+  </g>
+</svg>

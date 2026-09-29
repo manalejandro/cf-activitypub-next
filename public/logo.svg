@@ -1,11 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
-  <!-- Hexagonal background -->
-  <polygon points="60,4 108,30 108,90 60,116 12,90 12,30" fill="#6366f1" />
-  <!-- Cloud shape for Cloudflare nod -->
-  <path d="M38 72 C28 72 24 62 30 55 C28 49 33 44 40 46 C42 40 48 37 56 38 C64 30 78 31 82 42 C88 41 95 46 94 54 C100 56 100 65 94 68" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <!-- Activity pulse waves -->
-  <path d="M40 80 L50 65 L56 75 L64 58 L70 72 L76 64 L82 70 L88 64" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Fediverse dots -->
-  <circle cx="38" cy="80" r="2.5" fill="#a5b4fc"/>
-  <circle cx="88" cy="64" r="2.5" fill="#a5b4fc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="CF ActivityPub">
+  <title>CF ActivityPub</title>
+  <defs>
+    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.55" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="net" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#c7d2fe" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#a5f3fc" stop-opacity="0.9"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.25" cy="0.15" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Hexagonal badge (rounded corners faked with a round-joined stroke) -->
+  <polygon points="60,11 101,34 101,86 60,109 19,86 19,34"
+           fill="url(#badge)" stroke="url(#badge)" stroke-width="10" stroke-linejoin="round"/>
+  <polygon points="60,11 101,34 101,86 60,109 19,86 19,34" fill="url(#sheen)"/>
+
+  <!-- Federation cloud: nodes joined like a network -->
+  <g stroke="url(#net)" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.95">
+    <path d="M38 86 L60 86 L82 86 L92 70 L78 52 L58 44 L38 52 L28 70 Z"/>
+    <path d="M60 68 L60 86"/>
+    <path d="M60 68 L58 44"/>
+    <path d="M60 68 L92 70"/>
+    <path d="M60 68 L38 52"/>
+  </g>
+
+  <!-- Nodes -->
+  <g fill="#ffffff">
+    <circle cx="38" cy="86" r="3.6"/>
+    <circle cx="60" cy="86" r="3.6"/>
+    <circle cx="82" cy="86" r="3.6"/>
+    <circle cx="92" cy="70" r="3.6"/>
+    <circle cx="58" cy="44" r="3.6"/>
+    <circle cx="38" cy="52" r="3.6"/>
+    <circle cx="28" cy="70" r="3.6"/>
+  </g>
+  <!-- Warm node: the Cloudflare side of the stack -->
+  <circle cx="78" cy="52" r="3.8" fill="#fdba74"/>
+
+  <!-- Instance node with activity pulse -->
+  <circle cx="60" cy="68" r="15" fill="#ffffff" opacity="0.12"/>
+  <circle cx="60" cy="68" r="10.5" fill="none" stroke="#ffffff" stroke-width="1.6" opacity="0.35"/>
+  <circle cx="60" cy="68" r="6.4" fill="#ffffff"/>
 </svg>

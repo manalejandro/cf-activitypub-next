@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img" aria-label="CF ActivityPub header">
+  <title>CF ActivityPub</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="0.5" stop-color="#5b21b6"/>
+      <stop offset="1" stop-color="#155e75"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0f172a" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1500" height="500" fill="url(#sky)"/>
+  <circle cx="1120" cy="130" r="520" fill="url(#moon)"/>
+  <circle cx="1120" cy="130" r="86" fill="#ffffff" opacity="0.14"/>
+
+  <g opacity="0.055">
+    <path d="M170 430 a58.0 58.0 0 0 1 40.0 -104.0 a80.0 80.0 0 0 1 150.0 -18.0 a60.0 60.0 0 0 1 58.0 62.0 a40.0 40.0 0 0 1 -10.0 60.0 Z" fill="#ffffff"/>
+  </g>
+  <g opacity="0.045">
+    <path d="M980 470 a78.30000000000001 78.30000000000001 0 0 1 54.0 -140.4 a108.0 108.0 0 0 1 202.5 -24.3 a81.0 81.0 0 0 1 78.30000000000001 83.7 a54.0 54.0 0 0 1 -13.5 81.0 Z" fill="#ffffff"/>
+  </g>
+  <g opacity="0.05">
+    <path d="M620 520 a46.400000000000006 46.400000000000006 0 0 1 32.0 -83.2 a64.0 64.0 0 0 1 120.0 -14.4 a48.0 48.0 0 0 1 46.400000000000006 49.6 a32.0 32.0 0 0 1 -8.0 48.0 Z" fill="#ffffff"/>
+  </g>
+
+  <path d="M588.1 253.4 L660.7 270.7 M588.1 253.4 L666.7 233.3 M978.5 82.6 L1022.6 56.1 M978.5 82.6 L1083.2 98.8 M1188.1 187.2 L1155.2 110.7 M1188.1 187.2 L1083.2 98.8 M588.1 253.4 L489.6 209.1 M360 150 L489.6 209.1 M643.4 173.2 L666.7 233.3 M588.1 253.4 L643.4 173.2 M1188.1 187.2 L1431.1 185.1 M1431.1 185.1 L1155.2 110.7 M988.2 308.5 L1019.1 235.1 M988.2 308.5 L810.7 282.4 M1022.6 56.1 L1083.2 98.8 M740.0 82.1 L856.6 46.2 M643.4 173.2 L740.0 82.1 M72.4 185.8 L79.6 93.4 M360 150 L72.4 185.8 M810.7 282.4 L734.5 321.4 M810.7 282.4 L660.7 270.7 M1019.1 235.1 L1083.2 98.8 M1083.2 98.8 L1155.2 110.7 M666.7 233.3 L660.7 270.7 M978.5 82.6 L856.6 46.2 M660.7 270.7 L734.5 321.4 M360 150 L337.4 329.3 M489.6 209.1 L337.4 329.3 M360 150 L79.6 93.4" stroke="#e0e7ff" stroke-width="1.6" fill="none" opacity="0.16"/>
+  <g>
+    <circle cx="360" cy="150" r="9" fill="#ffffff" opacity="0.55"/>
+    <circle cx="588.1" cy="253.4" r="3.3" fill="#ffffff" opacity="0.42"/>
+    <circle cx="978.5" cy="82.6" r="4.1" fill="#ffffff" opacity="0.23"/>
+    <circle cx="1188.1" cy="187.2" r="5.0" fill="#ffffff" opacity="0.43"/>
+    <circle cx="489.6" cy="209.1" r="5.9" fill="#ffffff" opacity="0.24"/>
+    <circle cx="643.4" cy="173.2" r="6.8" fill="#ffffff" opacity="0.44"/>
+    <circle cx="1431.1" cy="185.1" r="3.0" fill="#ffffff" opacity="0.24"/>
+    <circle cx="988.2" cy="308.5" r="3.9" fill="#ffffff" opacity="0.45"/>
+    <circle cx="1022.6" cy="56.1" r="4.8" fill="#ffffff" opacity="0.25"/>
+    <circle cx="740.0" cy="82.1" r="5.7" fill="#ffffff" opacity="0.46"/>
+    <circle cx="72.4" cy="185.8" r="6.5" fill="#ffffff" opacity="0.26"/>
+    <circle cx="810.7" cy="282.4" r="2.8" fill="#ffffff" opacity="0.46"/>
+    <circle cx="1019.1" cy="235.1" r="3.7" fill="#ffffff" opacity="0.27"/>
+    <circle cx="1083.2" cy="98.8" r="4.6" fill="#ffffff" opacity="0.47"/>
+    <circle cx="666.7" cy="233.3" r="5.4" fill="#ffffff" opacity="0.28"/>
+    <circle cx="856.6" cy="46.2" r="6.3" fill="#ffffff" opacity="0.48"/>
+    <circle cx="1155.2" cy="110.7" r="2.6" fill="#ffffff" opacity="0.28"/>
+    <circle cx="660.7" cy="270.7" r="3.5" fill="#ffffff" opacity="0.49"/>
+    <circle cx="734.5" cy="321.4" r="4.3" fill="#ffffff" opacity="0.29"/>
+    <circle cx="337.4" cy="329.3" r="5.2" fill="#ffffff" opacity="0.5"/>
+    <circle cx="79.6" cy="93.4" r="6.1" fill="#ffffff" opacity="0.3"/>
+    <circle cx="1188" cy="252" r="5" fill="#fdba74" opacity="0.75"/>
+  </g>
+
+  <circle cx="360" cy="150" r="30" fill="#ffffff" opacity="0.10"/>
+  <circle cx="360" cy="150" r="19" fill="none" stroke="#ffffff" stroke-width="1.6" opacity="0.30"/>
+
+  <rect y="330" width="1500" height="170" fill="url(#shade)"/>
+
+  <path d="M0 402 L430 402 L470 402 L496 366 L522 438 L548 386 L574 402 L700 402 L736 402 L760 372 L784 430 L808 388 L832 402 L1500 402" stroke="#c7d2fe" stroke-width="2" fill="none" opacity="0.14" stroke-linejoin="round"/>
+
+</svg>

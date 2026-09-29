@@ -240,7 +240,7 @@ function GraphView() {
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
           <div className="flex items-center gap-3">
             <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <Image src="/logo.svg" alt={brand} width={32} height={32} />
+              <Image src="/logo.svg" alt={brand} width={32} height={32}  unoptimized />
               <span className="hidden sm:inline font-bold text-base" style={{ color: "var(--text-primary)" }}>
                 {brand}
               </span>

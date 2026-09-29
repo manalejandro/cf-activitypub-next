@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="Default avatar">
+  <title>Default avatar</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef2ff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.2" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" fill="url(#bg)"/>
+  <rect width="400" height="400" fill="url(#glow)"/>
+  <rect x="12" y="12" width="376" height="376" rx="188" fill="none" stroke="#6366f1" stroke-opacity="0.1" stroke-width="3"/>
+
+  <!-- The account as a fediverse node: pulse rings around the head -->
+  <circle cx="200" cy="150" r="86" fill="none" stroke="#6366f1" stroke-opacity="0.09" stroke-width="4"/>
+  <circle cx="200" cy="150" r="68" fill="none" stroke="#6366f1" stroke-opacity="0.16" stroke-width="4"/>
+  <circle cx="200" cy="150" r="50" fill="url(#glyph)"/>
+  <path d="M96 334 a104 104 0 0 1 208 0 Z" fill="url(#glyph)" opacity="0.95"/>
+
+  <!-- Satellite accounts linked to this one -->
+  <g stroke="#6366f1" stroke-opacity="0.35" stroke-width="4" stroke-linecap="round">
+    <path d="M128 214 L106 238"/>
+    <path d="M272 214 L294 238"/>
+  </g>
+  <circle cx="102" cy="244" r="12" fill="#fdba74"/>
+  <circle cx="298" cy="244" r="12" fill="url(#glyph)" opacity="0.55"/>
+
+  <!-- Nodes on the shoulders -->
+  <g fill="#ffffff" opacity="0.9">
+    <circle cx="160" cy="238" r="7"/>
+    <circle cx="200" cy="230" r="8"/>
+    <circle cx="240" cy="238" r="7"/>
+  </g>
+</svg>

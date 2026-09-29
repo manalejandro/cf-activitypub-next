@@ -30,7 +30,7 @@ export function RedirectView({ target }: { target: string }) {
           gap: "1rem",
         }}
       >
-        <Image src="/logo.svg" alt={brand} width={52} height={52} />
+        <Image src="/logo.svg" alt={brand} width={52} height={52}  unoptimized />
         <h1 style={{ fontSize: "1.15rem", fontWeight: 700, margin: 0 }}>
           {t.redirect_title.replace("{instance}", brand)}
         </h1>
