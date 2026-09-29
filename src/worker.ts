@@ -32,6 +32,7 @@ import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
+import { serveMediaObject } from "../lib/media/serve";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
@@ -1377,6 +1378,30 @@ const worker = {
     ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
+
+    // ── R2 media ─────────────────────────────────────────────────────────────
+    // Serve bytes before OpenNext: the framework appends `Vary: rsc,
+    // next-router-state-tree, …` to app responses and Cloudflare only honours
+    // `Vary: Accept-Encoding` when caching, so every video range request would
+    // stream R2 → Worker → client. Browsers cancel buffered streams (normal for
+    // `<video>`), which floods the logs with "Network connection lost" and the
+    // runtime's hung-request cancellation. Without the framework header the CDN
+    // caches the object and answers later ranges from the edge.
+    if (
+      (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") &&
+      url.pathname.startsWith("/api/media/")
+    ) {
+      try {
+        const key = url.pathname
+          .slice("/api/media/".length)
+          .split("/")
+          .map((segment) => decodeURIComponent(segment))
+          .join("/");
+        return await serveMediaObject(request, env.R2, key);
+      } catch {
+        // Malformed percent-encoding: let Next answer (404/400).
+      }
+    }
 
     // ── WebSocket upgrades ────────────────────────────────────────────────────
     if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {

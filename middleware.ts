@@ -11,10 +11,13 @@ import { externalProfileUrl } from "@/lib/remote-link";
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+  // `Range` is not CORS-safelisted: without it here a cross-origin client
+  // (Elk, Phanpy, embed players) cannot seek media, since the preflight fails.
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Range, If-None-Match, If-Range",
   // Without this, cross-origin clients (Elk, Phanpy, …) can't read the `Link`
-  // pagination header (RFC 8288) and never load the next page of a timeline.
-  "Access-Control-Expose-Headers": "Link, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Vary",
+  // pagination header (RFC 8288) — nor the range info of streamed media — and
+  // never load the next page of a timeline.
+  "Access-Control-Expose-Headers": "Link, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Vary, Content-Length, Content-Range, Accept-Ranges, ETag",
   "Access-Control-Max-Age": "86400",
 };
 

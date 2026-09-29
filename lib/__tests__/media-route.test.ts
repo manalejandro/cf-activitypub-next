@@ -16,6 +16,7 @@ const r2 = {
 vi.mock("@/lib/cf", () => ({ getCloudflareContext: () => ({ env: { R2: r2 } }) }));
 
 import { GET, HEAD } from "@/app/api/media/[...key]/route";
+import { serveMediaObject } from "@/lib/media/serve";
 
 function req(init: { method?: string; headers?: Record<string, string> } = {}): NextRequest {
   return {
@@ -94,5 +95,39 @@ describe("media route byte ranges", () => {
     expect(res.headers.get("content-length")).toBe("100");
     expect(res.headers.get("accept-ranges")).toBe("bytes");
     expect(r2.get).toHaveBeenCalledWith("cache/media/clip.mp4");
+  });
+
+  it("ignores multi-range and malformed Range headers (200 with the whole body)", async () => {
+    // Safari's media stack probes with multi-range requests: answering 416
+    // broke playback, and a server may always ignore Range (RFC 9110).
+    const multi = await GET(req({ headers: { range: "bytes=0-9,20-29" } }), context);
+    expect(multi.status).toBe(200);
+    expect(multi.headers.get("content-length")).toBe("100");
+
+    const malformed = await GET(req({ headers: { range: "bytes=abc-def" } }), context);
+    expect(malformed.status).toBe(200);
+
+    const empty = await GET(req({ headers: { range: "bytes=-" } }), context);
+    expect(empty.status).toBe(200);
+  });
+
+  it("advertises cache-friendly headers without the Next.js RSC Vary", async () => {
+    const res = await GET(req(), context);
+    // Cloudflare only honours `Vary: Accept-Encoding` when caching; the
+    // framework's rsc/next-router Vary made every video request uncacheable.
+    expect(res.headers.get("vary")).toBe("Accept-Encoding");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("answers CORS preflight for range requests and exposes the range headers", async () => {
+    const res = await serveMediaObject(
+      { method: "OPTIONS", headers: new Headers() } as unknown as Request,
+      r2 as never,
+      "cache/media/clip.mp4"
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-headers")).toContain("Range");
+    expect(res.headers.get("access-control-expose-headers")).toContain("Content-Range");
   });
 });
