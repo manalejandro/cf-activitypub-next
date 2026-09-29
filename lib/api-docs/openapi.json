@@ -15608,6 +15608,12 @@
           "maxImageSize": {
             "type": "number"
           },
+          "maxAvatarSize": {
+            "type": "number"
+          },
+          "maxHeaderSize": {
+            "type": "number"
+          },
           "maxVideoSize": {
             "type": "number"
           },

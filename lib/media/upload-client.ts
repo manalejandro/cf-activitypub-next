@@ -33,7 +33,8 @@ export interface MediaUploadResult {
   error: string | null;
 }
 
-function formatBytes(bytes: number): string {
+/** `2 MB` / `512 KB` for UI hints. */
+export function formatBytes(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   if (mb >= 1) return `${Math.round(mb)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;

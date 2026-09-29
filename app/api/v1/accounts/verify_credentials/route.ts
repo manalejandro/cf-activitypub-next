@@ -10,6 +10,7 @@ import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 import { putMediaObject } from "@/lib/media/r2-put";
+import { profileImageDecision } from "@/lib/media/profile-image";
 
 // GET /api/v1/accounts/verify_credentials
 export async function GET(request: NextRequest): Promise<Response> {
@@ -68,8 +69,8 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let locked: boolean | undefined;
   let bot: boolean | undefined;
   let discoverable: boolean | undefined;
-  let avatarUrl: string | undefined;
-  let headerUrl: string | undefined;
+  let avatarUrl: string | null | undefined;
+  let headerUrl: string | null | undefined;
   let fieldsRaw: { name: string; value: string }[] | undefined;
   let autoDeleteAfter: number | null | undefined;
   let sourceQuotePolicy: string | undefined;
@@ -95,24 +96,34 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     const hideCollectionsVal = form.get("source[hide_collections]") as string | null;
     if (hideCollectionsVal !== null) sourceHideCollections = hideCollectionsVal === "true";
 
-    // Handle avatar upload
-    const avatarFile = form.get("avatar") as File | null;
-    if (avatarFile && avatarFile.size > 0) {
-      const ext = avatarFile.name.split(".").pop() ?? "bin";
+    // Avatar / header: a file uploads, an empty string removes it (Mastodon's
+    // update_credentials contract). Type and size are validated first.
+    const avatarDecision = profileImageDecision(form.get("avatar"), limits.maxAvatarSize);
+    if (avatarDecision.action === "error") {
+      return json({ error: avatarDecision.error, error_code: avatarDecision.error_code }, 422);
+    }
+    if (avatarDecision.action === "clear") {
+      avatarUrl = null;
+    } else if (avatarDecision.action === "upload") {
+      const ext = avatarDecision.file.name.split(".").pop() ?? "bin";
       const key = `avatars/${actor.username}.${ext}`;
-      await putMediaObject(env.R2, key, await avatarFile.arrayBuffer(), {
-        httpMetadata: { contentType: avatarFile.type },
+      await putMediaObject(env.R2, key, await avatarDecision.file.arrayBuffer(), {
+        httpMetadata: { contentType: avatarDecision.file.type },
       });
       avatarUrl = `${baseUrl}/api/media/${key}`;
     }
 
-    // Handle header upload
-    const headerFile = form.get("header") as File | null;
-    if (headerFile && headerFile.size > 0) {
-      const ext = headerFile.name.split(".").pop() ?? "bin";
+    const headerDecision = profileImageDecision(form.get("header"), limits.maxHeaderSize);
+    if (headerDecision.action === "error") {
+      return json({ error: headerDecision.error, error_code: headerDecision.error_code }, 422);
+    }
+    if (headerDecision.action === "clear") {
+      headerUrl = null;
+    } else if (headerDecision.action === "upload") {
+      const ext = headerDecision.file.name.split(".").pop() ?? "bin";
       const key = `headers/${actor.username}.${ext}`;
-      await putMediaObject(env.R2, key, await headerFile.arrayBuffer(), {
-        httpMetadata: { contentType: headerFile.type },
+      await putMediaObject(env.R2, key, await headerDecision.file.arrayBuffer(), {
+        httpMetadata: { contentType: headerDecision.file.type },
       });
       headerUrl = `${baseUrl}/api/media/${key}`;
     }
@@ -195,8 +206,16 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   if (locked !== undefined) { setClauses.push("manually_approves_followers = ?"); values.push(locked ? 1 : 0); }
   if (bot !== undefined) { setClauses.push("is_bot = ?"); values.push(bot ? 1 : 0); }
   if (discoverable !== undefined) { setClauses.push("discoverable = ?"); values.push(discoverable ? 1 : 0); }
-  if (avatarUrl !== undefined) { setClauses.push("avatar_url = ?"); values.push(avatarUrl); }
-  if (headerUrl !== undefined) { setClauses.push("header_url = ?"); values.push(headerUrl); }
+  // Replacing (or removing) an image must drop the cached copy reference too,
+  // or the serializer keeps serving the old cached avatar/header.
+  if (avatarUrl !== undefined) {
+    setClauses.push("avatar_url = ?", "avatar_cache_url = NULL");
+    values.push(avatarUrl);
+  }
+  if (headerUrl !== undefined) {
+    setClauses.push("header_url = ?", "header_cache_url = NULL");
+    values.push(headerUrl);
+  }
   if (autoDeleteAfter !== undefined) { setClauses.push("auto_delete_after = ?"); values.push(autoDeleteAfter); }
 
   if (values.length > 0) {

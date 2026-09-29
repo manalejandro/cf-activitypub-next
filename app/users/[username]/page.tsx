@@ -15,6 +15,7 @@ import type { EmojiData } from "@/lib/emoji";
 import type { Status as SharedStatus } from "@/components/StatusCard";
 import type { APMeta } from "@/components/APTypeBlock";
 import { translateKey, useLocale } from "@/lib/i18n";
+import { formatBytes } from "@/lib/media/upload-client";
 import { getToken } from "@/lib/client-api";
 import { externalProfileUrl } from "@/lib/remote-link";
 import { Icon } from "@/components/Icon";
@@ -301,6 +302,9 @@ export default function ProfilePage() {
   const [headerFile, setHeaderFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [headerPreview, setHeaderPreview] = useState<string | null>(null);
+  // Removing an image sends an empty `avatar`/`header` field (Mastodon's API).
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [removeHeader, setRemoveHeader] = useState(false);
   const [editFields, setEditFields] = useState<{ name: string; value: string }[]>([]);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const headerInputRef = useRef<HTMLInputElement>(null);
@@ -538,8 +542,10 @@ export default function ProfilePage() {
     const form = new FormData();
     form.append("display_name", editDisplayName);
     form.append("note", editNote);
-    if (avatarFile) form.append("avatar", avatarFile);
-    if (headerFile) form.append("header", headerFile);
+    if (removeAvatar) form.append("avatar", "");
+    else if (avatarFile) form.append("avatar", avatarFile);
+    if (removeHeader) form.append("header", "");
+    else if (headerFile) form.append("header", headerFile);
     editFields.forEach((f, i) => {
       form.append(`fields_attributes[${i}][name]`, f.name);
       form.append(`fields_attributes[${i}][value]`, f.value);
@@ -555,6 +561,10 @@ export default function ProfilePage() {
     if (res.ok) {
       const updated = await res.json() as Account;
       setAccount(updated);
+      setAvatarFile(null);
+      setHeaderFile(null);
+      setRemoveAvatar(false);
+      setRemoveHeader(false);
       setEditOpen(false);
     } else {
       const err = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
@@ -568,6 +578,7 @@ export default function ProfilePage() {
     if (!f) return;
     setAvatarFile(f);
     setAvatarPreview(URL.createObjectURL(f));
+    setRemoveAvatar(false);
   }
 
   function handleHeaderChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -575,6 +586,21 @@ export default function ProfilePage() {
     if (!f) return;
     setHeaderFile(f);
     setHeaderPreview(URL.createObjectURL(f));
+    setRemoveHeader(false);
+  }
+
+  function clearAvatar() {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setRemoveAvatar(true);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
+  }
+
+  function clearHeader() {
+    setHeaderFile(null);
+    setHeaderPreview(null);
+    setRemoveHeader(true);
+    if (headerInputRef.current) headerInputRef.current.value = "";
   }
 
   function addField() {
@@ -1285,6 +1311,7 @@ export default function ProfilePage() {
             style={{
               background: "var(--bg-surface)", borderRadius: "var(--radius-lg)",
               border: "1px solid var(--border)", width: "100%", maxWidth: 640,
+              maxHeight: "92vh", overflowY: "auto",
               boxShadow: "var(--shadow-lg)",
             }}
           >
@@ -1306,48 +1333,61 @@ export default function ProfilePage() {
             </div>
 
             <form onSubmit={(e) => void handleEditSave(e)} style={{ padding: "1.25rem" }}>
-              {/* Header image upload */}
-              <div
-                onClick={() => headerInputRef.current?.click()}
-                style={{
-                  width: "100%", maxWidth: "100%",
-                  aspectRatio: "3 / 1", minHeight: 120, maxHeight: 220,
-                  borderRadius: "var(--radius)",
-                  background: headerPreview || account.header
-                    ? undefined
-                    : "linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-elevated) 100%)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer",
-                  border: "1px solid var(--border)",
-                  marginBottom: "0.75rem",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {headerPreview || account.header ? (
-                  <Image
-                    src={headerPreview ?? account.header}
-                    alt=""
-                    width={1500}
-                    height={500}
-                    style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, aspectRatio: "1500 / 500", objectFit: "cover", objectPosition: "center" }}
-                  />
-                ) : null}
+              {/* Header image upload: controls sit under the frame, right-aligned */}
+              <div style={{ marginBottom: "0.75rem" }}>
                 <div
                   style={{
-                    background: "rgba(0,0,0,0.55)", borderRadius: "var(--radius-sm)",
-                    padding: "0.25rem 0.625rem", fontSize: "0.8rem", color: "#fff",
+                    position: "relative",
+                    width: "100%", maxWidth: "100%",
+                    aspectRatio: "3 / 1", minHeight: 96, maxHeight: 168,
+                    borderRadius: "var(--radius)",
+                    background: removeHeader ? undefined : headerPreview || account.header
+                      ? undefined
+                      : "linear-gradient(135deg, var(--accent-bg) 0%, var(--bg-elevated) 100%)",
+                    border: "1px solid var(--border)",
+                    overflow: "hidden",
                   }}
                 >
-                  <Icon name="camera" color="#fff" /> {t.profile_edit_header}
+                  {!removeHeader && (headerPreview || account.header) ? (
+                    <Image
+                      src={headerPreview ?? account.header!}
+                      alt=""
+                      width={1500}
+                      height={500}
+                      style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, aspectRatio: "1500 / 500", objectFit: "cover", objectPosition: "center" }}
+                    />
+                  ) : null}
+                  <input
+                    ref={headerInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    style={{ display: "none" }}
+                    onChange={handleHeaderChange}
+                  />
                 </div>
-                <input
-                  ref={headerInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handleHeaderChange}
-                />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.4rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginRight: "auto", minWidth: 0 }}>
+                    {t.profile_header_requirements.replace("{value}", formatBytes(limits.maxHeaderSize))}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => headerInputRef.current?.click()}
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    <Icon name="camera" size="0.85rem" /> {t.profile_edit_header}
+                  </button>
+                  {!removeHeader && account.header && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={clearHeader}
+                      style={{ fontSize: "0.78rem", color: "var(--danger)", padding: "0.15rem 0.4rem" }}
+                    >
+                      <Icon name="trash" size="0.8rem" color="var(--danger)" /> {t.profile_remove_header}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Avatar upload */}
@@ -1363,9 +1403,9 @@ export default function ProfilePage() {
                     position: "relative",
                   }}
                 >
-                  {avatarPreview || account.avatar ? (
+                  {!removeAvatar && (avatarPreview || account.avatar) ? (
                     <Image
-                      src={avatarPreview ?? account.avatar}
+                      src={avatarPreview ?? account.avatar!}
                       alt="avatar"
                       fill
                       sizes="64px"
@@ -1379,14 +1419,26 @@ export default function ProfilePage() {
                   <input
                     ref={avatarInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
                     style={{ display: "none" }}
                     onChange={handleAvatarChange}
                   />
                 </div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                  {t.profile_edit_avatar}<br />
-                  <span style={{ fontSize: "0.75rem" }}>JPEG, PNG, GIF, WebP · max 2 MB</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", minWidth: 0 }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{t.profile_edit_avatar}</span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                    {t.profile_image_requirements.replace("{value}", formatBytes(limits.maxAvatarSize))}
+                  </span>
+                  {!removeAvatar && account.avatar && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={clearAvatar}
+                      style={{ alignSelf: "flex-start", fontSize: "0.76rem", color: "var(--danger)", padding: "0.1rem 0.35rem" }}
+                    >
+                      <Icon name="trash" size="0.78rem" color="var(--danger)" /> {t.profile_remove_avatar}
+                    </button>
+                  )}
                 </div>
               </div>
 

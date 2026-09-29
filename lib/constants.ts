@@ -40,6 +40,12 @@ export function emailDomain(email: string): string {
   return at === -1 ? "" : email.slice(at + 1).trim().toLowerCase();
 }
 
+/** Image formats accepted for avatars and headers. */
+export const PROFILE_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+export const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB (Mastodon's avatar limit)
+export const MAX_HEADER_SIZE = 5 * 1024 * 1024; // 5 MB (Mastodon allows up to 5 MB for the wide header)
+
 export const MAX_STATUS_CHARS = 500;
 export const MAX_CW_CHARS = 200;
 export const MAX_ALT_TEXT_CHARS = 420;
@@ -184,6 +190,8 @@ export interface InstanceLimits {
   mlsMessagesPageSize: number;
   graphMaxNodes: number;
   maxImageSize: number;
+  maxAvatarSize: number;
+  maxHeaderSize: number;
   maxVideoSize: number;
   imageMatrixLimit: number;
   sharedInboxBatch: number;
@@ -244,6 +252,8 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mlsMessagesPageSize: MLS_MESSAGES_PAGE_SIZE,
   graphMaxNodes: GRAPH_MAX_NODES,
   maxImageSize: MAX_IMAGE_SIZE,
+  maxAvatarSize: MAX_AVATAR_SIZE,
+  maxHeaderSize: MAX_HEADER_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
   sharedInboxBatch: SHARED_INBOX_BATCH,
@@ -336,6 +346,8 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mlsMessagesPageSize: num(env, "MLS_MESSAGES_PAGE_SIZE", DEFAULT_LIMITS.mlsMessagesPageSize),
     graphMaxNodes: num(env, "GRAPH_MAX_NODES", DEFAULT_LIMITS.graphMaxNodes),
     maxImageSize: num(env, "MAX_IMAGE_SIZE", DEFAULT_LIMITS.maxImageSize),
+    maxAvatarSize: num(env, "MAX_AVATAR_SIZE", DEFAULT_LIMITS.maxAvatarSize),
+    maxHeaderSize: num(env, "MAX_HEADER_SIZE", DEFAULT_LIMITS.maxHeaderSize),
     maxVideoSize: num(env, "MAX_VIDEO_SIZE", DEFAULT_LIMITS.maxVideoSize),
     imageMatrixLimit: num(env, "IMAGE_MATRIX_LIMIT", DEFAULT_LIMITS.imageMatrixLimit),
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
