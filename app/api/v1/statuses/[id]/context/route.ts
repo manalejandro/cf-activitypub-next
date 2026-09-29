@@ -1,6 +1,8 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds,
+  getBlockedActorIds,
+  getBlockedDomains, getActorFieldsMap } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -29,6 +31,18 @@ export async function GET(
   if (!canViewStatus(focal, authActor?.id ?? null, isFollowingFocal)) {
     return notFound("Record not found");
   }
+
+  // Blocked accounts (and accounts from a blocked domain) never show in the
+  // thread, not even as the ancestor being replied to.
+  const [blockedIds, blockedDomainList, mutedIdList] = authActor
+    ? await Promise.all([
+        getBlockedActorIds(env.DB, authActor.id),
+        getBlockedDomains(env.DB, authActor.id),
+        getMutedActorIds(env.DB, authActor.id),
+      ])
+    : [[], [], []];
+  const blocked = new Set(blockedIds);
+  const blockedDomains = new Set(blockedDomainList);
 
   // ── Ancestors: walk up inReplyToId chain ──────────────────────────────────
   const ancestorObjs: LocalObject[] = [];
@@ -78,13 +92,16 @@ export async function GET(
   async function canView(obj: LocalObject): Promise<boolean> {
     const viewerId = authActor?.id ?? null;
     if (viewerId === null) return obj.visibility === "public" || obj.visibility === "unlisted";
+    if (blocked.has(obj.actorId)) return false;
+    const author = await getAuthor(obj.actorId);
+    if (author && blockedDomains.has(author.domain)) return false;
     if (viewerId === obj.actorId) return true;
     const isFollower = await isAcceptedFollower(env.DB, viewerId, obj.actorId);
     return canViewStatus(obj, viewerId, isFollower);
   }
 
   const serializeAll = async (objs: LocalObject[]) => {
-    const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
+    const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
       loadSerializedPolls(env.DB, authActor?.id ?? null, objs.map((o) => o.id)),
       objs.length > 0 ? getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
@@ -93,8 +110,8 @@ export async function GET(
         : Promise.resolve(new Map()),
       getLastStatusAtMap(env.DB, objs.map((o) => o.actorId)),
       authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objs.map((o) => o.id)) : Promise.resolve(new Set()),
-      authActor ? getMutedActorIds(env.DB, authActor.id).then((ids) => new Set(ids)) : Promise.resolve(new Set()),
     ]);
+    const mutedIds = new Set(mutedIdList);
     const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
     const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
     return (

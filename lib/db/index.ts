@@ -860,6 +860,46 @@ export async function isMuted(
   return row !== null;
 }
 
+/**
+ * SQL fragment hiding replies addressed to an account the viewer blocked (or an
+ * account from a domain they blocked). Mastodon hides those from timelines and
+ * threads; without it, a followed account's reply to a blocked account leaks it
+ * back into the feed.
+ *
+ * Expects the outer objects alias `o` and takes two binds (viewer id twice):
+ * `... AND ${REPLY_TO_BLOCKED_SQL}`.
+ */
+export const REPLY_TO_BLOCKED_SQL = `NOT EXISTS (
+  SELECT 1 FROM objects po
+  JOIN actors pa ON pa.id = po.actor_id
+  WHERE po.id = o.in_reply_to_id
+    AND (
+      pa.id IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+      OR pa.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?)
+    )
+)`;
+
+/** Actors the viewer blocked. */
+export async function getBlockedActorIds(
+  db: D1Database,
+  actorId: string
+): Promise<string[]> {
+  const rows = await db
+    .prepare("SELECT target_id FROM blocks WHERE actor_id = ?")
+    .bind(actorId)
+    .all<{ target_id: string }>();
+  return rows.results.map((r) => r.target_id);
+}
+
+/** Domains the viewer blocked (personal domain blocks). */
+export async function getBlockedDomains(db: D1Database, actorId: string): Promise<string[]> {
+  const rows = await db
+    .prepare("SELECT domain FROM domain_blocks WHERE actor_id = ?")
+    .bind(actorId)
+    .all<{ domain: string }>();
+  return rows.results.map((r) => r.domain).filter(Boolean);
+}
+
 export async function getMutedActorIds(
   db: D1Database,
   actorId: string
@@ -2142,9 +2182,10 @@ export async function getPublicTimeline(
   // the authenticated viewer.
   const blockFilter = viewerId
     ? `AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`
+       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+       AND ${REPLY_TO_BLOCKED_SQL}`
     : "";
-  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId] : [];
+  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId, viewerId, viewerId] : [];
   if (sinceId || minId) {
     const pivot = sinceId ?? minId!;
     const pivotRow = await db
@@ -2214,6 +2255,7 @@ export async function getHomeTimeline(
       AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
       AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+      AND ${REPLY_TO_BLOCKED_SQL}
       ${publishedClause}
     ORDER BY o.published DESC LIMIT ?`;
 
@@ -2245,7 +2287,7 @@ export async function getHomeTimeline(
          SELECT * FROM (${followsBranch})
        ) ORDER BY published DESC LIMIT ?`
     )
-    .bind(actorId, actorId, actorId, ...cursorBinds, limit, actorId, actorId, actorId, ...cursorBinds, limit, limit)
+    .bind(actorId, actorId, actorId, actorId, actorId, ...cursorBinds, limit, actorId, actorId, actorId, actorId, actorId, ...cursorBinds, limit, limit)
     .all<Row>();
   return rows.results.map(rowToObject);
 }
@@ -2316,9 +2358,12 @@ export async function getListTimeline(
     WHERE o.visibility = '${visibility}'
       AND o.media_pending = 0
       AND o.actor_id IN (SELECT value FROM json_each(?))
+      AND ${REPLY_TO_BLOCKED_SQL}
       ${publishedClause}
     ORDER BY o.published DESC LIMIT ?`;
-  const branchBinds: unknown[] = cursorPublished ? [members, cursorPublished, limit] : [members, limit];
+  const branchBinds: unknown[] = cursorPublished
+    ? [members, viewerId, viewerId, cursorPublished, limit]
+    : [members, viewerId, viewerId, limit];
   const rows = await db
     .prepare(
       `SELECT * FROM (
@@ -2350,9 +2395,10 @@ export async function getHashtagTimeline(
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
   const blockFilter = viewerId
     ? `AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))`
+       AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+       AND ${REPLY_TO_BLOCKED_SQL}`
     : "";
-  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId] : [];
+  const blockBinds: unknown[] = viewerId ? [viewerId, viewerId, viewerId, viewerId] : [];
   if (sinceId) {
     // Newer-than cursor — used for live polling. Returns the newest posts newer
     // than the reference post (exclusive), newest first to match timeline order.

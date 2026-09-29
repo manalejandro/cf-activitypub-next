@@ -12,6 +12,7 @@ import {
   getActorFieldsMap,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { getBlockedActorIds, getBlockedDomains } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
@@ -79,7 +80,14 @@ export async function GET(request: NextRequest): Promise<Response> {
                AND o.type = 'Note'
                AND o.published >= ?
                AND o.media_pending = 0
-               AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+               AND NOT EXISTS (
+               SELECT 1 FROM actors a
+               WHERE a.id = o.actor_id
+                 AND (
+                   a.silenced = 1 OR a.suspended = 1
+                   OR a.domain IN (SELECT domain FROM instance_domain_blocks WHERE severity = 'suspend')
+                 )
+             )
              ORDER BY o.engagement DESC, o.published DESC
              LIMIT ?
            )
@@ -90,7 +98,14 @@ export async function GET(request: NextRequest): Promise<Response> {
                AND o.type = 'Note'
                AND o.published >= ?
                AND o.media_pending = 0
-               AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))
+               AND NOT EXISTS (
+               SELECT 1 FROM actors a
+               WHERE a.id = o.actor_id
+                 AND (
+                   a.silenced = 1 OR a.suspended = 1
+                   OR a.domain IN (SELECT domain FROM instance_domain_blocks WHERE severity = 'suspend')
+                 )
+             )
              ORDER BY o.engagement DESC, o.published DESC
              LIMIT ?
            )
@@ -104,9 +119,31 @@ export async function GET(request: NextRequest): Promise<Response> {
     await env.KV.put("trends:statuses:v1", JSON.stringify(rows), { expirationTtl: 300 }).catch(() => {});
   }
 
-  const objects = rows.map(rowToObject);
-
   const authActor = await getAuthenticatedActor(request, env.DB);
+
+  // Trends are instance-wide by design (the ranked candidate set is cached for
+  // every client), but the viewer's blocks and blocked domains still hide
+  // accounts from their own trends — a blocked account must not resurface here.
+  if (authActor && rows.length > 0) {
+    const [blockedIds, blockedDomains] = await Promise.all([
+      getBlockedActorIds(env.DB, authActor.id),
+      getBlockedDomains(env.DB, authActor.id),
+    ]);
+    const blocked = new Set(blockedIds);
+    const domains = new Set(blockedDomains);
+    rows = rows.filter((row) => {
+      const actorId = String(row.actor_id ?? "");
+      if (!actorId || blocked.has(actorId)) return false;
+      if (domains.size === 0) return true;
+      try {
+        return !domains.has(new URL(actorId).hostname);
+      } catch {
+        return true;
+      }
+    });
+  }
+
+  const objects = rows.map(rowToObject);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
