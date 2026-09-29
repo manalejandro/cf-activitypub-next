@@ -769,10 +769,13 @@ async function processJob(
           const authorName = author?.displayName || author?.username || target.actorId;
           const text = (target.content ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
           const embed = `${parsed.origin}/embed/${encodeStatusId(target.id, target.local)}`;
-          const image = author?.avatarCacheUrl ?? author?.avatarUrl ?? attachments[0]?.url ?? null;
+          // The status itself is the preview: its media (never the author's
+          // avatar, which painted a stretched banner heading a status embed
+          // that does not fill a 16/9 player).
+          const image = attachments.find((attachment) => attachment.type === "image")?.url ?? null;
           const cardId = await mediaCacheId(url);
           const card: CardCandidate = {
-            title: `${authorName}: ${text}`.slice(0, 400),
+            title: authorName.slice(0, 200),
             description: text.slice(0, 1000),
             type: "rich",
             authorName,
@@ -784,7 +787,10 @@ async function processJob(
             height: 320,
             imageUrl: image,
             imageDescription: "",
-            embedUrl: embed,
+            // `html` keeps the oEmbed-style status embed for API clients; the
+            // web UI only frames provider players, so no `embed_url` (a status
+            // embed in a 16/9 lightbox reads as an empty box).
+            embedUrl: "",
             language: target.language,
             publishedAt: target.published,
             canonicalUrl: url,
@@ -795,7 +801,7 @@ async function processJob(
             authorName: card.authorName, authorUrl: card.authorUrl,
             providerName: "", providerUrl: "",
             html: card.html, width: card.width, height: card.height,
-            imageUrl: image, imageDescription: "", embedUrl: embed,
+            imageUrl: image, imageDescription: "", embedUrl: card.embedUrl,
             language: card.language, publishedAt: card.publishedAt,
           });
           if (limits.mediaCacheEnabled && image) {

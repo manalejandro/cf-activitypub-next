@@ -652,3 +652,77 @@ describe("YouTube cards without a crawlable page", () => {
     expect(swept?.n).toBe(0);
   });
 });
+
+describe("own status permalinks", () => {
+  const LOCAL_ID = "11111111-1111-1111-1111-111111111111";
+  const TARGET = `https://local.example/objects/${LOCAL_ID}`;
+  const PERMALINK = `https://local.example/@alice/${LOCAL_ID}`;
+  const LOCAL_ACTOR = "https://local.example/users/alice";
+
+  async function seedLocalStatus(content: string, withImage = true): Promise<void> {
+    await db
+      .prepare(
+        `INSERT INTO actors (id, username, display_name, domain, public_key_pem, private_key_pem, is_local, avatar_url)
+         VALUES (?, 'alice', 'Alice', 'local.example', 'k', 'k', 1, 'https://local.example/avatars/alice.png')`
+      )
+      .bind(LOCAL_ACTOR)
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, url, published, updated_at, raw)
+         VALUES (?, 'Note', ?, ?, 'public', 1, ?, datetime('now'), datetime('now'), '{}')`
+      )
+      .bind(TARGET, LOCAL_ACTOR, content, PERMALINK)
+      .run();
+    if (withImage) {
+      await db
+        .prepare(
+          `INSERT INTO attachments (id, object_id, type, url)
+           VALUES ('att-local', ?, 'image', 'https://local.example/api/media/photo.jpg')`
+        )
+        .bind(TARGET)
+        .run();
+    }
+  }
+
+  it("previews the status text and media, never the author avatar", async () => {
+    await seedLocalStatus('<p>Vámonos de acampada 🏕️</p><p><a href="https://local.example/locations?lat=1">📍 Plaza</a></p>');
+    await seedObject("https://remote.example/objects/1", `<p>Mira <a href="${PERMALINK}">esto</a></p>`);
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    // A Worker fetching its own hostname times out (HTTP 522): the card is
+    // built straight from the database, with no network at all.
+    expect(federation.safeFetch).not.toHaveBeenCalled();
+
+    const card = await db
+      .prepare("SELECT title, description, type, image_url, embed_url, html FROM preview_cards WHERE source_url = ?")
+      .bind(PERMALINK)
+      .first<{
+        title: string; description: string; type: string;
+        image_url: string | null; embed_url: string; html: string;
+      }>();
+    expect(card?.title).toBe("Alice");
+    expect(card?.description).toContain("Vámonos de acampada");
+    expect(card?.type).toBe("rich");
+    expect(card?.image_url).toBe("https://local.example/api/media/photo.jpg");
+    // Status embeds stay in `html` for API clients; the web UI must not frame
+    // them (a status in a 16/9 lightbox reads as an empty box).
+    expect(card?.embed_url).toBe("");
+    expect(card?.html).toContain(`/embed/${LOCAL_ID}`);
+  });
+
+  it("keeps the avatar out of text-only status cards", async () => {
+    await seedLocalStatus("<p>Solo texto</p>", false);
+    await seedObject("https://remote.example/objects/1", `<p>Mira <a href="${PERMALINK}">esto</a></p>`);
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT image_url, embed_url FROM preview_cards WHERE source_url = ?")
+      .bind(PERMALINK)
+      .first<{ image_url: string | null; embed_url: string }>();
+    expect(card?.image_url).toBeNull();
+    expect(card?.embed_url).toBe("");
+  });
+});
