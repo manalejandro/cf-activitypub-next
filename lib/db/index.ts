@@ -1048,13 +1048,39 @@ export interface AccountSuggestion {
  * follow, blocked/muted targets, or accounts you dismissed — and never
  * suspended, silenced or inactive accounts.
  */
+/** Rows fetched per pool: enough to shuffle ties without depending on `wanted`. */
+const SUGGESTION_POOL_LIMIT = 200;
+
+/**
+ * Stable per-day pseudo-random key (FNV-1a of `seed:id`).
+ *
+ * Used to break ties inside a suggestion pool: the same account keeps its slot
+ * while the day lasts (refreshing the page does not reshuffle the list) and the
+ * order changes every day, so the pool rotates instead of pinning the same top
+ * accounts forever.
+ */
+function suggestionRank(id: string, seed: number): number {
+  let hash = 2166136261 ^ seed;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 export async function getAccountSuggestions(
   db: D1Database,
   viewerId: string | null,
-  opts: { limit?: number; offset?: number } = {}
+  opts: { limit?: number; offset?: number; rotationSeed?: number } = {}
 ): Promise<AccountSuggestion[]> {
   const { limit = 20, offset = 0 } = opts;
   const wanted = Math.min(limit + offset, 100);
+  // Pools used to end with static tie-breakers (`last_status_at`,
+  // `followers_count`), so on an instance full of equally-followed accounts the
+  // same top 20 was suggested forever. Within each pool, ties now rotate with a
+  // day-seeded key: stable while the day lasts, different every day.
+  const seed = opts.rotationSeed ?? Math.floor(Date.now() / 86_400_000);
+  const rank = (id: string) => suggestionRank(id, seed);
   const picked = new Map<string, AccountSuggestion["source"]>();
 
   if (viewerId) {
@@ -1075,9 +1101,10 @@ export async function getAccountSuggestions(
          ORDER BY score DESC, f2.target_id
          LIMIT ?`
       )
-      .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerId, wanted)
+      .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerId, SUGGESTION_POOL_LIMIT)
       .all<{ id: string; score: number }>();
-    for (const row of fof.results ?? []) picked.set(row.id, "friends_of_friends");
+    const fofOrdered = [...(fof.results ?? [])].sort((a, b) => b.score - a.score || rank(a.id) - rank(b.id));
+    for (const row of fofOrdered) picked.set(row.id, "friends_of_friends");
   }
 
   const exclude: string[] = [];
@@ -1091,8 +1118,31 @@ export async function getAccountSuggestions(
   }
   const excludedSql = exclude.length ? `AND ${exclude.join(" AND ")}` : "";
 
+  // The local community comes first: our own accounts, including brand-new
+  // ones that have not posted yet (a popular-remote-first ordering never let
+  // them into the list on an instance with a busy remote timeline).
+  const local = await db
+    .prepare(
+      `SELECT a.id,
+              (SELECT COUNT(*) FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted') AS local_follows
+       FROM actors a
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+         AND COALESCE(a.reserved, 0) = 0
+         ${excludedSql}
+       ORDER BY local_follows DESC, a.id
+       LIMIT ?`
+    )
+    .bind(...binds, SUGGESTION_POOL_LIMIT)
+    .all<{ id: string; local_follows: number }>();
+  const localOrdered = [...(local.results ?? [])].sort(
+    (a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)
+  );
+  for (const row of localOrdered) {
+    if (!picked.has(row.id)) picked.set(row.id, "global");
+  }
+
   // Popular on this instance: most followed actors (local or remote) by
-  // accepted local follows. Relevance before raw recency.
+  // accepted local follows. Relevance before raw recency; ties rotate daily.
   const popular = await db
     .prepare(
       `SELECT a.id, COUNT(*) AS local_follows
@@ -1103,12 +1153,15 @@ export async function getAccountSuggestions(
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
        GROUP BY a.id
-       ORDER BY local_follows DESC, a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
+       ORDER BY local_follows DESC, a.id
        LIMIT ?`
     )
-    .bind(...binds, wanted)
-    .all<{ id: string }>();
-  for (const row of popular.results ?? []) {
+    .bind(...binds, SUGGESTION_POOL_LIMIT)
+    .all<{ id: string; local_follows: number }>();
+  const popularOrdered = [...(popular.results ?? [])].sort(
+    (a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)
+  );
+  for (const row of popularOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
   }
 
@@ -1120,16 +1173,19 @@ export async function getAccountSuggestions(
          AND COALESCE(a.reserved, 0) = 0
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
-       ORDER BY a.last_status_at DESC, COALESCE(a.followers_count, 0) DESC
+       ORDER BY a.last_status_at DESC, a.id
        LIMIT ?`
     )
-    .bind(...binds, wanted)
-    .all<{ id: string }>();
-  for (const row of activeLocal.results ?? []) {
+    .bind(...binds, SUGGESTION_POOL_LIMIT)
+    .all<{ id: string; last_status_at: string | null }>();
+  const activeOrdered = [...(activeLocal.results ?? [])].sort(
+    (a, b) => String(b.last_status_at ?? "").localeCompare(String(a.last_status_at ?? "")) || rank(a.id) - rank(b.id)
+  );
+  for (const row of activeOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
   }
 
-  const ordered = [...picked.entries()].slice(offset, offset + limit);
+  const ordered = [...picked.entries()].slice(0, wanted).slice(offset, offset + limit);
   const actors = await getActorsByIds(db, ordered.map(([id]) => id));
   return ordered
     .map(([id, source]) => {

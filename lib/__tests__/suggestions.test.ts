@@ -98,7 +98,7 @@ beforeEach(async () => {
 });
 
 describe("getAccountSuggestions", () => {
-  it("anonymous viewers get active local accounts, newest first", async () => {
+  it("anonymous viewers get the local community, including accounts without posts", async () => {
     await insertActor(db, "https://local.example/users/active-a", { isLocal: true, lastStatusAt: "2026-02-01T00:00:00Z", followers: 3 });
     await insertActor(db, "https://local.example/users/active-b", { isLocal: true, lastStatusAt: "2026-01-15T00:00:00Z", followers: 9 });
     await insertActor(db, "https://local.example/users/no-status", { isLocal: true, statuses: 0, lastStatusAt: null });
@@ -108,12 +108,33 @@ describe("getAccountSuggestions", () => {
     await insertActor(db, "https://remote.example/users/remote", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z" });
 
     const out = await getAccountSuggestions(db, null);
-    expect(out.map((s) => s.actor.id)).toEqual([
+    const ids = out.map((s) => s.actor.id);
+    expect(new Set(ids)).toEqual(new Set([
+      ME,
       "https://local.example/users/active-a",
       "https://local.example/users/active-b",
-      "https://local.example/users/me",
-    ]);
+      "https://local.example/users/no-status",
+    ]));
     expect(out.every((s) => s.source === "global")).toBe(true);
+    // A brand-new account that has not posted yet is still suggested.
+    expect(ids).toContain("https://local.example/users/no-status");
+    expect(ids).not.toContain("https://local.example/users/suspended");
+    expect(ids).not.toContain("https://local.example/users/silenced");
+    expect(ids).not.toContain("https://local.example/users/undiscoverable");
+  });
+
+  it("rotates the pools daily: same seed repeats, another seed reshuffles", async () => {
+    for (let i = 0; i < 8; i++) {
+      await insertActor(db, `https://local.example/users/member-${i}`, { isLocal: true, lastStatusAt: "2026-01-01T00:00:00Z" });
+    }
+
+    const day1 = (await getAccountSuggestions(db, null, { rotationSeed: 1 })).map((s) => s.actor.id);
+    const day1again = (await getAccountSuggestions(db, null, { rotationSeed: 1 })).map((s) => s.actor.id);
+    expect(day1again).toEqual(day1);
+
+    const day2 = (await getAccountSuggestions(db, null, { rotationSeed: 2 })).map((s) => s.actor.id);
+    expect(new Set(day2)).toEqual(new Set(day1));
+    expect(day2).not.toEqual(day1);
   });
 
   it("ranks friends-of-friends first and excludes followed, blocked, muted and dismissed accounts", async () => {
@@ -171,9 +192,9 @@ describe("getAccountSuggestions", () => {
     expect(remote?.source).toBe("global");
     expect(remote?.actor.isLocal).toBe(false);
     expect(out.find((s) => s.actor.id === "https://local.example/users/local-pop")?.source).toBe("global");
-    // Popular accounts rank above the active-local fallback (ME posts but has no followers).
-    expect(out.findIndex((s) => s.actor.id === "https://remote.example/users/remote-pop")).toBeLessThan(
-      out.findIndex((s) => s.actor.id === ME)
+    // The local community leads the page; popular remote accounts follow.
+    expect(out.findIndex((s) => s.actor.id === ME)).toBeLessThan(
+      out.findIndex((s) => s.actor.id === "https://remote.example/users/remote-pop")
     );
   });
 
@@ -197,16 +218,13 @@ describe("getAccountSuggestions", () => {
     await insertActor(db, "https://local.example/users/b", { isLocal: true, lastStatusAt: "2026-02-01T00:00:00Z" });
     await insertActor(db, "https://local.example/users/c", { isLocal: true, lastStatusAt: "2026-01-01T00:00:00Z" });
 
-    const first = await getAccountSuggestions(db, null, { limit: 2 });
-    expect(first.map((s) => s.actor.id)).toEqual([
-      "https://local.example/users/a",
-      "https://local.example/users/b",
-    ]);
-    const second = await getAccountSuggestions(db, null, { limit: 2, offset: 2 });
-    expect(second.map((s) => s.actor.id)).toEqual([
-      "https://local.example/users/c",
-      "https://local.example/users/me",
-    ]);
+    const first = await getAccountSuggestions(db, null, { limit: 2, rotationSeed: 7 });
+    const second = await getAccountSuggestions(db, null, { limit: 2, offset: 2, rotationSeed: 7 });
+    expect(first).toHaveLength(2);
+    // Paging keeps the same order and never repeats an account.
+    expect(new Set([...first, ...second].map((s) => s.actor.id)).size).toBe(4);
+    expect((await getAccountSuggestions(db, null, { limit: 2, rotationSeed: 7 })).map((s) => s.actor.id))
+      .toEqual(first.map((s) => s.actor.id));
 
     await dismissSuggestedAccount(db, ME, "https://local.example/users/a");
     await dismissSuggestedAccount(db, ME, "https://local.example/users/a");
