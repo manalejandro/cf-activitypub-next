@@ -10,9 +10,12 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 # before a silent, never-confirmed account is purged (0 disables).
 # REGISTRATION_BLOCKED_EMAIL_DOMAINS = ""
 # UNVERIFIED_ACCOUNT_PURGE_DAYS = "7"
+# Profile image limits in bytes (avatar 2 MB, header 5 MB by default).
+# MAX_AVATAR_SIZE = "2097152"
+# MAX_HEADER_SIZE = "5242880"
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.3.6"
+INSTANCE_VERSION = "1.3.7"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""
