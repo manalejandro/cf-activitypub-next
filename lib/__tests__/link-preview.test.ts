@@ -320,8 +320,7 @@ describe("link preview queue", () => {
     expect(failed?.status).toBe("failed");
   });
 
-  it("prefers oEmbed over OpenGraph and sanitizes the video embed", async () => {
-    await seedObject("https://remote.example/objects/1", '<a href="https://video.example/watch/1">video</a>');
+  it("prefers oEmbed over OpenGraph and sanitizes the video embed", async () => {    await seedObject("https://remote.example/objects/1", '<a href="https://video.example/watch/1">video</a>');
     await enqueueLinkPreview(db, "https://remote.example/objects/1");
     federation.safeFetch
       .mockResolvedValueOnce(
@@ -356,6 +355,50 @@ describe("link preview queue", () => {
     expect(card?.html).not.toContain("<script");
     // The web UI frames `embed_url` for provider players (Vimeo/PeerTube…).
     expect(card?.embed_url).toBe("https://player.example/embed/1");
+  });
+
+  it("fills an oEmbed card's gaps from the page's OpenGraph metadata", async () => {
+    // WordPress oEmbed returns title/author/provider and an iframe but no
+    // description and no thumbnail; the page's OpenGraph tags have both.
+    await seedObject("https://remote.example/objects/1", '<a href="https://blog.example/post">post</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch
+      .mockResolvedValueOnce(
+        okHtml(`<html><head>
+          <meta property="og:title" content="OG title">
+          <meta property="og:description" content="Migrar a Linux puede parecer complicado…">
+          <meta property="og:image" content="https://i0.wp.com/blog.example/avatar.png">
+          <meta property="og:locale" content="es_ES">
+          <link rel="canonical" href="https://blog.example/post/">
+          <link rel="alternate" type="application/json+oembed" href="https://blog.example/oembed?url=https%3A%2F%2Fblog.example%2Fpost">
+        </head></html>`)
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          version: "1.0",
+          type: "rich",
+          title: "Cómo migrar a Linux y no morir en el intento",
+          author_name: "José Miguel",
+          provider_name: "Tecno y Soft",
+          html: '<iframe src="https://blog.example/post/embed/#?secret=abc" width="600" height="338"></iframe>',
+          width: 600,
+          height: 338,
+        })
+      );
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT type, title, description, image_url, embed_url, language FROM preview_cards WHERE source_url = ?")
+      .bind("https://blog.example/post")
+      .first<{ type: string; title: string; description: string; image_url: string; embed_url: string; language: string }>();
+    // oEmbed keeps winning on the fields it provides…
+    expect(card?.type).toBe("rich");
+    expect(card?.title).toBe("Cómo migrar a Linux y no morir en el intento");
+    expect(card?.embed_url).toBe("https://blog.example/post/embed/#?secret=abc");
+    // …while the empty ones come from OpenGraph instead of staying blank.
+    expect(card?.description).toContain("Migrar a Linux puede parecer complicado");
+    expect(card?.image_url).toBe("https://i0.wp.com/blog.example/avatar.png");
+    expect(card?.language).toBe("es-ES");
   });
 
   it("waits for the card image and only then attaches it with the R2 URL", async () => {

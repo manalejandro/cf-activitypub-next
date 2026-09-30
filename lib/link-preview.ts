@@ -649,7 +649,24 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
   const html = decodeHtml(bytes, contentTypeHeader);
 
   const oembed = await parseOEmbed(html, url, userAgents);
-  let card = oembed?.card ?? parseOpenGraph(html, url);
+  const opengraph = parseOpenGraph(html, url);
+  let card = oembed?.card ?? opengraph;
+  if (oembed && opengraph) {
+    // oEmbed wins, but WordPress-style payloads carry only title/author/provider:
+    // fill the gaps (description, poster image, language, canonical) from the
+    // page's OpenGraph/Twitter metadata instead of showing an empty card.
+    const merged = oembed.card;
+    if (!merged.description) merged.description = opengraph.description;
+    if (!merged.imageUrl) {
+      merged.imageUrl = opengraph.imageUrl;
+      merged.imageDescription = opengraph.imageDescription;
+    }
+    if (!merged.title) merged.title = opengraph.title;
+    if (!merged.language) merged.language = opengraph.language;
+    if (!merged.publishedAt) merged.publishedAt = opengraph.publishedAt;
+    if (!merged.canonicalUrl) merged.canonicalUrl = opengraph.canonicalUrl;
+    card = merged;
+  }
   if (!card && youTubeVideoId(url)) {
     // Consent/bot pages carry no metadata at all: the URL alone is enough.
     card = await youTubeFallbackCard(url, userAgents);

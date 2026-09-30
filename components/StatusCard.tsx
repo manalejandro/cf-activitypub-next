@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lightbox, embeddableUrl } from "./Lightbox";
+import { youTubeEmbedUrl } from "@/lib/youtube";
 import { previewCardFor } from "@/lib/location";
 import { InteractionList } from "./InteractionList";
 import { MemoRichText } from "./RichText";
@@ -486,6 +487,25 @@ export function QuoteInline({ quote }: { quote: Status }) {
 
 // ─── StatusCard ───────────────────────────────────────────────────────────────
 
+/**
+ * Embeddable player URL for a preview card, or null when the card is not a
+ * provider player. In-place playback is only for players: YouTube always
+ * (whatever `type` the snapshot carries — older cards were stored as
+ * "link"/"rich") plus cards the crawler typed as `video`. `rich` embeds are
+ * pages, not media (WordPress post embeds, Mastodon status embeds): framing them
+ * in the 16/9 lightbox reads as an empty box, so they keep the plain link card.
+ */
+export function playableCardEmbedUrl(card: {
+  type?: string | null;
+  embed_url?: string | null;
+  url?: string | null;
+}): string | null {
+  const youTube = youTubeEmbedUrl(card.embed_url, card.url);
+  if (youTube) return youTube;
+  if (card.type !== "video") return null;
+  return embeddableUrl(card.embed_url, card.url);
+}
+
 function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive: boolean }) {
   const { t } = useLocale();
   const [revealed, setRevealed] = useState(false);
@@ -495,11 +515,7 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
     try { return new URL(card.url).hostname; } catch { return card.url; }
   })();
   const title = card.title || host;
-  // Video previews we can embed (YouTube) play in place, like Mastodon: the
-  // play button opens the provider's player instead of leaving the site.
-  // Any YouTube card plays embedded, whatever `type` the crawled snapshot
-  // carries (older cards were stored as "link"/"rich").
-  const embedUrl = embeddableUrl(card.embed_url, card.url);
+  const embedUrl = playableCardEmbedUrl(card);
   const playButton = (
     <span
       style={{
