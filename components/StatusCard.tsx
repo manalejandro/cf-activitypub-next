@@ -632,6 +632,7 @@ export function StatusCard({
   onBookmarkChange,
   forceDelete = false,
   hideActions = false,
+  permalink = true,
   filterContext = "public",
 }: {
   status: Status;
@@ -648,6 +649,9 @@ export function StatusCard({
   onBookmarkChange?: (s: Status) => void;
   forceDelete?: boolean;
   hideActions?: boolean;
+  /** Render the timestamp as plain text: E2EE cards have no status page behind
+   *  them (only public envelopes are stored as statuses). */
+  permalink?: boolean;
   filterContext?: "home" | "notifications" | "public" | "thread" | "account";
 }) {
   const prefs = usePreferences();
@@ -929,9 +933,15 @@ export function StatusCard({
           >
             <Icon name={visibilityInfo.icon} size="0.7rem" /> <span className="hidden md:inline">{visibilityInfo.label}</span>
           </span>
-          <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} aria-label={`${new Date(status.created_at).toLocaleString()}, ${t.action_reply}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
-            {formatTime(status.created_at)}
-          </Link>
+          {permalink ? (
+            <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} aria-label={`${new Date(status.created_at).toLocaleString()}, ${t.action_reply}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
+              {formatTime(status.created_at)}
+            </Link>
+          ) : (
+            <span title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              {formatTime(status.created_at)}
+            </span>
+          )}
         </div>
         <TypeBadge apType={status.ap_type} />
         {status.spoiler_text && (

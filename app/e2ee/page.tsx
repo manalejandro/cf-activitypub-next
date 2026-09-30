@@ -129,6 +129,8 @@ interface Sender {
 
 interface MlsMessage {
   id: string;
+  /** AP object IRI: public envelopes are stored as statuses under it. */
+  objectId: string | null;
   recipientId: string;
   type: string;
   objectType: string | null;
@@ -231,7 +233,10 @@ function messageToStatus(m: MlsMessage, t: ReturnType<typeof useLocale>["t"], de
     );
   }
   return {
-    id: m.id,
+    // Public envelopes are real statuses (stored by `storePublicMlsEnvelope`),
+    // so their card links to the status page; other MLS messages only exist in
+    // the E2EE inbox and must not offer a permalink that would 404.
+    id: m.objectType === "PublicMessage" && m.objectId ? m.objectId : m.id,
     content: parts.join(""),
     created_at: m.published,
     account: toAccount(m.sender),
@@ -730,13 +735,32 @@ export default function E2EEPage() {
         </div>
         {(() => {
           const serverIds = new Set(data.keyPackages.map((kp) => kp.objectId));
+          const localIds = new Set(listSessionInitKeys());
           const localOnlyIds = listSessionInitKeys().filter((id) => !serverIds.has(id));
+          // Server-side active packages whose private half is not in this
+          // browser: messages sealed to them (already received ones included)
+          // can never be decrypted here until a new package is published from
+          // this device or the exported bundle is imported.
+          const missingPrivate = data.keyPackages.filter((kp) => kp.isActive && !localIds.has(kp.objectId));
           const isEmpty = data.keyPackages.length === 0 && localOnlyIds.length === 0;
           if (isEmpty) {
             return <EmptyState icon="key" title={t.e2ee_no_key_packages} sub={t.e2ee_no_key_packages_sub} />;
           }
           return (
             <>
+              {missingPrivate.length > 0 && (
+                <div
+                  className="status-card"
+                  style={{ padding: "0.9rem 1rem", borderLeft: "3px solid var(--danger)" }}
+                >
+                  <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>
+                    {t.e2ee_key_no_private}
+                  </p>
+                  <p style={{ margin: "0.35rem 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                    {t.e2ee_key_no_private_hint}
+                  </p>
+                </div>
+              )}
               {data.keyPackages.map((kp) => (
                 <div
                   key={kp.id}
@@ -848,6 +872,7 @@ export default function E2EEPage() {
               status={messageToStatus(m, t, decryptedByMessage.get(m.id) ?? null)}
               me={meForCards}
               hideActions
+              permalink={m.objectType === "PublicMessage" && !!m.objectId}
               forceDelete
               onFav={() => {}}
               onReblog={() => {}}

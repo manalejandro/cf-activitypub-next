@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "AttivitàPub endpoint:",
   "e2ee_key_packages_title": "Pacchetti chiave",
   "e2ee_key_packages_sub": "(altri ti criptano con questi)",
+  "e2ee_key_no_private": "Questo browser non ha la chiave privata del tuo pacchetto di chiavi attivo",
+  "e2ee_key_no_private_hint": "I messaggi sigillati per quel pacchetto (compresi quelli già ricevuti) non possono essere decifrati qui. Pubblica un nuovo pacchetto da questo browser — i mittenti lo useranno per il prossimo messaggio — oppure importa il tuo fascio di chiavi qui sotto.",
   "e2ee_kp_active": "attivo",
   "e2ee_kp_retired": "in pensione",
   "e2ee_kp_local": "locale",

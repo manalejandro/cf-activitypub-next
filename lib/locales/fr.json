@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "Critères d'évaluation :",
   "e2ee_key_packages_title": "Paquets clés",
   "e2ee_key_packages_sub": "(autres cryptent pour vous avec ceux-ci)",
+  "e2ee_key_no_private": "Ce navigateur n'a pas la clé privée de votre paquet de clés actif",
+  "e2ee_key_no_private_hint": "Les messages scellés pour ce paquet (y compris ceux déjà reçus) ne peuvent pas être déchiffrés ici. Publiez un nouveau paquet de clés depuis ce navigateur — les expéditeurs l'utiliseront pour le prochain message — ou importez votre lot de clés ci-dessous.",
   "e2ee_kp_active": "actif",
   "e2ee_kp_retired": "retraités",
   "e2ee_kp_local": "locaux",

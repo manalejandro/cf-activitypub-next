@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "活动Pub 终点 :",
   "e2ee_key_packages_title": "密钥包",
   "e2ee_key_packages_sub": "(其他人用这些加密给你)",
+  "e2ee_key_no_private": "此浏览器没有你当前密钥包的私钥",
+  "e2ee_key_no_private_hint": "用它加密的消息（包括已收到的）无法在此解密。请在此浏览器发布新的密钥包——发件人下一条消息会使用它——或在下方导入你的密钥包。",
   "e2ee_kp_active": "活动",
   "e2ee_kp_retired": "退休人员",
   "e2ee_kp_local": "当地",

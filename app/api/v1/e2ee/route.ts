@@ -61,6 +61,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     messagesUrl: `${baseUrl}/users/${actor.username}/messages`,
     messages: messages.map((m) => ({
       id: m.id,
+      objectId: m.objectId,
       recipientId: m.recipientId,
       type: m.type,
       objectType: m.objectType,

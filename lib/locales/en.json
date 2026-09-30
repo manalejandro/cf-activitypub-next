@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "ActivityPub endpoints:",
   "e2ee_key_packages_title": "Key packages",
   "e2ee_key_packages_sub": "(others encrypt to you with these)",
+  "e2ee_key_no_private": "This browser holds no private key for your active key package",
+  "e2ee_key_no_private_hint": "Messages sealed to it (already received ones included) cannot be decrypted here. Publish a new key package from this browser — senders will use it for the next message — or import your key bundle below.",
   "e2ee_kp_active": "active",
   "e2ee_kp_retired": "retired",
   "e2ee_kp_local": "local",

@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "ActivityPub-Endpunkte:",
   "e2ee_key_packages_title": "Schlüsselpakete",
   "e2ee_key_packages_sub": "(andere verschlüsseln sie mit diesen)",
+  "e2ee_key_no_private": "Dieser Browser hat keinen privaten Schlüssel für dein aktives Key-Package",
+  "e2ee_key_no_private_hint": "Mit diesem Paket versiegelte Nachrichten (auch bereits empfangene) können hier nicht entschlüsselt werden. Veröffentliche ein neues Key-Package in diesem Browser — Absender nutzen es für die nächste Nachricht — oder importiere unten dein Schlüsselpaket.",
   "e2ee_kp_active": "aktiv",
   "e2ee_kp_retired": "im ruhestand",
   "e2ee_kp_local": "lokal",

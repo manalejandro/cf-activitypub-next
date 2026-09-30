@@ -439,6 +439,8 @@
   "e2ee_stats_hint": "Objectivos do ActivityPub:",
   "e2ee_key_packages_title": "Pacotes-chave",
   "e2ee_key_packages_sub": "(outros criptografam para você com estes)",
+  "e2ee_key_no_private": "Este navegador não tem a chave privada do teu pacote de chaves ativo",
+  "e2ee_key_no_private_hint": "As mensagens seladas para esse pacote (incluindo as já recebidas) não podem ser decifradas aqui. Publica um pacote novo a partir deste navegador — os remetentes vão usá-lo na próxima mensagem — ou importa o teu lote de chaves abaixo.",
   "e2ee_kp_active": "ativo",
   "e2ee_kp_retired": "aposentado",
   "e2ee_kp_local": "local",
