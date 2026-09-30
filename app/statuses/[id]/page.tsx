@@ -651,9 +651,12 @@ export default function ThreadPage() {
   });
 
   function handleFav(toggled: Status) {
+    // Take the counters from the response the action returned (the routes
+    // serialize the refreshed row): guessing with a local +1 raced with the
+    // server's own `status.update` broadcast, so a fav could count twice.
     const update = (s: Status): Status =>
       s.id === toggled.id
-        ? { ...s, favourited: !s.favourited, favourites_count: s.favourites_count + (s.favourited ? -1 : 1) }
+        ? { ...s, favourited: toggled.favourited, favourites_count: toggled.favourites_count }
         : s;
     setFocal((f) => (f ? update(f) : f));
     setAncestors((prev) => prev.map(update));
@@ -663,7 +666,7 @@ export default function ThreadPage() {
   function handleReblog(toggled: Status) {
     const update = (s: Status): Status =>
       s.id === toggled.id
-        ? { ...s, reblogged: !s.reblogged, reblogs_count: s.reblogs_count + (s.reblogged ? -1 : 1) }
+        ? { ...s, reblogged: toggled.reblogged, reblogs_count: toggled.reblogs_count }
         : s;
     setFocal((f) => (f ? update(f) : f));
     setAncestors((prev) => prev.map(update));
@@ -704,13 +707,28 @@ export default function ThreadPage() {
 
   function handlePosted(newStatus: Status) {
     setReplyTarget(null);
-    // Increment reply count on parent
-    const bumpReplies = (s: Status): Status =>
-      s.id === newStatus.in_reply_to_id ? { ...s, replies_count: s.replies_count + 1 } : s;
-    setFocal((f) => (f ? bumpReplies(f) : f));
-    setAncestors((prev) => prev.map(bumpReplies));
-    // Append new reply to descendants
+    // Append the new reply. The parent's counters are the server's business:
+    // it increments them and broadcasts the parent with the refreshed values
+    // (`broadcastStatusInteraction`), so a local +1 raced with that merge and
+    // counted the reply twice. Re-read the parent instead (authoritative, and
+    // idempotent when the stream merge lands too).
     setDescendants((prev) => [...prev, newStatus]);
+    const parentId = newStatus.in_reply_to_id;
+    if (!parentId) return;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/v1/statuses/${encodeURIComponent(parentId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const fresh = await res.json() as Status;
+        const merge = (s: Status): Status => (s.id === fresh.id ? mergeStatusUpdate(s, fresh) : s);
+        setFocal((f) => (f ? merge(f) : f));
+        setAncestors((prev) => prev.map(merge));
+      } catch {
+        // keep what we have; the stream merge or the next load will fix it
+      }
+    })();
   }
 
   async function handleDelete(s: Status) {
