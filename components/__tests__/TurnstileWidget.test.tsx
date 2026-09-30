@@ -6,7 +6,7 @@ import TurnstileWidget, { type TurnstileHandle } from "@/components/TurnstileWid
 const SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
 const api = {
-  render: vi.fn(() => "widget-1"),
+  render: vi.fn((_el: HTMLElement, _options: Record<string, unknown>) => "widget-1"),
   remove: vi.fn(),
   reset: vi.fn(),
 };
