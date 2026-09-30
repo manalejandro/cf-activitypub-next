@@ -115,6 +115,8 @@
   "timeline_local": "ローカル",
   "timeline_federated": "フェデレーション",
   "timeline_new_posts": "新しい投稿",
+  "timeline_new_statuses": "新しい投稿 {count} 件",
+  "timeline_new_statuses_one": "新しい投稿 1 件",
   "timeline_public_empty": "ローカル投稿はまだありません.",
   "timeline_federated_empty": "まだフェデレーションされた投稿はありません.",
   "compose_visibility": "可視性",

@@ -115,6 +115,8 @@
   "timeline_local": "Местный",
   "timeline_federated": "Федеративный",
   "timeline_new_posts": "новые посты",
+  "timeline_new_statuses": "{count} новых сообщений",
+  "timeline_new_statuses_one": "1 новое сообщение",
   "timeline_public_empty": "Местных постов пока нет.",
   "timeline_federated_empty": "Пока нет федеративных постов.",
   "compose_visibility": "Видимость",

@@ -115,6 +115,8 @@
   "timeline_local": "当地",
   "timeline_federated": "联邦",
   "timeline_new_posts": "新员额",
+  "timeline_new_statuses": "{count} 条新动态",
+  "timeline_new_statuses_one": "1 条新动态",
   "timeline_public_empty": "尚未设当地员额.",
   "timeline_federated_empty": "还没有联邦职位.",
   "compose_visibility": "可见度",

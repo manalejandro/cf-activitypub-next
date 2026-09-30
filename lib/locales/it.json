@@ -115,6 +115,8 @@
   "timeline_local": "Locale locale",
   "timeline_federated": "Federati",
   "timeline_new_posts": "nuovi posti",
+  "timeline_new_statuses": "{count} nuovi post",
+  "timeline_new_statuses_one": "1 nuovo post",
   "timeline_public_empty": "Nessun post locale.",
   "timeline_federated_empty": "Nessun post con la federazione.",
   "compose_visibility": "Visibilità",

@@ -115,6 +115,8 @@
   "timeline_local": "한국어",
   "timeline_federated": "뚱 베어",
   "timeline_new_posts": "새 글",
+  "timeline_new_statuses": "새 게시물 {count}개",
+  "timeline_new_statuses_one": "새 게시물 1개",
   "timeline_public_empty": "아직 현지 게시물이 없습니다.",
   "timeline_federated_empty": "아직 소식이 없습니다.",
   "compose_visibility": "제품정보",

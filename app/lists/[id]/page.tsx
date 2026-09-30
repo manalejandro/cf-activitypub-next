@@ -10,7 +10,8 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
-import { handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
+import { useNewStatusesBuffer } from "@/lib/streaming/use-new-statuses";
+import NewStatusesPill from "@/components/NewStatusesPill";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { useLimits } from "@/lib/limits-client";
@@ -68,11 +69,12 @@ export default function ListDetailPage() {
   }, [token, listId, limits.defaultTimelinePage]);
 
   const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, seenIdsRef, loadMore, catchUp } = useTimelineCache(`list:${listId}`, fetchPage);
+  const { pendingCount, reveal, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
 
   // Live updates on list feeds: new statuses, deletions and counter/content
   // refreshes (edits, favs, reblogs, replies).
   useTimelineStream(`list:${listId}`, (event, payload) => {
-    handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current);
+    handleStreamEvent(event, payload);
   }, { onReconnect: () => { void catchUp(); } });
 
   useEffect(() => {
@@ -155,6 +157,7 @@ export default function ListDetailPage() {
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <button className="btn btn-ghost btn-sm" aria-label={t.action_close} onClick={() => router.push("/lists")}><Icon name="arrow-left" /></button>
           <h1 className="text-lg font-bold">{list?.title || t.lists_title}</h1>
+          <NewStatusesPill count={pendingCount} onClick={reveal} anchor="header" />
         </div>
 
         <div className="flex" role="tablist" style={{ borderBottom: "1px solid var(--border)" }}>

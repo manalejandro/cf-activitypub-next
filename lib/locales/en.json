@@ -115,6 +115,8 @@
   "timeline_local": "Local",
   "timeline_federated": "Federated",
   "timeline_new_posts": "new posts",
+  "timeline_new_statuses": "{count} new posts",
+  "timeline_new_statuses_one": "1 new post",
   "timeline_public_empty": "No local posts yet.",
   "timeline_federated_empty": "No federated posts yet.",
   "compose_visibility": "Visibility",

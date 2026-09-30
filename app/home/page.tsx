@@ -11,7 +11,9 @@ import { clipboardFiles } from "@/lib/clipboard-media";
 import { uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
+import { useNewStatusesBuffer } from "@/lib/streaming/use-new-statuses";
+import NewStatusesPill from "@/components/NewStatusesPill";
 import { StatusCard } from "@/components/StatusCard";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -67,10 +69,11 @@ export default function HomePage() {
   }, [limits.defaultTimelinePage]);
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache("home", fetchPage, { refetchOnMount: true });
+  const { pendingCount, reveal, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
 
   // Real-time home feed streaming
   useTimelineStream("user", (event, payload) => {
-    if (handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current)) return;
+    if (handleStreamEvent(event, payload)) return;
     if (event === "filters_changed") {
       // Server filters changed: cached statuses embed the old `filtered`
       // results, so drop every cached feed and refetch with the new rules.
@@ -574,6 +577,7 @@ export default function HomePage() {
         </div>
 
         {/* Timeline */}
+        <NewStatusesPill count={pendingCount} onClick={reveal} />
         {loading ? (
           <div className="flex flex-col gap-0">
             {[1, 2, 3].map((i) => (

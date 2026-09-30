@@ -8,7 +8,9 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache, clearAllTimelineCaches, handleStatusStreamEvent } from "@/lib/streaming/timeline-cache";
+import { getLastTimelineView, setLastTimelineView, purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
+import { useNewStatusesBuffer } from "@/lib/streaming/use-new-statuses";
+import NewStatusesPill from "@/components/NewStatusesPill";
 import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
@@ -47,11 +49,12 @@ export default function TimelinesPage() {
   }, [view, limits.defaultTimelinePage, limits.pageSize]);
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
+  const { pendingCount, reveal, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";
   useTimelineStream(streamName, (event, payload) => {
-    handleStatusStreamEvent(event, payload, setStatuses, seenIdsRef.current);
+    handleStreamEvent(event, payload);
   }, { onReconnect: () => { void catchUp(); } });
 
   async function fetchMe() {
@@ -164,6 +167,7 @@ export default function TimelinesPage() {
               </button>
             ))}
           </div>
+          <NewStatusesPill count={pendingCount} onClick={reveal} anchor="header" />
         </div>
 
 
