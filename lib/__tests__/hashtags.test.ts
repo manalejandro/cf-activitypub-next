@@ -55,4 +55,26 @@ describe("hashtag extraction from rendered HTML", () => {
     expect(status.tags.map((t) => t.name)).toEqual(["seguridad", "café"]);
     expect(status.tags[0].url).toContain("/tags/seguridad");
   });
+
+  it("never turns a URL fragment into a hashtag (reported: …glossary.html#s-i-c)", () => {
+    // The rendered remote HTML of mastodon.xyz/@rms/117357890378973316: the
+    // fragment `#s-i-c` of the first link used to come out as a phantom `#s`.
+    const status = statusWith(
+      '<p><a href="https://stallman.org/glossary.html#s-i-c" rel="nofollow noopener" target="_blank">' +
+        '<span class="invisible">https://</span><span class="ellipsis">stallman.org/glossary.html#s-i</span>' +
+        '<span class="invisible">-c</span></a><br>' +
+        '<a href="https://www.theguardian.com/us-news/2026/aug/23/x">theguardian.com/us-news/2026/aug/23/x</a></p>'
+    );
+    expect(status.tags).toEqual([]);
+  });
+
+  it("requires a word boundary before the # (paths and glued words are not tags)", () => {
+    expect(statusWith("<p>See https://example.com/#news and foo#bar</p>").tags).toEqual([]);
+    expect(statusWith("<p>See example.com/path#Section</p>").tags).toEqual([]);
+  });
+
+  it("keeps extracting hashtags that follow a URL or punctuation", () => {
+    const status = statusWith('<p><a href="https://example.com/a#b">https://example.com/a#b</a> y (#verano)</p>');
+    expect(status.tags.map((t) => t.name)).toEqual(["verano"]);
+  });
 });

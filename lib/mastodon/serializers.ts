@@ -928,15 +928,20 @@ function extractHashtags(content: string, raw?: string, localDomain?: string): {
   // over the rendered HTML, so a hashtag-like token followed by an entity was
   // captured with it (`#34480&quot;` → tag `34480&quot`, `/tags/34480%26quot`).
   // The pattern also mirrors the linkifier and Mastodon: a hashtag must contain
-  // at least one letter, so numeric-only tokens are not tags.
+  // at least one letter (numeric-only tokens are not tags) and must start at a
+  // word boundary, so URL fragments and paths never become tags — the reported
+  // `…/glossary.html#s-i-c` produced a phantom `#s`, and `host/#tag` a `#tag`.
   const plain = content
     // Code samples are not content: strip whole <pre>/<code> blocks first so
     // `#quote` inside a code snippet never becomes a hashtag.
     .replace(/<(?:pre|code)\b[^>]*>[\s\S]*?<\/(?:pre|code)>/gi, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/&[a-zA-Z#0-9]+;/g, " ");
-  const matches = plain.match(/#([a-zA-Z\u00C0-\u024F\u0400-\u04FF][a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF_]*)/g) ?? [];
-  return [...new Set(matches.map((tag) => tag.slice(1).toLowerCase()))].map((name) => ({
+  const tagChars = "a-zA-Z0-9\\u00C0-\\u024F\\u0400-\\u04FF_";
+  const matches = plain.matchAll(
+    new RegExp(`(?:^|[^${tagChars}/])#([a-zA-Z\\u00C0-\\u024F\\u0400-\\u04FF][${tagChars}]*)`, "g")
+  );
+  return [...new Set([...matches].map((m) => m[1].toLowerCase()))].map((name) => ({
     name,
     url: urlOf(name),
   }));
