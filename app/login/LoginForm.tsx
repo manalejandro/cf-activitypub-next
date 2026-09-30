@@ -3,31 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, translateKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
-
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (
-        container: HTMLElement,
-        options: {
-          sitekey: string;
-          action?: string;
-          callback?: (token: string) => void;
-          "expired-callback"?: () => void;
-          "error-callback"?: () => void;
-          theme?: "light" | "dark" | "auto";
-        }
-      ) => string;
-      reset: (widgetId: string) => void;
-      remove: (widgetId: string) => void;
-    };
-  }
-}
+import TurnstileWidget, { type TurnstileHandle } from "@/components/TurnstileWidget";
 
 interface Props {
   turnstileSiteKey: string;
@@ -71,45 +51,15 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
     if (!authLoading && authenticated) router.replace(redirectTarget);
   }, [authLoading, authenticated, router, redirectTarget]);
 
-  const turnstileRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
-
-  // If the script is already loaded (e.g. navigating back from register), init immediately.
-  // Also clean up the widget on unmount to avoid "Cannot find Widget" errors.
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.turnstile) {
-      initTurnstile();
-    }
-    return () => {
-      if (window.turnstile && widgetIdRef.current) {
-        window.turnstile.remove(widgetIdRef.current);
-        widgetIdRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const turnstileHandle = useRef<TurnstileHandle>(null);
 
   // Read query params for verification feedback
   const verified = searchParams.get("verified") === "true";
   const verifyError = searchParams.get("error");
 
-  function initTurnstile() {
-    if (!window.turnstile || !turnstileRef.current || widgetIdRef.current) return;
-    widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
-      sitekey: turnstileSiteKey,
-      action: "login",
-      callback: (token) => setTurnstileToken(token),
-      "expired-callback": () => setTurnstileToken(""),
-      "error-callback": () => setTurnstileToken(""),
-      theme: "auto",
-    });
-  }
-
   function resetTurnstile() {
-    if (window.turnstile && widgetIdRef.current) {
-      window.turnstile.reset(widgetIdRef.current);
-      setTurnstileToken("");
-    }
+    // A solved token is single-use: retries need a fresh challenge.
+    turnstileHandle.current?.reset();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -248,15 +198,6 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
 
   return (
     <>
-      {/* Load Turnstile script with explicit render mode */}
-      {turnstileSiteKey && (
-        <Script
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-          onLoad={initTurnstile}
-          strategy="lazyOnload"
-        />
-      )}
-
       <div
         className="force-light flex flex-col items-center justify-center min-h-screen px-4"
         style={{ background: "var(--bg)" }}
@@ -316,9 +257,12 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
               </div>
 
               {/* Cloudflare Turnstile widget */}
-              {turnstileSiteKey && (
-                <div ref={turnstileRef} style={{ minHeight: "65px" }} />
-              )}
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                action="login"
+                onToken={setTurnstileToken}
+                ref={turnstileHandle}
+              />
 
               {/* Forgot password link */}
               <div style={{ textAlign: "right", marginTop: "-0.75rem" }}>
