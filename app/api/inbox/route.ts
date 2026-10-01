@@ -3,6 +3,7 @@ import { getCloudflareContext, json } from "@/lib/cf";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
 import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
+import { getActorById, getObjectById } from "@/lib/db";
 
 // POST /inbox — Shared inbox for federation delivery
 export async function POST(request: NextRequest): Promise<Response> {
@@ -75,6 +76,21 @@ export async function POST(request: NextRequest): Promise<Response> {
       const purged = await purgeGoneSignerData(env.DB, check, signingActorId);
       if (purged) console.warn(`[inbox] purged cached copy of gone actor ${signingActorId}`);
       return json({ status: "accepted" }, 202);
+    }
+
+    // A `Delete` whose signer key cannot be fetched right now can still be a
+    // no-op: with neither the signer nor the target object cached there is
+    // nothing it could remove. Deleted accounts keep queueing such deletes and
+    // answering 503 made the sender retry each of them until its queue gave up
+    // (masto.es deliveries from hosts unreachable through Cloudflare's egress,
+    // HTTP 525, flooded the inbox with 5xx). Anything cached stays retryable:
+    // an unverifiable Delete must never remove stored data.
+    if (check.reason === "no-key" && activityType === "delete" && activityObjectId) {
+      const [signer, target] = await Promise.all([
+        getActorById(env.DB, signingActorId).catch(() => null),
+        getObjectById(env.DB, activityObjectId).catch(() => null),
+      ]);
+      if (!signer && !target) return json({ status: "accepted" }, 202);
     }
 
     const detail = check.status ? ` (HTTP ${check.status})` : "";
