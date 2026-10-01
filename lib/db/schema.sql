@@ -235,6 +235,25 @@ CREATE INDEX IF NOT EXISTS idx_follows_actor    ON follows(actor_id, state);
 CREATE INDEX IF NOT EXISTS idx_follows_target   ON follows(target_id, state);
 
 -- ─────────────────────────────────────────
+-- Relays (ActivityPub relay subscriptions)
+-- ─────────────────────────────────────────
+-- A relay re-broadcasts the public statuses of its subscribers. Adding one
+-- sends a `Follow` (object = as:Public) signed by the reserved instance actor
+-- to the relay's inbox; an inbound `Accept{Follow}` marks it accepted and its
+-- `Announce`s are stored as normal federated statuses (never as boosts).
+CREATE TABLE IF NOT EXISTS relays (
+  id                 TEXT PRIMARY KEY,
+  inbox_url          TEXT NOT NULL UNIQUE,         -- relay inbox entered by the admin
+  actor_uri          TEXT,                         -- relay actor resolved from its Accept/Announce
+  state              TEXT NOT NULL DEFAULT 'idle', -- idle|pending|accepted|rejected
+  follow_activity_id TEXT,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_relays_state ON relays(state);
+
+-- ─────────────────────────────────────────
 -- Likes / Favourites
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS likes (

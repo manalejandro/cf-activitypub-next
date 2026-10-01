@@ -17,10 +17,9 @@ vi.mock("@/lib/activitypub/federation", () => federation);
 
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
-  broadcastRelationshipChange: vi.fn().mockResolvedValue(undefined),
+  broadcastEvent: vi.fn().mockResolvedValue(undefined),
   broadcastPublicStatus: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatus: vi.fn().mockResolvedValue(undefined),
-  broadcastCallEvent: vi.fn().mockResolvedValue(undefined),
   broadcastObjectDelete: vi.fn().mockResolvedValue(undefined),
   broadcastStatusInteraction: vi.fn().mockResolvedValue(undefined),
   broadcastStatusInteractionToLists: vi.fn().mockResolvedValue(undefined),

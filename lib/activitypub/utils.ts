@@ -333,6 +333,21 @@ export function buildFollow(baseUrl: string, actorId: string, targetId: string, 
   };
 }
 
+/**
+ * Follow sent to an ActivityPub relay. Relays identify a subscription by the
+ * object being the public collection (Mastodon's `Relay#follow_activity`), not
+ * by the relay's actor URL, so this cannot reuse `buildFollow`.
+ */
+export function buildRelayFollow(baseUrl: string, actorId: string, id: string): APActivity {
+  return {
+    "@context": DEFAULT_CONTEXT,
+    id: activityIRI(baseUrl, id),
+    type: "Follow",
+    actor: actorId,
+    object: PUBLIC_ADDRESS,
+  };
+}
+
 /** Move activity for account migration: actor moves to object (target). */
 export function buildMove(
   baseUrl: string,

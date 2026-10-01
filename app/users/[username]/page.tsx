@@ -397,8 +397,8 @@ export default function ProfilePage() {
   }, [routeUsername]);
 
   // The remote account can accept or reject our follow at any time: the inbox
-  // broadcasts `relationship` on the user stream so the follow button updates
-  // without a reload.
+  // broadcasts a `relationship` event on the user stream so the follow button
+  // updates without a reload.
   useTimelineStream(
     "user",
     (event, payload) => {

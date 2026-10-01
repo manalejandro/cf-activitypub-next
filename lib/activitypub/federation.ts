@@ -12,14 +12,14 @@ const AP_ACCEPT = 'application/activity+json, application/ld+json; profile="http
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
- * Local actor signing outbound fetches when the caller has no key at hand.
- * Authorized-fetch instances (mastodon.social) answer unsigned actor/object
- * requests with 401 "Request not signed". Prefer the reserved instance actor,
- * cached for the isolate's lifetime (keys change rarely).
+ * Local actor used to sign requests with no caller key at hand: outbound
+ * fetches (authorized-fetch instances answer unsigned requests with 401
+ * "Request not signed") and relay subscription Follows. Prefer the reserved
+ * instance actor, cached for the isolate's lifetime (keys change rarely).
  */
 let fetchSigner: { id: string; privateKeyPem: string } | null | undefined;
 
-async function getFetchSigner(): Promise<{ id: string; privateKeyPem: string } | null> {
+export async function getInstanceSigner(): Promise<{ id: string; privateKeyPem: string } | null> {
   if (fetchSigner !== undefined) return fetchSigner;
   try {
     const { env } = getCloudflareContext();
@@ -46,7 +46,7 @@ export async function signedGetHeaders(
   let kid = keyId;
   let pem = privateKeyPem;
   if (!kid || !pem) {
-    const signer = await getFetchSigner();
+    const signer = await getInstanceSigner();
     if (!signer) return {};
     kid = `${signer.id}#main-key`;
     pem = signer.privateKeyPem;
@@ -68,7 +68,7 @@ export async function signedGetHeadersRfc9421(
   let kid = keyId;
   let pem = privateKeyPem;
   if (!kid || !pem) {
-    const signer = await getFetchSigner();
+    const signer = await getInstanceSigner();
     if (!signer) return {};
     kid = `${signer.id}#main-key`;
     pem = signer.privateKeyPem;

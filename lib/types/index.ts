@@ -289,6 +289,21 @@ export interface LocalFollow {
 }
 
 /**
+ * A subscribed ActivityPub relay. `idle` = added but not subscribed, `pending`
+ * = Follow delivered (waiting for the relay's Accept), `accepted` = enabled,
+ * `rejected` = the relay refused the subscription.
+ */
+export interface LocalRelay {
+  id: string;
+  inboxUrl: string;
+  actorUri: string | null;
+  state: "idle" | "pending" | "accepted" | "rejected";
+  followActivityId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * A cached KeyPackage of an actor (RFC 9420). Canonical for local actors
  * (backed by the actor's keyPackages collection); cached for remote actors
  * so the server can also serve the incoming direction.

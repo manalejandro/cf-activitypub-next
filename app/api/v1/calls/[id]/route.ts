@@ -19,7 +19,7 @@ import {
 } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById } from "@/lib/db";
-import { broadcastCallEvent } from "@/lib/streaming/broadcast";
+import { broadcastEvent } from "@/lib/streaming/broadcast";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { CallSession, CallEventPayload } from "@/lib/types/call";
 
@@ -301,12 +301,8 @@ async function notifyPeer(
   const isLocal = !peerActorId.includes(".") || peerActorId.includes(`//${localDomain}/`);
   if (!isLocal) return; // Cross-instance handled separately via AP
 
-  const username = peerActorId === session.callerId
-    ? session.callerAcct.split("@")[0]
-    : session.calleeAcct.split("@")[0];
-
   try {
-    await broadcastCallEvent(env.TIMELINE_STREAM, username, event);
+    await broadcastEvent(env.TIMELINE_STREAM, peerActorId, "call", event);
   } catch {
     // skip
   }

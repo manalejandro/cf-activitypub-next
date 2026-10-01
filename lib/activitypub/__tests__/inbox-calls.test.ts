@@ -5,14 +5,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
-import { broadcastCallEvent } from "@/lib/streaming/broadcast";
+import { broadcastEvent } from "@/lib/streaming/broadcast";
 
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
-  broadcastRelationshipChange: vi.fn().mockResolvedValue(undefined),
+  broadcastEvent: vi.fn().mockResolvedValue(undefined),
   broadcastPublicStatus: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatus: vi.fn().mockResolvedValue(undefined),
-  broadcastCallEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/push", () => ({
@@ -149,7 +148,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   db = await freshDb();
-  (broadcastCallEvent as ReturnType<typeof vi.fn>).mockClear();
+  (broadcastEvent as ReturnType<typeof vi.fn>).mockClear();
 });
 
 describe("call negotiation inbox handling", () => {
@@ -163,9 +162,10 @@ describe("call negotiation inbox handling", () => {
       recipient: { id: LOCAL_ACTOR, username: "bob", privateKeyPem: "priv-bob" },
     } as never);
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.incoming");
     expect(event.callId).toBe(CALL_ID);
@@ -183,7 +183,7 @@ describe("call negotiation inbox handling", () => {
   it("does nothing for CallOffer without a recipient (shared inbox)", async () => {
     const kv = makeKv();
     await processInboxActivity(makeCallActivity("CallOffer") as never, { db, baseUrl: BASE, kv } as never);
-    expect(broadcastCallEvent).not.toHaveBeenCalled();
+    expect(broadcastEvent).not.toHaveBeenCalled();
     expect(await kv.get(`call:${CALL_ID}`)).toBeNull();
   });
 
@@ -196,9 +196,10 @@ describe("call negotiation inbox handling", () => {
       { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.answered");
     expect(event.callId).toBe(CALL_ID);
@@ -215,9 +216,10 @@ describe("call negotiation inbox handling", () => {
       { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.ice");
     expect(event.callId).toBe(CALL_ID);
@@ -229,7 +231,7 @@ describe("call negotiation inbox handling", () => {
       makeCallActivity("CallIceCandidate") as never,
       { db, baseUrl: BASE, timelineStream } as never
     );
-    expect(broadcastCallEvent).not.toHaveBeenCalled();
+    expect(broadcastEvent).not.toHaveBeenCalled();
   });
 
   it("broadcasts call.ended for CallHangup", async () => {
@@ -239,9 +241,10 @@ describe("call negotiation inbox handling", () => {
       { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.ended");
     expect(event.callId).toBe(CALL_ID);
@@ -256,9 +259,10 @@ describe("call negotiation inbox handling", () => {
       { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.renegotiate");
     expect(event.callId).toBe(CALL_ID);
@@ -274,9 +278,10 @@ describe("call negotiation inbox handling", () => {
       { db, baseUrl: BASE, kv, timelineStream } as never
     );
 
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
-    const [, username, payload] = (broadcastCallEvent as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(username).toBe("bob");
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
+    const [, actorId, type, payload] = (broadcastEvent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(actorId).toBe(LOCAL_ACTOR);
+    expect(type).toBe("call");
     const event = payload as Record<string, unknown>;
     expect(event.type).toBe("call.renegotiate-answer");
     expect(event.callId).toBe(CALL_ID);
@@ -294,7 +299,7 @@ describe("call negotiation inbox handling", () => {
       makeCallActivity("CallHangup", { actor: other, id: `${other}/activities/hangup-1` }) as never,
       { db, baseUrl: BASE, kv, timelineStream, signingActorId: other } as never
     );
-    expect(broadcastCallEvent).not.toHaveBeenCalled();
+    expect(broadcastEvent).not.toHaveBeenCalled();
   });
 
   it("processes a replayed activity id only once", async () => {
@@ -303,6 +308,6 @@ describe("call negotiation inbox handling", () => {
     const ctx = { db, baseUrl: BASE, kv, timelineStream } as never;
     await processInboxActivity(activity as never, ctx);
     await processInboxActivity(activity as never, ctx);
-    expect(broadcastCallEvent).toHaveBeenCalledTimes(1);
+    expect(broadcastEvent).toHaveBeenCalledTimes(1);
   });
 });

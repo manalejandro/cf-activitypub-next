@@ -53,6 +53,10 @@ const ACTION_MAP: Record<string, string> = {
   resolved: "admin_action_resolved",
   reopened: "admin_action_reopened",
   warned: "admin_action_warned",
+  relay_added: "admin_action_relay_added",
+  relay_enabled: "admin_action_relay_enabled",
+  relay_disabled: "admin_action_relay_disabled",
+  relay_removed: "admin_action_relay_removed",
 };
 
 export default function AdminModerationLogPage() {

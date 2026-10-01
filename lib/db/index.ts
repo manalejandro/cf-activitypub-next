@@ -5,6 +5,7 @@ import type {
   ActorField,
   LocalObject,
   LocalFollow,
+  LocalRelay,
   LocalLike,
   LocalAnnounce,
   LocalNotification,
@@ -2775,6 +2776,75 @@ export async function getFollowing(
     .bind(actorId, limit, offset)
     .all<Row>();
   return rows.results.map(rowToActor);
+}
+
+// ─────────────────────────────────────────
+// Relays
+// ─────────────────────────────────────────
+
+function rowToRelay(r: Row): LocalRelay {
+  return {
+    id: r.id,
+    inboxUrl: r.inbox_url,
+    actorUri: r.actor_uri ?? null,
+    state: r.state,
+    followActivityId: r.follow_activity_id ?? null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function listRelays(db: D1Database): Promise<LocalRelay[]> {
+  const rows = await db.prepare("SELECT * FROM relays ORDER BY created_at DESC").bind().all<Row>();
+  return rows.results.map(rowToRelay);
+}
+
+export async function getRelayById(db: D1Database, id: string): Promise<LocalRelay | null> {
+  const row = await db.prepare("SELECT * FROM relays WHERE id = ?").bind(id).first<Row>();
+  return row ? rowToRelay(row) : null;
+}
+
+export async function getRelayByInbox(db: D1Database, inboxUrl: string): Promise<LocalRelay | null> {
+  const row = await db.prepare("SELECT * FROM relays WHERE inbox_url = ?").bind(inboxUrl).first<Row>();
+  return row ? rowToRelay(row) : null;
+}
+
+/** The relay whose subscription Follow we sent — the Accept/Reject lookup key. */
+export async function getRelayByFollowActivity(db: D1Database, activityId: string): Promise<LocalRelay | null> {
+  const row = await db
+    .prepare("SELECT * FROM relays WHERE follow_activity_id = ?")
+    .bind(activityId)
+    .first<Row>();
+  return row ? rowToRelay(row) : null;
+}
+
+/** Insert a relay in the `idle` state (a no-op when the inbox is already known). */
+export async function createRelay(db: D1Database, id: string, inboxUrl: string): Promise<LocalRelay | null> {
+  await db
+    .prepare("INSERT OR IGNORE INTO relays (id, inbox_url, state) VALUES (?, ?, 'idle')")
+    .bind(id, inboxUrl)
+    .run();
+  return getRelayByInbox(db, inboxUrl);
+}
+
+/** Patch a relay; omitted fields are left untouched (null clears a field). */
+export async function updateRelay(
+  db: D1Database,
+  id: string,
+  patch: { state?: LocalRelay["state"]; followActivityId?: string | null; actorUri?: string | null }
+): Promise<void> {
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  if (patch.state !== undefined) { sets.push("state = ?"); args.push(patch.state); }
+  if (patch.followActivityId !== undefined) { sets.push("follow_activity_id = ?"); args.push(patch.followActivityId); }
+  if (patch.actorUri !== undefined) { sets.push("actor_uri = ?"); args.push(patch.actorUri); }
+  if (sets.length === 0) return;
+  sets.push("updated_at = datetime('now')");
+  await db.prepare(`UPDATE relays SET ${sets.join(", ")} WHERE id = ?`).bind(...args, id).run();
+}
+
+export async function deleteRelay(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM relays WHERE id = ?").bind(id).run();
 }
 
 // ─────────────────────────────────────────

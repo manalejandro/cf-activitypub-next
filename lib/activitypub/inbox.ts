@@ -44,6 +44,8 @@ import {
   getCollectionById,
   deleteCollection,
   upsertCollectionItem,
+  getRelayByFollowActivity,
+  updateRelay,
 } from "@/lib/db";
 import {
   buildAccept,
@@ -57,8 +59,9 @@ import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
+import { relayForActor, relayMatchesActor } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastRelationshipChange } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
@@ -838,6 +841,18 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
   const signerId = activityActorId(activity);
 
   const followActivityId = typeof obj === "string" ? obj : obj.id;
+  // Relay subscription: our Follow's object is the public collection, so it
+  // never matches a `follows` row. Only the relay itself may accept it.
+  if (followActivityId) {
+    const relay = await getRelayByFollowActivity(ctx.db, followActivityId);
+    if (relay) {
+      const answerer = await getActorById(ctx.db, signerId);
+      if (relayMatchesActor(relay, answerer ?? { id: signerId })) {
+        await updateRelay(ctx.db, relay.id, { state: "accepted", actorUri: signerId });
+      }
+      return;
+    }
+  }
   // find the follow by activityId
   const rows = await ctx.db
     .prepare("SELECT * FROM follows WHERE activity_id = ?")
@@ -850,7 +865,7 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
     await updateFollowState(ctx.db, rows.id, "accepted");
     // The local follower's open profile page shows "requested" until now.
     if (ctx.timelineStream) {
-      await broadcastRelationshipChange(ctx.timelineStream, rows.actor_id, rows.target_id);
+      await broadcastEvent(ctx.timelineStream, rows.actor_id, "relationship", { id: rows.target_id });
     }
     // Only update counts if the follow was pending (not already accepted optimistically)
     if (wasPending) {
@@ -875,6 +890,18 @@ async function handleReject(activity: APActivity, ctx: InboxContext): Promise<vo
   const signerId = activityActorId(activity);
 
   const followActivityId = typeof obj === "string" ? obj : obj.id;
+  // Relay subscription rejected (see handleAccept): only the relay's own host
+  // may answer for the Follow we sent to its inbox.
+  if (followActivityId) {
+    const relay = await getRelayByFollowActivity(ctx.db, followActivityId);
+    if (relay) {
+      const answerer = await getActorById(ctx.db, signerId);
+      if (relayMatchesActor(relay, answerer ?? { id: signerId })) {
+        await updateRelay(ctx.db, relay.id, { state: "rejected", actorUri: signerId });
+      }
+      return;
+    }
+  }
   const rows = await ctx.db
     .prepare("SELECT * FROM follows WHERE activity_id = ?")
     .bind(followActivityId)
@@ -895,7 +922,7 @@ async function handleReject(activity: APActivity, ctx: InboxContext): Promise<vo
     await updateFollowState(ctx.db, rows.id, "rejected");
     // The local follower's open profile page still shows "following".
     if (ctx.timelineStream) {
-      await broadcastRelationshipChange(ctx.timelineStream, rows.actor_id, rows.target_id);
+      await broadcastEvent(ctx.timelineStream, rows.actor_id, "relationship", { id: rows.target_id });
     }
   }
 }
@@ -1383,6 +1410,83 @@ async function persistRemoteNote(
   await enqueueNoteLinkPreview(ctx, note, content);
 }
 
+/**
+ * Store a status a subscribed relay announced. Relays re-broadcast third-party
+ * content, so this stores the original note attributed to its author and skips
+ * the boost entirely: the status appears in the federated timeline as if the
+ * author had posted it directly. Domain blocks on the author's own instance
+ * still apply (the signer is only the relay) and a status whose remote media is
+ * still being cached stays held — the media release announces it later.
+ */
+async function storeRelayedStatus(
+  ctx: InboxContext,
+  relayActorId: string,
+  objectId: string,
+  embedded: APNote | null
+): Promise<void> {
+  if (await getObjectById(ctx.db, objectId)) return;
+
+  let toStore: APNote | null = null;
+  const embeddedHasContent = embedded
+    && isContentObjectType((embedded.type ?? "").split("/").pop() ?? "")
+    && Boolean(embedded.content || embedded.attachment?.length);
+  if (embeddedHasContent) {
+    toStore = embedded;
+  } else if (objectId.startsWith("https://")) {
+    const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
+    try {
+      let fetched = await fetchRemoteObject(
+        objectId,
+        signingKey ? `${signingKey.id}#main-key` : undefined,
+        signingKey?.privateKeyPem
+      ) as APNote | null;
+      // Retry without auth if the signed fetch failed (authorized-fetch hosts).
+      if (!fetched) fetched = await fetchRemoteObject(objectId) as APNote | null;
+      if (fetched && isContentObjectType(((fetched.type as string) ?? "").split("/").pop() ?? "")) {
+        toStore = fetched;
+      }
+    } catch { /* un-fetchable announcement */ }
+  }
+  if (!toStore) return;
+
+  // Relayed content is authored by a third party: it must name its author, and
+  // that author must not be local (only the local account writes its statuses).
+  const authorId = typeof toStore.attributedTo === "string"
+    ? toStore.attributedTo
+    : (toStore.attributedTo as APActor | undefined)?.id;
+  if (!authorId) return;
+  let authorHost = "";
+  try {
+    authorHost = new URL(authorId).hostname;
+  } catch {
+    return;
+  }
+  if (authorHost === new URL(ctx.baseUrl).hostname) return;
+
+  // The relay signed the delivery, not the author: honour the block list of the
+  // author's instance too (suspend drops it, silence strips its media).
+  let target = ctx;
+  const block = await getInstanceDomainBlock(ctx.db, authorHost).catch(() => null);
+  if (block) {
+    if (block.severity !== "silence") return;
+    target = { ...ctx, rejectMedia: block.rejectMedia, rejectReports: block.rejectReports };
+  }
+
+  await persistRemoteNote(target, toStore, relayActorId);
+
+  const stored = await getObjectById(ctx.db, objectId);
+  // A held status (remote media still caching) is announced by the cron.
+  if (!stored || stored.mediaPending) return;
+  if (stored.visibility !== "public" && stored.visibility !== "unlisted") return;
+  const author = await getActorById(ctx.db, stored.actorId);
+  if (!author || author.isLocal || !ctx.timelineStream) return;
+  try {
+    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
+    const serialized = serializeStatus(stored, author, new URL(ctx.baseUrl).hostname, { authorLastStatusAt: lastStatusAt });
+    await broadcastStatusCreatedToAudience(ctx.db, ctx.timelineStream, serialized, author);
+  } catch { /* streaming is best-effort */ }
+}
+
 async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<void> {
   const actorId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
   const rawObject = activity.object;
@@ -1394,6 +1498,16 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
   if (!announcerActor) return;
 
   const embedded = typeof rawObject === "object" && rawObject !== null ? rawObject as APNote : null;
+
+  // A known relay feeds the federated timeline only while its subscription is
+  // accepted: an announce from a disabled/rejected relay is ignored outright
+  // (never turned into a boost), and a subscribed one stores the original
+  // status instead of a boost.
+  const relay = await relayForActor(ctx.db, announcerActor);
+  if (relay) {
+    if (relay.state === "accepted") await storeRelayedStatus(ctx, actorId, objectId, embedded);
+    return;
+  }
 
   // If the boosted post is not yet stored locally, save it so it appears in the
   // federated timeline regardless of whether we follow the author. Mastodon
@@ -2299,7 +2413,7 @@ async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise
     await ctx.kv.put(`call:${callId}`, JSON.stringify(session), { expirationTtl: 600 });
   }
 
-  await broadcastCallEvent(ctx.timelineStream, callee.username, {
+  await broadcastEvent(ctx.timelineStream, callee.id, "call", {
     type: "call.incoming",
     callId,
     callType,
@@ -2319,9 +2433,8 @@ async function handleCallAnswer(activity: APActivity, ctx: InboxContext): Promis
 
   const callId = (obj.id as string ?? "").split("/").pop() ?? "";
   if (!(await authorizeCallEvent(ctx, activity, callId))) return;
-  const callerUsername = ctx.recipient.username;
 
-  await broadcastCallEvent(ctx.timelineStream, callerUsername, {
+  await broadcastEvent(ctx.timelineStream, ctx.recipient.id, "call", {
     type: "call.answered",
     callId,
     answerSdp: obj.sdp ?? "",
@@ -2346,7 +2459,7 @@ async function handleCallIceCandidate(activity: APActivity, ctx: InboxContext): 
 
   // Relay via streaming for real-time delivery to the recipient
   if (ctx.timelineStream) {
-    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+    await broadcastEvent(ctx.timelineStream, ctx.recipient.id, "call", {
       type: "call.ice",
       callId,
       candidate,
@@ -2363,7 +2476,7 @@ async function handleCallHangup(activity: APActivity, ctx: InboxContext): Promis
   if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
-    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+    await broadcastEvent(ctx.timelineStream, ctx.recipient.id, "call", {
       type: "call.ended",
       callId,
     });
@@ -2381,7 +2494,7 @@ async function handleCallRenegotiate(activity: APActivity, ctx: InboxContext): P
   if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
-    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+    await broadcastEvent(ctx.timelineStream, ctx.recipient.id, "call", {
       type: "call.renegotiate",
       callId,
       sdp: obj.sdp as string,
@@ -2400,7 +2513,7 @@ async function handleCallRenegotiateAnswer(activity: APActivity, ctx: InboxConte
   if (!(await authorizeCallEvent(ctx, activity, callId))) return;
 
   if (ctx.timelineStream) {
-    await broadcastCallEvent(ctx.timelineStream, ctx.recipient.username, {
+    await broadcastEvent(ctx.timelineStream, ctx.recipient.id, "call", {
       type: "call.renegotiate-answer",
       callId,
       sdp: obj.sdp as string,

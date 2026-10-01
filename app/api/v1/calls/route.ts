@@ -23,7 +23,7 @@ import {
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorByUsername, isBlocked } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
-import { broadcastCallEvent } from "@/lib/streaming/broadcast";
+import { broadcastEvent } from "@/lib/streaming/broadcast";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { CallSession, CallIncomingEvent } from "@/lib/types/call";
 
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (isLocalCallee) {
     // Fast path: push directly via streaming DO
-    await broadcastCallEvent(env.TIMELINE_STREAM, calleeUsername, incomingEvent);
+    await broadcastEvent(env.TIMELINE_STREAM, calleeId, "call", incomingEvent);
   } else {
     // Federation path: enqueue CallOffer AP activity for delivery
     const callOffer = buildCallOfferActivity(baseUrl, caller.id, calleeActor, callId, call_type, offer_sdp);

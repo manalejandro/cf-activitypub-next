@@ -6,14 +6,13 @@ import { join } from "node:path";
 import type { D1Database, D1Result } from "@cloudflare/workers-types";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { getFollow } from "@/lib/db";
-import { broadcastRelationshipChange, broadcastNotificationEvent } from "@/lib/streaming/broadcast";
+import { broadcastEvent, broadcastNotificationEvent } from "@/lib/streaming/broadcast";
 
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
-  broadcastRelationshipChange: vi.fn().mockResolvedValue(undefined),
+  broadcastEvent: vi.fn().mockResolvedValue(undefined),
   broadcastPublicStatus: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatus: vi.fn().mockResolvedValue(undefined),
-  broadcastCallEvent: vi.fn().mockResolvedValue(undefined),
   broadcastObjectDelete: vi.fn().mockResolvedValue(undefined),
   broadcastStatusInteraction: vi.fn().mockResolvedValue(undefined),
   broadcastStatusInteractionToLists: vi.fn().mockResolvedValue(undefined),
@@ -142,7 +141,7 @@ async function count(id: string): Promise<number> {
 describe("inbound Reject/Accept for outgoing follows", () => {
   beforeEach(async () => {
     db = await freshDb();
-    vi.mocked(broadcastRelationshipChange).mockClear();
+    vi.mocked(broadcastEvent).mockClear();
   });
 
   it("undoes the optimistic count and marks the follow rejected", async () => {
@@ -162,7 +161,7 @@ describe("inbound Reject/Accept for outgoing follows", () => {
 
     expect((await getFollow(db, LOCAL, REMOTE))?.state).toBe("rejected");
     expect(await count(LOCAL)).toBe(0);
-    expect(broadcastRelationshipChange).toHaveBeenCalledTimes(1);
+    expect(broadcastEvent).toHaveBeenCalledWith(expect.anything(), LOCAL, "relationship", { id: REMOTE });
   });
 
   it("does not touch counts when the rejected request was still pending", async () => {
@@ -215,7 +214,7 @@ describe("inbound Reject/Accept for outgoing follows", () => {
 
     expect((await getFollow(db, LOCAL, REMOTE))?.state).toBe("accepted");
     expect(await count(LOCAL)).toBe(1);
-    expect(broadcastRelationshipChange).toHaveBeenCalledTimes(1);
+    expect(broadcastEvent).toHaveBeenCalledWith(expect.anything(), LOCAL, "relationship", { id: REMOTE });
   });
 });
 

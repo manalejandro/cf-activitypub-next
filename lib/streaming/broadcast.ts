@@ -120,18 +120,6 @@ export async function broadcastNotificationEvent(
 }
 
 /**
- * Broadcast a WebRTC call event to a specific user's home channel.
- * The event type is "call" and the payload is the JSON-serialised CallEventPayload.
- */
-export async function broadcastCallEvent(
-  ns: DONamespace,
-  targetUsername: string,
-  payload: unknown
-): Promise<void> {
-  await broadcastToChannel(ns, `home:${targetUsername}`, "call", JSON.stringify(payload));
-}
-
-/**
  * Notify a user that their filters changed so clients can refetch them.
  * Mirrors Mastodon's `filters_changed` event on the home timeline channel.
  */
@@ -140,17 +128,20 @@ export async function broadcastFiltersChanged(ns: DONamespace, targetUsername: s
 }
 
 /**
- * Tell a local actor's open clients that one of their relationships changed
- * (a remote account accepted or rejected a follow) so profile pages refetch it
- * without a reload. No Mastodon event exists for this; our web UI listens for
- * `relationship` on the `user` stream.
+ * Send one typed event to a local actor's connected clients. This is the single
+ * generic emitter for everything that is not a timeline event: profile pages
+ * refetch a relationship when the inbox changes it (`relationship`), the call
+ * overlay receives its signalling messages (`call`)… The event name is the
+ * type and `data` is the JSON payload, so adding a new client-side notification
+ * never needs a new helper.
  */
-export async function broadcastRelationshipChange(
+export async function broadcastEvent(
   ns: DONamespace,
   targetActorId: string,
-  targetId: string
+  type: string,
+  data: unknown = {}
 ): Promise<void> {
-  await broadcastToChannel(ns, `home:${actorUsername(targetActorId)}`, "relationship", JSON.stringify({ id: targetId }));
+  await broadcastToChannel(ns, `home:${actorUsername(targetActorId)}`, type, JSON.stringify(data));
 }
 
 /**
@@ -340,7 +331,7 @@ export async function broadcastStatusInteraction(
  * the status was delivered — so clients update without a manual refresh.
  */
 export async function broadcastStatusRefresh(
-  db: AudienceDb,
+  db: StreamDb,
   ns: DONamespace,
   status: unknown,
   author: { id: string; isLocal: boolean }
@@ -377,11 +368,11 @@ export async function broadcastStatusInteractionToLists(
   } catch { /* ignore */ }
 }
 
-type AudienceDb = { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } };
+type StreamDb = { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } };
 
 /** Fan a status out to the author's audience using insert or replace events. */
 async function broadcastToAuthorAudience(
-  db: AudienceDb,
+  db: StreamDb,
   ns: DONamespace,
   status: unknown,
   author: { id: string; isLocal: boolean },
@@ -428,7 +419,7 @@ async function broadcastToAuthorAudience(
  * remote media was cached): home/public/list clients insert it in place.
  */
 export async function broadcastStatusCreatedToAudience(
-  db: AudienceDb,
+  db: StreamDb,
   ns: DONamespace,
   status: unknown,
   author: { id: string; isLocal: boolean }
