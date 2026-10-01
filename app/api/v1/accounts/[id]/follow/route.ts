@@ -45,7 +45,7 @@ export async function POST(
   }
 
   const existing = await getFollow(env.DB, actor.id, target.id);
-  if (existing) {
+  if (existing && existing.state !== "rejected") {
     return json(await buildRelationship(env.DB, actor.id, target.id));
   }
 
@@ -54,14 +54,28 @@ export async function POST(
   const followId = generateId();
   const followActivity = buildFollow(baseUrl, actor.id, target.id, followId);
 
-  await createFollow(env.DB, {
-    id: followId,
-    actorId: actor.id,
-    targetId: target.id,
-    state: target.manuallyApprovesFollowers ? "pending" : "accepted",
-    activityId: followActivity.id,
-    createdAt: new Date().toISOString(),
-  });
+  if (existing) {
+    // Re-follow after a rejection: reuse the row with a fresh Follow activity
+    // (the rejected activity id must not be replayed) and reset the state.
+    await env.DB
+      .prepare("UPDATE follows SET state = ?, activity_id = ?, created_at = ? WHERE id = ?")
+      .bind(
+        target.manuallyApprovesFollowers ? "pending" : "accepted",
+        followActivity.id,
+        new Date().toISOString(),
+        existing.id
+      )
+      .run();
+  } else {
+    await createFollow(env.DB, {
+      id: followId,
+      actorId: actor.id,
+      targetId: target.id,
+      state: target.manuallyApprovesFollowers ? "pending" : "accepted",
+      activityId: followActivity.id,
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   if (target.isLocal) {
     // Local follow — auto-accept if not locked

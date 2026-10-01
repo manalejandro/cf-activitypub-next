@@ -20,6 +20,7 @@ import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
@@ -265,13 +266,8 @@ function RemoteProfileInner() {
       const meData = await meRes.json() as Account;
       setMe(meData);
 
-      const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(acct.id)}`, { headers });
-      if (relRes.ok) {
-        const [rel] = await relRes.json() as Relationship[];
-        setRelationship(rel ?? null);
-      }
+      await refreshRelationship(acct.id);
     }
-
     // Load cached statuses, replies, pinned, followers, following and collections in parallel
     const [statusRes, repliesRes, pinnedRes, followersRes, followingRes, collectionsRes] = await Promise.all([
       fetch(`/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`, { headers }),
@@ -298,6 +294,16 @@ function RemoteProfileInner() {
     setLoading(false);
   }
 
+  /** Refetch the follow/block relationship shown for this account. */
+  async function refreshRelationship(targetId: string) {
+    const res = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(targetId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const [rel] = await res.json() as Relationship[];
+    setRelationship(rel ?? null);
+  }
+
   useEffect(() => {
     if (!actorUrl) return;
     // Remote profiles are only viewable by authenticated users.
@@ -305,6 +311,24 @@ function RemoteProfileInner() {
     void load(actorUrl);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actorUrl]);
+
+  // The remote account can accept or reject our follow at any time: the inbox
+  // broadcasts `relationship` on the user stream so the follow button updates
+  // without a reload.
+  useTimelineStream(
+    "user",
+    (event, payload) => {
+      if (event !== "relationship" || !account) return;
+      let target = "";
+      try {
+        target = (JSON.parse(payload) as { id?: string }).id ?? "";
+      } catch {
+        return;
+      }
+      if (target === account.id) void refreshRelationship(target);
+    },
+    { enabled: Boolean(token && account) }
+  );
 
   async function handleFollow() {
     if (!token || !account) return;

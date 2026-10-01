@@ -2638,6 +2638,21 @@ export async function deleteObject(db: D1Database, id: string): Promise<void> {
  */
 export async function deleteRemoteActorData(db: D1Database, actorId: string): Promise<void> {
   await db.batch([
+    // The actor's follow rows cascade away with it: undo their contribution to
+    // the counters of the local accounts involved (accepted rows only — a
+    // pending request never counted).
+    db
+      .prepare(
+        `UPDATE actors SET followers_count = CASE WHEN COALESCE(followers_count, 0) > 0 THEN followers_count - 1 ELSE 0 END
+         WHERE is_local = 1 AND id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')`
+      )
+      .bind(actorId),
+    db
+      .prepare(
+        `UPDATE actors SET following_count = CASE WHEN COALESCE(following_count, 0) > 0 THEN following_count - 1 ELSE 0 END
+         WHERE is_local = 1 AND id IN (SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted')`
+      )
+      .bind(actorId),
     db.prepare("DELETE FROM activities WHERE actor_id = ?").bind(actorId),
     db.prepare(
       `DELETE FROM notifications

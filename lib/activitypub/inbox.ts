@@ -58,7 +58,7 @@ import { fetchAndCacheRemoteActor } from "./remote";
 import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastCallEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastRelationshipChange } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
@@ -753,7 +753,16 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   if (!followerActor) return;
 
   const existing = await getFollow(ctx.db, actorId, targetId);
-  if (!existing) {
+  // A previously rejected request is not a permanent block: a fresh Follow
+  // re-opens it (Mastodon deletes the rejected follow; we keep the row so the
+  // rejection stays auditable, and reset it here).
+  const reopened = existing?.state === "rejected";
+  if (reopened && existing) {
+    await ctx.db
+      .prepare("UPDATE follows SET state = ?, activity_id = ? WHERE id = ?")
+      .bind(recipient.manuallyApprovesFollowers ? "pending" : "accepted", activity.id, existing.id)
+      .run();
+  } else if (!existing) {
     await createFollow(ctx.db, {
       id: generateId(),
       actorId,
@@ -763,6 +772,9 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
       createdAt: new Date().toISOString(),
     });
   }
+  // A re-opened request never counted (rejected rows never do), so it behaves
+  // like a brand-new follow for counters and notifications.
+  const isNew = !existing || reopened;
 
   if (!recipient.manuallyApprovesFollowers) {
     // Auto-accept: send Accept activity back to the remote server.
@@ -771,7 +783,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
     const acceptActivity = buildAccept(ctx.baseUrl, recipientInfo.id, activity, acceptId);
 
     // Only update counts and create notification for brand-new follows.
-    if (!existing) {
+    if (isNew) {
       // Atomic increment — avoids lost updates under concurrent deliveries.
       await ctx.db
         .prepare("UPDATE actors SET followers_count = COALESCE(followers_count, 0) + 1 WHERE id = ?")
@@ -805,7 +817,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
         recipientInfo.privateKeyPem
       );
     }
-  } else if (!existing) {
+  } else if (isNew) {
     const notif: LocalNotification = {
       id: generateId(),
       type: "follow_request",
@@ -836,6 +848,10 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
   if (rows && rows.target_id === signerId) {
     const wasPending = rows.state === "pending";
     await updateFollowState(ctx.db, rows.id, "accepted");
+    // The local follower's open profile page shows "requested" until now.
+    if (ctx.timelineStream) {
+      await broadcastRelationshipChange(ctx.timelineStream, rows.actor_id, rows.target_id);
+    }
     // Only update counts if the follow was pending (not already accepted optimistically)
     if (wasPending) {
       const follower = await getActorById(ctx.db, rows.actor_id);
@@ -862,11 +878,25 @@ async function handleReject(activity: APActivity, ctx: InboxContext): Promise<vo
   const rows = await ctx.db
     .prepare("SELECT * FROM follows WHERE activity_id = ?")
     .bind(followActivityId)
-    .first<{ id: string; target_id: string }>();
+    .first<{ id: string; target_id: string; actor_id: string; state: string }>();
 
   // Only the account that received the follow request may reject it.
   if (rows && rows.target_id === signerId) {
+    // Undo the optimistic increment from the follow route: a follow the remote
+    // just rejected must stop counting (a pending request never counted).
+    if (rows.state === "accepted") {
+      await ctx.db
+        .prepare(
+          "UPDATE actors SET following_count = CASE WHEN COALESCE(following_count, 0) > 0 THEN following_count - 1 ELSE 0 END WHERE id = ?"
+        )
+        .bind(rows.actor_id)
+        .run();
+    }
     await updateFollowState(ctx.db, rows.id, "rejected");
+    // The local follower's open profile page still shows "following".
+    if (ctx.timelineStream) {
+      await broadcastRelationshipChange(ctx.timelineStream, rows.actor_id, rows.target_id);
+    }
   }
 }
 

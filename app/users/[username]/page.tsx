@@ -24,6 +24,7 @@ import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/Em
 import { EmojiInput } from "@/components/EmojiInput";
 import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
 
@@ -335,15 +336,7 @@ export default function ProfilePage() {
       const meData = await meRes.json() as Me;
       setMe(meData);
 
-      if (meData.id !== acct.id) {
-        const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(acct.id)}`, {
-          headers: authHeaders,
-        });
-        if (relRes.ok) {
-          const [rel] = await relRes.json() as Relationship[];
-          setRelationship(rel ?? null);
-        }
-      }
+      if (meData.id !== acct.id) await refreshRelationship(acct.id);
     }
 
     // Load statuses
@@ -359,6 +352,15 @@ export default function ProfilePage() {
     setTabLoaded((p) => ({ ...p, posts: true }));
 
     setLoading(false);
+  }
+
+  /** Refetch the follow/block relationship shown on this profile. */
+  async function refreshRelationship(targetId: string) {
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(targetId)}`, { headers });
+    if (!res.ok) return;
+    const [rel] = await res.json() as Relationship[];
+    setRelationship(rel ?? null);
   }
 
   // Reset all user-specific state when navigating between profiles
@@ -393,6 +395,24 @@ export default function ProfilePage() {
     Promise.resolve().then(() => void load(routeUsername));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeUsername]);
+
+  // The remote account can accept or reject our follow at any time: the inbox
+  // broadcasts `relationship` on the user stream so the follow button updates
+  // without a reload.
+  useTimelineStream(
+    "user",
+    (event, payload) => {
+      if (event !== "relationship" || !account) return;
+      let target = "";
+      try {
+        target = (JSON.parse(payload) as { id?: string }).id ?? "";
+      } catch {
+        return;
+      }
+      if (target === account.id) void refreshRelationship(target);
+    },
+    { enabled: Boolean(token && account) }
+  );
 
   async function loadMorePosts() {
     if (!account || loadingMorePosts || !hasMorePosts || statuses.length === 0) return;

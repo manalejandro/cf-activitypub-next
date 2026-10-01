@@ -140,6 +140,20 @@ export async function broadcastFiltersChanged(ns: DONamespace, targetUsername: s
 }
 
 /**
+ * Tell a local actor's open clients that one of their relationships changed
+ * (a remote account accepted or rejected a follow) so profile pages refetch it
+ * without a reload. No Mastodon event exists for this; our web UI listens for
+ * `relationship` on the `user` stream.
+ */
+export async function broadcastRelationshipChange(
+  ns: DONamespace,
+  targetActorId: string,
+  targetId: string
+): Promise<void> {
+  await broadcastToChannel(ns, `home:${actorUsername(targetActorId)}`, "relationship", JSON.stringify({ id: targetId }));
+}
+
+/**
  * Broadcast a status deletion to all relevant channels.
  */
 export async function broadcastDelete(

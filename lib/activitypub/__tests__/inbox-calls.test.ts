@@ -9,6 +9,7 @@ import { broadcastCallEvent } from "@/lib/streaming/broadcast";
 
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastRelationshipChange: vi.fn().mockResolvedValue(undefined),
   broadcastPublicStatus: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatus: vi.fn().mockResolvedValue(undefined),
   broadcastCallEvent: vi.fn().mockResolvedValue(undefined),
