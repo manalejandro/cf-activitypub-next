@@ -29,6 +29,8 @@ import {
   enableRelay,
   normalizeRelayInbox,
   relayMatchesActor,
+  acceptedRelayInboxes,
+  withRelayInboxes,
 } from "@/lib/activitypub/relays";
 import type { LocalRelay } from "@/lib/types";
 
@@ -70,6 +72,42 @@ describe("relayMatchesActor", () => {
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", inbox: "https://relay.example/inbox" })).toBe(true);
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor" })).toBe(true);
     expect(relayMatchesActor(RELAY, { id: "https://evil.example/actor", inbox: "https://evil.example/inbox" })).toBe(false);
+  });
+});
+
+describe("relay delivery targets", () => {
+  function fakeDb(rows: { inbox_url: string }[]) {
+    return {
+      prepare: () => ({ bind: () => ({ all: async () => ({ results: rows }) }) }),
+    };
+  }
+
+  it("returns the inbox of every accepted relay", async () => {
+    const inboxes = await acceptedRelayInboxes(
+      fakeDb([{ inbox_url: "https://relay.example/inbox" }, { inbox_url: "https://relay2.example/inbox" }]) as never
+    );
+    expect(inboxes).toEqual(["https://relay.example/inbox", "https://relay2.example/inbox"]);
+  });
+
+  it("answers no relays when the table is missing", async () => {
+    const broken = {
+      prepare: () => {
+        throw new Error("no such table: relays");
+      },
+    };
+    expect(await acceptedRelayInboxes(broken as never)).toEqual([]);
+  });
+
+  it("adds the relay inboxes to a public status only", async () => {
+    const db = fakeDb([{ inbox_url: "https://relay.example/inbox" }]) as never;
+
+    expect(await withRelayInboxes(db, "public", ["https://a.example/inbox"])).toEqual([
+      "https://a.example/inbox",
+      "https://relay.example/inbox",
+    ]);
+    for (const visibility of ["unlisted", "private", "direct"]) {
+      expect(await withRelayInboxes(db, visibility, ["https://a.example/inbox"])).toEqual(["https://a.example/inbox"]);
+    }
   });
 });
 

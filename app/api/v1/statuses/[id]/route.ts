@@ -9,6 +9,7 @@ import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
+import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
@@ -328,8 +329,9 @@ export async function PUT(
       return cached as unknown as APActor | null;
     };
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    if (inboxes.length > 0) {
-      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(updateActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+    const targets = await withRelayInboxes(env.DB, obj.visibility, inboxes);
+    if (targets.length > 0) {
+      await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(updateActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
   }
 
@@ -400,8 +402,9 @@ export async function DELETE(
       return cached as unknown as APActor | null;
     };
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    if (inboxes.length > 0) {
-      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+    const targets = await withRelayInboxes(env.DB, obj.visibility, inboxes);
+    if (targets.length > 0) {
+      await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(deleteActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
   }
 

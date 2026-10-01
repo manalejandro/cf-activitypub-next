@@ -33,6 +33,7 @@ import {
   isLocalIRI,
 } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
+import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
@@ -716,9 +717,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     const followerIds = followers.results.map((r) => r.actor_id);
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
     inboxes.push(...mentionInboxes, ...quoteAuthorInboxes);
-    if (inboxes.length > 0) {
+    // Public statuses also go to every subscribed relay so it can re-broadcast
+    // them to its other subscribers.
+    const targets = await withRelayInboxes(env.DB, visibility, inboxes);
+    if (targets.length > 0) {
       // Use queue for reliable delivery with automatic retries
-      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+      await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
   }
 

@@ -22,6 +22,7 @@ import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
+import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
@@ -768,9 +769,13 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           });
         }
       }
-      if (inboxes.length > 0 && visibility !== "direct") {
+      if (visibility !== "direct") {
         const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
-        await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+        // Public scheduled posts also go to every subscribed relay.
+        const targets = await withRelayInboxes(env.DB, visibility, inboxes);
+        if (targets.length > 0) {
+          await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+        }
       }
 
       // Live streaming: public/local channels + the author's and local
@@ -931,12 +936,14 @@ async function executeScheduled(env: Env): Promise<void> {
           return cached as unknown as APActor | null;
         };
         const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
+        // Public auto-deleted statuses are also removed from the relays.
+        const relayInboxes = await acceptedRelayInboxes(env.DB);
 
-        if (inboxes.length > 0) {
-          for (const obj of objects.results) {
-            const deleteActivity = buildDelete(baseUrl, localActor.id, obj.id, generateId());
-            await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), localActor.id, `${localActor.id}#main-key`, localActor.privateKeyPem);
-          }
+        for (const obj of objects.results) {
+          const targets = obj.visibility === "public" ? [...inboxes, ...relayInboxes] : inboxes;
+          if (targets.length === 0) continue;
+          const deleteActivity = buildDelete(baseUrl, localActor.id, obj.id, generateId());
+          await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(deleteActivity), localActor.id, `${localActor.id}#main-key`, localActor.privateKeyPem);
         }
       }
     }

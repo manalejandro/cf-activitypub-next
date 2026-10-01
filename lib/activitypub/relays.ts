@@ -91,6 +91,39 @@ export async function relayForActor(
 }
 
 /**
+ * Inboxes of the relays this instance is subscribed to. A public status is
+ * delivered there so the relay re-broadcasts it to every other subscriber
+ * (Mastodon's `StatusReachFinder#relay_inboxes`). A DB without the relays
+ * migration answers [] and delivery keeps working.
+ */
+export async function acceptedRelayInboxes(db: D1Database): Promise<string[]> {
+  try {
+    const rows = await db
+      .prepare("SELECT inbox_url FROM relays WHERE state = 'accepted'")
+      .bind()
+      .all<{ inbox_url: string }>();
+    return (rows.results ?? []).map((row) => row.inbox_url);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Delivery targets for a local status: the given inboxes plus every subscribed
+ * relay when the status is public (relays never receive unlisted/private/direct
+ * posts). Relay delivery is what puts the post on the relay for its other
+ * subscribers.
+ */
+export async function withRelayInboxes(
+  db: D1Database,
+  visibility: string,
+  inboxes: string[]
+): Promise<string[]> {
+  if (visibility !== "public") return inboxes;
+  return [...inboxes, ...(await acceptedRelayInboxes(db))];
+}
+
+/**
  * Subscribe: send the relay Follow signed by the reserved instance actor and
  * move the row to `pending`. Returns the updated relay (null when the instance
  * has no signing actor at all).
