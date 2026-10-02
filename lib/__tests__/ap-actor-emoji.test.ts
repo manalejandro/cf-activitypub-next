@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { buildActor } from "@/lib/activitypub/utils";
+import { buildActor, buildNote } from "@/lib/activitypub/utils";
 import { emojiImgsToShortcodes } from "@/lib/activitypub/content";
 
 const EMOJI_IMG =
@@ -16,6 +16,27 @@ describe("emojiImgsToShortcodes", () => {
     expect(emojiImgsToShortcodes(photo)).toBe(photo);
     expect(emojiImgsToShortcodes("sin emojis")).toBe("sin emojis");
     expect(emojiImgsToShortcodes("")).toBe("");
+  });
+});
+
+describe("buildNote", () => {
+  it("sends shortcodes in the AP content (Mastodon drops rendered images)", () => {
+    const note = buildNote("https://cf-ap.com", "abc-123", {
+      actorUsername: "manalejandro",
+      content: `<p>hola ${EMOJI_IMG}</p>`,
+      published: "2026-10-02T00:00:00Z",
+      visibility: "public",
+      tags: [
+        {
+          type: "Emoji",
+          name: ":cfactivitypub:",
+          icon: { type: "Image", id: "https://cf-ap.com/api/media/emoji/cfactivitypub/abc.png", url: "https://cf-ap.com/api/media/emoji/cfactivitypub/abc.png" },
+        },
+      ],
+    });
+
+    expect(note.content).toBe("<p>hola :cfactivitypub:</p>");
+    expect((note.tag as { name: string }[])[0].name).toBe(":cfactivitypub:");
   });
 });
 

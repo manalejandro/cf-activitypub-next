@@ -231,7 +231,7 @@ export function buildNote(
     id: noteId,
     type: "Note",
     attributedTo: actorId,
-    content: options.content + locationLink,
+    content: emojiImgsToShortcodes(options.content) + locationLink,
     published: options.published,
     to,
     cc,
@@ -263,8 +263,12 @@ export function buildNote(
   };
 
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
-  if (options.sensitive && options.summary) note.summary = options.summary;
-  if (options.language) note.contentMap = { [options.language]: options.content };
+  // Mastodon sends the *source* note in ActivityPub (shortcodes + the Emoji
+  // tags) and renders the emojis itself: a rendered `<img>` is dropped by its
+  // sanitizer (MASTODON_STRICT has no `img`) and the emoji disappears. The
+  // REST API keeps the rendered HTML.
+  if (options.sensitive && options.summary) note.summary = emojiImgsToShortcodes(options.summary);
+  if (options.language) note.contentMap = { [options.language]: emojiImgsToShortcodes(options.content) };
   if (options.tags && options.tags.length > 0) note.tag = options.tags;
   const apAttachments = [...(options.attachments ?? []), ...locationAttachments];
   if (apAttachments.length > 0) note.attachment = apAttachments;

@@ -58,11 +58,18 @@ function buildReplacements(
       const [full, code] = m;
       const emoji = emojiMap.get(code);
       if (emoji) {
+        // Mastodon's Emoji tag declares the real media type of the image
+        // (a GIF emoji announced as image/png is rejected by stricter peers).
+        const mediaType = /\.gif(\?|$)/i.test(emoji.url)
+          ? "image/gif"
+          : /\.jpe?g(\?|$)/i.test(emoji.url)
+            ? "image/jpeg"
+            : "image/png";
         add(
           m.index!,
           m.index! + full.length,
           `<img src="${emoji.url}" alt=":${code}:" class="emojione custom-emoji" rel="emoji" title=":${code}:" width="16" height="16" />`,
-          { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emoji.url, url: emoji.url, mediaType: "image/png" } }
+          { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emoji.url, url: emoji.url, mediaType } }
         );
       }
     }
