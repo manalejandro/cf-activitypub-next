@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "Скрыть рекомендацию",
   "explore_suggested_friends": "Подписаны аккаунты, на которые вы подписаны",
   "explore_suggested_global": "Популярно на этом сервере",
+  "explore_suggested_new_instances": "Популярное на серверах, новых для этой инстанции",
   "admin_instances": "Инстансы",
   "admin_instances_desc": "Удалённые серверы, с которыми федерация у этого инстанса. Метаданные берутся из NodeInfo; доступность основана на трекере ошибок доставки Mastodon.",
   "admin_instances_search_ph": "Поиск домена…",

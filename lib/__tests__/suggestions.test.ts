@@ -213,6 +213,36 @@ describe("getAccountSuggestions", () => {
     expect(dismissed.map((s) => s.actor.id)).not.toContain("https://remote.example/users/remote-pop");
   });
 
+  it("suggests popular accounts from instances nobody here follows yet", async () => {
+    await insertActor(db, "https://new.example/users/popular", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z", followers: 500 });
+    await insertActor(db, "https://new.example/users/quiet", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z", followers: 0 });
+    await insertActor(db, "https://known.example/users/popular", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z", followers: 900 });
+    await insertActor(db, "https://local.example/users/someone", { isLocal: true });
+    // One local follow on `known.example` is enough to take the whole instance
+    // out of the new-instances pool (that is the point: widen the federation).
+    await insertFollow(db, "https://local.example/users/someone", "https://known.example/users/popular");
+
+    const out = await getAccountSuggestions(db, null);
+    const byId = new Map(out.map((s) => [s.actor.id, s.source]));
+    expect(byId.get("https://new.example/users/popular")).toBe("new_instances");
+    expect(byId.get("https://known.example/users/popular")).toBe("global");
+    // Advertised follower count is the popularity signal for unknown servers.
+    expect(out.map((s) => s.actor.id)).not.toContain("https://new.example/users/quiet");
+  });
+
+  it("keeps accounts of suspended instances out of every pool", async () => {
+    await insertActor(db, "https://blocked.example/users/popular", { isLocal: false, lastStatusAt: "2026-03-01T00:00:00Z", followers: 900 });
+    await insertActor(db, "https://local.example/users/someone", { isLocal: true });
+    await insertFollow(db, "https://local.example/users/someone", "https://blocked.example/users/popular");
+    await db
+      .prepare("INSERT INTO instance_domain_blocks (domain, severity) VALUES (?, 'suspend')")
+      .bind("blocked.example")
+      .run();
+
+    const out = await getAccountSuggestions(db, null);
+    expect(out.map((s) => s.actor.id)).not.toContain("https://blocked.example/users/popular");
+  });
+
   it("supports limit/offset and keeps dismissals idempotent", async () => {
     await insertActor(db, "https://local.example/users/a", { isLocal: true, lastStatusAt: "2026-03-01T00:00:00Z" });
     await insertActor(db, "https://local.example/users/b", { isLocal: true, lastStatusAt: "2026-02-01T00:00:00Z" });

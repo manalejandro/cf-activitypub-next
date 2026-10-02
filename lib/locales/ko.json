@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "추천 숨기기",
   "explore_suggested_friends": "팔로우하는 계정이 팔로우함",
   "explore_suggested_global": "이 인스턴스에서 인기",
+  "explore_suggested_new_instances": "이 인스턴스에 새로운 서버에서 인기",
   "admin_instances": "인스턴스",
   "admin_instances_desc": "이 인스턴스가 연합하는 원격 서버. 메타데이터는 NodeInfo에서 가져오며, 가용성은 Mastodon의 전송 실패 추적기를 따릅니다.",
   "admin_instances_search_ph": "도메인 검색…",

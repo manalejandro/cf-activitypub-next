@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "Vorschlag ausblenden",
   "explore_suggested_friends": "Gefolgt von Konten, denen du folgst",
   "explore_suggested_global": "Beliebt auf dieser Instanz",
+  "explore_suggested_new_instances": "Beliebt auf Servern, die diese Instanz noch nicht kennt",
   "admin_instances": "Instanzen",
   "admin_instances_desc": "Remote-Server, mit denen diese Instanz föderiert. Metadaten kommen von NodeInfo; die Verfügbarkeit folgt Mastodons Zustellfehler-Tracker.",
   "admin_instances_search_ph": "Domain suchen…",

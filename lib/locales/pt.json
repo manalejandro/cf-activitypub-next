@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "Dispensar sugestão",
   "explore_suggested_friends": "Seguida por contas que você segue",
   "explore_suggested_global": "Popular nesta instância",
+  "explore_suggested_new_instances": "Popular em servidores novos para esta instância",
   "admin_instances": "Instâncias",
   "admin_instances_desc": "Servidores remotos com os quais esta instância federa. Os metadados vêm do NodeInfo; a disponibilidade segue o rastreador de falhas de entrega do Mastodon.",
   "admin_instances_search_ph": "Pesquisar domínio…",

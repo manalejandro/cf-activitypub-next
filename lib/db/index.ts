@@ -1076,7 +1076,7 @@ function rowToCollection(r: Row): CollectionRow {
 
 export interface AccountSuggestion {
   actor: LocalActor;
-  source: "friends_of_friends" | "global";
+  source: "friends_of_friends" | "global" | "new_instances";
 }
 
 /**
@@ -1091,6 +1091,13 @@ export interface AccountSuggestion {
  */
 /** Rows fetched per pool: enough to shuffle ties without depending on `wanted`. */
 const SUGGESTION_POOL_LIMIT = 200;
+
+/**
+ * One slot in `SUGGESTION_FRESH_EVERY` comes from the "new instances" pool.
+ * Friends-of-friends and popular-on-this-instance alone fill every slot, so
+ * accounts from servers nobody here follows would never surface at all.
+ */
+const SUGGESTION_FRESH_EVERY = 5;
 
 /**
  * Stable per-day pseudo-random key (FNV-1a of `seed:id`).
@@ -1134,6 +1141,7 @@ export async function getAccountSuggestions(
          WHERE f1.actor_id = ? AND f1.state = 'accepted'
            AND f2.target_id != ?
            AND a.suspended = 0 AND a.silenced = 0
+           AND NOT EXISTS (SELECT 1 FROM instance_domain_blocks idb WHERE idb.domain = a.domain AND idb.severity = 'suspend')
            AND NOT EXISTS (SELECT 1 FROM follows mf WHERE mf.actor_id = ? AND mf.target_id = f2.target_id)
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.actor_id = ? AND b.target_id = f2.target_id)
            AND NOT EXISTS (SELECT 1 FROM mutes m WHERE m.actor_id = ? AND m.target_id = f2.target_id)
@@ -1148,7 +1156,11 @@ export async function getAccountSuggestions(
     for (const row of fofOrdered) picked.set(row.id, "friends_of_friends");
   }
 
-  const exclude: string[] = [];
+  const exclude: string[] = [
+    // Accounts of an instance we suspended must never be suggested (the pools
+    // below only checked the actor flags, so a suspended server could leak in).
+    "NOT EXISTS (SELECT 1 FROM instance_domain_blocks idb WHERE idb.domain = a.domain AND idb.severity = 'suspend')",
+  ];
   const binds: unknown[] = [];
   if (viewerId) {
     exclude.push("a.id != ?", "NOT EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = ? AND f.target_id = a.id)",
@@ -1226,7 +1238,51 @@ export async function getAccountSuggestions(
     if (!picked.has(row.id)) picked.set(row.id, "global");
   }
 
-  const ordered = [...picked.entries()].slice(0, wanted).slice(offset, offset + limit);
+  // Popular accounts on instances nobody here follows yet: the pools above can
+  // only rank accounts reachable through the local follow graph, so servers
+  // with no local follow never surface and the federation stays closed. There
+  // is no local signal for "popular" there, so this uses the follower count the
+  // actor advertises in its AP document.
+  const fresh = await db
+    .prepare(
+      `SELECT a.id, COALESCE(a.followers_count, 0) AS remote_followers
+       FROM actors a
+       LEFT JOIN (
+         SELECT DISTINCT af.domain AS domain
+         FROM follows f
+         JOIN actors af ON af.id = f.target_id
+         JOIN actors lf ON lf.id = f.actor_id AND lf.is_local = 1
+         WHERE f.state = 'accepted'
+       ) followed_domain ON followed_domain.domain = a.domain
+       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+         AND a.last_status_at IS NOT NULL
+         AND COALESCE(a.followers_count, 0) > 0
+         AND followed_domain.domain IS NULL
+         ${excludedSql}
+       ORDER BY a.last_status_at DESC, a.id
+       LIMIT ?`
+    )
+    .bind(...binds, SUGGESTION_POOL_LIMIT)
+    .all<{ id: string; remote_followers: number }>();
+  const freshOrdered = [...(fresh.results ?? [])].sort(
+    (a, b) => b.remote_followers - a.remote_followers || rank(a.id) - rank(b.id)
+  );
+  const freshIds = freshOrdered.map((row) => row.id).filter((id) => !picked.has(id));
+
+  // Interleave the fresh pool: the other pools fill every slot on a busy
+  // instance, so without a reserved share these accounts would never appear.
+  const base = [...picked.entries()].slice(0, wanted);
+  const freshQueue = [...freshIds];
+  const merged: [string, AccountSuggestion["source"]][] = [];
+  for (let i = 0; i < base.length; i++) {
+    if (freshQueue.length > 0 && (i + 1) % SUGGESTION_FRESH_EVERY === 0) {
+      merged.push([freshQueue.shift()!, "new_instances"]);
+    }
+    merged.push(base[i]);
+  }
+  merged.push(...freshQueue.map((id) => [id, "new_instances"] as [string, AccountSuggestion["source"]]));
+
+  const ordered = merged.slice(offset, offset + limit);
   const actors = await getActorsByIds(db, ordered.map(([id]) => id));
   return ordered
     .map(([id, source]) => {

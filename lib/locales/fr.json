@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "Ignorer la suggestion",
   "explore_suggested_friends": "Suivi par des comptes que vous suivez",
   "explore_suggested_global": "Populaire sur cette instance",
+  "explore_suggested_new_instances": "Populaire sur des serveurs encore inconnus de cette instance",
   "admin_instances": "Instances",
   "admin_instances_desc": "Serveurs distants avec lesquels cette instance fédère. Les métadonnées viennent de NodeInfo ; la disponibilité suit le suivi des échecs de livraison de Mastodon.",
   "admin_instances_search_ph": "Rechercher un domaine…",

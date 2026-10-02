@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "忽略推荐",
   "explore_suggested_friends": "你关注的账号也关注了",
   "explore_suggested_global": "本实例热门",
+  "explore_suggested_new_instances": "在这台实例尚未接触的服务器上受欢迎",
   "admin_instances": "实例",
   "admin_instances_desc": "本实例与之联合的远程服务器。元数据来自 NodeInfo；可用性遵循 Mastodon 的投递失败跟踪器。",
   "admin_instances_search_ph": "搜索域名…",

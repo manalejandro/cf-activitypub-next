@@ -909,6 +909,7 @@
   "explore_suggested_dismiss": "おすすめを非表示",
   "explore_suggested_friends": "フォロー中のアカウントがフォロー",
   "explore_suggested_global": "このインスタンスで人気",
+  "explore_suggested_new_instances": "このインスタンスにとって新しいサーバーで人気",
   "admin_instances": "インスタンス",
   "admin_instances_desc": "このインスタンスが連合しているリモートサーバー。メタデータはNodeInfoから取得し、可用性はMastodonの配信失敗トラッカーに従います。",
   "admin_instances_search_ph": "ドメインを検索…",

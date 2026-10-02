@@ -493,7 +493,11 @@ function AccountCard({ account, source, onDismiss }: { account: Account; source?
           {isRemote && <span style={{ fontSize: "0.68rem", padding: "0.1rem 0.35rem", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}><Icon name="globe" /> {t.explore_tip_remote}</span>}
           {source && (
             <span style={{ fontSize: "0.68rem", padding: "0.1rem 0.35rem", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
-              {source === "friends_of_friends" ? t.explore_suggested_friends : t.explore_suggested_global}
+              {source === "friends_of_friends"
+                ? t.explore_suggested_friends
+                : source === "new_instances"
+                  ? t.explore_suggested_new_instances
+                  : t.explore_suggested_global}
             </span>
           )}
         </div>
