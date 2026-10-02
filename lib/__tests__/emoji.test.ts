@@ -16,7 +16,7 @@ describe("renderEmojiInHtml", () => {
     expect(result).toContain('<img src="https://example.com/blobaww.png"');
     expect(result).toContain('alt=":blobaww:"');
     expect(result).toContain('title=":blobaww:"');
-    expect(result).toContain('class="emojione"');
+    expect(result).toContain("emojione");
   });
 
   it("replaces multiple shortcodes", () => {

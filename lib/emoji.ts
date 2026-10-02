@@ -28,7 +28,7 @@ export function renderEmojiInHtml(
     if (tag) return tag;
     const emoji = emojiMap.get(shortcode);
     if (!emoji) return match;
-    return `<img src="${emoji.url}" alt=":${shortcode}:" class="emojione" title=":${shortcode}:" width="16" height="16" />`;
+    return `<img src="${emoji.url}" alt=":${shortcode}:" class="emojione custom-emoji" rel="emoji" title=":${shortcode}:" width="16" height="16" />`;
   });
 }
 

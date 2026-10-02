@@ -1,4 +1,5 @@
 import { DEFAULT_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
+import { emojiImgsToShortcodes } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
 
@@ -106,8 +107,8 @@ export function buildActor(
     id,
     type: options.isBot ? "Service" : "Person",
     preferredUsername: username,
-    name: options.displayName ?? username,
-    summary: options.summary ?? "",
+    name: emojiImgsToShortcodes(options.displayName ?? username),
+    summary: emojiImgsToShortcodes(options.summary ?? ""),
     url: `${baseUrl}/@${username}`,
     inbox: inboxIRI(baseUrl, username),
     outbox: outboxIRI(baseUrl, username),

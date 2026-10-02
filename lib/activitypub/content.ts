@@ -61,7 +61,7 @@ function buildReplacements(
         add(
           m.index!,
           m.index! + full.length,
-          `<img src="${emoji.url}" alt=":${code}:" class="emojione" title=":${code}:" width="16" height="16" />`,
+          `<img src="${emoji.url}" alt=":${code}:" class="emojione custom-emoji" rel="emoji" title=":${code}:" width="16" height="16" />`,
           { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emoji.url, url: emoji.url, mediaType: "image/png" } }
         );
       }
@@ -195,6 +195,25 @@ export function statusHtmlToPlain(html: string): string {
  * emoji) WITHOUT paragraph wrapping. Used for profile bios and field values,
  * where a <p> wrapper would add unwanted block margins.
  */
+/**
+ * Turn the emoji `<img>` tags we render for local content back into
+ * `:shortcode:` text.
+ *
+ * Mastodon's actor documents carry the *source* note (shortcodes) plus the
+ * `tag` array and render the emojis themselves; a summary that only holds an
+ * `<img>` shows no emoji at all there (their sanitizer drops the image and the
+ * emoji formatter has no shortcode to replace). Notes keep the image (Mastodon
+ * sends emoji images in note content), actors send the shortcode.
+ */
+export function emojiImgsToShortcodes(html: string): string {
+  if (!html || !html.includes("emojione")) return html;
+  return html.replace(/<img\b[^>]*>/g, (tag) => {
+    if (!/class="[^"]*\bemojione\b/.test(tag)) return tag;
+    const alt = tag.match(/\balt=":([a-zA-Z0-9_]+):"/);
+    return alt ? `:${alt[1]}:` : tag;
+  });
+}
+
 export function linkifyInline(
   text: string,
   baseUrl?: string,
