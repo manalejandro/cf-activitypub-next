@@ -1,5 +1,5 @@
 import { DEFAULT_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
-import { emojiImgsToShortcodes } from "./content";
+import { emojiImgsToShortcodes, fieldValueForVerification } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
 
@@ -141,7 +141,7 @@ export function buildActor(
     actor.attachment = options.fields.map((f) => ({
       type: "PropertyValue",
       name: f.name,
-      value: f.value,
+      value: fieldValueForVerification(f.value),
     }));
   }
   if (options.tags && options.tags.length > 0) {

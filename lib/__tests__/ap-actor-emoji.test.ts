@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { buildActor, buildNote } from "@/lib/activitypub/utils";
-import { emojiImgsToShortcodes } from "@/lib/activitypub/content";
+import { emojiImgsToShortcodes, fieldValueForVerification } from "@/lib/activitypub/content";
 
 const EMOJI_IMG =
   '<img src="https://cf-ap.com/api/media/emoji/cfactivitypub/abc.png" alt=":cfactivitypub:" class="emojione custom-emoji" rel="emoji" title=":cfactivitypub:" width="16" height="16" />';
@@ -16,6 +16,35 @@ describe("emojiImgsToShortcodes", () => {
     expect(emojiImgsToShortcodes(photo)).toBe(photo);
     expect(emojiImgsToShortcodes("sin emojis")).toBe("sin emojis");
     expect(emojiImgsToShortcodes("")).toBe("");
+  });
+});
+
+describe("profile field verification", () => {
+  it("wraps https field values in an anchor (a plain URL is never verified)", () => {
+    expect(fieldValueForVerification("https://manalejandro.com")).toBe(
+      '<a href="https://manalejandro.com" rel="me">https://manalejandro.com</a>'
+    );
+    expect(fieldValueForVerification("https://manalejandro.dev?a=1&b=2")).toBe(
+      '<a href="https://manalejandro.dev?a=1&amp;b=2" rel="me">https://manalejandro.dev?a=1&amp;b=2</a>'
+    );
+  });
+
+  it("leaves values that are not https URLs as typed", () => {
+    expect(fieldValueForVerification("@manalejandro")).toBe("@manalejandro");
+    expect(fieldValueForVerification("manalejandro.dev")).toBe("manalejandro.dev");
+    expect(fieldValueForVerification("http://manalejandro.com")).toBe("http://manalejandro.com");
+  });
+
+  it("emits the anchor in the actor attachment", () => {
+    const actor = buildActor("https://cf-ap.com", "manalejandro", {
+      publicKeyPem: "pem",
+      fields: [{ name: "Web", value: "https://manalejandro.com" }],
+    } as never);
+
+    const attachment = actor.attachment as { value: string }[];
+    expect(attachment[0].value).toBe(
+      '<a href="https://manalejandro.com" rel="me">https://manalejandro.com</a>'
+    );
   });
 });
 

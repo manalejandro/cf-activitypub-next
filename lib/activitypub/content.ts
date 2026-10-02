@@ -221,6 +221,19 @@ export function emojiImgsToShortcodes(html: string): string {
   });
 }
 
+/**
+ * Profile-field values are verified by the *receiving* instance: Mastodon's
+ * `Account::Field#extract_url_from_html` only accepts a single anchor whose
+ * `href` equals its text, so a plain URL never becomes verifiable and the field
+ * never gets its checkmark. Wrap https values; leave anything else as typed.
+ */
+export function fieldValueForVerification(value: string): string {
+  const url = value.trim();
+  if (!/^https:\/\/[^\s<>"]+$/i.test(url)) return value;
+  const escaped = url.replace(/&/g, "&amp;");
+  return `<a href="${escaped}" rel="me">${escaped}</a>`;
+}
+
 export function linkifyInline(
   text: string,
   baseUrl?: string,
