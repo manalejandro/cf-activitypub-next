@@ -286,8 +286,10 @@ export interface LocalLicense {
   id: string;
   name: string;
   url: string;
-  /** Optional Fork Awesome override; empty means "derive from the URL". */
+  /** Optional badge image URL (empty = use the badge text or the derived badge). */
   icon: string;
+  /** Admin-set badge letters shown as the badge (wins over the image). */
+  badgeText: string;
   sortOrder: number;
   createdAt: string;
 }

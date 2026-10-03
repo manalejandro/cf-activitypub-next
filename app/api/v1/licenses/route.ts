@@ -18,6 +18,8 @@ export async function GET(): Promise<Response> {
       // Serve the R2 copy while the media cache holds it: clients never
       // hotlink the origin (licensebuttons.net, a peer's instance…).
       icon: (await cachedMediaUrl(env.DB, license.icon)) ?? license.icon,
+      // Admin-set badge letters: what the operator edits in the admin screen.
+      badgeText: license.badgeText,
       // Badges of a known license URI, so clients without the image (or with a
       // custom license that has none) can still draw something meaningful.
       badges: licenseIconsForUrl(license.url),

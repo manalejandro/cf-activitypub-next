@@ -17,6 +17,8 @@ export interface ClientLicense {
   url: string;
   /** Icon image URL set by the admin (empty when the instance has none). */
   icon: string;
+  /** Badge letters set by the admin (empty = image, known badge or derived letters). */
+  badgeText?: string;
   /** Fork Awesome badges derived from the URI (empty for unknown licenses). */
   badges?: string;
 }
@@ -53,15 +55,18 @@ export type LicenseVisual =
   | { kind: "text"; label: string };
 
 /**
- * Resolution order: the icon image the instance (or the origin instance) set,
- * the badges of a known license URI, and finally the letters of its id — a
- * custom license from another instance shows `MI-LICENCIA` until we learn more.
+ * Resolution order: the badge letters the admin set, the icon image, the badges
+ * of a known license URI, and finally the letters of its id — a custom license
+ * from another instance shows `MI-LICENCIA` until we learn more.
  */
 export function licenseVisual(license: {
+  badgeText?: string | null;
   icon?: string | null;
   badges?: string | null;
   url: string;
 }): LicenseVisual {
+  const text = (license.badgeText ?? "").trim();
+  if (text) return { kind: "text", label: text };
   if (license.icon) return { kind: "image", src: license.icon };
   const badges = license.badges || licenseIconsForUrl(license.url);
   if (badges) return { kind: "icons", names: badges.split(" ") };

@@ -2917,6 +2917,7 @@ function rowToLicense(r: Row): LocalLicense {
     name: r.name,
     url: r.url,
     icon: r.icon ?? "",
+    badgeText: r.badge_text ?? "",
     sortOrder: r.sort_order ?? 100,
     createdAt: r.created_at,
   };
@@ -2942,21 +2943,22 @@ export async function getLicenseByUrl(db: D1Database, url: string): Promise<Loca
 
 export async function createLicense(db: D1Database, license: LocalLicense): Promise<void> {
   await db
-    .prepare("INSERT INTO licenses (id, name, url, icon, sort_order) VALUES (?,?,?,?,?)")
-    .bind(license.id, license.name, license.url, license.icon, license.sortOrder)
+    .prepare("INSERT INTO licenses (id, name, url, icon, badge_text, sort_order) VALUES (?,?,?,?,?,?)")
+    .bind(license.id, license.name, license.url, license.icon, license.badgeText, license.sortOrder)
     .run();
 }
 
 export async function updateLicense(
   db: D1Database,
   id: string,
-  patch: { name?: string; url?: string; icon?: string; sortOrder?: number }
+  patch: { name?: string; url?: string; icon?: string; badgeText?: string; sortOrder?: number }
 ): Promise<void> {
   const sets: string[] = [];
   const args: unknown[] = [];
   if (patch.name !== undefined) { sets.push("name = ?"); args.push(patch.name); }
   if (patch.url !== undefined) { sets.push("url = ?"); args.push(patch.url); }
   if (patch.icon !== undefined) { sets.push("icon = ?"); args.push(patch.icon); }
+  if (patch.badgeText !== undefined) { sets.push("badge_text = ?"); args.push(patch.badgeText); }
   if (patch.sortOrder !== undefined) { sets.push("sort_order = ?"); args.push(patch.sortOrder); }
   if (sets.length === 0) return;
   await db.prepare(`UPDATE licenses SET ${sets.join(", ")} WHERE id = ?`).bind(...args, id).run();
