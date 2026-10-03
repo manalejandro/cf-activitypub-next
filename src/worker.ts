@@ -34,6 +34,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { serveMediaObject } from "../lib/media/serve";
+import { recordMediaHit, flushMediaHits } from "../lib/media/hits";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
@@ -1226,7 +1227,7 @@ async function executeScheduled(env: Env): Promise<void> {
     // or the maintenance (a huge table scan in the repair used to eat the
     // whole stage and the queue appeared stalled for minutes).
     //
-    // 1) Byte budget + orphan cleanup (FIFO eviction) before new fetches.
+    // 1) Byte budget + orphan cleanup (least served evicted first) before new fetches.
     try {
       await maintainMediaCache(bindings, mediaLimits);
     } catch (err) {
@@ -1423,7 +1424,15 @@ const worker = {
           .split("/")
           .map((segment) => decodeURIComponent(segment))
           .join("/");
-        return await serveMediaObject(request, env.R2, key);
+        const response = await serveMediaObject(request, env.R2, key);
+        // Popularity for the eviction policy: count the bodies actually served
+        // (in memory, flushed in batches) so the cache keeps what clients ask
+        // for instead of dropping it on age alone.
+        if (request.method === "GET" && (response.status === 200 || response.status === 206)) {
+          recordMediaHit(key);
+          ctx.waitUntil(flushMediaHits(env.DB).catch(() => {}));
+        }
+        return response;
       } catch {
         // Malformed percent-encoding: let Next answer (404/400).
       }

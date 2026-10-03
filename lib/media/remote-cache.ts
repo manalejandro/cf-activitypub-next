@@ -33,7 +33,7 @@ import {
   listExpiredMediaCache,
   listMediaCacheKeys,
   listMediaCacheQueue,
-  listOldestMediaCache,
+  listEvictableMediaCache,
   listOrphanMediaCache,
   listPreviewCardsMissingImageCache,
   markMediaCacheFailed,
@@ -412,8 +412,8 @@ export async function processMediaCacheQueue(
     // the cache is re-enabled. (Deleting here used to wipe the queue silently.)
     return 0;
   }
-  // Rolling window: maintenance (FIFO eviction) runs before this stage every
-  // tick, so fresh media always enters and the oldest leaves. Pausing at
+  // Rolling window: maintenance (least served evicted first) runs before this
+  // stage every tick, so fresh media always enters and the least used leaves. Pausing at
   // `>= maxBytes` used to stall the queue forever at the (normal) steady state
   // where the cache sits at its cap — new statuses never got their media.
   // Only a runaway overage (eviction behind) pauses fetching.
@@ -580,7 +580,7 @@ export async function backfillMediaCache(
  * Expiry + space maintenance, called every cron tick with small batches:
  *  1. delete entries past their retention window (attachments `days`,
  *     profiles `profile_days`, keeping profiles of locally followed accounts);
- *  2. evict oldest entries until the byte budget is respected.
+ *  2. evict the least served entries until the byte budget is respected.
  */
 export async function maintainMediaCache(
   bindings: MediaCacheBindings,
@@ -602,10 +602,12 @@ export async function maintainMediaCache(
   await deleteEntries(bindings, expirable);
   remaining -= expirable.length;
 
-  // 2) Byte-budget eviction: FIFO (oldest `fetched_at` first), up to
-  // EVICT_BYTES_PER_TICK so a large overage (or a lowered
-  // MEDIA_CACHE_MAX_BYTES) is actually drained instead of being outpaced by
-  // new fetches. The floor still guarantees the cache is never wiped.
+  // 2) Byte-budget eviction: least served first (LFU with a 30-day aging
+  // window), then the oldest, up to EVICT_BYTES_PER_TICK so a large overage (or
+  // a lowered MEDIA_CACHE_MAX_BYTES) is actually drained instead of being
+  // outpaced by new fetches. Content clients keep asking for stays cached — it
+  // is not re-downloaded — while cold entries free the space. The floor still
+  // guarantees the cache is never wiped.
   const expiredBytes = expirable.reduce((sum, e) => sum + Number(e.size ?? 0), 0);
   const bytesBefore = stats.bytes;
   let bytes = Math.max(0, stats.bytes - expiredBytes);
@@ -614,7 +616,7 @@ export async function maintainMediaCache(
   const budget = Math.max(1, limits.maxBytes);
   const deadline = Date.now() + MAINTENANCE_DEADLINE_MS;
   while (bytes > budget && remaining > floor && evictedBytes < EVICT_BYTES_PER_TICK && Date.now() < deadline) {
-    const oldest = await listOldestMediaCache(bindings.DB, Math.max(1, Math.min(EVICT_BATCH, remaining - floor)));
+    const oldest = await listEvictableMediaCache(bindings.DB, Math.max(1, Math.min(EVICT_BATCH, remaining - floor)));
     if (oldest.length === 0) break;
     const doomed: typeof oldest = [];
     for (const entry of oldest) {
@@ -644,7 +646,7 @@ export async function maintainMediaCache(
   if (bytes > budget && evicted === 0 && expirable.length === 0) {
     // No progress: the cache is over its limit and this run could not delete
     // anything (floor reached, list failures, R2/D1 deletes failing…). While
-    // the FIFO drain is making progress this is a normal multi-tick state.
+    // the eviction drain is making progress this is a normal multi-tick state.
     console.error(
       `[media-cache] still over budget and not draining: ${Math.round(bytes / 1048576)} MB > ${Math.round(budget / 1048576)} MB`
     );

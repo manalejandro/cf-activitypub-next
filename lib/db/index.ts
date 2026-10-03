@@ -4893,27 +4893,38 @@ export async function getMediaCacheStats(db: D1Database): Promise<MediaCacheStat
 }
 
 /** Ready entries whose attachment/profile retention window has passed. */
+/**
+ * Entries past their retention window. The age is measured from the last serve
+ * when there is one (`last_hit_at`), so content clients still request is not
+ * expired out from under them and re-downloaded; once it goes cold for a full
+ * window it ages out like any other entry. Indexed by
+ * `idx_media_cache_expiry(status, fetched_at)`.
+ */
 export async function listExpiredMediaCache(
   db: D1Database,
   attachmentDays: number,
   profileDays: number,
   limit = 50
 ): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+  const attachmentCutoff = `-${Math.max(1, Math.floor(attachmentDays))} days`;
   const attachments = await db
     .prepare(
       `SELECT id, r2_key, size, source_url FROM media_cache
        WHERE status = 'ready' AND target_type = 'attachment'
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
+         AND (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))
        LIMIT ?`
     )
-    .bind(`-${Math.max(1, Math.floor(attachmentDays))} days`, limit)
+    .bind(attachmentCutoff, attachmentCutoff, limit)
     .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
 
+  const profileCutoff = `-${Math.max(1, Math.floor(profileDays))} days`;
   const profiles = await db
     .prepare(
       `SELECT id, r2_key, size, source_url FROM media_cache
        WHERE status = 'ready' AND target_type IN ('avatar', 'header')
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
+         AND (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))
          AND NOT EXISTS (
            SELECT 1 FROM follows f
            WHERE f.state = 'accepted'
@@ -4921,21 +4932,27 @@ export async function listExpiredMediaCache(
          )
        LIMIT ?`
     )
-    .bind(`-${Math.max(1, Math.floor(profileDays))} days`, limit)
+    .bind(profileCutoff, profileCutoff, limit)
     .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
 
   return [...(attachments.results ?? []), ...(profiles.results ?? [])].slice(0, limit);
 }
 
-/** Oldest ready entries first (space-limit eviction). */
-export async function listOldestMediaCache(
+/**
+ * Entries to evict when the cache is over budget: least served first, then the
+ * oldest. `hits` ages out after 30 days (see `lib/media/hits.ts`), so content
+ * that is actually requested stays in R2 instead of being re-downloaded, while
+ * cold entries — popular long ago, or never used — make room for new ones.
+ * Indexed by `idx_media_cache_evict(status, hits, fetched_at)`.
+ */
+export async function listEvictableMediaCache(
   db: D1Database,
   limit = 50
 ): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
   const rows = await db
     .prepare(
       `SELECT id, r2_key, size, source_url FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
-       ORDER BY fetched_at ASC, rowid ASC LIMIT ?`
+       ORDER BY hits ASC, fetched_at ASC, rowid ASC LIMIT ?`
     )
     .bind(limit)
     .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();

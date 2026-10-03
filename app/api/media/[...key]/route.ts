@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext } from "@/lib/cf";
 import { serveMediaObject } from "@/lib/media/serve";
+import { recordMediaHit, flushMediaHits } from "@/lib/media/hits";
 
 // GET /api/media/[...key] — Serve a file from R2.
 //
@@ -15,7 +16,13 @@ export async function GET(
 ): Promise<Response> {
   const { key } = await params;
   const { env } = getCloudflareContext();
-  return serveMediaObject(request, env.R2, key.join("/"));
+  const response = await serveMediaObject(request, env.R2, key.join("/"));
+  // Popularity for the eviction policy (batched in memory, no hot-path I/O).
+  if (request.method === "GET" && (response.status === 200 || response.status === 206)) {
+    recordMediaHit(key.join("/"));
+    void flushMediaHits(env.DB);
+  }
+  return response;
 }
 
 export async function HEAD(

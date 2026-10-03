@@ -333,6 +333,14 @@ CREATE TABLE IF NOT EXISTS media_cache (
   last_error      TEXT,
   next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
   fetched_at      TEXT,
+  -- Popularity for eviction: `hits` counts serves (batched by the media serve
+  -- path) since `hits_at`; the window resets after 30 days so an entry that
+  -- was hot once eventually becomes evictable again. `last_hit_at` is the last
+  -- serve, which the retention window slides on: content still in use is not
+  -- expired out from under its clients, cold content ages out normally.
+  hits            INTEGER NOT NULL DEFAULT 0,
+  hits_at         TEXT,
+  last_hit_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (source_url)
 );
@@ -340,6 +348,8 @@ CREATE TABLE IF NOT EXISTS media_cache (
 CREATE INDEX IF NOT EXISTS idx_media_cache_queue  ON media_cache(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_expiry ON media_cache(status, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_media_cache_target ON media_cache(target_type, target_id);
+-- Eviction order: least served first, then oldest.
+CREATE INDEX IF NOT EXISTS idx_media_cache_evict  ON media_cache(status, hits, fetched_at);
 -- Dangling-reference repair (is the cached URL still backed by an entry?).
 CREATE INDEX IF NOT EXISTS idx_media_cache_cached_url ON media_cache(cached_url);
 

@@ -25,6 +25,7 @@ import {
 } from "@/lib/media/remote-cache";
 import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
+import { recordMediaHit, flushMediaHits, __resetMediaHits } from "@/lib/media/hits";
 
 class D1Adapter {
   private sql = new DatabaseSync(":memory:");
@@ -913,6 +914,99 @@ describe("remote media cache", () => {
     expect((await getMediaCacheStats(db)).ready).toBe(0);
     const restored = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
     expect(restored?.url).toBe(SRC);
+  });
+
+  it("keeps the most served content when the cache is over budget (LFU with aging)", async () => {
+    const insert = (id: string, size: number, hits: number, fetchedAt: string) =>
+      db
+        .prepare(
+          `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, cached_url, size, hits, hits_at, fetched_at)
+           VALUES (?, ?, 'attachment', 'ready', ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          id,
+          `https://remote.example/${id}.png`,
+          `cache/media/${id}.png`,
+          `https://local.example/api/media/cache/media/${id}.png`,
+          size,
+          hits,
+          "2026-10-01T00:00:00Z",
+          fetchedAt
+        )
+        .run();
+
+    // The cold entry is NEWER than the hot one: a FIFO eviction would drop the
+    // popular file, the popularity-aware order must drop the cold one.
+    await insert("cold", 400, 0, "2026-10-02T00:00:00Z");
+    await insert("hot", 400, 250, "2026-09-15T00:00:00Z");
+
+    const result = await maintainMediaCache(bindings, {
+      ...LIMITS,
+      maxBytes: 500,
+      days: 3650,
+      profileDays: 3650,
+    });
+
+    expect(result.evicted).toBeGreaterThanOrEqual(1);
+    const left = await db.prepare("SELECT id FROM media_cache WHERE status = 'ready'").bind().all<{ id: string }>();
+    expect(left.results.map((r) => r.id)).toEqual(["hot"]);
+  });
+
+  it("counts serves in batches and ages the counter after 30 days", async () => {
+    await db
+      .prepare(
+        `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, size, hits, hits_at, fetched_at)
+         VALUES ('m1', 'https://remote.example/x.png', 'attachment', 'ready', 'cache/media/x.png', 10, 0, NULL, datetime('now'))`
+      )
+      .bind()
+      .run();
+
+    __resetMediaHits();
+    recordMediaHit("cache/media/x.png");
+    recordMediaHit("cache/media/x.png");
+    recordMediaHit("cache/media/other.png"); // unknown key: the UPDATE matches nothing
+    await flushMediaHits(db, true);
+
+    const after = await db
+      .prepare("SELECT hits, last_hit_at FROM media_cache WHERE id = 'm1'")
+      .bind()
+      .first<{ hits: number; last_hit_at: string | null }>();
+    expect(after?.hits).toBe(2);
+    expect(after?.last_hit_at).not.toBeNull();
+
+    // Within the window the counter accumulates…
+    recordMediaHit("cache/media/x.png");
+    await flushMediaHits(db, true);
+    expect((await db.prepare("SELECT hits FROM media_cache WHERE id = 'm1'").bind().first<{ hits: number }>())?.hits).toBe(3);
+
+    // …and once the window is older than 30 days it restarts at this batch.
+    await db.prepare("UPDATE media_cache SET hits_at = datetime('now', '-40 days')").bind().run();
+    recordMediaHit("cache/media/x.png");
+    await flushMediaHits(db, true);
+    expect((await db.prepare("SELECT hits FROM media_cache WHERE id = 'm1'").bind().first<{ hits: number }>())?.hits).toBe(1);
+  });
+
+  it("slides the retention window on use: a served attachment is not expired while hot", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    await db
+      .prepare(
+        `UPDATE media_cache SET status = 'ready', r2_key = 'cache/media/a.png', size = 100,
+           fetched_at = datetime('now', '-40 days'), last_hit_at = datetime('now', '-1 day')`
+      )
+      .bind()
+      .run();
+
+    // Old by fetch time, but served yesterday: the 7-day window restarts on use,
+    // so a status clients keep opening does not lose its media.
+    let result = await maintainMediaCache(bindings, LIMITS);
+    expect(result.expired).toBe(0);
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status = 'ready'").bind().first<{ n: number }>())?.n).toBe(1);
+
+    // Once it goes cold for a full window it ages out like any other entry.
+    await db.prepare("UPDATE media_cache SET last_hit_at = datetime('now', '-40 days')").bind().run();
+    result = await maintainMediaCache(bindings, LIMITS);
+    expect(result.expired).toBe(1);
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE status = 'ready'").bind().first<{ n: number }>())?.n).toBe(0);
   });
 
   it("caches a license icon (FEP-6757) and keeps it while the licence exists", async () => {

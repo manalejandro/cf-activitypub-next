@@ -15,8 +15,20 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const stats = await getMediaCacheStats(env.DB);
+  // Most served entries: the eviction policy keeps these cached, so an operator
+  // can see what the budget is actually protecting (30-day aging window).
+  const top = await env.DB
+    .prepare(
+      `SELECT r2_key, target_type, size, hits, hits_at FROM media_cache
+       WHERE status = 'ready' AND hits > 0
+       ORDER BY hits DESC LIMIT 10`
+    )
+    .bind()
+    .all<{ r2_key: string; target_type: string; size: number; hits: number; hits_at: string | null }>()
+    .catch(() => ({ results: [] }));
   return json({
     stats,
+    top_served: top.results ?? [],
     config: {
       enabled: limits.mediaCacheEnabled,
       days: limits.mediaCacheDays,
@@ -30,7 +42,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 // POST /api/v1/admin/media_cache — enforce MEDIA_CACHE_MAX_BYTES right now
-// (FIFO eviction until under budget, bounded) and report what happened. Useful
+// (least served evicted until under budget, bounded) and report what happened. Useful
 // after lowering the limit or when the cron is behind.
 export async function POST(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();

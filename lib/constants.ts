@@ -107,7 +107,7 @@ export const MEDIA_CACHE_MAX_OBJECT_BYTES = 103_809_024; // 99 MiB — Mastodon 
 export const MEDIA_CACHE_MAX_IMAGE_BYTES = 16 * 1024 * 1024; // 16 MiB — Mastodon IMAGE_LIMIT
 export const MEDIA_CACHE_FETCH_BATCH = 50;
 // Maintenance never takes the cache below this many entries: reaching a limit
-// replaces the OLDEST entries (FIFO), it never wipes the cache.
+// replaces the least served entries (LFU with aging), it never wipes the cache.
 export const MEDIA_CACHE_MIN_ENTRIES = 20;
 // Strip EXIF/XMP/IPTC/ID3/metadata from every object stored in R2 (cached
 // federated media and local uploads), like Mastodon's media processing.
