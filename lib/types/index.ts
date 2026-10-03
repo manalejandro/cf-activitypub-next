@@ -286,10 +286,10 @@ export interface LocalLicense {
   id: string;
   name: string;
   url: string;
-  /** Optional badge image URL (empty = use the badge text or the derived badge). */
+  /** Optional badge image URL (empty = use the badge keys or the derived badge). */
   icon: string;
-  /** Admin-set badge letters shown as the badge (wins over the image). */
-  badgeText: string;
+  /** Fork Awesome badge keys, space-separated ("cc cc-by"); wins over the image. */
+  badgeKeys: string;
   sortOrder: number;
   createdAt: string;
 }

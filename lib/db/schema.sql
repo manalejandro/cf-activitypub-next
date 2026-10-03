@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS licenses (
   name       TEXT NOT NULL,                  -- display name (built-ins are localised)
   url        TEXT NOT NULL UNIQUE,           -- canonical license URI
   icon       TEXT NOT NULL DEFAULT '',       -- optional badge image URL
-  badge_text TEXT NOT NULL DEFAULT '',       -- admin-set badge letters; wins over the image
+  badge_keys TEXT NOT NULL DEFAULT '',       -- Fork Awesome keys ("cc cc-by"); wins over the image
   sort_order INTEGER NOT NULL DEFAULT 100,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

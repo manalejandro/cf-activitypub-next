@@ -1010,7 +1010,7 @@
   "admin_licenses_name_ph": "Nom (ex. CC BY-SA 4.0)",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
   "admin_licenses_col_badge": "Badge",
-  "admin_licenses_badge_ph": "Lettres du badge (ex. CC BY)",
+  "admin_licenses_badge_ph": "Clés Fork Awesome (ex. cc cc-by)",
   "admin_licenses_loading": "Chargement…",
   "admin_licenses_empty": "Aucune licence dans le catalogue.",
   "admin_licenses_col_license": "Licence",

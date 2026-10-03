@@ -3,18 +3,18 @@ import { describe, it, expect } from "vitest";
 import { licenseVisual } from "@/lib/license-client";
 
 describe("licenseVisual", () => {
-  it("prefers the badge letters the admin set over the image and the derived badges", () => {
+  it("prefers the Fork Awesome badge keys the admin set over the image and the derived badges", () => {
     expect(
       licenseVisual({
-        badgeText: "CC BY",
+        badgeKeys: "cc cc-by",
         icon: "https://licensebuttons.net/l/by/4.0/88x31.png",
         url: "https://creativecommons.org/licenses/by/4.0/",
       })
-    ).toEqual({ kind: "text", label: "CC BY" });
-    expect(licenseVisual({ badgeText: "  MI-LIC  ", url: "https://otra.example/licenses/mi-licencia" }))
-      .toEqual({ kind: "text", label: "MI-LIC" });
-    // Empty text falls through to the image (seeded CC buttons keep working).
-    expect(licenseVisual({ badgeText: "", icon: "https://x.example/i.png", url: "https://example.com/l" }))
+    ).toEqual({ kind: "icons", names: ["cc", "cc-by"] });
+    expect(licenseVisual({ badgeKeys: "  copyright  ", url: "https://otra.example/licenses/mi-licencia" }))
+      .toEqual({ kind: "icons", names: ["copyright"] });
+    // Empty keys fall through to the image (seeded CC buttons keep working).
+    expect(licenseVisual({ badgeKeys: "", icon: "https://x.example/i.png", url: "https://example.com/l" }))
       .toEqual({ kind: "image", src: "https://x.example/i.png" });
   });
 

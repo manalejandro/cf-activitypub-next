@@ -68,13 +68,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (await getLicenseByUrl(env.DB, url)) return badRequest("That license is already in the catalogue");
     const sortOrder = Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : 100;
     const icon = typeof body.icon === "string" ? body.icon.trim().slice(0, 500) : "";
-    const badgeText = typeof body.badge_text === "string" ? body.badge_text.trim().slice(0, 12) : "";
+    const badgeKeys = typeof body.badge_keys === "string" ? body.badge_keys.trim().replace(/\s+/g, " ").slice(0, 60) : "";
     await createLicense(env.DB, {
       id,
       name: name.slice(0, 120),
       url,
       icon,
-      badgeText,
+      badgeKeys,
       sortOrder,
       createdAt: new Date().toISOString(),
     });
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       name: name ? name.slice(0, 120) : undefined,
       url: url ?? undefined,
       icon: typeof body.icon === "string" ? body.icon.trim().slice(0, 500) : undefined,
-      badgeText: typeof body.badge_text === "string" ? body.badge_text.trim().slice(0, 12) : undefined,
+      badgeKeys: typeof body.badge_keys === "string" ? body.badge_keys.trim().replace(/\s+/g, " ").slice(0, 60) : undefined,
       sortOrder: Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : undefined,
     });
     if (typeof body.icon === "string" && body.icon.trim()) {

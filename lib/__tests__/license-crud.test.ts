@@ -38,26 +38,26 @@ class D1Adapter {
 const db = new D1Adapter(readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8")) as unknown as D1Database;
 
 describe("license catalogue CRUD", () => {
-  it("stores, edits and clears the editable badge letters", async () => {
+  it("stores, edits and clears the Fork Awesome badge keys", async () => {
     await createLicense(db, {
       id: "mi-lic",
       name: "Mi licencia",
       url: "https://otra.example/licenses/mi-lic",
       icon: "",
-      badgeText: "MI-LIC",
+      badgeKeys: "cc cc-by",
       sortOrder: 10,
       createdAt: "2026-10-03T00:00:00Z",
     });
-    expect((await getLicenseById(db, "mi-lic"))?.badgeText).toBe("MI-LIC");
+    expect((await getLicenseById(db, "mi-lic"))?.badgeKeys).toBe("cc cc-by");
 
-    await updateLicense(db, "mi-lic", { badgeText: "CC BY" });
-    expect((await getLicenseById(db, "mi-lic"))?.badgeText).toBe("CC BY");
+    await updateLicense(db, "mi-lic", { badgeKeys: "copyright" });
+    expect((await getLicenseById(db, "mi-lic"))?.badgeKeys).toBe("copyright");
 
-    // An empty value clears the text: the image / derived badge takes over.
-    await updateLicense(db, "mi-lic", { badgeText: "" });
-    expect((await getLicenseById(db, "mi-lic"))?.badgeText).toBe("");
+    // An empty value clears the keys: the image / derived badge takes over.
+    await updateLicense(db, "mi-lic", { badgeKeys: "" });
+    expect((await getLicenseById(db, "mi-lic"))?.badgeKeys).toBe("");
 
-    expect((await listLicenses(db)).map((l) => l.badgeText)).toEqual([""]);
+    expect((await listLicenses(db)).map((l) => l.badgeKeys)).toEqual([""]);
 
     await deleteLicense(db, "mi-lic");
     expect(await listLicenses(db)).toHaveLength(0);

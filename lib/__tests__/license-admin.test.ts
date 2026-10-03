@@ -92,13 +92,13 @@ describe("POST /api/v1/admin/licenses", () => {
   });
 
   it("adds a catalogue entry and audits it", async () => {
-    const res = await POST(makeRequest({ action: "add", name: "CC BY 4.0", url: LICENSE.url, badge_text: "CC BY" }) as never);
+    const res = await POST(makeRequest({ action: "add", name: "CC BY 4.0", url: LICENSE.url, badge_keys: "cc cc-by" }) as never);
     expect(res.status).toBe(200);
     expect(mocks.createLicense).toHaveBeenCalledTimes(1);
-    const [, created] = mocks.createLicense.mock.calls[0] as unknown as [unknown, { id: string; name: string; url: string; badgeText: string }];
+    const [, created] = mocks.createLicense.mock.calls[0] as unknown as [unknown, { id: string; name: string; url: string; badgeKeys: string }];
     expect(created.id).toBe("cc-by-4-0");
     expect(created.url).toBe(LICENSE.url);
-    expect(created.badgeText).toBe("CC BY");
+    expect(created.badgeKeys).toBe("cc cc-by");
     expect(mocks.recordModeration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ action: "license_added", targetType: "license" })
@@ -116,12 +116,12 @@ describe("POST /api/v1/admin/licenses", () => {
 
   it("updates an entry", async () => {
     mocks.getLicenseById.mockResolvedValue(LICENSE);
-    const res = await POST(makeRequest({ action: "update", id: LICENSE.id, name: "CC BY 4.0 (editada)", badge_text: "MI-LIC" }) as never);
+    const res = await POST(makeRequest({ action: "update", id: LICENSE.id, name: "CC BY 4.0 (editada)", badge_keys: "cc cc-by" }) as never);
     expect(res.status).toBe(200);
     expect(mocks.updateLicense).toHaveBeenCalledWith(
       expect.anything(),
       LICENSE.id,
-      expect.objectContaining({ name: "CC BY 4.0 (editada)", badgeText: "MI-LIC" })
+      expect.objectContaining({ name: "CC BY 4.0 (editada)", badgeKeys: "cc cc-by" })
     );
   });
 

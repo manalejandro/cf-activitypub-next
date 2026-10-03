@@ -4,16 +4,17 @@ import { Icon } from "./Icon";
 import { licenseVisual } from "@/lib/license-client";
 
 /**
- * Draws a license the way FEP-6757 expects: the badge letters the admin set,
- * the instance's icon image, the official badges of a known license URI, and
- * otherwise the letters of its id (a custom license from another instance).
+ * Draws a license the way FEP-6757 expects: the Fork Awesome badge keys the
+ * admin set, the instance's icon image, the official badges of a known license
+ * URI, and otherwise the letters of its id (a custom license from another
+ * instance).
  */
 export function LicenseBadge({
   license,
   size = "0.85rem",
   fixedWidth = false,
 }: {
-  license: { badgeText?: string | null; icon?: string | null; badges?: string | null; url: string };
+  license: { badgeKeys?: string | null; icon?: string | null; badges?: string | null; url: string };
   size?: string;
   fixedWidth?: boolean;
 }) {

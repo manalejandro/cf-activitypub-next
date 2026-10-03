@@ -1010,7 +1010,7 @@
   "admin_licenses_name_ph": "名称（例如 CC BY-SA 4.0）",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
   "admin_licenses_col_badge": "徽章",
-  "admin_licenses_badge_ph": "徽章文字（例如 CC BY）",
+  "admin_licenses_badge_ph": "Fork Awesome 图标键（例如 cc cc-by）",
   "admin_licenses_loading": "加载中…",
   "admin_licenses_empty": "目录中没有许可证。",
   "admin_licenses_col_license": "许可证",
