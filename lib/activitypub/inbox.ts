@@ -71,6 +71,7 @@ import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
 import { DEFAULT_CONTEXT, isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
+import { extractLicenseUrl } from "@/lib/licenses";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
@@ -494,6 +495,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     published: toUtcIso(obj.published),
     local: false,
     locationJson: extractLocationJson(obj as Record<string, unknown>),
+    licenseUrl: extractLicenseUrl(obj as Record<string, unknown>),
     raw: JSON.stringify(obj),
   });
 
@@ -1400,6 +1402,7 @@ async function persistRemoteNote(
     favouritesCount: 0,
     published: toUtcIso(note.published),
     local: false,
+    licenseUrl: extractLicenseUrl(note as Record<string, unknown>),
     raw: JSON.stringify(note),
   });
   if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);

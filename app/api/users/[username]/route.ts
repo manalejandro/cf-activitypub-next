@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorFields, getMlsKeyPackagesByActor, countMlsMessagesByRecipient, getAllCustomEmojis } from "@/lib/db";
+import { getActorByUsername, getActorFields, getMlsKeyPackagesByActor, countMlsMessagesByRecipient, getAllCustomEmojis, getPreferredLicenseUrl } from "@/lib/db";
 import { buildActor } from "@/lib/activitypub/utils";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { processStatusContent, localSummaryToPlain } from "@/lib/activitypub/content";
@@ -65,6 +65,7 @@ export async function GET(
     tags: note.tags,
     alsoKnownAs: actor.alsoKnownAs ?? undefined,
     movedTo: actor.movedTo ?? undefined,
+    preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, actor.id)) ?? undefined,
   });
 
   return activityJson({

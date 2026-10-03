@@ -6,6 +6,7 @@ import type {
   LocalObject,
   LocalFollow,
   LocalRelay,
+  LocalLicense,
   LocalLike,
   LocalAnnounce,
   LocalNotification,
@@ -142,6 +143,7 @@ function rowToObject(r: Row): LocalObject {
     cardJson: (r.card_json as string | null) ?? null,
     mediaPending: Boolean(r.media_pending),
     locationJson: (r.location_json as string | null) ?? null,
+    licenseUrl: (r.license_url as string | null) ?? null,
   };
 }
 
@@ -2108,8 +2110,8 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
           id, type, actor_id, content, content_warning, sensitive,
           visibility, in_reply_to_id, quote_id, language, url,
           replies_count, reblogs_count, favourites_count, engagement,
-          published, is_local, raw, has_link, location_json, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          published, is_local, raw, has_link, location_json, license_url, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         obj.id,
@@ -2132,6 +2134,7 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
         obj.raw,
         hasLink(obj.content),
         obj.locationJson ?? null,
+        obj.licenseUrl ?? null,
         obj.published   // pin updated_at = published so new posts never appear as edited
       ),
     ...extractObjectTags(obj.raw).map((tag) =>
@@ -2567,7 +2570,7 @@ export async function getActorStatuses(
 export async function updateObject(
   db: D1Database,
   id: string,
-  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null }
+  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null; licenseUrl?: string | null }
 ): Promise<void> {
   const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
@@ -2591,6 +2594,7 @@ export async function updateObject(
   if ("language" in fields) { setClauses.push("language = ?"); values.push(fields.language ?? null); }
   if ("raw" in fields) { setClauses.push("raw = ?"); values.push(fields.raw); }
   if ("locationJson" in fields) { setClauses.push("location_json = ?"); values.push(fields.locationJson ?? null); }
+  if ("licenseUrl" in fields) { setClauses.push("license_url = ?"); values.push(fields.licenseUrl ?? null); }
 
   if (setClauses.length === 0) return;
   setClauses.push("updated_at = datetime('now')");
@@ -2901,6 +2905,81 @@ export async function updateRelay(
 
 export async function deleteRelay(db: D1Database, id: string): Promise<void> {
   await db.prepare("DELETE FROM relays WHERE id = ?").bind(id).run();
+}
+
+// ─────────────────────────────────────────
+// Licenses (FEP-6757 catalogue)
+// ─────────────────────────────────────────
+
+function rowToLicense(r: Row): LocalLicense {
+  return {
+    id: r.id,
+    name: r.name,
+    url: r.url,
+    icon: r.icon ?? "",
+    sortOrder: r.sort_order ?? 100,
+    createdAt: r.created_at,
+  };
+}
+
+export async function listLicenses(db: D1Database): Promise<LocalLicense[]> {
+  const rows = await db
+    .prepare("SELECT * FROM licenses ORDER BY sort_order ASC, name ASC")
+    .bind()
+    .all<Row>();
+  return rows.results.map(rowToLicense);
+}
+
+export async function getLicenseById(db: D1Database, id: string): Promise<LocalLicense | null> {
+  const row = await db.prepare("SELECT * FROM licenses WHERE id = ?").bind(id).first<Row>();
+  return row ? rowToLicense(row) : null;
+}
+
+export async function getLicenseByUrl(db: D1Database, url: string): Promise<LocalLicense | null> {
+  const row = await db.prepare("SELECT * FROM licenses WHERE url = ?").bind(url).first<Row>();
+  return row ? rowToLicense(row) : null;
+}
+
+export async function createLicense(db: D1Database, license: LocalLicense): Promise<void> {
+  await db
+    .prepare("INSERT INTO licenses (id, name, url, icon, sort_order) VALUES (?,?,?,?,?)")
+    .bind(license.id, license.name, license.url, license.icon, license.sortOrder)
+    .run();
+}
+
+export async function updateLicense(
+  db: D1Database,
+  id: string,
+  patch: { name?: string; url?: string; icon?: string; sortOrder?: number }
+): Promise<void> {
+  const sets: string[] = [];
+  const args: unknown[] = [];
+  if (patch.name !== undefined) { sets.push("name = ?"); args.push(patch.name); }
+  if (patch.url !== undefined) { sets.push("url = ?"); args.push(patch.url); }
+  if (patch.icon !== undefined) { sets.push("icon = ?"); args.push(patch.icon); }
+  if (patch.sortOrder !== undefined) { sets.push("sort_order = ?"); args.push(patch.sortOrder); }
+  if (sets.length === 0) return;
+  await db.prepare(`UPDATE licenses SET ${sets.join(", ")} WHERE id = ?`).bind(...args, id).run();
+}
+
+export async function deleteLicense(db: D1Database, id: string): Promise<void> {
+  await db.prepare("DELETE FROM licenses WHERE id = ?").bind(id).run();
+}
+
+/**
+ * Canonical URI of the actor's preferred license (FEP-6757 `preferredLicense`),
+ * or null when they have none or the catalogue entry was removed.
+ */
+export async function getPreferredLicenseUrl(db: D1Database, actorId: string): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT l.url FROM preferences p
+       JOIN licenses l ON l.id = p.value
+       WHERE p.actor_id = ? AND p.key = 'posting:default:license'`
+    )
+    .bind(actorId)
+    .first<{ url: string }>();
+  return row?.url ?? null;
 }
 
 // ─────────────────────────────────────────

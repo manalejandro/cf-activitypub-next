@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { normalizeLicenseId } from "@/lib/licenses";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
 
 const DEFAULT_PREFERENCES: Record<string, string | null> = {
@@ -8,6 +9,8 @@ const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:sensitive": "false",
   "posting:default:language": "en",
   "posting:default:quote_policy": "followers",
+  // FEP-6757: catalogue id of the license new statuses default to ("" = none).
+  "posting:default:license": "",
   "reading:expand:media": "default",
   "reading:expand:spoilers": "false",
   "ui:locale": "en",
@@ -34,6 +37,11 @@ function normalizeValue(key: string, raw: unknown): string | null | undefined {
   }
   if (typeof raw !== "string") return undefined;
   switch (key) {
+    case "posting:default:license":
+      // Empty clears the preference (no license); otherwise it must look like a
+      // catalogue id. Unknown ids are ignored by the composers.
+      if (raw === "") return "";
+      return normalizeLicenseId(raw) ?? undefined;
     case "posting:default:visibility":
       return VISIBILITIES.has(raw) ? raw : undefined;
     case "posting:default:quote_policy":

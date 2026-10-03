@@ -103,7 +103,10 @@ CREATE TABLE IF NOT EXISTS objects (
   -- patrol used `content LIKE '%http%'`, which reads every post body.
   has_link        INTEGER NOT NULL DEFAULT 0,
   -- ActivityStreams `Place` (geolocated status): JSON {name, latitude, longitude}.
-  location_json   TEXT
+  location_json   TEXT,
+  -- FEP-6757: canonical license URI of the status (null = no license, i.e.
+  -- "all rights reserved"). Kept as a plain value, not a FK to `licenses`.
+  license_url     TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
@@ -233,6 +236,22 @@ CREATE TABLE IF NOT EXISTS follows (
 
 CREATE INDEX IF NOT EXISTS idx_follows_actor    ON follows(actor_id, state);
 CREATE INDEX IF NOT EXISTS idx_follows_target   ON follows(target_id, state);
+
+-- ─────────────────────────────────────────
+-- Licenses (FEP-6757 content licensing)
+-- ─────────────────────────────────────────
+-- The catalogue offered in the composers. `url` is the canonical license URI
+-- sent as the ActivityPub `license` property (Dublin Core `dcterms:license`);
+-- `objects.license_url` stores the chosen value on each status, so a post keeps
+-- its licensing even if the catalogue entry is later removed.
+CREATE TABLE IF NOT EXISTS licenses (
+  id         TEXT PRIMARY KEY,               -- URL slug (/licenses/<id>)
+  name       TEXT NOT NULL,                  -- display name (built-ins are localised)
+  url        TEXT NOT NULL UNIQUE,           -- canonical license URI
+  icon       TEXT NOT NULL DEFAULT '',       -- optional Fork Awesome override
+  sort_order INTEGER NOT NULL DEFAULT 100,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- ─────────────────────────────────────────
 -- Relays (ActivityPub relay subscriptions)

@@ -338,6 +338,7 @@ export function serializeStatus(
     reblogs_count: obj.reblogsCount,
     favourites_count: obj.favouritesCount,
     edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIso(obj.updatedAt) : null,
+    license_url: obj.licenseUrl ?? null,
     content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, opts.emojis), obj.raw, localDomain),
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: getInstanceTitle(), website: `https://${localDomain}` } : null,

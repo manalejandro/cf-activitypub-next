@@ -51,6 +51,7 @@ DROP TABLE IF EXISTS objects;
 DROP TABLE IF EXISTS password_resets;
 DROP TABLE IF EXISTS preferences;
 DROP TABLE IF EXISTS push_subscriptions;
+DROP TABLE IF EXISTS licenses;
 DROP TABLE IF EXISTS relays;
 DROP TABLE IF EXISTS report_notes;
 DROP TABLE IF EXISTS reports;

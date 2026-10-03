@@ -10,12 +10,14 @@ import { useLocale } from "@/lib/i18n";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { getToken } from "@/lib/client-api";
 import { Loading } from "@/components/Loading";
+import { fetchLicenses, licenseName, type ClientLicense } from "@/lib/license-client";
 
 interface Preferences {
   "posting:default:visibility": string;
   "posting:default:sensitive": boolean;
   "posting:default:language": string | null;
   "posting:default:quote_policy": string;
+  "posting:default:license": string;
   "reading:expand:media": string;
   "reading:expand:spoilers": boolean;
 }
@@ -37,6 +39,15 @@ export default function SettingsPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [licenses, setLicenses] = useState<ClientLicense[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchLicenses().then((list) => {
+      if (alive) setLicenses(list);
+    });
+    return () => { alive = false; };
+  }, []);
   const [locked, setLocked] = useState(false);
   const [bot, setBot] = useState(false);
   const [autoDelete, setAutoDelete] = useState(0);
@@ -145,6 +156,25 @@ export default function SettingsPage() {
           <div>
             <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_language}</label>
             <LanguagePicker fullWidth />
+          </div>
+
+          {/* FEP-6757: default license for new statuses ("" = none). */}
+          <div>
+            <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_license}</label>
+            <select
+              className="input"
+              value={prefs?.["posting:default:license"] ?? ""}
+              onChange={(e) => update("posting:default:license", e.target.value)}
+              style={{ width: "100%" }}
+            >
+              <option value="">{t.license_none}</option>
+              {licenses.map((license) => (
+                <option key={license.id} value={license.id}>{licenseName(t, license)}</option>
+              ))}
+            </select>
+            <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.45 }}>
+              {t.license_none_hint}
+            </p>
           </div>
 
           <PaletteSettings />

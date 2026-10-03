@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
+import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
 import { emojiImgsToShortcodes, fieldValueForVerification } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
@@ -99,11 +99,13 @@ export function buildActor(
     tags?: APTag[];
     alsoKnownAs?: string[];
     movedTo?: string;
+    /** FEP-6757: preferred license for new objects created by this actor. */
+    preferredLicenseUrl?: string;
   }
 ): APActor {
   const id = actorIRI(baseUrl, username);
   const actor: APActor = {
-    "@context": DEFAULT_CONTEXT,
+    "@context": options.preferredLicenseUrl ? [...DEFAULT_CONTEXT, FEP_6757_CONTEXT] : DEFAULT_CONTEXT,
     id,
     type: options.isBot ? "Service" : "Person",
     preferredUsername: username,
@@ -153,6 +155,10 @@ export function buildActor(
   if (options.movedTo) {
     actor.movedTo = options.movedTo;
   }
+  // FEP-6757: what new statuses default to on other instances' clients.
+  if (options.preferredLicenseUrl) {
+    (actor as Record<string, unknown>).preferredLicense = options.preferredLicenseUrl;
+  }
 
   return actor;
 }
@@ -178,6 +184,8 @@ export function buildNote(
     tags?: import("@/lib/types").APTag[];
     attachments?: import("@/lib/types").APAttachment[];
     location?: GeoLocation | null;
+    /** FEP-6757: canonical license URI for this status (dcterms:license). */
+    licenseUrl?: string;
   }
 ): APNote {
   const actorId = actorIRI(baseUrl, options.actorUsername);
@@ -227,7 +235,7 @@ export function buildNote(
     ? `<p><a href="${locationUrl}" rel="nofollow noopener noreferrer">\u{1F4CD} ${locationLabel(options.location).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a></p>`
     : "";
   const note: APNote = {
-    "@context": DEFAULT_CONTEXT,
+    "@context": options.licenseUrl ? [...DEFAULT_CONTEXT, FEP_6757_CONTEXT] : DEFAULT_CONTEXT,
     id: noteId,
     type: "Note",
     attributedTo: actorId,
@@ -263,6 +271,8 @@ export function buildNote(
   };
 
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
+  // FEP-6757: the canonical license URI of the status (Dublin Core license).
+  if (options.licenseUrl) (note as Record<string, unknown>).license = options.licenseUrl;
   // Mastodon sends the *source* note in ActivityPub (shortcodes + the Emoji
   // tags) and renders the emojis itself: a rendered `<img>` is dropped by its
   // sanitizer (MASTODON_STRICT has no `img`) and the emoji disappears. The

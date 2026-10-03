@@ -140,6 +140,10 @@
       "description": "Public instance metadata (name, description, limits, rules, peers)."
     },
     {
+      "name": "Licenses",
+      "description": "Licenses endpoints."
+    },
+    {
       "name": "Lists",
       "description": "Lists endpoints."
     },
@@ -4622,6 +4626,115 @@
         }
       }
     },
+    "/api/v1/admin/licenses": {
+      "get": {
+        "summary": "Get /api/v1/admin/licenses",
+        "operationId": "get_api_v1_admin_licenses",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "license": {}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create /api/v1/admin/licenses",
+        "operationId": "post_api_v1_admin_licenses",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "license": {}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/media_cache": {
       "get": {
         "summary": "Get /api/v1/admin/media_cache",
@@ -8442,6 +8555,21 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses": {
+      "get": {
+        "summary": "Get /api/v1/licenses",
+        "operationId": "get_api_v1_licenses",
+        "tags": [
+          "Licenses"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
           }
         }
       }
@@ -13956,6 +14084,11 @@
             },
             "nullable": true,
             "description": "Geolocation (`Place`), a local extension Mastodon clients ignore."
+          },
+          "license_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "FEP-6757 license URI of the status (null/absent = all rights reserved)."
           },
           "poll": {
             "allOf": [

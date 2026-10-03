@@ -24,6 +24,7 @@ import { EditStatusModal } from "@/components/EditStatusModal";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
+import { LicensePicker } from "@/components/LicensePicker";
 import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import { useLimits } from "@/lib/limits-client";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
@@ -47,6 +48,8 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "private" | "direct">("public");
+  // FEP-6757: catalogue id of the license for this status ("" = no license).
+  const [license, setLicense] = useState("");
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +133,9 @@ export default function HomePage() {
     const data = await res.json() as Record<string, string | boolean | null>;
     const vis = data["posting:default:visibility"];
     if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "private" | "direct");
+    // FEP-6757: the account's default license for new statuses ("" = none).
+    const lic = data["posting:default:license"];
+    if (typeof lic === "string") setLicense(lic);
     // Mastodon: "always mark media as sensitive" → new attachments blur by default.
     if (data["posting:default:sensitive"] === true) setDefaultSensitive(true);
   }
@@ -157,6 +163,7 @@ export default function HomePage() {
       sensitive: showCw,
       spoiler_text: showCw ? cwText : "",
       language: locale,
+      license,
     };
     if (scheduling && scheduledAt) {
       body.scheduled_at = new Date(scheduledAt).toISOString();
@@ -559,6 +566,8 @@ export default function HomePage() {
                 </button>
                 {/* Visibility selector */}
                 <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} />
+                {/* License selector (FEP-6757) */}
+                <LicensePicker value={license} onChange={setLicense} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "0.8rem", color: composing.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>

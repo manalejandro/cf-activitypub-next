@@ -277,6 +277,19 @@ export interface LocalObject {
   mediaPending?: boolean;
   /** ActivityStreams `Place` (geolocated status), JSON snapshot. */
   locationJson?: string | null;
+  /** FEP-6757: canonical license URI of the status (null = all rights reserved). */
+  licenseUrl?: string | null;
+}
+
+/** A license offered by this instance (FEP-6757 catalogue). */
+export interface LocalLicense {
+  id: string;
+  name: string;
+  url: string;
+  /** Optional Fork Awesome override; empty means "derive from the URL". */
+  icon: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface LocalFollow {
@@ -517,6 +530,8 @@ export interface MastodonStatus {
   card: MastodonPreviewCard | null;
   /** Geolocation (`Place`), a local extension Mastodon clients ignore. */
   location?: { name: string | null; latitude: number; longitude: number; url?: string | null } | null;
+  /** FEP-6757 license URI of the status (null/absent = all rights reserved). */
+  license_url?: string | null;
   poll: MastodonPoll | null;
   filtered: MastodonFilterResult[];
   quotes_count: number;

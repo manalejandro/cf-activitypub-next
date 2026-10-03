@@ -134,6 +134,7 @@ function announceActivity() {
       attributedTo: "https://remote.example/users/alice",
       content: "<p>hola desde el relay</p>",
       published: "2026-10-01T00:00:00Z",
+      license: "https://creativecommons.org/licenses/by-sa/4.0/",
       to: ["https://www.w3.org/ns/activitystreams#Public"],
     },
   };
@@ -209,6 +210,8 @@ describe("relayed announces", () => {
     const stored = await getObjectById(db, NOTE_ID);
     expect(stored?.actorId).toBe("https://remote.example/users/alice");
     expect(stored?.content).toContain("hola desde el relay");
+    // FEP-6757: the license of a remote object is kept for display.
+    expect(stored?.licenseUrl).toBe("https://creativecommons.org/licenses/by-sa/4.0/");
 
     const announces = await db.prepare("SELECT COUNT(*) AS n FROM announces").first<{ n: number }>();
     expect(announces?.n).toBe(0);

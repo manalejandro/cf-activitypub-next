@@ -194,6 +194,12 @@ export function isRenderableObjectType(type: string): boolean {
   return RENDERABLE_SET.has(type);
 }
 
+/**
+ * FEP-6757 content licensing: `license` (Dublin Core `dcterms:license`) on
+ * content objects and `preferredLicense` on actors.
+ */
+export const FEP_6757_CONTEXT = "https://w3id.org/fep/6757";
+
 /** Full Mastodon-compatible context — required for PropertyValue fields,
  *  toot: extensions (discoverable, indexable, etc.) and schema.org terms. */
 export const DEFAULT_CONTEXT = [

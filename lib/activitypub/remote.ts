@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@/lib/cf";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
 import { extractQuoteId } from "@/lib/activitypub/utils";
+import { extractLicenseUrl } from "@/lib/licenses";
 import {
   getDomainCallsSupport,
   setDomainCallsSupport,
@@ -694,6 +695,7 @@ export async function fetchAndCacheRemoteActorStatuses(
         published,
         local: false,
         locationJson: extractLocationJson(obj as Record<string, unknown>),
+        licenseUrl: extractLicenseUrl(obj as Record<string, unknown>),
         raw: JSON.stringify(obj),
       });
 
@@ -822,6 +824,7 @@ export async function fetchAndCacheRemoteStatus(
       published: toIso(obj.published) ?? new Date().toISOString(),
       local: false,
       locationJson: extractLocationJson(obj as Record<string, unknown>),
+      licenseUrl: extractLicenseUrl(obj as Record<string, unknown>),
       raw: JSON.stringify(obj),
     });
 
@@ -911,6 +914,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           published: toIso(item.published) ?? new Date().toISOString(),
           local: false,
           locationJson: extractLocationJson(item as Record<string, unknown>),
+          licenseUrl: extractLicenseUrl(item as Record<string, unknown>),
           raw: JSON.stringify(item),
         });
 

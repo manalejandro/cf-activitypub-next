@@ -17,6 +17,7 @@ import { MemoRichText } from "@/components/RichText";
 import { renderEmojiInHtml } from "@/lib/emoji";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { VisibilityPicker } from "@/components/VisibilityPicker";
+import { LicensePicker } from "@/components/LicensePicker";
 import type { APMeta } from "@/components/APTypeBlock";
 import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -143,6 +144,18 @@ function ReplyBox({
     (["public", "unlisted", "private", "direct"].includes(replyTo?.visibility ?? "public") ? replyTo?.visibility ?? "public" : "public") as "public" | "unlisted" | "private" | "direct"
   );
   const [mediaFiles, setMediaFiles] = useState<MediaAttachment[]>([]);
+  // FEP-6757: license for this reply ("" = no license), defaulted from settings.
+  const [license, setLicense] = useState("");
+
+  useEffect(() => {
+    fetch("/api/v1/preferences", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() as Promise<Record<string, unknown>> : null))
+      .then((data) => {
+        const lic = data?.["posting:default:license"];
+        if (typeof lic === "string") setLicense(lic);
+      })
+      .catch(() => {});
+  }, []);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -282,6 +295,7 @@ function ReplyBox({
         content_type: "text/markdown",
         visibility,
         media_ids: mediaFiles.map((f) => f.id),
+        license,
       };
       if (replyTo) body.in_reply_to_id = replyTo.id;
       if (quote) body.quoted_status_id = quote.id;
@@ -503,6 +517,7 @@ function ReplyBox({
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
               <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />
+              <LicensePicker value={license} onChange={setLicense} direction="up" />
             </div>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <span style={{ fontSize: "0.8rem", color: text.length > limits.maxStatusChars - 50 ? "var(--danger)" : "var(--text-muted)" }}>

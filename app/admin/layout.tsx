@@ -15,6 +15,7 @@ const navItems: { key: keyof Translations; href: string; icon: string }[] = [
   { key: "admin_blocked", href: "/admin/blocked", icon: "lock" },
   { key: "admin_instances", href: "/admin/instances", icon: "globe" },
   { key: "admin_relays", href: "/admin/relays", icon: "rss" },
+  { key: "admin_licenses", href: "/admin/licenses", icon: "balance-scale" },
   { key: "admin_reports", href: "/admin/reports", icon: "flag" },
   { key: "admin_moderation_log", href: "/admin/moderation_log", icon: "file-text-o" },
   { key: "admin_settings", href: "/admin/settings", icon: "cog" },

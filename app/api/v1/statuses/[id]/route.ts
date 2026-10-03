@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
@@ -191,6 +191,18 @@ export async function PUT(
   const tags = [...originalMentions, ...(contentTags ?? []).filter((t) => t.type !== "Mention")];
 
   // Rebuild the Note with the same ID and original published date but new content
+  // FEP-6757: the body may change the license (an id from the catalogue, or an
+  // empty value to drop it); omitting it keeps the current one.
+  let licenseUrl: string | null = obj.licenseUrl ?? null;
+  if (body.license !== undefined) {
+    if (typeof body.license === "string" && body.license.trim()) {
+      const license = await getLicenseById(env.DB, body.license.trim());
+      if (!license) return json({ error: "Unknown license", error_code: "compose_error_license" }, 422);
+      licenseUrl = license.url;
+    } else {
+      licenseUrl = null;
+    }
+  }
   const noteLocalId = obj.id.replace(`${baseUrl}/objects/`, "");
   const note = buildNote(baseUrl, noteLocalId, {
     actorUsername: actor.username,
@@ -205,6 +217,7 @@ export async function PUT(
     to: originalTo,
     cc: originalCc,
     location: locationJson ? parseLocationJson(locationJson) : null,
+    licenseUrl: licenseUrl ?? undefined,
   });
   note.attachment = (await getAttachmentsByObjectId(env.DB, obj.id)).map(toAPAttachment);
   note.updated = updatedAt;
@@ -298,6 +311,7 @@ export async function PUT(
     language: language ?? null,
     raw: JSON.stringify(note),
     ...(body.location !== undefined ? { locationJson: locationJson ?? null } : {}),
+    licenseUrl,
   });
 
   // The first link may have changed: drop the stale card snapshot and queue a

@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
+import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference, getPreferredLicenseUrl } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -285,6 +285,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       fields: fields.map((f) => ({ name: f.name, value: f.value })),
       alsoKnownAs: updated.alsoKnownAs ?? undefined,
       movedTo: updated.movedTo ?? undefined,
+      preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, updated.id)) ?? undefined,
     });
     const updateActivity = buildUpdateActor(baseUrl, apActor, generateId());
     const followerRows = await env.DB

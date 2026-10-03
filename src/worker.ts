@@ -26,7 +26,7 @@ import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relay
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -608,6 +608,13 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const published = new Date().toISOString();
       const noteId = generateId();
       const locationJson = normalizeLocationInput((body as Record<string, unknown>).location) ?? null;
+      // FEP-6757: the license chosen when the post was scheduled.
+      let licenseUrl: string | null = null;
+      const licenseId = typeof body.license === "string" ? body.license.trim() : "";
+      if (licenseId) {
+        const license = await getLicenseById(env.DB, licenseId);
+        licenseUrl = license?.url ?? null;
+      }
 
       const note = buildNote(baseUrl, noteId, {
         actorUsername: actor.username,
@@ -620,6 +627,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         language,
         tags: [],
         location: locationJson ? parseLocationJson(locationJson) : null,
+        licenseUrl: licenseUrl ?? undefined,
       });
 
       // Link pending media uploads (same `pending_media:` KV contract as
@@ -711,6 +719,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         published,
         local: true,
         locationJson,
+        licenseUrl,
         raw: JSON.stringify(note),
       });
 

@@ -57,6 +57,9 @@ const ACTION_MAP: Record<string, string> = {
   relay_enabled: "admin_action_relay_enabled",
   relay_disabled: "admin_action_relay_disabled",
   relay_removed: "admin_action_relay_removed",
+  license_added: "admin_action_license_added",
+  license_updated: "admin_action_license_updated",
+  license_removed: "admin_action_license_removed",
 };
 
 export default function AdminModerationLogPage() {

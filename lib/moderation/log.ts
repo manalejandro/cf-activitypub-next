@@ -12,7 +12,7 @@ export interface ModerationLogEntry {
   id: string;
   createdAt: string;
   source: ModerationSource;
-  targetType: "account" | "status" | "report" | "domain" | "instance" | "email" | "relay";
+  targetType: "account" | "status" | "report" | "domain" | "instance" | "email" | "relay" | "license";
   targetId: string | null;
   action: string;
   reason: string | null;
