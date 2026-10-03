@@ -25,10 +25,12 @@ export default function AdminLicensesPage() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
+  const [newIcon, setNewIcon] = useState("");
   const [newBadge, setNewBadge] = useState("");
   const [editing, setEditing] = useState<AdminLicense | null>(null);
   const [editName, setEditName] = useState("");
   const [editUrl, setEditUrl] = useState("");
+  const [editIcon, setEditIcon] = useState("");
   const [editBadge, setEditBadge] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   // Catalogue management is full-admin only (instance policy), like relays.
@@ -80,13 +82,14 @@ export default function AdminLicensesPage() {
       const res = await fetch("/api/v1/admin/licenses", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", name: newName.trim(), url: newUrl.trim(), badge_keys: newBadge.trim() }),
+        body: JSON.stringify({ action: "add", name: newName.trim(), url: newUrl.trim(), icon: newIcon.trim(), badge_keys: newBadge.trim() }),
       });
       if (res.status === 401) { router.push("/login"); return; }
       if (!res.ok) { flashError(res.status); } else {
         flash("admin_licenses_notice_added");
         setNewName("");
         setNewUrl("");
+        setNewIcon("");
         setNewBadge("");
         setAdding(false);
         await fetchLicenses(true);
@@ -103,7 +106,7 @@ export default function AdminLicensesPage() {
       const res = await fetch("/api/v1/admin/licenses", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", id: editing.id, name: editName.trim(), url: editUrl.trim(), badge_keys: editBadge.trim() }),
+        body: JSON.stringify({ action: "update", id: editing.id, name: editName.trim(), url: editUrl.trim(), icon: editIcon.trim(), badge_keys: editBadge.trim() }),
       });
       if (res.status === 401) { router.push("/login"); return; }
       if (!res.ok) { flashError(res.status); } else {
@@ -185,6 +188,14 @@ export default function AdminLicensesPage() {
               />
               <input
                 className="input"
+                placeholder={t.admin_licenses_icon_ph}
+                aria-label={t.admin_licenses_icon_ph}
+                value={newIcon}
+                onChange={(e) => setNewIcon(e.target.value)}
+                style={{ flex: 1, minWidth: 200 }}
+              />
+              <input
+                className="input"
                 placeholder={t.admin_licenses_badge_ph}
                 aria-label={t.admin_licenses_badge_ph}
                 value={newBadge}
@@ -202,12 +213,12 @@ export default function AdminLicensesPage() {
                 <Icon name="external-link" />
               </a>
               <span title={t.admin_licenses_col_badge} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 44, padding: "0.3rem 0.5rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)" }}>
-                <LicenseBadge license={{ badgeKeys: newBadge, url: newUrl }} size="1rem" />
+                <LicenseBadge license={{ icon: newIcon, badgeKeys: newBadge, url: newUrl }} size="1rem" />
               </span>
               <button type="submit" className="btn btn-primary btn-sm" disabled={!newName.trim() || !newUrl.trim() || busy === "add"}>
                 {busy === "add" ? "…" : t.admin_licenses_add}
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAdding(false); setNewBadge(""); }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAdding(false); setNewIcon(""); setNewBadge(""); }}>
                 {t.profile_cancel}
               </button>
             </form>
@@ -240,6 +251,7 @@ export default function AdminLicensesPage() {
                         <form onSubmit={(e) => void handleUpdate(e)} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
                           <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} aria-label={t.admin_licenses_name_ph} style={{ maxWidth: 200 }} autoFocus />
                           <input className="input" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} aria-label={t.admin_licenses_url_ph} style={{ flex: 1, minWidth: 240 }} />
+                          <input className="input" value={editIcon} onChange={(e) => setEditIcon(e.target.value)} placeholder={t.admin_licenses_icon_ph} aria-label={t.admin_licenses_icon_ph} style={{ flex: 1, minWidth: 200 }} />
                           <input className="input" value={editBadge} onChange={(e) => setEditBadge(e.target.value)} placeholder={t.admin_licenses_badge_ph} aria-label={t.admin_licenses_badge_ph} maxLength={60} style={{ maxWidth: 220 }} />
                           <a
                             href="https://forkawesome.github.io/Fork-Awesome/icons/"
@@ -251,7 +263,7 @@ export default function AdminLicensesPage() {
                             <Icon name="external-link" />
                           </a>
                           <span title={t.admin_licenses_col_badge} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 44, padding: "0.3rem 0.5rem", background: "var(--bg-elevated)", borderRadius: "var(--radius-sm)" }}>
-                            <LicenseBadge license={{ badgeKeys: editBadge, url: editUrl }} size="1rem" />
+                            <LicenseBadge license={{ icon: editIcon, badgeKeys: editBadge, url: editUrl }} size="1rem" />
                           </span>
                           <button type="submit" className="btn btn-primary btn-sm" disabled={busyRow}>{busyRow ? "…" : t.profile_save}</button>
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>{t.profile_cancel}</button>
@@ -288,6 +300,7 @@ export default function AdminLicensesPage() {
                               setEditing(license);
                               setEditName(license.name);
                               setEditUrl(license.url);
+                              setEditIcon(license.icon ?? "");
                               // Show the badge the entry currently renders: the
                               // stored Fork Awesome keys, or the keys derived
                               // from the URI, so editing never starts empty.

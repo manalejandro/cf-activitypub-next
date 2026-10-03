@@ -1009,6 +1009,7 @@
   "admin_licenses_add": "添加许可证",
   "admin_licenses_name_ph": "名称（例如 CC BY-SA 4.0）",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "admin_licenses_icon_ph": "图标 URL（可选）",
   "admin_licenses_col_badge": "徽章",
   "admin_licenses_badge_ph": "Fork Awesome 图标键（例如 cc cc-by）",
   "admin_licenses_loading": "加载中…",

@@ -1009,6 +1009,7 @@
   "admin_licenses_add": "Adicionar licença",
   "admin_licenses_name_ph": "Nome (ex. CC BY-SA 4.0)",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "admin_licenses_icon_ph": "URL do ícone (opcional)",
   "admin_licenses_col_badge": "Selo",
   "admin_licenses_badge_ph": "Chaves do Fork Awesome (ex.: cc cc-by)",
   "admin_licenses_loading": "A carregar…",

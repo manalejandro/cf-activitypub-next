@@ -1009,6 +1009,7 @@
   "admin_licenses_add": "Añadir licencia",
   "admin_licenses_name_ph": "Nombre (p. ej. CC BY-SA 4.0)",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "admin_licenses_icon_ph": "URL del icono (opcional)",
   "admin_licenses_col_badge": "Badge",
   "admin_licenses_badge_ph": "Claves de Fork Awesome (p. ej. cc cc-by)",
   "admin_licenses_loading": "Cargando…",

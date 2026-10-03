@@ -55,19 +55,19 @@ export type LicenseVisual =
   | { kind: "text"; label: string };
 
 /**
- * Resolution order: the Fork Awesome badge keys the admin set, the icon image,
+ * Resolution order: the icon image, the Fork Awesome badge keys the admin set,
  * the badges of a known license URI, and finally the letters of its id — a
  * custom license from another instance shows `MI-LICENCIA` until we learn more.
  */
 export function licenseVisual(license: {
-  badgeKeys?: string | null;
   icon?: string | null;
+  badgeKeys?: string | null;
   badges?: string | null;
   url: string;
 }): LicenseVisual {
+  if (license.icon) return { kind: "image", src: license.icon };
   const keys = (license.badgeKeys ?? "").trim();
   if (keys) return { kind: "icons", names: keys.split(/\s+/) };
-  if (license.icon) return { kind: "image", src: license.icon };
   const badges = license.badges || licenseIconsForUrl(license.url);
   if (badges) return { kind: "icons", names: badges.split(" ") };
   return { kind: "text", label: licenseIdLetters(license.url) || "?" };
