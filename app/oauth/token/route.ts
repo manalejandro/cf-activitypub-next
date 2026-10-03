@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, getOAuthAppByClientId, createOAuthToken, mediaCacheId } from "@/lib/db";
+import { getActorByEmail, getActorById, getOAuthAppByClientId, getOAuthAppById, getOAuthTokenByRefreshToken, createOAuthToken, mediaCacheId, refreshOAuthTokenAccessToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { clampScope } from "@/lib/oauth-scopes";
@@ -235,6 +235,53 @@ export async function POST(request: NextRequest): Promise<Response> {
       token_type: "Bearer",
       scope: clampScope(payload.scope, codeApp?.scopes, "read"),
       created_at: now,
+    });
+  }
+
+  if (grantType === "refresh_token") {
+    const { refresh_token, client_id, client_secret } = body;
+    if (!refresh_token) {
+      return json({ error: "invalid_request", error_description: "refresh_token is required" }, 400);
+    }
+
+    const row = await getOAuthTokenByRefreshToken(env.DB, refresh_token);
+    // App-level tokens (client_credentials) never carry a refresh token; a row
+    // without an actor cannot be refreshed into a user session.
+    if (!row || !row.actorId) {
+      return json({ error: "invalid_grant", error_description: "Invalid refresh token" }, 400);
+    }
+
+    // When the client identifies itself it must be the app the token was issued
+    // to, and a supplied secret must match. Public clients may refresh with just
+    // the refresh token (it is the credential).
+    if (client_id || client_secret) {
+      const app = row.appId ? await getOAuthAppById(env.DB, row.appId) : null;
+      if (!app || (client_id && client_id !== app.clientId) || (client_secret && app.clientSecret !== client_secret)) {
+        return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
+      }
+    }
+
+    // The account must still be usable: refreshing must not resurrect a
+    // suspended, unconfirmed or pending-approval session (same gates as
+    // getAuthenticatedActor).
+    const actor = await getActorById(env.DB, row.actorId);
+    if (!actor || actor.suspended || (actor.isLocal && (!actor.emailVerified || actor.approved === false))) {
+      return json({ error: "invalid_grant", error_description: "This account cannot refresh its session" }, 400);
+    }
+
+    // Rotate the access token in place: the refresh token and the granted scope
+    // stay the same (Mastodon/Doorkeeper), the old access token dies here.
+    const accessToken = generateSecureToken();
+    const now = Math.floor(Date.now() / 1000);
+    const expiresIn = 3600 * 24 * 30;
+    await refreshOAuthTokenAccessToken(env.DB, row.id, accessToken, new Date((now + expiresIn) * 1000).toISOString());
+
+    return json({
+      access_token: accessToken,
+      token_type: "Bearer",
+      scope: row.scope,
+      created_at: now,
+      refresh_token,
     });
   }
 

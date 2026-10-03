@@ -3265,6 +3265,31 @@ export async function getTokenByAccessToken(db: D1Database, token: string): Prom
   return row ? rowToToken(row) : null;
 }
 
+export async function getOAuthTokenByRefreshToken(db: D1Database, refreshToken: string): Promise<OAuthToken | null> {
+  const row = await db
+    .prepare("SELECT * FROM oauth_tokens WHERE refresh_token = ?")
+    .bind(refreshToken)
+    .first<Row>();
+  return row ? rowToToken(row) : null;
+}
+
+/**
+ * Refresh grant: rotate the access token in place. The refresh token (and the
+ * granted scope) stay the same, like Mastodon/Doorkeeper, so a client that
+ * missed a rotated refresh token is not locked out.
+ */
+export async function refreshOAuthTokenAccessToken(
+  db: D1Database,
+  id: string,
+  accessToken: string,
+  expiresAt: string
+): Promise<void> {
+  await db
+    .prepare("UPDATE oauth_tokens SET access_token = ?, expires_at = ? WHERE id = ?")
+    .bind(accessToken, expiresAt, id)
+    .run();
+}
+
 export async function getOAuthAppById(db: D1Database, appId: string): Promise<OAuthApp | null> {
   const row = await db
     .prepare("SELECT * FROM oauth_apps WHERE id = ?")

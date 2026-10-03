@@ -4,7 +4,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   getActorByEmail: vi.fn(),
+  getActorById: vi.fn(),
   getOAuthAppByClientId: vi.fn(),
+  getOAuthAppById: vi.fn(),
+  getOAuthTokenByRefreshToken: vi.fn(),
+  refreshOAuthTokenAccessToken: vi.fn(async () => {}),
   createOAuthToken: vi.fn(async () => {}),
   mediaCacheId: vi.fn(async (v: string) => `id-${v}`),
   verifyPassword: vi.fn(async () => true),
@@ -24,7 +28,11 @@ vi.mock("@/lib/cf", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
+  getActorById: mocks.getActorById,
   getOAuthAppByClientId: mocks.getOAuthAppByClientId,
+  getOAuthAppById: mocks.getOAuthAppById,
+  getOAuthTokenByRefreshToken: mocks.getOAuthTokenByRefreshToken,
+  refreshOAuthTokenAccessToken: mocks.refreshOAuthTokenAccessToken,
   createOAuthToken: mocks.createOAuthToken,
   mediaCacheId: mocks.mediaCacheId,
 }));
@@ -77,6 +85,16 @@ beforeEach(() => {
   mocks.getOAuthAppByClientId.mockImplementation(async (_db: unknown, clientId: string) =>
     clientId === APP.clientId ? APP : null
   );
+  mocks.getOAuthAppById.mockImplementation(async (_db: unknown, appId: string) =>
+    appId === APP.id ? APP : null
+  );
+  mocks.getActorById.mockResolvedValue({
+    id: "https://cf-ap.com/users/me",
+    isLocal: true,
+    emailVerified: true,
+    approved: true,
+    suspended: false,
+  });
 });
 
 describe("POST /oauth/token — authorization_code", () => {
@@ -149,5 +167,70 @@ describe("POST /oauth/token — authorization_code", () => {
     }) as never);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /oauth/token — refresh_token", () => {
+  const ROW = {
+    id: "tok-1",
+    actorId: "https://cf-ap.com/users/me",
+    appId: APP.id,
+    accessToken: "old-access",
+    refreshToken: "refresh-1",
+    scope: "read write",
+    expiresAt: "2020-01-01T00:00:00.000Z",
+    createdAt: "2026-10-01T00:00:00.000Z",
+  };
+
+  it("rotates the access token in place, keeping the refresh token and scope", async () => {
+    mocks.getOAuthTokenByRefreshToken.mockResolvedValue(ROW);
+
+    const res = await POST(makeRequest({
+      grant_type: "refresh_token",
+      refresh_token: "refresh-1",
+      client_id: APP.clientId,
+      client_secret: APP.clientSecret,
+    }) as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { access_token: string; refresh_token: string; scope: string };
+    expect(body.access_token).toBe("tok");
+    expect(body.refresh_token).toBe("refresh-1");
+    expect(body.scope).toBe("read write");
+    expect(mocks.refreshOAuthTokenAccessToken).toHaveBeenCalledWith(expect.anything(), "tok-1", "tok", expect.any(String));
+    expect(mocks.createOAuthToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown or actor-less refresh token", async () => {
+    mocks.getOAuthTokenByRefreshToken.mockResolvedValue(null);
+    expect((await POST(makeRequest({ grant_type: "refresh_token", refresh_token: "nope" }) as never)).status).toBe(400);
+
+    mocks.getOAuthTokenByRefreshToken.mockResolvedValue({ ...ROW, actorId: null });
+    expect((await POST(makeRequest({ grant_type: "refresh_token", refresh_token: "refresh-1" }) as never)).status).toBe(400);
+    expect(mocks.refreshOAuthTokenAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects a refresh presented by a different client", async () => {
+    mocks.getOAuthTokenByRefreshToken.mockResolvedValue(ROW);
+    const res = await POST(makeRequest({
+      grant_type: "refresh_token",
+      refresh_token: "refresh-1",
+      client_id: "otra-app",
+    }) as never);
+    expect(res.status).toBe(401);
+    expect(mocks.refreshOAuthTokenAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses to refresh a suspended account", async () => {
+    mocks.getOAuthTokenByRefreshToken.mockResolvedValue(ROW);
+    mocks.getActorById.mockResolvedValue({ id: ROW.actorId, isLocal: true, emailVerified: true, approved: true, suspended: true });
+    const res = await POST(makeRequest({
+      grant_type: "refresh_token",
+      refresh_token: "refresh-1",
+      client_id: APP.clientId,
+      client_secret: APP.clientSecret,
+    }) as never);
+    expect(res.status).toBe(400);
+    expect(mocks.refreshOAuthTokenAccessToken).not.toHaveBeenCalled();
   });
 });

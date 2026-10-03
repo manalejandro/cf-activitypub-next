@@ -13466,7 +13466,8 @@
                       "type": "string"
                     },
                     "scope": {},
-                    "created_at": {}
+                    "created_at": {},
+                    "refresh_token": {}
                   }
                 }
               }
