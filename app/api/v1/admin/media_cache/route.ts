@@ -19,12 +19,12 @@ export async function GET(request: NextRequest): Promise<Response> {
   // can see what the budget is actually protecting (30-day aging window).
   const top = await env.DB
     .prepare(
-      `SELECT r2_key, target_type, size, hits, hits_at FROM media_cache
+      `SELECT r2_key, target_type, size, hits, hits_at, last_hit_at FROM media_cache
        WHERE status = 'ready' AND hits > 0
        ORDER BY hits DESC LIMIT 10`
     )
     .bind()
-    .all<{ r2_key: string; target_type: string; size: number; hits: number; hits_at: string | null }>()
+    .all<{ r2_key: string; target_type: string; size: number; hits: number; hits_at: string | null; last_hit_at: string | null }>()
     .catch(() => ({ results: [] }));
   return json({
     stats,

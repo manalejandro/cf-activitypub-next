@@ -16,6 +16,7 @@ const navItems: { key: keyof Translations; href: string; icon: string }[] = [
   { key: "admin_instances", href: "/admin/instances", icon: "globe" },
   { key: "admin_relays", href: "/admin/relays", icon: "rss" },
   { key: "admin_licenses", href: "/admin/licenses", icon: "balance-scale" },
+  { key: "admin_media_cache", href: "/admin/media_cache", icon: "database" },
   { key: "admin_reports", href: "/admin/reports", icon: "flag" },
   { key: "admin_moderation_log", href: "/admin/moderation_log", icon: "file-text-o" },
   { key: "admin_settings", href: "/admin/settings", icon: "cog" },
@@ -27,6 +28,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { t } = useLocale();
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The media cache section only makes sense when the cache is enabled: the
+  // nav entry is fetched from the metrics endpoint instead of hardcoded.
+  const [mediaCacheEnabled, setMediaCacheEnabled] = useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -43,6 +47,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const roleName = me.roles?.[0]?.name?.toLowerCase() ?? "user";
         if (roleName === "admin" || roleName === "moderator") {
           setAuthorized(true);
+          fetch("/api/v1/admin/media_cache", { headers: { Authorization: `Bearer ${token}` } })
+            .then((r) => (r.ok ? r.json() : null) as Promise<{ config?: { enabled?: boolean } } | null>)
+            .then((data) => setMediaCacheEnabled(data?.config?.enabled === true))
+            .catch(() => {});
         } else {
           router.push("/home");
         }
@@ -68,7 +76,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="admin-sidebar-title">
           <Link href="/admin">Admin</Link>
         </div>
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => item.href !== "/admin/media_cache" || mediaCacheEnabled)
+          .map((item) => {
           const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
           return (
             <Link
