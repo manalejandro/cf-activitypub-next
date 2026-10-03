@@ -26,7 +26,7 @@ import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relay
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache } from "../lib/db";
 import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
 import { serializeQuote } from "../lib/mastodon/quote";
 import { notify } from "../lib/notify";
@@ -1231,6 +1231,16 @@ async function executeScheduled(env: Env): Promise<void> {
       await maintainMediaCache(bindings, mediaLimits);
     } catch (err) {
       console.error("[cron] media cache maintenance failed", err);
+    }
+    // 1b) License icons (FEP-6757): catalogue entries and remote lookups put
+    // their image in R2 like any other cached resource, so clients never
+    // hotlink licensebuttons.net or a peer's instance. Bounded per tick.
+    try {
+      for (const license of await listLicensesMissingIconCache(env.DB, 20)) {
+        await enqueueMediaCache(env.DB, license.icon, "license", license.id);
+      }
+    } catch (err) {
+      console.error("[cron] license icon enqueue failed", err);
     }
     // 2) Drain the queue (fresh media first) so held statuses can be released.
     try {

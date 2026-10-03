@@ -4,6 +4,8 @@ import {
   extractLicenseUrl,
   licenseI18nKey,
   licenseIconsForUrl,
+  licenseIdLetters,
+  licenseOrigin,
   normalizeLicenseId,
   normalizeLicenseUrl,
 } from "@/lib/licenses";
@@ -19,9 +21,25 @@ describe("licenseIconsForUrl", () => {
     expect(licenseIconsForUrl("https://rightsstatements.org/vocab/InC/1.0/")).toBe("copyright");
   });
 
-  it("falls back to a generic icon for unknown licenses", () => {
-    expect(licenseIconsForUrl("https://example.com/my-license")).toBe("certificate");
-    expect(licenseIconsForUrl("")).toBe("certificate");
+  it("returns no badges for unknown licenses (the id letters are used instead)", () => {
+    expect(licenseIconsForUrl("https://example.com/my-license")).toBe("");
+    expect(licenseIconsForUrl("")).toBe("");
+  });
+});
+
+describe("licenseIdLetters", () => {
+  it("falls back to the letters of the license id", () => {
+    expect(licenseIdLetters("https://otra.example/licenses/mi-licencia")).toBe("MI-LICENCIA");
+    expect(licenseIdLetters("https://otra.example/licenses/cc-custom-2026")).toBe("CC-CUSTOM-20");
+    expect(licenseIdLetters("https://otra.example/")).toBe("OTRA-EXAMPLE");
+  });
+});
+
+describe("licenseOrigin", () => {
+  it("returns the origin instance of a license URI", () => {
+    expect(licenseOrigin("https://otra.example/licenses/x")).toBe("https://otra.example");
+    expect(licenseOrigin("http://otra.example/licenses/x")).toBeNull();
+    expect(licenseOrigin("nope")).toBeNull();
   });
 });
 

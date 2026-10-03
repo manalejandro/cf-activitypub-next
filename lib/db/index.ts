@@ -2967,6 +2967,38 @@ export async function deleteLicense(db: D1Database, id: string): Promise<void> {
 }
 
 /**
+ * The R2-backed URL of a cached source, when the media cache has it ready.
+ * License icons use it at read time: the catalogue keeps the origin URL (so an
+ * admin always edits the real one and expiry/purge needs no reset), while the
+ * API and the lookup serve the cached copy so clients never hotlink an origin.
+ */
+export async function cachedMediaUrl(db: D1Database, sourceUrl: string | null | undefined): Promise<string | null> {
+  if (!sourceUrl) return null;
+  const row = await db
+    .prepare("SELECT cached_url FROM media_cache WHERE source_url = ? AND status = 'ready'")
+    .bind(sourceUrl)
+    .first<{ cached_url: string | null }>();
+  return row?.cached_url ?? null;
+}
+
+/** Catalogue icons the media cache has not fetched yet (cron enqueues them). */
+export async function listLicensesMissingIconCache(
+  db: D1Database,
+  limit = 20
+): Promise<{ id: string; icon: string }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT l.id, l.icon FROM licenses l
+       WHERE l.icon LIKE 'https://%'
+         AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.source_url = l.icon)
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ id: string; icon: string }>();
+  return rows.results ?? [];
+}
+
+/**
  * Canonical URI of the actor's preferred license (FEP-6757 `preferredLicense`),
  * or null when they have none or the catalogue entry was removed.
  */
@@ -4596,6 +4628,11 @@ export async function listOrphanMediaCache(
          AND NOT EXISTS (
            SELECT 1 FROM preview_cards pc JOIN objects o ON o.card_id = pc.id
            WHERE pc.image_url = mc.source_url)
+       UNION ALL
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       WHERE mc.target_type = 'license'
+         AND mc.created_at < datetime('now', '-1 hour')
+         AND NOT EXISTS (SELECT 1 FROM licenses l WHERE l.icon = mc.source_url)
        LIMIT ?`
     )
     .bind(limit)

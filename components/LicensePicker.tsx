@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
-import { fetchLicenses, licenseBadges, licenseName, type ClientLicense } from "@/lib/license-client";
+import { fetchLicenses, licenseName, type ClientLicense } from "@/lib/license-client";
+import { LicenseBadge } from "@/components/LicenseBadge";
 
 interface LicensePickerProps {
   /** Catalogue id of the selected license ("" = no license). */
@@ -86,11 +87,7 @@ export function LicensePicker({ value, onChange, direction = "down" }: LicensePi
       >
         {current ? (
           <>
-            <span style={{ display: "inline-flex", gap: "0.1rem" }}>
-              {licenseBadges(current).split(" ").map((icon) => (
-                <Icon key={icon} name={icon} size="0.85rem" />
-              ))}
-            </span>
+            <LicenseBadge license={current} size="0.85rem" />
             {licenseName(t, current)}
           </>
         ) : (
@@ -140,11 +137,7 @@ export function LicensePicker({ value, onChange, direction = "down" }: LicensePi
                 background: license.id === value ? "var(--accent-bg)" : undefined,
               }}
             >
-              <span style={{ display: "inline-flex", gap: "0.1rem" }}>
-                {licenseBadges(license).split(" ").map((icon) => (
-                  <Icon key={icon} name={icon} fixedWidth />
-                ))}
-              </span>
+              <LicenseBadge license={license} fixedWidth />
               {licenseName(t, license)}
             </button>
           ))}

@@ -17,7 +17,8 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { APTypeBlock, TypeBadge, type APMeta } from "./APTypeBlock";
 import { Icon } from "./Icon";
-import { licenseIconsForUrl } from "@/lib/licenses";
+import { LicenseBadge } from "./LicenseBadge";
+import { useLicenseInfo } from "@/lib/license-client";
 import LocationPreview from "./LocationPreview";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
@@ -674,6 +675,9 @@ export function StatusCard({
   filterContext?: "home" | "notifications" | "public" | "thread" | "account";
 }) {
   const prefs = usePreferences();
+  // FEP-6757: resolve the status license (catalogue, origin instance, or just
+  // the URI so the badge shows the letters of its id).
+  const licenseInfo = useLicenseInfo(status.license_url);
   const [cwExpanded, setCwExpanded] = useState(prefs["reading:expand:spoilers"] === true);
   // ── Server-side filter results (Mastodon v2 filters) ────────────────────
   // Only results whose filter applies to the current view context count.
@@ -1124,12 +1128,10 @@ export function StatusCard({
               href={`/licenses?url=${encodeURIComponent(status.license_url)}`}
               className="btn btn-ghost btn-sm"
               style={{ padding: "0.2rem 0.4rem", gap: "0.15rem" }}
-              title={`${t.license_label}: ${status.license_url}`}
+              title={`${t.license_label}: ${licenseInfo?.name ?? status.license_url}`}
               aria-label={t.license_label}
             >
-              {licenseIconsForUrl(status.license_url).split(" ").map((icon) => (
-                <Icon key={icon} name={icon} size="0.85rem" />
-              ))}
+              <LicenseBadge license={licenseInfo ?? { url: status.license_url }} size="0.85rem" />
             </Link>
           )}
           <div ref={menuRef} style={{ position: "relative", marginLeft: "auto" }}>

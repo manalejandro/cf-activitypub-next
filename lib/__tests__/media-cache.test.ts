@@ -23,7 +23,7 @@ import {
   type MediaCacheBindings,
   type MediaCacheLimits,
 } from "@/lib/media/remote-cache";
-import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences } from "@/lib/db";
+import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 
 class D1Adapter {
@@ -913,5 +913,31 @@ describe("remote media cache", () => {
     expect((await getMediaCacheStats(db)).ready).toBe(0);
     const restored = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
     expect(restored?.url).toBe(SRC);
+  });
+
+  it("caches a license icon (FEP-6757) and keeps it while the licence exists", async () => {
+    const ICON = "https://otra.example/icons/mi-lic.png";
+    await db
+      .prepare("INSERT INTO licenses (id, name, url, icon, sort_order) VALUES (?,?,?,?,?)")
+      .bind("mi-lic", "Mi licencia", "https://otra.example/licenses/mi-lic", ICON, 10)
+      .run();
+
+    await enqueueMediaCache(db, ICON, "license", "mi-lic");
+    federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([7, 7]), "image/png"));
+    expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
+
+    // The catalogue keeps the origin URL (an admin always edits the real one);
+    // the API and the lookup resolve the R2 copy through `cachedMediaUrl`.
+    const row = await db.prepare("SELECT icon FROM licenses WHERE id = ?").bind("mi-lic").first<{ icon: string }>();
+    expect(row?.icon).toBe(ICON);
+    expect(await cachedMediaUrl(db, ICON)).toContain("/api/media/cache/media/");
+
+    // The orphan sweep leaves it alone while the licence points at it…
+    await db.prepare("UPDATE media_cache SET created_at = datetime('now', '-2 hours')").bind().run();
+    expect(await listOrphanMediaCache(db, 10)).toHaveLength(0);
+
+    // …and collects it once the licence is gone.
+    await db.prepare("DELETE FROM licenses WHERE id = ?").bind("mi-lic").run();
+    expect(await listOrphanMediaCache(db, 10)).toHaveLength(1);
   });
 });

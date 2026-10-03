@@ -10,11 +10,12 @@
 
 /**
  * Fork Awesome badge names for a canonical license URI (space-separated, so a
- * CC license can show `cc cc-by cc-sa` like the official badges).
+ * CC license can show `cc cc-by cc-sa` like the official badges). Used when the
+ * catalogue entry has no icon image and the URI is a known license.
  */
 export function licenseIconsForUrl(url: string): string {
   const u = (url || "").toLowerCase();
-  if (!u) return "certificate";
+  if (!u) return "";
   if (u.includes("creativecommons.org/publicdomain/zero")) return "cc cc-zero";
   if (u.includes("creativecommons.org/publicdomain/mark")) return "cc cc-pd";
   if (u.includes("creativecommons.org/licenses/")) {
@@ -28,7 +29,34 @@ export function licenseIconsForUrl(url: string): string {
   }
   if (u.includes("rightsstatements.org/vocab/inc")) return "copyright";
   if (u.includes("rightsstatements.org")) return "balance-scale";
-  return "certificate";
+  return "";
+}
+
+/**
+ * Last resort label for a license we know nothing about: the letters of its id
+ * (the URI's last meaningful path segment), e.g. `…/licenses/mi-licencia` →
+ * `MI-LICENCIA`. Capped so it stays a badge.
+ */
+export function licenseIdLetters(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1] ?? parsed.hostname;
+    return decodeURIComponent(last).replace(/[^a-z0-9-]+/gi, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 12);
+  } catch {
+    return "";
+  }
+}
+
+/** The origin instance of a license URI (scheme + host), for remote lookups. */
+export function licenseOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
 /** i18n key of a built-in license entry (`license_cc_by_sa_4_0_name`). */

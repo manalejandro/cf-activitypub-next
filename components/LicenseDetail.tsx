@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
-import { licenseBadges, licenseName, type ClientLicense } from "@/lib/license-client";
+import { LicenseBadge } from "@/components/LicenseBadge";
+import { licenseName, type ClientLicense } from "@/lib/license-client";
 import { licenseI18nKey } from "@/lib/licenses";
 
 /**
  * License detail view (FEP-6757): badges, name, localised description, the
  * canonical URI and the reminder that "no license" keeps the author's copyright
  * but federation means nobody can enforce it once the post leaves the server.
+ * A custom license from another instance links out to that instance's page.
  */
 export function LicenseDetail({ license, url }: { license: ClientLicense | null; url: string }) {
   const { t } = useLocale();
@@ -25,10 +27,8 @@ export function LicenseDetail({ license, url }: { license: ClientLicense | null;
         <Icon name="arrow-left" /> {t.license_back}
       </Link>
       <h1 style={{ fontSize: "1.4rem", display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-        <span style={{ display: "inline-flex", gap: "0.2rem" }}>
-          {licenseBadges(license ?? { icon: "", url: canonical }).split(" ").map((icon) => (
-            <Icon key={icon} name={icon} size="1.1rem" />
-          ))}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+          <LicenseBadge license={license ?? { url: canonical }} size="1.1rem" />
         </span>
         {license ? licenseName(t, license) : canonical}
       </h1>

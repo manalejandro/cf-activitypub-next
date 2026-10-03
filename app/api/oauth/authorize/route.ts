@@ -74,6 +74,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const payload = JSON.stringify({
     actorId: actor.id,
     appId: app.id,
+    // The token exchange compares the *client_id* the app sends (OAuth requires
+    // it); `appId` is our internal row id and must never be compared to it.
+    clientId: app.clientId,
     scope,
     redirectUri: redirect_uri,
     codeChallenge: code_challenge,

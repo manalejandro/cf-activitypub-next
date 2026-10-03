@@ -7,7 +7,8 @@ import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { PageLayout } from "@/components/PageLayout";
 import { LicenseDetail } from "@/components/LicenseDetail";
-import { fetchLicenses, licenseBadges, licenseName, findLicense, type ClientLicense } from "@/lib/license-client";
+import { fetchLicenses, licenseName, findLicense, useLicenseInfo, type ClientLicense } from "@/lib/license-client";
+import { LicenseBadge } from "@/components/LicenseBadge";
 
 function LicensesContent() {
   const { t } = useLocale();
@@ -15,6 +16,8 @@ function LicensesContent() {
   const url = params.get("url");
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Resolves a license that is not ours by asking the origin instance.
+  const resolved = useLicenseInfo(url);
 
   useEffect(() => {
     let alive = true;
@@ -30,7 +33,7 @@ function LicensesContent() {
     return (
       <PageLayout>
         <div style={{ padding: "1rem" }}>
-          <LicenseDetail license={findLicense(licenses, url)} url={url} />
+          <LicenseDetail license={resolved ?? findLicense(licenses, url)} url={url} />
         </div>
       </PageLayout>
     );
@@ -56,10 +59,8 @@ function LicensesContent() {
                 className="btn btn-ghost"
                 style={{ width: "100%", justifyContent: "flex-start", gap: "0.6rem", padding: "0.55rem 0.75rem" }}
               >
-                <span style={{ display: "inline-flex", gap: "0.15rem" }}>
-                  {licenseBadges(license).split(" ").map((icon) => (
-                    <Icon key={icon} name={icon} fixedWidth />
-                  ))}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                  <LicenseBadge license={license} fixedWidth />
                 </span>
                 {licenseName(t, license)}
               </Link>

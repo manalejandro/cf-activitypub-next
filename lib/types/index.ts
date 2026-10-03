@@ -719,7 +719,7 @@ export interface LocalPushSubscription {
 export interface MediaCacheEntry {
   id: string;
   sourceUrl: string;
-  targetType: "attachment" | "avatar" | "header" | "card";
+  targetType: "attachment" | "avatar" | "header" | "card" | "license";
   targetId: string | null;
   status: "pending" | "ready" | "failed";
   r2Key: string | null;

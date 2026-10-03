@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, badRequest } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
-import { createLicense, deleteLicense, getLicenseById, getLicenseByUrl, listLicenses, updateLicense } from "@/lib/db";
+import { createLicense, deleteLicense, enqueueMediaCache, getLicenseById, getLicenseByUrl, listLicenses, updateLicense } from "@/lib/db";
 import { normalizeLicenseId, normalizeLicenseUrl } from "@/lib/licenses";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
@@ -67,14 +67,17 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (await getLicenseById(env.DB, id)) return badRequest("That id is already in use");
     if (await getLicenseByUrl(env.DB, url)) return badRequest("That license is already in the catalogue");
     const sortOrder = Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : 100;
+    const icon = typeof body.icon === "string" ? body.icon.trim().slice(0, 500) : "";
     await createLicense(env.DB, {
       id,
       name: name.slice(0, 120),
       url,
-      icon: typeof body.icon === "string" ? body.icon.trim().slice(0, 80) : "",
+      icon,
       sortOrder,
       createdAt: new Date().toISOString(),
     });
+    // The icon lives in R2 while the media cache is on (clients never hotlink).
+    if (icon) await enqueueMediaCache(env.DB, icon, "license", id).catch(() => {});
     await logLicense(env, "license_added", id, "License added to the catalogue by an administrator.", { url });
     return json({ ok: true, license: await getLicenseById(env.DB, id) });
   }
@@ -101,9 +104,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     await updateLicense(env.DB, id, {
       name: name ? name.slice(0, 120) : undefined,
       url: url ?? undefined,
-      icon: typeof body.icon === "string" ? body.icon.trim().slice(0, 80) : undefined,
+      icon: typeof body.icon === "string" ? body.icon.trim().slice(0, 500) : undefined,
       sortOrder: Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : undefined,
     });
+    if (typeof body.icon === "string" && body.icon.trim()) {
+      await enqueueMediaCache(env.DB, body.icon.trim(), "license", id).catch(() => {});
+    }
     await logLicense(env, "license_updated", id, "License updated by an administrator.");
     return json({ ok: true, license: await getLicenseById(env.DB, id) });
   }

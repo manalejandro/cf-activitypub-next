@@ -171,6 +171,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     let payload: {
       actorId: string;
       appId: string;
+      clientId?: string;
       scope: string;
       redirectUri: string;
       codeChallenge: string | null;
@@ -183,8 +184,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     // The code was issued to one client: require that exact client_id and the
-    // registered redirect_uri, so a leaked code alone is useless.
-    if (client_id && client_id !== payload.appId) {
+    // registered redirect_uri, so a leaked code alone is useless. (Codes minted
+    // before `clientId` was stored simply skip the check; they live 10 min.)
+    if (client_id && payload.clientId && client_id !== payload.clientId) {
       return json({ error: "invalid_client", error_description: "client_id mismatch" }, 400);
     }
     if (redirect_uri !== payload.redirectUri) {
@@ -209,7 +211,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     await env.KV.delete(`oauth_code:${code}`);
 
-    const codeApp = await getOAuthAppByClientId(env.DB, payload.appId);
+    // Scopes are clamped to the app that actually owns the code: the payload
+    // stores our internal row id, so look the app up by its client_id.
+    const codeApp = await getOAuthAppByClientId(env.DB, payload.clientId ?? "");
     const accessToken = generateSecureToken();
     const refreshToken = generateSecureToken();
     const now = Math.floor(Date.now() / 1000);

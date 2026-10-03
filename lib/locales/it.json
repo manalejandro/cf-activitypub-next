@@ -972,6 +972,7 @@
   "admin_licenses_add": "Aggiungi licenza",
   "admin_licenses_name_ph": "Nome (es. CC BY-SA 4.0)",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "admin_licenses_icon_ph": "URL dell'icona (facoltativo)",
   "admin_licenses_loading": "Caricamento…",
   "admin_licenses_empty": "Nessuna licenza nel catalogo.",
   "admin_licenses_col_license": "Licenza",

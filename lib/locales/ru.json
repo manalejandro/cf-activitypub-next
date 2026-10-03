@@ -972,6 +972,7 @@
   "admin_licenses_add": "Добавить лицензию",
   "admin_licenses_name_ph": "Название (например, CC BY-SA 4.0)",
   "admin_licenses_url_ph": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "admin_licenses_icon_ph": "URL значка (необязательно)",
   "admin_licenses_loading": "Загрузка…",
   "admin_licenses_empty": "В каталоге нет лицензий.",
   "admin_licenses_col_license": "Лицензия",

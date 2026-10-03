@@ -8559,6 +8559,30 @@
         }
       }
     },
+    "/api/v1/licenses/lookup": {
+      "get": {
+        "summary": "Get /api/v1/licenses/lookup",
+        "operationId": "get_api_v1_licenses_lookup",
+        "tags": [
+          "Licenses"
+        ],
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/api/v1/licenses": {
       "get": {
         "summary": "Get /api/v1/licenses",
