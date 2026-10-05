@@ -6,7 +6,7 @@
 import type { APTag } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
 import { maskMarkdownCode } from "@/lib/markdown-code";
-import type { LocalCustomEmoji } from "@/lib/types";
+import type { EmojiLike } from "@/lib/types";
 
 function escapeHtml(text: string): string {
   return text
@@ -31,7 +31,7 @@ interface Replacement {
 function buildReplacements(
   text: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[]
+  customEmojis?: EmojiLike[]
 ): Replacement[] {
   const replacements: Replacement[] = [];
   const usedRanges: [number, number][] = [];
@@ -237,7 +237,7 @@ export function fieldValueForVerification(value: string): string {
 export function linkifyInline(
   text: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[],
+  customEmojis?: EmojiLike[],
   options: { convertNewlines?: boolean } = {}
 ): string {
   return buildHtml(text, buildReplacements(text, baseUrl, customEmojis), options);
@@ -259,7 +259,7 @@ const HTML_WALK_RE = /<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
 export function linkifyHtmlText(
   html: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[]
+  customEmojis?: EmojiLike[]
 ): string {
   let out = "";
   let skip = 0; // depth of protected elements (a, pre, code)
@@ -335,7 +335,7 @@ export interface ProcessStatusContentOptions {
 export function processStatusContent(
   text: string,
   baseUrl?: string,
-  customEmojis?: LocalCustomEmoji[],
+  customEmojis?: EmojiLike[],
   options: ProcessStatusContentOptions = {}
 ): { html: string; tags: APTag[] } {
   const replacements = buildReplacements(text, baseUrl, customEmojis);

@@ -89,3 +89,44 @@ describe("remote status serialization (federated video + sensitive)", () => {
     expect(s.media_attachments[0].type).toBe("video");
   });
 });
+
+describe("status custom emojis without the catalogue", () => {
+  const EMOJI_URL = "https://files.mastodon.social/custom_emojis/images/karma.png";
+  const EMOJI_TAG = {
+    type: "Emoji",
+    name: ":karma:",
+    icon: { type: "Image", id: EMOJI_URL, url: EMOJI_URL, mediaType: "image/png" },
+  };
+
+  it("falls back to the AP tag emojis (POST responses, interactions, broadcasts)", () => {
+    const obj = buildObject();
+    obj.content = "<p>hola :karma:</p>";
+    obj.raw = JSON.stringify({ id: obj.id, type: "Note", content: obj.content, tag: [EMOJI_TAG] });
+
+    // No `emojis` option: this is what the POST /favourite/reblog routes and
+    // the stream broadcasts used to do, and the emoji showed as plain text
+    // until a reload.
+    const s = serializeStatus(obj, buildActor(), "mastodon.social", {});
+
+    expect(s.content).toContain('class="emojione custom-emoji"');
+    expect(s.content).toContain(EMOJI_URL);
+    expect(s.content).not.toContain("hola :karma:");
+    expect(s.emojis).toEqual([
+      { shortcode: "karma", url: EMOJI_URL, static_url: EMOJI_URL, visible_in_picker: true },
+    ]);
+  });
+
+  it("prefers the catalogue list when the caller provides one", () => {
+    const obj = buildObject();
+    obj.content = "<p>hola :karma:</p>";
+    obj.raw = JSON.stringify({ id: obj.id, type: "Note", content: obj.content, tag: [EMOJI_TAG] });
+
+    const cached = "https://cf-ap.com/api/media/cache/media/karma.png";
+    const s = serializeStatus(obj, buildActor(), "mastodon.social", {
+      emojis: [{ shortcode: "karma", url: cached, staticUrl: cached, visibleInPicker: true, category: null }] as never,
+    });
+
+    expect(s.content).toContain(cached);
+    expect(s.emojis[0].url).toBe(cached);
+  });
+});

@@ -602,7 +602,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       const parentAuthor = parentObj ? await getActorById(env.DB, parentObj.actorId) : null;
       if (parentObj && parentAuthor) {
         const parentAttachments = await getAttachmentsByObjectId(env.DB, parentObj.id);
-        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, { attachments: parentAttachments });
+        const parentSerialized = serializeStatus(parentObj, parentAuthor, domain, { attachments: parentAttachments, emojis: localEmojis });
         await broadcastStatusInteraction(env.TIMELINE_STREAM, parentSerialized, parentAuthor);
         await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, parentAuthor.id, parentSerialized);
       }
@@ -742,7 +742,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     { id: note.id, type: "Note", actorId: actor.id, content: note.content ?? htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, licenseUrl, raw: JSON.stringify(note) },
     actor,
     domain,
-    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10) }
+    { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10), emojis: localEmojis }
   );
 
   // Broadcast to streaming clients — collect tasks and await all together

@@ -27,6 +27,7 @@ import type {
   APObject,
   APObjectMeta,
   MastodonPreviewCard,
+  EmojiLike,
 } from "@/lib/types";
 import { youTubeEmbedUrl } from "@/lib/youtube";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
@@ -66,7 +67,14 @@ function toIso(s: string | null | undefined): string | null {
   }
 }
 
-function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; static_url: string; visible_in_picker: boolean; category?: string } {
+/**
+ * The fields a status/account emoji list needs. Interaction routes, POST
+ * responses and stream broadcasts serialize a status without loading the
+ * catalogue, so a raw-tag fallback can provide these without a DB read.
+ */
+type StatusEmoji = EmojiLike;
+
+function serializeEmoji(e: StatusEmoji): { shortcode: string; url: string; static_url: string; visible_in_picker: boolean; category?: string } {
   return {
     shortcode: e.shortcode,
     url: e.url,
@@ -77,11 +85,39 @@ function serializeEmoji(e: LocalCustomEmoji): { shortcode: string; url: string; 
 }
 
 /**
+ * Custom emojis declared in the object's AP `tag` array. The stored content is
+ * the AP source (`:shortcode:`, never a rendered `<img>` — Mastodon's sanitizer
+ * drops images), so any caller that serializes without the catalogue (POST
+ * responses, favourite/reblog/bookmark routes, conversations, stream
+ * broadcasts) must fall back to these or the emoji shows as plain text until a
+ * reload. The raw tags carry the same URLs the catalogue holds.
+ */
+function emojisFromRaw(raw: string | null | undefined): StatusEmoji[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { tag?: unknown };
+    const tags = Array.isArray(parsed.tag) ? parsed.tag : [];
+    const emojis: StatusEmoji[] = [];
+    for (const tag of tags) {
+      if (!tag || typeof tag !== "object") continue;
+      const t = tag as { type?: string; name?: string; icon?: { url?: string } };
+      if (t.type !== "Emoji" || typeof t.name !== "string" || !t.icon?.url) continue;
+      const shortcode = t.name.replace(/^:/, "").replace(/:$/, "");
+      if (!shortcode) continue;
+      emojis.push({ shortcode, url: t.icon.url, staticUrl: t.icon.url, visibleInPicker: true, category: null });
+    }
+    return emojis;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Only the custom emojis whose shortcode actually appears in the given content.
  * Mastodon's `emojis` field on a status/account lists just the emojis used there
  * (so the client can render them), never the whole instance emoji set.
  */
-function filterUsedEmojis(contents: (string | null | undefined)[], emojis: LocalCustomEmoji[]): LocalCustomEmoji[] {
+function filterUsedEmojis(contents: (string | null | undefined)[], emojis: StatusEmoji[]): StatusEmoji[] {
   if (emojis.length === 0) return [];
   const haystack = contents.filter((c): c is string => typeof c === "string" && c.length > 0).join(" ");
   if (!haystack) return [];
@@ -91,7 +127,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Local
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: LocalCustomEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: StatusEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -253,7 +289,7 @@ export function serializeCollection(
 function renderRemoteContent(
   content: string | null | undefined,
   localDomain: string,
-  emojis?: LocalCustomEmoji[]
+  emojis?: StatusEmoji[]
 ): string {
   const raw = content ?? "";
   if (!raw) return "";
@@ -318,6 +354,12 @@ export function serializeStatus(
     direct: "direct",
   };
 
+  // Callers that serialize a status without loading the catalogue (POST
+  // responses, interaction routes, stream broadcasts) fall back to the AP
+  // `tag` emojis, so a custom emoji never renders as plain `:shortcode:` text
+  // until the next reload.
+  const emojis = opts.emojis && opts.emojis.length > 0 ? opts.emojis : emojisFromRaw(obj.raw);
+
   return {
     id: encodeStatusId(obj.id, obj.local),
     created_at: toIso(obj.published) ?? new Date().toISOString(),
@@ -339,12 +381,12 @@ export function serializeStatus(
     favourites_count: obj.favouritesCount,
     edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIso(obj.updatedAt) : null,
     license_url: obj.licenseUrl ?? null,
-    content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, opts.emojis), obj.raw, localDomain),
+    content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, emojis), obj.raw, localDomain),
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: getInstanceTitle(), website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain, {
       lastStatusAt: opts.authorLastStatusAt ?? null,
-      emojis: opts.authorEmojis ?? opts.emojis ?? [],
+      emojis: opts.authorEmojis ?? emojis,
       fields: opts.authorFields ?? [],
       supportsCalls: opts.authorSupportsCalls,
       moved: opts.authorMoved ?? undefined,
@@ -355,7 +397,7 @@ export function serializeStatus(
     media_attachments: obj.mediaPending ? [] : (opts.attachments ?? []).map(serializeAttachment),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
-    emojis: filterUsedEmojis([obj.content, obj.contentWarning], opts.emojis ?? []).map(serializeEmoji),
+    emojis: filterUsedEmojis([obj.content, obj.contentWarning], emojis).map(serializeEmoji),
     card: obj.mediaPending ? null : parsePreviewCard(obj.cardJson),
     location: obj.mediaPending ? null : parseLocationJson(obj.locationJson),
     poll: opts.poll ?? null,

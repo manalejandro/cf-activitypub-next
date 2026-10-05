@@ -108,9 +108,8 @@ describe("linkifyHtmlText", () => {
 
   it("linkifies custom emoji shortcodes in HTML text", () => {
     const html = linkifyHtmlText("<p>hola :blobcat:</p>", "https://local.example", [{
-      id: "e1", shortcode: "blobcat", url: "https://local.example/emoji/blobcat.png",
+      shortcode: "blobcat", url: "https://local.example/emoji/blobcat.png",
       staticUrl: "https://local.example/emoji/blobcat.png", category: null, visibleInPicker: false,
-      domain: null, actorId: null, disabled: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
     }]);
     expect(html).toContain("emojione");
   });

@@ -418,6 +418,13 @@ export interface LocalCustomEmoji {
   updatedAt: string;
 }
 
+/**
+ * The fields needed to render/replace a `:shortcode:` emoji. Serializers and
+ * content helpers accept this instead of the full catalogue row, so a status
+ * can be rendered from its AP `tag` emojis without a DB read.
+ */
+export type EmojiLike = Pick<LocalCustomEmoji, "shortcode" | "url" | "staticUrl" | "visibleInPicker" | "category">;
+
 export interface LocalAttachment {
   id: string;
   objectId: string;
