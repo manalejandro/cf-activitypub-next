@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getActorBoosts, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorsByIds, getActorStatuses, getActorStatuses_withReplies, getActorBoosts, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -39,8 +39,9 @@ export async function GET(
 
   // Remote accounts whose statuses were never federated here have nothing in
   // `objects`. On the first page of a remote profile, poll the actor's outbox
-  // and ingest the visible statuses so the timeline isn't empty.
-  if (!actor.isLocal && !pinnedOnly && !onlyReplies && !maxId) {
+  // and ingest the visible statuses so the timeline isn't empty (not for the
+  // boosts tab: those come from the announces we already have).
+  if (!actor.isLocal && !pinnedOnly && !onlyReplies && !onlyReblogs && !maxId) {
     await fetchAndCacheRemoteActorStatuses(env.DB, actor.id, limit);
   }
 
@@ -110,10 +111,18 @@ export async function GET(
   const authorExtras = await getStatusAuthorExtras(env.DB, allObjects.map((o) => o.actorId), domain);
   const authorFieldsMap = await getActorFieldsMap(env.DB, allObjects.map((o) => o.actorId));
 
+  // A boosted object belongs to its original author, not to the profile being
+  // viewed: resolve every distinct author so the inner card shows the right
+  // account (and the wrapper keeps the profile account as the booster).
+  const authorMap = await getActorsByIds(env.DB, [...new Set(allObjects.map((o) => o.actorId))]);
+  if (!authorMap.has(actor.id)) authorMap.set(actor.id, actor);
+
   const statuses = allEntries.map((entry) => {
     const obj = entry.object;
+    const author = authorMap.get(obj.actorId);
+    if (!author) return null;
     const poll = pollMap.get(obj.id) ?? null;
-    const serialized = serializeStatus(obj, actor, domain, {
+    const serialized = serializeStatus(obj, author, domain, {
       attachments: attachmentMap.get(obj.id) ?? [],
       poll,
       favourited: likedIds.has(obj.id),
@@ -141,9 +150,12 @@ export async function GET(
     });
   });
 
-  const response = json(statuses);
-  if (statuses.length > 0) {
-    const oldest = statuses[statuses.length - 1] as { id: string };
+  // Entries whose author is not cached cannot render an account: drop them.
+  const serializedStatuses = statuses.filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const response = json(serializedStatuses);
+  if (serializedStatuses.length > 0) {
+    const oldest = serializedStatuses[serializedStatuses.length - 1] as { id: string };
     response.headers.set("Link", buildPaginationLinks(request, oldest.id));
   }
   return response;
