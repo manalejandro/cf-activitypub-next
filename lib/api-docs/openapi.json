@@ -2510,6 +2510,13 @@
             }
           },
           {
+            "name": "only_reblogs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "pinned",
             "in": "query",
             "schema": {

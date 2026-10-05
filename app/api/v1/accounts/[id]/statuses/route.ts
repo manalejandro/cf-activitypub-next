@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
-import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getActorById, getActorStatuses, getActorStatuses_withReplies, getActorBoosts, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -26,6 +26,7 @@ export async function GET(
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const onlyReplies = searchParams.get("only_replies") === "true";
+  const onlyReblogs = searchParams.get("only_reblogs") === "true";
   const pinnedOnly = searchParams.get("pinned") === "true";
 
   const actor = await getActorById(env.DB, decodeURIComponent(id));
@@ -70,7 +71,9 @@ export async function GET(
     ? []
     : onlyReplies
       ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
-      : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing, { includeBoosts: !excludeReblogs });
+      : onlyReblogs
+        ? await getActorBoosts(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
+        : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing, { includeBoosts: !excludeReblogs });
 
   // If pinnedOnly, fetch objects by the status IDs we got from status_pins
   let allEntries = entries;

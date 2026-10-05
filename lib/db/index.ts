@@ -2632,6 +2632,47 @@ export async function getActorStatuses(
   }));
 }
 
+/**
+ * The profile's "Boosts" tab: only the account's announces, ordered by boost
+ * time. The boosted object follows the same visibility rules as the profile
+ * timeline.
+ */
+export async function getActorBoosts(
+  db: D1Database,
+  actorId: string,
+  limit = 20,
+  maxId?: string,
+  viewerId?: string,
+  isFollowing = false
+): Promise<TimelineEntry[]> {
+  const isAuthor = viewerId === actorId;
+  const visibilities = isAuthor
+    ? "'public', 'unlisted', 'private', 'direct'"
+    : isFollowing
+      ? "'public', 'unlisted', 'private'"
+      : "'public', 'unlisted'";
+
+  const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
+  if (maxId && !cursor) return [];
+
+  const rows = await db
+    .prepare(
+      `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
+       FROM announces a JOIN objects o ON o.id = a.object_id
+       WHERE a.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+         ${maxId ? "AND a.created_at < ?" : ""}
+       ORDER BY a.created_at DESC LIMIT ?`
+    )
+    .bind(...(maxId ? [actorId, cursor, limit] : [actorId, limit]))
+    .all<Row>();
+  return rows.results.map((row) => ({
+    object: rowToObject(row),
+    boost: row.boost_id
+      ? { id: String(row.boost_id), actorId: String(row.boost_actor_id), createdAt: String(row.boost_created_at) }
+      : null,
+  }));
+}
+
 export async function updateObject(
   db: D1Database,
   id: string,

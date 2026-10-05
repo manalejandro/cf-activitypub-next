@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createAnnounce, getActorStatuses, getHomeTimeline } from "@/lib/db";
+import { createAnnounce, getActorBoosts, getActorStatuses, getHomeTimeline } from "@/lib/db";
 import { applyTestSchema, resetTestDatabase } from "./helpers/db";
 
 const db = env.DB;
@@ -144,6 +144,23 @@ describe("profile boosts", () => {
     const withoutBoosts = await getActorStatuses(db, ALICE, 20, undefined, ME, false);
     expect(withoutBoosts.map((entry) => entry.object.id)).toEqual(["https://remote.example/objects/alice"]);
     expect(withoutBoosts[0].boost).toBeNull();
+  });
+
+  it("serves the Boosts tab with only the account's boosts", async () => {
+    await insertObject("https://other.example/objects/p", BOB, "public", "2026-01-01T00:00:00Z");
+    await insertObject("https://remote.example/objects/alice", ALICE, "public", "2026-01-03T00:00:00Z");
+    await boost(ALICE, "https://other.example/objects/p", "ann-p", "2026-01-04T00:00:00Z");
+
+    const tab = await getActorBoosts(db, ALICE, 20, undefined, ME, false);
+    expect(tab.map((entry) => entry.object.id)).toEqual(["https://other.example/objects/p"]);
+    expect(tab[0].boost).toMatchObject({ id: "ann-p", actorId: ALICE });
+
+    // The same visibility rule as the profile timeline: a followers-only
+    // original is hidden from anonymous viewers.
+    await db.prepare("UPDATE objects SET visibility = 'private' WHERE id = 'https://other.example/objects/p'").run();
+    expect(await getActorBoosts(db, ALICE, 20, undefined, undefined, false)).toHaveLength(0);
+    await follow(ME, BOB);
+    expect(await getActorBoosts(db, ALICE, 20, undefined, ME, true)).toHaveLength(1);
   });
 });
 

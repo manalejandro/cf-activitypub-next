@@ -64,7 +64,7 @@ interface Account {
   };
 }
 
-type ActiveTab = "posts" | "replies" | "media" | "followers" | "following" | "pinned" | "collections";
+type ActiveTab = "posts" | "boosts" | "replies" | "media" | "followers" | "following" | "pinned" | "collections";
 
 interface MediaAttachment {
   id: string;
@@ -263,6 +263,7 @@ export default function ProfilePage() {
   const [account, setAccount] = useState<Account | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [boosts, setBoosts] = useState<Status[]>([]);
   const [replies, setReplies] = useState<Status[]>([]);
   const [pinnedStatuses, setPinnedStatuses] = useState<Status[]>([]);
   const [followers, setFollowers] = useState<Account[]>([]);
@@ -271,8 +272,6 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("posts");
-  // Mastodon's profile "Show boosts" filter, persisted per browser.
-  const [showBoosts, setShowBoosts] = useState(true);
   const [tabLoaded, setTabLoaded] = useState<Record<string, boolean>>({ posts: false });
   const [endorsed, setEndorsed] = useState(false);
   const [endorseBusy, setEndorseBusy] = useState(false);
@@ -288,6 +287,8 @@ export default function ProfilePage() {
   const [muteBusy, setMuteBusy] = useState(false);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [hasMoreBoosts, setHasMoreBoosts] = useState(true);
+  const [loadingMoreBoosts, setLoadingMoreBoosts] = useState(false);
   const [hasMoreFollowers, setHasMoreFollowers] = useState(true);
   const [loadingMoreFollowers, setLoadingMoreFollowers] = useState(false);
   const [hasMoreFollowing, setHasMoreFollowing] = useState(true);
@@ -344,9 +345,9 @@ export default function ProfilePage() {
       if (meData.id !== acct.id) await refreshRelationship(acct.id);
     }
 
-    // Load statuses (honoring the "show boosts" filter, persisted per browser).
+    // Load posts (the profile's boosts live in their own tab).
     const statusRes = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}${showBoosts ? "" : "&exclude_reblogs=true"}`,
+      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}&exclude_reblogs=true`,
       { headers: authHeaders }
     );
     if (statusRes.ok) {
@@ -401,16 +402,6 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeUsername]);
 
-  // Restore the "Show boosts" filter; the first page loaded with the default,
-  // so refetch it without boosts when the saved preference is off.
-  useEffect(() => {
-    if (localStorage.getItem("profile-show-boosts") !== "0") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowBoosts(false);
-    if (account) void reloadPosts(account.id, false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
-
   // The remote account can accept or reject our follow at any time: the inbox
   // broadcasts a `relationship` event on the user stream so the follow button
   // updates without a reload.
@@ -435,7 +426,7 @@ export default function ProfilePage() {
     setLoadingMorePosts(true);
     const oldestId = statuses[statuses.length - 1].id;
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}${showBoosts ? "" : "&exclude_reblogs=true"}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}&exclude_reblogs=true`,
       { headers: authHeaders }
     );
     if (res.ok) {
@@ -444,6 +435,23 @@ export default function ProfilePage() {
       setHasMorePosts(data.length >= limits.defaultTimelinePage);
     }
     setLoadingMorePosts(false);
+  }
+
+  async function loadMoreBoosts() {
+    if (!account || loadingMoreBoosts || !hasMoreBoosts || boosts.length === 0) return;
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    setLoadingMoreBoosts(true);
+    const oldestId = boosts[boosts.length - 1].id;
+    const res = await fetch(
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?only_reblogs=true&max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}`,
+      { headers: authHeaders }
+    );
+    if (res.ok) {
+      const data = await res.json() as Status[];
+      setBoosts((prev) => [...prev, ...data]);
+      setHasMoreBoosts(data.length >= limits.defaultTimelinePage);
+    }
+    setLoadingMoreBoosts(false);
   }
 
   async function loadMoreFollowers() {
@@ -480,17 +488,19 @@ export default function ProfilePage() {
     setLoadingMoreFollowing(false);
   }
 
-  // Infinite scroll for posts, followers, following tabs
+  // Infinite scroll for posts, boosts, followers, following tabs
   useEffect(() => {
     if (!bottomRef.current) return;
     if (activeTab === "posts" && (!hasMorePosts || loadingMorePosts)) return;
+    if (activeTab === "boosts" && (!hasMoreBoosts || loadingMoreBoosts)) return;
     if (activeTab === "followers" && (!hasMoreFollowers || loadingMoreFollowers)) return;
     if (activeTab === "following" && (!hasMoreFollowing || loadingMoreFollowing)) return;
-    if (activeTab !== "posts" && activeTab !== "followers" && activeTab !== "following") return;
+    if (activeTab !== "posts" && activeTab !== "boosts" && activeTab !== "followers" && activeTab !== "following") return;
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
         if (activeTab === "posts") void loadMorePosts();
+        else if (activeTab === "boosts") void loadMoreBoosts();
         else if (activeTab === "followers") void loadMoreFollowers();
         else if (activeTab === "following") void loadMoreFollowing();
       },
@@ -499,13 +509,23 @@ export default function ProfilePage() {
     obs.observe(bottomRef.current);
     return () => obs.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMorePosts, loadingMorePosts, statuses, activeTab, hasMoreFollowers, loadingMoreFollowers, followers, hasMoreFollowing, loadingMoreFollowing, following]);
+  }, [hasMorePosts, loadingMorePosts, statuses, activeTab, hasMoreBoosts, loadingMoreBoosts, boosts, hasMoreFollowers, loadingMoreFollowers, followers, hasMoreFollowing, loadingMoreFollowing, following]);
 
   async function loadTab(tab: ActiveTab, acctId: string) {
     if (tabLoaded[tab]) return;
     const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
-    if (tab === "replies") {
+    if (tab === "boosts") {
+      const res = await fetch(
+        `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?only_reblogs=true&limit=${limits.defaultTimelinePage}`,
+        { headers: authHeaders }
+      );
+      if (res.ok) {
+        const data = await res.json() as Status[];
+        setBoosts(data);
+        setHasMoreBoosts(data.length >= limits.defaultTimelinePage);
+      }
+    } else if (tab === "replies") {
       const res = await fetch(
         `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?only_replies=true&limit=${limits.defaultTimelinePage}`,
         { headers: authHeaders }
@@ -556,26 +576,6 @@ export default function ProfilePage() {
   }
 
   /** Refetch the posts tab honoring the "show boosts" filter. */
-  async function reloadPosts(acctId: string, includeBoosts: boolean) {
-    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-    const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?limit=${limits.defaultTimelinePage}${includeBoosts ? "" : "&exclude_reblogs=true"}`,
-      { headers: authHeaders }
-    );
-    if (res.ok) {
-      const data = await res.json() as Status[];
-      setStatuses(data);
-      setHasMorePosts(data.length >= limits.defaultTimelinePage);
-    }
-  }
-
-  function toggleBoosts() {
-    const next = !showBoosts;
-    setShowBoosts(next);
-    localStorage.setItem("profile-show-boosts", next ? "1" : "0");
-    if (account) void reloadPosts(account.id, next);
-  }
-
   function openEdit(acct: Account) {
     setEditDisplayName(acct.display_name || "");
     setEditNote(acct.source?.note ?? me?.source?.note ?? acct.note ?? "");
@@ -676,6 +676,7 @@ export default function ProfilePage() {
     const applied = updated as Status;
     const apply = (prev: Status[]) => prev.map((x) => applyStatusInFeed(x, applied));
     setStatuses(apply);
+    setBoosts(apply);
     setReplies(apply);
     setPinnedStatuses(apply);
   }, []);
@@ -693,6 +694,7 @@ export default function ProfilePage() {
     });
     if (res.ok) {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
+      setBoosts((prev) => prev.filter((x) => x.id !== s.id));
       setReplies((prev) => prev.filter((x) => x.id !== s.id));
       purgeStatusFromCache(s.id);
     }
@@ -1162,6 +1164,7 @@ export default function ProfilePage() {
             <div className="flex" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
               {([
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
+                { key: "boosts" as ActiveTab, label: t.profile_boosts },
                 { key: "replies" as ActiveTab, label: t.profile_replies },
                 { key: "pinned" as ActiveTab, label: <Icon name="thumb-tack" size="0.9rem" />, count: pinnedStatuses.length },
                 { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
@@ -1190,24 +1193,6 @@ export default function ProfilePage() {
                   )}
                 </button>
               ))}
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={toggleBoosts}
-                title={t.profile_show_boosts}
-                aria-pressed={showBoosts}
-                style={{
-                  marginLeft: "auto",
-                  flex: "0 0 auto",
-                  borderRadius: 0,
-                  padding: "0.875rem 1rem",
-                  color: showBoosts ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: showBoosts ? 600 : 400,
-                  whiteSpace: "nowrap",
-                  fontSize: "0.8rem",
-                }}
-              >
-                <Icon name="retweet" size="0.85rem" /> {t.profile_show_boosts}
-              </button>
             </div>
 
             {/* Tab content */}
@@ -1234,6 +1219,36 @@ export default function ProfilePage() {
                   ))}
                   <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
                     {loadingMorePosts && <Loading compact />}
+                  </div>
+                </>
+              )
+            )}
+
+            {activeTab === "boosts" && (
+              !tabLoaded.boosts ? (
+                <Loading />
+              ) : boosts.length === 0 ? (
+                <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
+                  <span style={{ fontSize: "2rem", display: "block", marginBottom: "0.75rem" }}><Icon name="retweet" size="2rem" /></span>
+                  {t.profile_no_boosts}
+                </div>
+              ) : (
+                <>
+                  {boosts.map((s) => (
+                    <StatusCard
+                    filterContext="account"key={s.id}
+                      status={s}
+                      onFav={handleStatusUpdate}
+                      onReblog={handleStatusUpdate}
+                      onReply={handleReply}
+                    onQuote={handleQuote}
+                      me={me}
+                      onEdit={openStatusEdit}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                  <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    {loadingMoreBoosts && <Loading compact />}
                   </div>
                 </>
               )
