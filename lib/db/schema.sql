@@ -302,6 +302,15 @@ CREATE TABLE IF NOT EXISTS announces (
 
 CREATE INDEX IF NOT EXISTS idx_announces_actor  ON announces(actor_id);
 CREATE INDEX IF NOT EXISTS idx_announces_object ON announces(object_id);
+-- Ordered home-timeline boost scan: the boost branch of getHomeTimeline forces
+-- this index (INDEXED BY) so the LIMIT stops after the newest followed boosts
+-- instead of sorting every announce of every followed account. `actor_id` in
+-- the index keeps the membership filter index-only for users following nobody.
+CREATE INDEX IF NOT EXISTS idx_announces_created ON announces(created_at DESC, actor_id);
+-- Profile timeline boosts (getActorStatuses with includeBoosts, getActorBoosts):
+-- an ordered scan per account lets the LIMIT stop after its newest boosts
+-- (top boosters hold thousands of announces).
+CREATE INDEX IF NOT EXISTS idx_announces_actor_created ON announces(actor_id, created_at DESC);
 
 -- ─────────────────────────────────────────
 -- Blocks

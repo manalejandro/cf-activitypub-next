@@ -2364,10 +2364,17 @@ export async function getHomeTimeline(
   );
 
   const boostBinds: unknown[] = [actorId, actorId, actorId, actorId, actorId, actorId, actorId, actorId, actorId];
+  // Drive from `announces` through `idx_announces_created`: left to the planner
+  // it drove from `objects` (the visibility OR became a MULTI-INDEX OR over
+  // every public object) and read ~1.5M rows / 11s per request on cf-ap.
+  // CROSS JOIN pins the join order and INDEXED BY pins the ordered index scan,
+  // so the LIMIT stops after the newest followed boosts instead of sorting
+  // every announce of every followed account.
   let boostSql = `
     SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
-    FROM announces a JOIN objects o ON o.id = a.object_id
-    WHERE (a.actor_id = ? OR a.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'))
+    FROM announces a INDEXED BY idx_announces_created CROSS JOIN objects o
+    WHERE o.id = a.object_id
+      AND (a.actor_id = ? OR a.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'))
       AND (o.visibility IN ('public', 'unlisted')
            OR (o.visibility = 'private' AND o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')))
       AND o.media_pending = 0
