@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo, type RefObject } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
@@ -37,6 +37,103 @@ const SCHEDULE_MIN = (() => {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 })();
+
+interface HomeTimelineProps {
+  statuses: Status[];
+  me: Me | null;
+  loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  bottomRef: RefObject<HTMLDivElement | null>;
+  onFav: (s: Status) => void;
+  onReblog: (s: Status) => void;
+  onEdit: (s: Status) => void;
+  onDelete: (s: Status) => void;
+}
+
+/**
+ * The feed itself, memoised. The composer lives in HomePage, so without this
+ * every keystroke re-rendered every StatusCard and typing got slower as the
+ * timeline grew. Every prop is stable across typing (the list only changes
+ * when statuses change), and `useLocale`/`useRouter` are read here instead of
+ * passed down so their identities can never break the memo.
+ */
+const HomeTimeline = memo(function HomeTimeline({
+  statuses,
+  me,
+  loading,
+  loadingMore,
+  hasMore,
+  bottomRef,
+  onFav,
+  onReblog,
+  onEdit,
+  onDelete,
+}: HomeTimelineProps) {
+  const { t } = useLocale();
+  const router = useRouter();
+
+  const handleReply = useCallback((status: Status) => {
+    router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`);
+  }, [router]);
+  const handleQuote = useCallback((status: Status) => {
+    router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`);
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-0">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="status-card flex gap-3" style={{ padding: "1rem" }}>
+            <div className="skeleton" style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0 }} />
+            <div className="flex flex-col gap-2 flex-1">
+              <div className="skeleton" style={{ height: 14, width: "40%" }} />
+              <div className="skeleton" style={{ height: 14, width: "80%" }} />
+              <div className="skeleton" style={{ height: 14, width: "60%" }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (statuses.length === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center"
+        style={{ padding: "4rem 2rem", color: "var(--text-muted)", textAlign: "center" }}
+      >
+        <span style={{ fontSize: "3rem", marginBottom: "1rem" }}><Icon name="globe" size="3rem" /></span>
+        <p>{t.timeline_empty}</p>
+        <p style={{ fontSize: "0.875rem" }}>{t.timeline_empty_sub}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {statuses.map((s) => (
+        <div key={s.id} data-status-id={s.id}>
+          <StatusCard
+            filterContext="home"
+            status={s}
+            onFav={onFav}
+            onReblog={onReblog}
+            onReply={handleReply}
+            onQuote={handleQuote}
+            me={me}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        </div>
+      ))}
+      {/* Infinite scroll sentinel */}
+      <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
+        {loadingMore ? <Loading compact text={t.loading_more} /> : hasMore ? "" : t.timeline_end}
+      </div>
+    </>
+  );
+});
 
 export default function HomePage() {
   const router = useRouter();
@@ -287,23 +384,23 @@ export default function HomePage() {
     setMediaFiles((prev) => prev.map((f) => f.id === id ? { ...f, sensitive: next } : f));
   }
 
-  function handleFav(updated: Status) {
+  const handleFav = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
-  }
+  }, [setStatuses]);
 
-  function handleReblog(updated: Status) {
+  const handleReblog = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
-  }
+  }, [setStatuses]);
 
-  function openEdit(s: Status) {
+  const openEdit = useCallback((s: Status) => {
     setEditingStatus(s);
-  }
+  }, []);
 
-  function handleStatusSaved(updated: Status) {
+  const handleStatusSaved = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-  }
+  }, [setStatuses]);
 
-  async function handleDelete(s: Status) {
+  const handleDelete = useCallback(async (s: Status) => {
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${s.id}`, {
       method: "DELETE",
@@ -313,7 +410,7 @@ export default function HomePage() {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
       purgeStatusFromCache(s.id);
     }
-  }
+  }, [t, setStatuses]);
 
   return (
     <>
@@ -587,51 +684,18 @@ export default function HomePage() {
 
         {/* Timeline */}
         <NewStatusesPill count={pendingCount} onClick={reveal} />
-        {loading ? (
-          <div className="flex flex-col gap-0">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="status-card flex gap-3" style={{ padding: "1rem" }}>
-                <div className="skeleton" style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0 }} />
-                <div className="flex flex-col gap-2 flex-1">
-                  <div className="skeleton" style={{ height: 14, width: "40%" }} />
-                  <div className="skeleton" style={{ height: 14, width: "80%" }} />
-                  <div className="skeleton" style={{ height: 14, width: "60%" }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : statuses.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center"
-            style={{ padding: "4rem 2rem", color: "var(--text-muted)", textAlign: "center" }}
-          >
-            <span style={{ fontSize: "3rem", marginBottom: "1rem" }}><Icon name="globe" size="3rem" /></span>
-            <p>{t.timeline_empty}</p>
-            <p style={{ fontSize: "0.875rem" }}>{t.timeline_empty_sub}</p>
-          </div>
-        ) : (
-          statuses.map((s) => (
-            <div key={s.id} data-status-id={s.id}>
-              <StatusCard
-                  filterContext="home"
-                  status={s}
-                  onFav={handleFav}
-                  onReblog={handleReblog}
-                  onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}
-                  onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)}
-                  me={me}
-                  onEdit={openEdit}
-                  onDelete={handleDelete}
-                />
-            </div>
-          ))
-        )}
-        {/* Infinite scroll sentinel */}
-        {!loading && statuses.length > 0 && (
-          <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-            {loadingMore ? <Loading compact text={t.loading_more} /> : hasMore ? "" : t.timeline_end}
-          </div>
-        )}
+        <HomeTimeline
+          statuses={statuses}
+          me={me}
+          loading={loading}
+          loadingMore={loadingMore}
+          hasMore={hasMore}
+          bottomRef={bottomRef}
+          onFav={handleFav}
+          onReblog={handleReblog}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+        />
       </PageLayout>
 
       <BackToTop />

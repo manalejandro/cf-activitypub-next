@@ -14,6 +14,9 @@ import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
 
+// Stable no-op for the props StatusCard requires but this feed never uses.
+const NOOP = () => {};
+
 export default function FavouritesPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
@@ -34,7 +37,7 @@ export default function FavouritesPage() {
 
   const { statuses, setStatuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("favourites", fetchPage, { refetchOnMount: true, replaceOnRefetch: true });
 
-  function handleFav(updated: Status) {
+  const handleFav = useCallback((updated: Status) => {
     updateStatusInCache(updated);
     // Unfavourited from this feed: drop the card instead of leaving it stale.
     if (!updated.favourited) {
@@ -42,12 +45,20 @@ export default function FavouritesPage() {
       return;
     }
     setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
-  }
+  }, [setStatuses]);
 
-  function handleReblog(updated: Status) {
+  const handleReblog = useCallback((updated: Status) => {
     updateStatusInCache(updated);
     setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
-  }
+  }, [setStatuses]);
+
+  const handleReply = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   useEffect(() => {
     async function fetchMe() {
@@ -100,11 +111,11 @@ export default function FavouritesPage() {
                   me={me}
                   onFav={handleFav}
                   onReblog={handleReblog}
-                  onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`)}
-                  onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
+                  onReply={handleReply}
+                  onQuote={handleQuote}
                   onBookmarkChange={updateStatusInCache}
-                  onDelete={() => {}}
-                  onEdit={() => {}}
+                  onDelete={NOOP}
+                  onEdit={NOOP}
                 />
               </div>
             ))}

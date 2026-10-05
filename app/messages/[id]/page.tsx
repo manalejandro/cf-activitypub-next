@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
@@ -11,6 +11,9 @@ import type { Status, Me } from "@/components/StatusCard";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { Loading } from "@/components/Loading";
+
+// Stable no-op for the props StatusCard requires but direct messages never use.
+const NOOP = () => {};
 
 export default function ConversationDetailPage() {
   const router = useRouter();
@@ -101,6 +104,24 @@ export default function ConversationDetailPage() {
 
   const other = conv?.accounts[0];
 
+  const handleDeleteMessage = useCallback((s: Status) => {
+    setMessages((prev) => prev.filter((m) => m.id !== s.id));
+  }, []);
+
+  // Memoised: typing in the composer must not re-render the conversation.
+  const messageList = useMemo(() => messages.map((s) => (
+    <StatusCard
+      key={s.id}
+      status={s}
+      me={me}
+      onFav={NOOP}
+      onReblog={NOOP}
+      onReply={NOOP}
+      onDelete={handleDeleteMessage}
+      onEdit={NOOP}
+    />
+  )), [messages, me, handleDeleteMessage]);
+
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/messages" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -120,18 +141,7 @@ export default function ConversationDetailPage() {
               <div style={{ fontWeight: 600 }}>{t.messages_empty}</div>
             </div>
           ) : (
-            messages.map((s) => (
-              <StatusCard
-                key={s.id}
-                status={s}
-                me={me}
-                onFav={() => {}}
-                onReblog={() => {}}
-                onReply={() => {}}
-                onDelete={() => setMessages((prev) => prev.filter((m) => m.id !== s.id))}
-                onEdit={() => {}}
-              />
-            ))
+            messageList
           )}
           <div ref={bottomRef} />
         </div>

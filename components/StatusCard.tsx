@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -638,7 +638,7 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
   );
 }
 
-export function StatusCard({
+function StatusCardInner({
   status,
   isFocal = false,
   onFav,
@@ -1296,3 +1296,10 @@ export function StatusCard({
     </article>
   );
 }
+
+/**
+ * Memoised: timelines render hundreds of cards, and without this any parent
+ * state change (e.g. typing in the composer) re-rendered every one of them.
+ * Callers must keep the handler props stable (`useCallback`).
+ */
+export const StatusCard = memo(StatusCardInner);

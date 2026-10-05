@@ -14,6 +14,9 @@ import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 
+// Stable no-op for the props StatusCard requires but this feed never uses.
+const NOOP = () => {};
+
 export default function BookmarksPage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
@@ -35,19 +38,27 @@ export default function BookmarksPage() {
   const { statuses, setStatuses, loading, loadingMore, hasMore, loadMore } = useTimelineCache("bookmarks", fetchPage, { refetchOnMount: true, replaceOnRefetch: true });
 
   /** Keep the card's own counters/state in sync and propagate to other caches. */
-  function applyUpdate(updated: Status) {
+  const applyUpdate = useCallback((updated: Status) => {
     updateStatusInCache(updated);
     setStatuses((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
-  }
+  }, [setStatuses]);
 
-  function handleBookmarkChange(updated: Status) {
+  const handleBookmarkChange = useCallback((updated: Status) => {
     updateStatusInCache(updated);
     // Unbookmarked from this feed: drop the card now instead of leaving a stale
     // entry until the next reload.
     if (!updated.bookmarked) {
       setStatuses((prev) => prev.filter((s) => s.id !== updated.id));
     }
-  }
+  }, [setStatuses]);
+
+  const handleReply = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   useEffect(() => {
     async function fetchMe() {
@@ -100,11 +111,11 @@ export default function BookmarksPage() {
                   me={me}
                   onFav={applyUpdate}
                   onReblog={applyUpdate}
-                  onReply={() => router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`)}
-                  onQuote={(s) => router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`)}
+                  onReply={handleReply}
+                  onQuote={handleQuote}
                   onBookmarkChange={handleBookmarkChange}
-                  onDelete={() => {}}
-                  onEdit={() => {}}
+                  onDelete={NOOP}
+                  onEdit={NOOP}
                 />
               </div>
             ))}

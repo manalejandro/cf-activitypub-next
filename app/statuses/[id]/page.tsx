@@ -665,7 +665,7 @@ export default function ThreadPage() {
     if (deletedId === statusId) setDeleted(true);
   });
 
-  function handleFav(toggled: Status) {
+  const handleFav = useCallback((toggled: Status) => {
     // Take the counters from the response the action returned (the routes
     // serialize the refreshed row): guessing with a local +1 raced with the
     // server's own `status.update` broadcast, so a fav could count twice.
@@ -676,9 +676,9 @@ export default function ThreadPage() {
     setFocal((f) => (f ? update(f) : f));
     setAncestors((prev) => prev.map(update));
     setDescendants((prev) => prev.map(update));
-  }
+  }, []);
 
-  function handleReblog(toggled: Status) {
+  const handleReblog = useCallback((toggled: Status) => {
     const update = (s: Status): Status =>
       s.id === toggled.id
         ? { ...s, reblogged: toggled.reblogged, reblogs_count: toggled.reblogs_count }
@@ -686,7 +686,7 @@ export default function ThreadPage() {
     setFocal((f) => (f ? update(f) : f));
     setAncestors((prev) => prev.map(update));
     setDescendants((prev) => prev.map(update));
-  }
+  }, []);
 
   async function loadHistory() {
     if (history.length > 0 || historyLoading) return;
@@ -712,15 +712,15 @@ export default function ThreadPage() {
     }
   }, [replyTarget]);
 
-  function handleReply(s: Status) {
+  const handleReply = useCallback((s: Status) => {
     setReplyTarget((prev) => (prev?.id === s.id ? null : s));
-  }
+  }, []);
 
-  function handleQuote(s: Status) {
+  const handleQuote = useCallback((s: Status) => {
     setQuoteTarget((prev) => (prev?.id === s.id ? null : s));
-  }
+  }, []);
 
-  function handlePosted(newStatus: Status) {
+  const handlePosted = useCallback((newStatus: Status) => {
     setReplyTarget(null);
     // Append the new reply. The parent's counters are the server's business:
     // it increments them and broadcasts the parent with the refreshed values
@@ -744,9 +744,9 @@ export default function ThreadPage() {
         // keep what we have; the stream merge or the next load will fix it
       }
     })();
-  }
+  }, [token]);
 
-  async function handleDelete(s: Status) {
+  const handleDelete = useCallback(async (s: Status) => {
     if (!token) return;
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
@@ -762,18 +762,18 @@ export default function ThreadPage() {
         setDescendants((prev) => prev.filter((x) => x.id !== s.id));
       }
     }
-  }
+  }, [token, t, focal, router]);
 
-  function openEdit(s: Status) {
+  const openEdit = useCallback((s: Status) => {
     setEditingStatus(s);
-  }
+  }, []);
 
-  function handleStatusSaved(updated: Status) {
+  const handleStatusSaved = useCallback((updated: Status) => {
     const updateList = (prev: Status[]) => prev.map((x) => (x.id === updated.id ? updated : x));
     setFocal((f) => (f?.id === updated.id ? updated : f));
     setAncestors(updateList);
     setDescendants(updateList);
-  }
+  }, []);
 
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="" />}>

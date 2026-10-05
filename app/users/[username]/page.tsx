@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
@@ -255,6 +255,9 @@ function AccountCard({ acct }: { acct: Account }) {
 
 export default function ProfilePage() {
   const router = useRouter();
+  // `t` is read here (not next to the handlers further down) so `useCallback`
+  // deps can reference it without hitting the temporal dead zone.
+  const { t } = useLocale();
   const routeUsername = useParams<{ username: string }>()?.username ?? "";
   const [username, setUsername] = useState<string>("");
   const [account, setAccount] = useState<Account | null>(null);
@@ -636,19 +639,19 @@ export default function ProfilePage() {
     setEditFields((p) => p.map((f, idx) => (idx === i ? { ...f, [key]: val } : f)));
   }
 
-  function handleStatusUpdate(updated: SharedStatus) {
+  const handleStatusUpdate = useCallback((updated: SharedStatus) => {
     const applied = updated as Status;
     const apply = (prev: Status[]) => prev.map((x) => (x.id === applied.id ? applied : x));
     setStatuses(apply);
     setReplies(apply);
     setPinnedStatuses(apply);
-  }
+  }, []);
 
-  function openStatusEdit(s: SharedStatus) {
+  const openStatusEdit = useCallback((s: SharedStatus) => {
     setEditingStatus(s);
-  }
+  }, []);
 
-  async function handleDelete(s: SharedStatus) {
+  const handleDelete = useCallback(async (s: SharedStatus) => {
     if (!token) return;
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
@@ -660,7 +663,15 @@ export default function ProfilePage() {
       setReplies((prev) => prev.filter((x) => x.id !== s.id));
       purgeStatusFromCache(s.id);
     }
-  }
+  }, [token, t]);
+
+  const handleReply = useCallback((s: SharedStatus) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: SharedStatus) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   async function toggleFollow() {
     if (!token || !account || followBusy) return;
@@ -742,7 +753,6 @@ export default function ProfilePage() {
 
   const isOwnProfile = me && account && me.id === account.id;
   const allAttachments = statuses.flatMap((s) => s.media_attachments);
-  const { t } = useLocale();
   const limits = useLimits();
   const { startCall: initiateCall, pending: callPending } = useStartCallButton(token);
 
@@ -1164,8 +1174,8 @@ export default function ProfilePage() {
                       status={s}
                       onFav={handleStatusUpdate}
                       onReblog={handleStatusUpdate}
-                      onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                    onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                      onReply={handleReply}
+                    onQuote={handleQuote}
                       me={me}
                       onEdit={openStatusEdit}
                       onDelete={handleDelete}
@@ -1193,8 +1203,8 @@ export default function ProfilePage() {
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
-                    onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                    onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                    onReply={handleReply}
+                    onQuote={handleQuote}
                     me={me}
                     onEdit={openStatusEdit}
                     onDelete={handleDelete}
@@ -1218,8 +1228,8 @@ export default function ProfilePage() {
                     status={s}
                     onFav={handleStatusUpdate}
                     onReblog={handleStatusUpdate}
-                    onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                    onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                    onReply={handleReply}
+                    onQuote={handleQuote}
                     me={me}
                     onEdit={openStatusEdit}
                     onDelete={handleDelete}

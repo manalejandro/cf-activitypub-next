@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
@@ -16,6 +16,9 @@ import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+
+// Stable no-op for the props StatusCard requires but this feed never uses.
+const NOOP = () => {};
 
 interface List {
   id: string;
@@ -152,6 +155,25 @@ export default function ListDetailPage() {
     setRemovingId(null);
   }
 
+  const handleQuote = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
+
+  // Memoised: typing in the add-account field must not re-render every card.
+  const timeline = useMemo(() => statuses.map((s) => (
+    <div key={s.id} data-status-id={s.id}>
+      <StatusCard
+        filterContext="home"
+        status={s}
+        onFav={NOOP}
+        onReblog={NOOP}
+        onReply={NOOP}
+        onQuote={handleQuote}
+        me={me}
+      />
+    </div>
+  )), [statuses, me, handleQuote]);
+
   return (
     <PageLayout sidebar={<Sidebar me={me} currentPath="/lists" />}>
         <div className="sticky top-0" style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem", zIndex: 10, display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -239,19 +261,7 @@ export default function ListDetailPage() {
             </div>
           ) : (
             <>
-              {statuses.map((s) => (
-                <div key={s.id} data-status-id={s.id}>
-                  <StatusCard
-                  filterContext="home"
-                  status={s}
-                    onFav={() => {}}
-                    onReblog={() => {}}
-                    onReply={() => {}}
-                    onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)}
-                    me={me}
-                  />
-                </div>
-              ))}
+              {timeline}
               <div ref={bottomRef} style={{ padding: "1rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
                 {loadingMore && <Loading compact />}
               </div>

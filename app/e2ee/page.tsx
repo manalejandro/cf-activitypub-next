@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, useMemo, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
@@ -21,6 +21,9 @@ import {
   encodeSenderContext,
   parseKeyPackageObject,
 } from "@/lib/mls/keypackage";
+
+// Stable no-op for the props StatusCard requires but these lists never use.
+const NOOP = () => {};
 
 // /e2ee — the authenticated user's view of their MLS messages and key packages.
 // Encryption and decryption happen in the browser: this server never sees the
@@ -571,6 +574,42 @@ export default function E2EEPage() {
     }
   }
 
+  // The card lists are memoised so typing in the composer does not rebuild
+  // them (each card's status is derived from `data`). `handleDelete` closes
+  // over `data`/`t`, so it is read through a ref to keep the memo deps stable.
+  const handleDeleteRef = useRef(handleDelete);
+  useEffect(() => {
+    handleDeleteRef.current = handleDelete;
+  });
+  const meForCards = useMemo(() => (data ? toMe(data) : null), [data]);
+  const conversationList = useMemo(() => (data ? data.conversations.map((c) => (
+    <StatusCard
+      key={c.conversation}
+      status={conversationToStatus(c, data.messages, data.me, t, decryptedByMessage)}
+      me={meForCards}
+      hideActions
+      forceDelete
+      onFav={NOOP}
+      onReblog={NOOP}
+      onReply={NOOP}
+      onDelete={() => void handleDeleteRef.current("conversation", c.conversation)}
+    />
+  )) : []), [data, t, decryptedByMessage, meForCards]);
+  const messageList = useMemo(() => (data ? data.messages.map((m) => (
+    <StatusCard
+      key={`${m.recipientId}:${m.id}`}
+      status={messageToStatus(m, t, decryptedByMessage.get(m.id) ?? null)}
+      me={meForCards}
+      hideActions
+      permalink={m.objectType === "PublicMessage" && !!m.objectId}
+      forceDelete
+      onFav={NOOP}
+      onReblog={NOOP}
+      onReply={NOOP}
+      onDelete={() => void handleDeleteRef.current("message", m.id)}
+    />
+  )) : []), [data, t, decryptedByMessage, meForCards]);
+
   if (authed === null) {
     return (
       <PageLayout sidebar={<Sidebar me={null} currentPath="/e2ee" />}>
@@ -591,8 +630,6 @@ export default function E2EEPage() {
       </PageLayout>
     );
   }
-
-  const meForCards = toMe(data);
 
   return (
     <PageLayout sidebar={<Sidebar me={{ username: data.me.username, display_name: data.me.displayName, acct: data.me.acct }} currentPath="/e2ee" />}>
@@ -842,19 +879,7 @@ export default function E2EEPage() {
         {data.conversations.length === 0 ? (
           <EmptyState icon="comment" title={t.e2ee_no_messages} sub={t.e2ee_no_messages_sub} />
         ) : (
-          data.conversations.map((c) => (
-            <StatusCard
-              key={c.conversation}
-              status={conversationToStatus(c, data.messages, data.me, t, decryptedByMessage)}
-              me={meForCards}
-              hideActions
-              forceDelete
-              onFav={() => {}}
-              onReblog={() => {}}
-              onReply={() => {}}
-              onDelete={() => void handleDelete("conversation", c.conversation)}
-            />
-          ))
+          conversationList
         )}
       </section>
 
@@ -866,20 +891,7 @@ export default function E2EEPage() {
         {data.messages.length === 0 ? (
           <EmptyState icon="comment" title={t.e2ee_no_messages} sub={t.e2ee_no_messages_sub} />
         ) : (
-          data.messages.map((m) => (
-            <StatusCard
-              key={`${m.recipientId}:${m.id}`}
-              status={messageToStatus(m, t, decryptedByMessage.get(m.id) ?? null)}
-              me={meForCards}
-              hideActions
-              permalink={m.objectType === "PublicMessage" && !!m.objectId}
-              forceDelete
-              onFav={() => {}}
-              onReblog={() => {}}
-              onReply={() => {}}
-              onDelete={() => void handleDelete("message", m.id)}
-            />
-          ))
+          messageList
         )}
       </section>
 

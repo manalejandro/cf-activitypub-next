@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect, Suspense, Fragment, useRef } from "react";
+import { useState, useEffect, Suspense, Fragment, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
@@ -455,27 +455,27 @@ function RemoteProfileInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMorePosts, loadingMorePosts, statuses, activeTab]);
 
-  function handleStatusUpdate(updated: SharedStatus) {
+  const handleStatusUpdate = useCallback((updated: SharedStatus) => {
     const applied = updated as Status;
     const apply = (prev: Status[]) => prev.map((x) => (x.id === applied.id ? applied : x));
     setStatuses(apply);
     setReplies(apply);
     setPinnedStatuses(apply);
-  }
+  }, []);
 
-  function openEdit(s: SharedStatus) {
+  const openEdit = useCallback((s: SharedStatus) => {
     setEditingStatus(s);
-  }
+  }, []);
 
-  function handleStatusSaved(updated: SharedStatus) {
+  const handleStatusSaved = useCallback((updated: SharedStatus) => {
     const applied = updated as Status;
     const apply = (prev: Status[]) => prev.map((x) => (x.id === applied.id ? applied : x));
     setStatuses(apply);
     setReplies(apply);
     setPinnedStatuses(apply);
-  }
+  }, []);
 
-  async function handleDelete(s: SharedStatus) {
+  const handleDelete = useCallback(async (s: SharedStatus) => {
     if (!token) return;
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
@@ -488,7 +488,15 @@ function RemoteProfileInner() {
       setPinnedStatuses((prev) => prev.filter((x) => x.id !== s.id));
       purgeStatusFromCache(s.id);
     }
-  }
+  }, [token, t]);
+
+  const handleReply = useCallback((s: SharedStatus) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: SharedStatus) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   if (loading && actorUrl) {
     return (
@@ -917,8 +925,8 @@ function RemoteProfileInner() {
                   status={s}
                   onFav={handleStatusUpdate}
                   onReblog={handleStatusUpdate}
-                  onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                  onReply={handleReply}
+                onQuote={handleQuote}
                   me={me}
                   onEdit={openEdit}
                   onDelete={handleDelete}
@@ -941,8 +949,8 @@ function RemoteProfileInner() {
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
-                onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                onReply={handleReply}
+                onQuote={handleQuote}
                 me={me}
                 onEdit={openEdit}
                 onDelete={handleDelete}
@@ -961,8 +969,8 @@ function RemoteProfileInner() {
                 status={s}
                 onFav={handleStatusUpdate}
                 onReblog={handleStatusUpdate}
-                onReply={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?reply=1`)}
-                onQuote={(st) => router.push(`/statuses/${encodeURIComponent(st.id)}?quote=1`)}
+                onReply={handleReply}
+                onQuote={handleQuote}
                 me={me}
                 onEdit={openEdit}
                 onDelete={handleDelete}

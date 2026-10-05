@@ -114,23 +114,23 @@ export default function TagPage() {
     }
   }
 
-  function handleFav(updated: Status) {
+  const handleFav = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
-  }
+  }, [setStatuses]);
 
-  function handleReblog(updated: Status) {
+  const handleReblog = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
-  }
+  }, [setStatuses]);
 
-  function openEdit(s: Status) {
+  const openEdit = useCallback((s: Status) => {
     setEditingStatus(s);
-  }
+  }, []);
 
-  function handleStatusSaved(updated: Status) {
+  const handleStatusSaved = useCallback((updated: Status) => {
     setStatuses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-  }
+  }, [setStatuses]);
 
-  async function handleDelete(s: Status) {
+  const handleDelete = useCallback(async (s: Status) => {
     if (!token) return;
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
@@ -141,7 +141,15 @@ export default function TagPage() {
       setStatuses((prev) => prev.filter((x) => x.id !== s.id));
       purgeStatusFromCache(s.id);
     }
-  }
+  }, [token, t, setStatuses]);
+
+  const handleReply = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   useEffect(() => {
     if (!tagName) return;
@@ -266,8 +274,8 @@ export default function TagPage() {
                   status={s}
                   onFav={handleFav}
                   onReblog={handleReblog}
-                  onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)}
-                  onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)}
+                  onReply={handleReply}
+                  onQuote={handleQuote}
                   me={me ?? undefined}
                   onEdit={openEdit}
                   onDelete={handleDelete}

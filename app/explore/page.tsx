@@ -146,19 +146,19 @@ export default function ExplorePage() {
     void runSearch(debouncedQuery.trim());
   }, [debouncedQuery, runSearch]);
 
-  function handleFav(updated: Status) {
+  const handleFav = useCallback((updated: Status) => {
     const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x);
     setTrendingStatuses(update);
     setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
-  }
+  }, []);
 
-  function handleReblog(updated: Status) {
+  const handleReblog = useCallback((updated: Status) => {
     const update = (prev: Status[]) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x);
     setTrendingStatuses(update);
     setResults((prev) => ({ ...prev, statuses: update(prev.statuses) }));
-  }
+  }, []);
 
-  function openEdit(s: Status) {
+  const openEdit = useCallback((s: Status) => {
     const div = typeof document !== "undefined" ? document.createElement("div") : null;
     if (div) {
       div.innerHTML = s.content.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
@@ -168,7 +168,7 @@ export default function ExplorePage() {
     }
     setEditSpoiler(s.spoiler_text ?? "");
     setEditingStatus(s);
-  }
+  }, []);
 
   async function handleEditSave() {
     if (!editText.trim() || !editingStatus || !token) return;
@@ -188,7 +188,7 @@ export default function ExplorePage() {
     setEditBusy(false);
   }
 
-  async function handleDelete(s: Status) {
+  const handleDelete = useCallback(async (s: Status) => {
     if (!token) return;
     if (!confirm(t.status_delete_confirm)) return;
     const res = await fetch(`/api/v1/statuses/${encodeURIComponent(s.id)}`, {
@@ -200,7 +200,15 @@ export default function ExplorePage() {
       setResults((prev) => ({ ...prev, statuses: prev.statuses.filter((x) => x.id !== s.id) }));
       purgeStatusFromCache(s.id);
     }
-  }
+  }, [token, t]);
+
+  const handleReply = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?reply=1`);
+  }, [router]);
+
+  const handleQuote = useCallback((s: Status) => {
+    router.push(`/statuses/${encodeURIComponent(s.id)}?quote=1`);
+  }, [router]);
 
   const isSearching = debouncedQuery.trim().length > 0;
   const hasResults = results.accounts.length + results.statuses.length + results.hashtags.length + results.collections.length > 0;
@@ -301,7 +309,7 @@ export default function ExplorePage() {
                 {t.explore_trending_statuses}
               </div>
             )}
-            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
+            {trendingStatuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}
           </>
         )}
 
@@ -344,7 +352,7 @@ export default function ExplorePage() {
         )}
         {tab === "statuses" && isSearching && (
           results.statuses.length === 0 && !loading ? <EmptyState icon="pencil" text={t.explore_no_posts} /> :
-          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?reply=1`)} onQuote={(status) => router.push(`/statuses/${encodeURIComponent(status.id)}?quote=1`)} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
+          <>{results.statuses.map((s) => <StatusCard key={s.id} status={s} onFav={handleFav} onReblog={handleReblog} onReply={handleReply} onQuote={handleQuote} me={me ?? undefined} onEdit={openEdit} onDelete={handleDelete} />)}</>
         )}
         {tab === "collections" && isSearching && (
           results.collections.length === 0 && !loading ? <EmptyState icon="users" text={t.explore_no_collections} /> :
