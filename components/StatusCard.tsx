@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentProps } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -116,6 +116,8 @@ export interface Status {
   quotes_count?: number;
   ap_meta?: APMeta | null;
   filtered?: { filter: { id: string; title: string; filter_action: "warn" | "hide" | "blur"; context?: string[] }; keyword_matches?: string[]; status_matches?: string[] }[];
+  /** Set on a boost wrapper: the boosted status (Mastodon's `reblog`). */
+  reblog?: Status | null;
 }
 
 export interface Me {
@@ -1298,8 +1300,33 @@ function StatusCardInner({
 }
 
 /**
+ * Boost wrapper: Mastodon shows a "{booster} boosted" header and the boosted
+ * post below it. Interactions always target the inner status (`reblog`), so
+ * the wrapper only adds the header and renders the body with the original.
+ *
  * Memoised: timelines render hundreds of cards, and without this any parent
  * state change (e.g. typing in the composer) re-rendered every one of them.
  * Callers must keep the handler props stable (`useCallback`).
  */
-export const StatusCard = memo(StatusCardInner);
+export const StatusCard = memo(function StatusCard(props: ComponentProps<typeof StatusCardInner>) {
+  const { t } = useLocale();
+  const { status } = props;
+  if (!status.reblog) return <StatusCardInner {...props} />;
+
+  const booster = status.account;
+  const boosterHref = booster.acct.includes("@")
+    ? `/users/remote?url=${encodeURIComponent(booster.id)}`
+    : `/users/${booster.username}`;
+  return (
+    <div className="status-card-boost">
+      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.5rem 1rem 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+        <Icon name="retweet" size="0.85rem" />
+        <Link href={boosterHref} style={{ color: "var(--text-muted)", fontWeight: 600, textDecoration: "none" }}>
+          {booster.display_name || booster.username}
+        </Link>
+        <span>{t.status_boosted}</span>
+      </div>
+      <StatusCardInner {...props} status={status.reblog} />
+    </div>
+  );
+});

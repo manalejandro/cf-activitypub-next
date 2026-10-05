@@ -83,7 +83,8 @@ export async function GET(
     response = buildOrderedCollection(outboxId, await countActorPublicStatuses(env.DB, actor.id));
   } else {
     const maxId = page !== "true" ? page : undefined;
-    const statuses = await getActorStatuses(env.DB, actor.id, 20, maxId);
+    const entries = await getActorStatuses(env.DB, actor.id, 20, maxId);
+    const statuses = entries.map((entry) => entry.object);
     const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
 
     const items = statuses

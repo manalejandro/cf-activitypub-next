@@ -19,7 +19,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, applyStatusInFeed } from "@/lib/streaming/timeline-cache";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
@@ -457,7 +457,7 @@ function RemoteProfileInner() {
 
   const handleStatusUpdate = useCallback((updated: SharedStatus) => {
     const applied = updated as Status;
-    const apply = (prev: Status[]) => prev.map((x) => (x.id === applied.id ? applied : x));
+    const apply = (prev: Status[]) => prev.map((x) => applyStatusInFeed(x, applied));
     setStatuses(apply);
     setReplies(apply);
     setPinnedStatuses(apply);

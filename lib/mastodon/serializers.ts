@@ -414,6 +414,53 @@ export function serializeStatus(
 }
 
 /**
+ * Mastodon's boost wrapper: a Status whose `reblog` holds the original and
+ * whose own content is empty. Interactions target the inner status, so the
+ * wrapper carries no viewer state of its own. `id` is the announce row's id —
+ * timeline cursors resolve it back to the announce's `created_at`.
+ */
+export function serializeReblog(
+  booster: LocalActor,
+  reblog: MastodonStatus,
+  opts: { id: string; createdAt: string; localDomain: string; emojis?: EmojiLike[] }
+): MastodonStatus {
+  return {
+    id: opts.id,
+    created_at: toIso(opts.createdAt) ?? reblog.created_at,
+    in_reply_to_id: null,
+    in_reply_to_account_id: null,
+    sensitive: reblog.sensitive,
+    spoiler_text: reblog.spoiler_text,
+    visibility: reblog.visibility,
+    language: reblog.language,
+    uri: opts.id,
+    url: reblog.url,
+    replies_count: 0,
+    reblogs_count: 0,
+    favourites_count: 0,
+    edited_at: null,
+    content: "",
+    reblog,
+    application: null,
+    account: serializeAccount(booster, opts.localDomain, { emojis: opts.emojis ?? [] }),
+    media_attachments: [],
+    mentions: [],
+    tags: [],
+    emojis: [],
+    card: null,
+    poll: null,
+    filtered: [],
+    quotes_count: 0,
+    quote: null,
+    favourited: false,
+    reblogged: false,
+    muted: false,
+    bookmarked: false,
+    pinned: false,
+  };
+}
+
+/**
  * Rewrite links to remote profile pages in status content so they point to the
  * local resolver route `/users/remote?url=...` instead of the original server.
  * Remote actors are identified from the structured `tag` mentions in the raw AP

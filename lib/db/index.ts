@@ -29,6 +29,7 @@ import type {
   LocalMlsMessage,
   PreviewCardRow,
   LinkPreviewQueueEntry,
+  TimelineEntry,
 } from "@/lib/types";
 
 // ─────────────────────────────────────────
@@ -2287,69 +2288,120 @@ export async function getPublicTimeline(
   return rows.results.map(rowToObject);
 }
 
+/**
+ * Sort timestamp for a timeline cursor: an object's `published`, or an
+ * announce's `created_at` when the cursor is a boost wrapper id (routes expose
+ * wrapper ids as local-style ids, which decode to
+ * `https://{domain}/objects/{announceUuid}`).
+ */
+async function resolveTimelineSortCursor(db: D1Database, id: string): Promise<string | null> {
+  const object = await db
+    .prepare("SELECT published AS sort_at FROM objects WHERE id = ?")
+    .bind(id)
+    .first<{ sort_at: string }>();
+  if (object?.sort_at) return object.sort_at;
+  const announceId = id.split("/").pop() ?? id;
+  const announce = await db
+    .prepare("SELECT created_at AS sort_at FROM announces WHERE id = ?")
+    .bind(announceId)
+    .first<{ sort_at: string }>();
+  return announce?.sort_at ?? null;
+}
+
 export async function getHomeTimeline(
   db: D1Database,
   actorId: string,
   limit = 20,
   maxId?: string,
   minId?: string
-): Promise<LocalObject[]> {
+): Promise<TimelineEntry[]> {
   // Own posts → all visibilities (except direct).
   // Posts from followed accounts → public, unlisted, followers-only.
+  // Boosts from own/followed accounts → the boosted object, with Mastodon's
+  // visibility rule (public/unlisted always; followers-only only when the
+  // viewer follows the *original* author), ordered by the boost time.
   // Direct messages are excluded (handled through conversations).
   // Suspended accounts never appear in any timeline, including the home of
   // their followers (mirrors Mastodon). Silenced accounts still show to
   // followers, so only `suspended` is filtered here.
   // Blocked accounts and accounts from a domain-blocked instance are hidden.
   //
-  // The two visibility branches are index-incompatible under a single OR (one
-  // needs `actor_id = ?`, the other `actor_id IN (follows)`), which forced a
-  // full-table scan + sort on every request. Splitting them into a UNION lets
-  // each branch seek straight to the (actor_id, visibility, published) index
-  // and cap its own rows, so the scan only touches rows that can qualify.
-  const branch = (actorClause: string, visibilityClause: string, publishedClause: string) => `
-    SELECT o.* FROM objects o
-    WHERE ${actorClause}
-      AND ${visibilityClause}
-      AND o.media_pending = 0
-      AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
-      AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
-      AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
-      AND ${REPLY_TO_BLOCKED_SQL}
-      ${publishedClause}
-    ORDER BY o.published DESC LIMIT ?`;
+  // The visibility branches are index-incompatible under a single OR (one
+  // needs `actor_id = ?`, another `actor_id IN (follows)`, the boost one joins
+  // `announces`), which forced a full-table scan + sort on every request.
+  // Splitting them into a UNION ALL lets each branch seek straight to its
+  // index and cap its own rows, so the scan only touches rows that can qualify.
+  const cursorId = maxId ?? minId;
+  const sortCursor = cursorId ? await resolveTimelineSortCursor(db, cursorId) : null;
+  if (cursorId && !sortCursor) return [];
+  const cursorOp = maxId ? "<" : ">";
 
-  let publishedClause = "";
-  let cursorBinds: unknown[] = [];
-  if (minId) {
-    const pivotRow = await db
-      .prepare("SELECT published FROM objects WHERE id = ?")
-      .bind(minId)
-      .first<{ published: string }>();
-    if (!pivotRow) return [];
-    publishedClause = "AND o.published > ?";
-    cursorBinds = [pivotRow.published];
-  } else if (maxId) {
-    publishedClause = "AND o.published < (SELECT published FROM objects WHERE id = ?)";
-    cursorBinds = [maxId];
-  }
-  const ownBranch = branch("o.actor_id = ?", "o.visibility != 'direct'", publishedClause);
-  const followsBranch = branch(
+  const objectBranch = (actorClause: string, visibilityClause: string) => {
+    const binds: unknown[] = [actorId, actorId, actorId, actorId, actorId];
+    let sql = `
+      SELECT o.*, NULL AS boost_id, NULL AS boost_actor_id, NULL AS boost_created_at, o.published AS sort_at
+      FROM objects o
+      WHERE ${actorClause}
+        AND ${visibilityClause}
+        AND o.media_pending = 0
+        AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
+        AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+        AND ${REPLY_TO_BLOCKED_SQL}`;
+    if (sortCursor) {
+      sql += ` AND o.published ${cursorOp} ?`;
+      binds.push(sortCursor);
+    }
+    sql += " ORDER BY o.published DESC LIMIT ?";
+    binds.push(limit);
+    return { sql, binds };
+  };
+
+  const ownBranch = objectBranch("o.actor_id = ?", "o.visibility != 'direct'");
+  const followsBranch = objectBranch(
     "o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')",
-    "o.visibility IN ('public', 'unlisted', 'private')",
-    publishedClause
+    "o.visibility IN ('public', 'unlisted', 'private')"
   );
+
+  const boostBinds: unknown[] = [actorId, actorId, actorId, actorId, actorId, actorId, actorId, actorId, actorId];
+  let boostSql = `
+    SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
+    FROM announces a JOIN objects o ON o.id = a.object_id
+    WHERE (a.actor_id = ? OR a.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'))
+      AND (o.visibility IN ('public', 'unlisted')
+           OR (o.visibility = 'private' AND o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')))
+      AND o.media_pending = 0
+      AND NOT EXISTS (SELECT 1 FROM actors oa WHERE oa.id = o.actor_id AND oa.suspended = 1)
+      AND NOT EXISTS (SELECT 1 FROM actors ba2 WHERE ba2.id = a.actor_id AND (ba2.suspended = 1 OR ba2.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?)))
+      AND a.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+      AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
+      AND NOT EXISTS (SELECT 1 FROM actors bba WHERE bba.id = o.actor_id AND bba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
+      AND ${REPLY_TO_BLOCKED_SQL}`;
+  if (sortCursor) {
+    boostSql += ` AND a.created_at ${cursorOp} ?`;
+    boostBinds.push(sortCursor);
+  }
+  boostSql += " ORDER BY a.created_at DESC LIMIT ?";
+  boostBinds.push(limit);
+
   const rows = await db
     .prepare(
       `SELECT * FROM (
-         SELECT * FROM (${ownBranch})
-         UNION
-         SELECT * FROM (${followsBranch})
-       ) ORDER BY published DESC LIMIT ?`
+         SELECT * FROM (${ownBranch.sql})
+         UNION ALL
+         SELECT * FROM (${followsBranch.sql})
+         UNION ALL
+         SELECT * FROM (${boostSql})
+       ) ORDER BY sort_at DESC LIMIT ?`
     )
-    .bind(actorId, actorId, actorId, actorId, actorId, ...cursorBinds, limit, actorId, actorId, actorId, actorId, actorId, ...cursorBinds, limit, limit)
+    .bind(...ownBranch.binds, ...followsBranch.binds, ...boostBinds, limit)
     .all<Row>();
-  return rows.results.map(rowToObject);
+  return rows.results.map((row) => ({
+    object: rowToObject(row),
+    boost: row.boost_id
+      ? { id: String(row.boost_id), actorId: String(row.boost_actor_id), createdAt: String(row.boost_created_at) }
+      : null,
+  }));
 }
 
 /**
@@ -2534,37 +2586,50 @@ export async function getActorStatuses(
   limit = 20,
   maxId?: string,
   viewerId?: string,
-  isFollowing = false
-): Promise<LocalObject[]> {  const isAuthor = viewerId === actorId;
+  isFollowing = false,
+  options: { includeBoosts?: boolean } = {}
+): Promise<TimelineEntry[]> {
+  const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
     ? "'public', 'unlisted', 'private', 'direct'"
     : isFollowing
       ? "'public', 'unlisted', 'private'"
       : "'public', 'unlisted'";
 
-  const query = (withPublished: boolean) => {
-    const where = `WHERE actor_id = ? AND media_pending = 0 AND visibility IN (${visibilities})`;
-    if (withPublished) {
-      return `SELECT * FROM objects ${where}
-              AND published < (SELECT published FROM objects WHERE id = ?)
-              ORDER BY published DESC LIMIT ?`;
-    }
-    return `SELECT * FROM objects ${where}
-            ORDER BY published DESC LIMIT ?`;
-  };
+  const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
+  if (maxId && !cursor) return [];
 
-  if (maxId) {
-    const rows = await db
-      .prepare(query(true))
-      .bind(actorId, maxId, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
+  const objectSql = `SELECT o.*, NULL AS boost_id, NULL AS boost_actor_id, NULL AS boost_created_at, o.published AS sort_at
+    FROM objects o
+    WHERE o.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+      ${maxId ? "AND o.published < ?" : ""}
+    ORDER BY o.published DESC LIMIT ?`;
+  const objectBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
+
+  if (!options.includeBoosts) {
+    const rows = await db.prepare(objectSql).bind(...objectBinds).all<Row>();
+    return rows.results.map((row) => ({ object: rowToObject(row), boost: null }));
   }
+
+  // Profile posts include the account's boosts by default (Mastodon's
+  // "Show boosts" default), ordered by the boost time.
+  const boostSql = `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
+    FROM announces a JOIN objects o ON o.id = a.object_id
+    WHERE a.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+      ${maxId ? "AND a.created_at < ?" : ""}
+    ORDER BY a.created_at DESC LIMIT ?`;
+  const boostBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
+
   const rows = await db
-    .prepare(query(false))
-    .bind(actorId, limit)
+    .prepare(`SELECT * FROM (SELECT * FROM (${objectSql}) UNION ALL SELECT * FROM (${boostSql})) ORDER BY sort_at DESC LIMIT ?`)
+    .bind(...objectBinds, ...boostBinds, limit)
     .all<Row>();
-  return rows.results.map(rowToObject);
+  return rows.results.map((row) => ({
+    object: rowToObject(row),
+    boost: row.boost_id
+      ? { id: String(row.boost_id), actorId: String(row.boost_actor_id), createdAt: String(row.boost_created_at) }
+      : null,
+  }));
 }
 
 export async function updateObject(
@@ -3085,8 +3150,8 @@ export async function getAnnounce(
 
 export async function createAnnounce(db: D1Database, announce: LocalAnnounce): Promise<void> {
   await db
-    .prepare("INSERT OR IGNORE INTO announces (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
-    .bind(announce.id, announce.actorId, announce.objectId, announce.activityId)
+    .prepare("INSERT OR IGNORE INTO announces (id, actor_id, object_id, activity_id, created_at) VALUES (?,?,?,?,?)")
+    .bind(announce.id, announce.actorId, announce.objectId, announce.activityId, announce.createdAt)
     .run();
   await db
     .prepare("UPDATE objects SET reblogs_count = reblogs_count + 1, engagement = engagement + 1 WHERE id = ?")
@@ -3500,7 +3565,7 @@ export async function getActorStatuses_withReplies(
   maxId?: string,
   viewerId?: string,
   isFollowing = false
-): Promise<LocalObject[]> {
+): Promise<TimelineEntry[]> {
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
     ? "'public', 'unlisted', 'private', 'direct'"
@@ -3508,29 +3573,26 @@ export async function getActorStatuses_withReplies(
       ? "'public', 'unlisted', 'private'"
       : "'public', 'unlisted'";
 
+  const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
+  if (maxId && !cursor) return [];
+
+  // The replies tab has no boosts: Mastodon excludes reblogs from "Posts and
+  // replies" (the posts tab includes them by default).
   const query = (withPublished: boolean) => {
     const where = `WHERE actor_id = ? AND media_pending = 0 AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
     if (withPublished) {
       return `SELECT * FROM objects ${where}
-              AND published < (SELECT published FROM objects WHERE id = ?)
+              AND published < ?
               ORDER BY published DESC LIMIT ?`;
     }
     return `SELECT * FROM objects ${where}
             ORDER BY published DESC LIMIT ?`;
   };
 
-  if (maxId) {
-    const rows = await db
-      .prepare(query(true))
-      .bind(actorId, maxId, limit)
-      .all<Row>();
-    return rows.results.map(rowToObject);
-  }
-  const rows = await db
-    .prepare(query(false))
-    .bind(actorId, limit)
-    .all<Row>();
-  return rows.results.map(rowToObject);
+  const rows = maxId
+    ? await db.prepare(query(true)).bind(actorId, cursor, limit).all<Row>()
+    : await db.prepare(query(false)).bind(actorId, limit).all<Row>();
+  return rows.results.map((row) => ({ object: rowToObject(row), boost: null }));
 }
 
 // ─────────────────────────────────────────

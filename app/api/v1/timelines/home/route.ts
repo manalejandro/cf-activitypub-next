@@ -2,10 +2,10 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
 import { getHomeTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
-import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
@@ -26,7 +26,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const minIdRaw = searchParams.get("min_id") ?? undefined;
   const minId = minIdRaw ? decodeStatusId(minIdRaw, domain) : undefined;
 
-  const objects = await getHomeTimeline(env.DB, actor.id, limit, maxId, minId);
+  const entries = await getHomeTimeline(env.DB, actor.id, limit, maxId, minId);
+  const objects = entries.map((entry) => entry.object);
+  const boosterIds = [...new Set(entries.flatMap((entry) => (entry.boost ? [entry.boost.actorId] : [])))];
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, objects.map((o) => o.id)),
@@ -41,14 +43,15 @@ export async function GET(request: NextRequest): Promise<Response> {
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
     getBookmarkedObjectIds(env.DB, actor.id, objects.map((o) => o.id)),
     getMutedActorIds(env.DB, actor.id).then((ids) => new Set(ids)),
-    getActorsByIds(env.DB, objects.map((o) => o.actorId)),
+    getActorsByIds(env.DB, [...objects.map((o) => o.actorId), ...boosterIds]),
   ]);
 
   const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
   const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
 
   const statuses = await Promise.all(
-    objects.map(async (obj) => {
+    entries.map(async (entry) => {
+      const obj = entry.object;
       let author = authorMap.get(obj.actorId) ?? null;
       // Attempt a live fetch if the actor is not cached yet.
       if (!author && obj.actorId.startsWith("https://")) {
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       }
       if (!author) return null;
       const poll = pollMap.get(obj.id) ?? null;
-      return serializeStatus(obj, author, domain, {
+      const serialized = serializeStatus(obj, author, domain, {
         attachments: attachmentMap.get(obj.id) ?? [],
         poll,
         favourited: likedIds.has(obj.id),
@@ -80,6 +83,15 @@ export async function GET(request: NextRequest): Promise<Response> {
         bookmarked: bookmarkedIds.has(obj.id),
         muted: mutedIds.has(obj.actorId),
         authorFields: authorFieldsMap.get(obj.actorId) ?? [],
+      });
+      if (!entry.boost) return serialized;
+      const booster = authorMap.get(entry.boost.actorId);
+      if (!booster) return serialized;
+      return serializeReblog(booster, serialized, {
+        id: encodeStatusId(entry.boost.id, true),
+        createdAt: entry.boost.createdAt,
+        localDomain: domain,
+        emojis: allEmojis,
       });
     })
   );

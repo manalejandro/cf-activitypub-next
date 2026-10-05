@@ -2,9 +2,9 @@ import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorStatuses, getActorStatuses_withReplies, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, rowToObject, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
-import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
 import { resolveLimits } from "@/lib/constants";
@@ -65,14 +65,15 @@ export async function GET(
     pinnedSet = new Set(pinRows.results.map((r) => r.status_id));
   }
 
-  const objects = pinnedOnly
+  const excludeReblogs = searchParams.get("exclude_reblogs") === "true";
+  const entries = pinnedOnly
     ? []
     : onlyReplies
       ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
-      : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing);
+      : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing, { includeBoosts: !excludeReblogs });
 
   // If pinnedOnly, fetch objects by the status IDs we got from status_pins
-  let allObjects = objects;
+  let allEntries = entries;
   if (pinnedOnly && pinnedSet.size > 0) {
     const placeholders = [...pinnedSet].map(() => "?").join(",");
     const rowObjs = await env.DB
@@ -81,10 +82,12 @@ export async function GET(
       .all<Record<string, unknown>>();
     // Pinned statuses obey the same visibility rules as any other status:
     // a direct/private pin must never leak to anonymous or non-followers.
-    allObjects = rowObjs.results
+    allEntries = rowObjs.results
       .map(rowToObject)
-      .filter((o) => canViewStatus(o, me?.id ?? null, isFollowing));
+      .filter((o) => canViewStatus(o, me?.id ?? null, isFollowing))
+      .map((object) => ({ object, boost: null }));
   }
+  const allObjects = allEntries.map((entry) => entry.object);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds] = await Promise.all([
     getAttachmentsByObjectIds(env.DB, allObjects.map((o) => o.id)),
@@ -104,9 +107,10 @@ export async function GET(
   const authorExtras = await getStatusAuthorExtras(env.DB, allObjects.map((o) => o.actorId), domain);
   const authorFieldsMap = await getActorFieldsMap(env.DB, allObjects.map((o) => o.actorId));
 
-  const statuses = allObjects.map((obj) => {
+  const statuses = allEntries.map((entry) => {
+    const obj = entry.object;
     const poll = pollMap.get(obj.id) ?? null;
-    return serializeStatus(obj, actor, domain, {
+    const serialized = serializeStatus(obj, actor, domain, {
       attachments: attachmentMap.get(obj.id) ?? [],
       poll,
       favourited: likedIds.has(obj.id),
@@ -123,6 +127,14 @@ export async function GET(
       bookmarked: bookmarkedIds.has(obj.id),
       muted: mutedIds.has(obj.actorId),
       authorFields: authorFieldsMap.get(obj.actorId) ?? [],
+    });
+    if (!entry.boost) return serialized;
+    // Profile boosts are always by the profile's own account.
+    return serializeReblog(actor, serialized, {
+      id: encodeStatusId(entry.boost.id, true),
+      createdAt: entry.boost.createdAt,
+      localDomain: domain,
+      emojis: allEmojis,
     });
   });
 

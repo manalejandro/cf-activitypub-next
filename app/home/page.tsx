@@ -11,7 +11,7 @@ import { clipboardFiles } from "@/lib/clipboard-media";
 import { uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { purgeStatusFromCache, clearAllTimelineCaches } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, clearAllTimelineCaches, applyStatusInFeed } from "@/lib/streaming/timeline-cache";
 import { useNewStatusesBuffer } from "@/lib/streaming/use-new-statuses";
 import NewStatusesPill from "@/components/NewStatusesPill";
 import { StatusCard } from "@/components/StatusCard";
@@ -385,11 +385,11 @@ export default function HomePage() {
   }
 
   const handleFav = useCallback((updated: Status) => {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, favourited: updated.favourited, favourites_count: updated.favourites_count } : x));
+    setStatuses((prev) => prev.map((x) => applyStatusInFeed(x, updated)));
   }, [setStatuses]);
 
   const handleReblog = useCallback((updated: Status) => {
-    setStatuses((prev) => prev.map((x) => x.id === updated.id ? { ...x, reblogged: updated.reblogged, reblogs_count: updated.reblogs_count } : x));
+    setStatuses((prev) => prev.map((x) => applyStatusInFeed(x, updated)));
   }, [setStatuses]);
 
   const openEdit = useCallback((s: Status) => {
@@ -397,7 +397,7 @@ export default function HomePage() {
   }, []);
 
   const handleStatusSaved = useCallback((updated: Status) => {
-    setStatuses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setStatuses((prev) => prev.map((x) => applyStatusInFeed(x, updated)));
   }, [setStatuses]);
 
   const handleDelete = useCallback(async (s: Status) => {

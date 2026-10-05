@@ -84,7 +84,7 @@ describe("blocked accounts in timelines and threads", () => {
       .bind(ME, BLOCKED)
       .run();
 
-    const timeline = await ids(db, await getHomeTimeline(db, ME, 20));
+    const timeline = await ids(db, (await getHomeTimeline(db, ME, 20)).map((entry) => entry.object));
     expect(timeline).not.toContain("https://remote.example/objects/reply-to-blocked");
     // Replies to accounts that are not blocked stay.
     expect(timeline).toContain("https://remote.example/objects/reply-to-other");
@@ -101,7 +101,7 @@ describe("blocked accounts in timelines and threads", () => {
       .bind(ME)
       .run();
 
-    const timeline = await ids(db, await getHomeTimeline(db, ME, 20));
+    const timeline = await ids(db, (await getHomeTimeline(db, ME, 20)).map((entry) => entry.object));
     expect(timeline).not.toContain("https://remote.example/objects/reply2");
   });
 

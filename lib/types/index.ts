@@ -281,6 +281,16 @@ export interface LocalObject {
   licenseUrl?: string | null;
 }
 
+/**
+ * A timeline row: the object plus, when the row is a boost, the announce that
+ * surfaced it (the wrapper's own id and timestamp). Timeline queries order
+ * boosts by the announce time, not the boosted object's `published`.
+ */
+export interface TimelineEntry {
+  object: LocalObject;
+  boost: { id: string; actorId: string; createdAt: string } | null;
+}
+
 /** A license offered by this instance (FEP-6757 catalogue). */
 export interface LocalLicense {
   id: string;

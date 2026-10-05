@@ -47,15 +47,36 @@ export function purgeStatusFromCache(statusId: string): void {
  * Replace a status in every cached feed where it appears (e.g. its
  * `bookmarked`/`favourited`/counters changed). Feeds where the status no
  * longer belongs (bookmarks after unbookmark, favourites after unfavourite)
- * are handled by the page that performed the change.
+ * are handled by the page that performed the change. Descends into boost
+ * wrappers: their inner status is the one interactions target.
  */
-export function updateStatusInCache<T extends { id: string }>(status: T): void {
+export function updateStatusInCache<T extends { id: string; reblog?: T | null }>(status: T): void {
   for (const entry of entries.values()) {
     const items = entry.items as T[];
-    if (items.some((s) => s.id === status.id)) {
-      entry.items = items.map((s) => (s.id === status.id ? mergeStatusUpdate(s, status) : s));
-    }
+    entry.items = items.map((s) => applyStatusUpdateInFeed(s, status));
   }
+}
+
+/**
+ * Merge an interaction response (which carries the authoritative viewer state)
+ * into a feed item. Boost rows keep the original under `reblog`, so the update
+ * is applied to the nested copy when the ids match there.
+ */
+export function applyStatusInFeed<T extends { id: string; reblog?: T | null }>(item: T, updated: T): T {
+  if (item.id === updated.id) return { ...item, ...updated };
+  if (item.reblog && item.reblog.id === updated.id) {
+    return { ...item, reblog: { ...item.reblog, ...updated } };
+  }
+  return item;
+}
+
+/** Same as `applyStatusInFeed` for a broadcast `status.update` (viewer fields preserved). */
+export function applyStatusUpdateInFeed<T extends { id: string; reblog?: T | null }>(item: T, updated: T): T {
+  if (item.id === updated.id) return mergeStatusUpdate(item, updated);
+  if (item.reblog && item.reblog.id === updated.id) {
+    return { ...item, reblog: mergeStatusUpdate(item.reblog, updated) };
+  }
+  return item;
 }
 
 /**
@@ -197,7 +218,7 @@ export function handleStatusStreamEvent<T extends TimelineItem>(
     try {
       const updated = JSON.parse(payload) as T;
       updateStatusInCache(updated);
-      setItems((prev) => prev.map((s) => (s.id === updated.id ? mergeStatusUpdate(s, updated) : s)));
+      setItems((prev) => prev.map((s) => applyStatusUpdateInFeed(s, updated)));
     } catch { /* ignore malformed payload */ }
     return true;
   }

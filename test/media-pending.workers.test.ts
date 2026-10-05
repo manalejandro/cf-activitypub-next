@@ -144,7 +144,7 @@ describe("media-pending gating", () => {
     await enqueueMediaCache(db, SRC, "attachment", "att-1");
     await markObjectMediaPending(db, REMOTE_OBJECT);
 
-    expect((await getHomeTimeline(db, local, 20)).map((o) => o.id)).toEqual([]);
+    expect((await getHomeTimeline(db, local, 20)).map((entry) => entry.object.id)).toEqual([]);
   });
 
   it("releases stale holds so a degraded cache cannot hide content forever", async () => {

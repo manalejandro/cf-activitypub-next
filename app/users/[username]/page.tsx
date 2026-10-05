@@ -23,7 +23,7 @@ import { EditStatusModal } from "@/components/EditStatusModal";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
 import { EmojiInput } from "@/components/EmojiInput";
 import { useLimits } from "@/lib/limits-client";
-import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
+import { purgeStatusFromCache, applyStatusInFeed } from "@/lib/streaming/timeline-cache";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
@@ -271,6 +271,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("posts");
+  // Mastodon's profile "Show boosts" filter, persisted per browser.
+  const [showBoosts, setShowBoosts] = useState(true);
   const [tabLoaded, setTabLoaded] = useState<Record<string, boolean>>({ posts: false });
   const [endorsed, setEndorsed] = useState(false);
   const [endorseBusy, setEndorseBusy] = useState(false);
@@ -342,9 +344,9 @@ export default function ProfilePage() {
       if (meData.id !== acct.id) await refreshRelationship(acct.id);
     }
 
-    // Load statuses
+    // Load statuses (honoring the "show boosts" filter, persisted per browser).
     const statusRes = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}`,
+      `/api/v1/accounts/${encodeURIComponent(acct.id)}/statuses?limit=${limits.defaultTimelinePage}${showBoosts ? "" : "&exclude_reblogs=true"}`,
       { headers: authHeaders }
     );
     if (statusRes.ok) {
@@ -399,6 +401,16 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeUsername]);
 
+  // Restore the "Show boosts" filter; the first page loaded with the default,
+  // so refetch it without boosts when the saved preference is off.
+  useEffect(() => {
+    if (localStorage.getItem("profile-show-boosts") !== "0") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowBoosts(false);
+    if (account) void reloadPosts(account.id, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id]);
+
   // The remote account can accept or reject our follow at any time: the inbox
   // broadcasts a `relationship` event on the user stream so the follow button
   // updates without a reload.
@@ -423,7 +435,7 @@ export default function ProfilePage() {
     setLoadingMorePosts(true);
     const oldestId = statuses[statuses.length - 1].id;
     const res = await fetch(
-      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}`,
+      `/api/v1/accounts/${encodeURIComponent(account.id)}/statuses?max_id=${encodeURIComponent(oldestId)}&limit=${limits.defaultTimelinePage}${showBoosts ? "" : "&exclude_reblogs=true"}`,
       { headers: authHeaders }
     );
     if (res.ok) {
@@ -543,6 +555,27 @@ export default function ProfilePage() {
     if (account) void loadTab(tab, account.id);
   }
 
+  /** Refetch the posts tab honoring the "show boosts" filter. */
+  async function reloadPosts(acctId: string, includeBoosts: boolean) {
+    const authHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(
+      `/api/v1/accounts/${encodeURIComponent(acctId)}/statuses?limit=${limits.defaultTimelinePage}${includeBoosts ? "" : "&exclude_reblogs=true"}`,
+      { headers: authHeaders }
+    );
+    if (res.ok) {
+      const data = await res.json() as Status[];
+      setStatuses(data);
+      setHasMorePosts(data.length >= limits.defaultTimelinePage);
+    }
+  }
+
+  function toggleBoosts() {
+    const next = !showBoosts;
+    setShowBoosts(next);
+    localStorage.setItem("profile-show-boosts", next ? "1" : "0");
+    if (account) void reloadPosts(account.id, next);
+  }
+
   function openEdit(acct: Account) {
     setEditDisplayName(acct.display_name || "");
     setEditNote(acct.source?.note ?? me?.source?.note ?? acct.note ?? "");
@@ -641,7 +674,7 @@ export default function ProfilePage() {
 
   const handleStatusUpdate = useCallback((updated: SharedStatus) => {
     const applied = updated as Status;
-    const apply = (prev: Status[]) => prev.map((x) => (x.id === applied.id ? applied : x));
+    const apply = (prev: Status[]) => prev.map((x) => applyStatusInFeed(x, applied));
     setStatuses(apply);
     setReplies(apply);
     setPinnedStatuses(apply);
@@ -1157,6 +1190,24 @@ export default function ProfilePage() {
                   )}
                 </button>
               ))}
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={toggleBoosts}
+                title={t.profile_show_boosts}
+                aria-pressed={showBoosts}
+                style={{
+                  marginLeft: "auto",
+                  flex: "0 0 auto",
+                  borderRadius: 0,
+                  padding: "0.875rem 1rem",
+                  color: showBoosts ? "var(--accent)" : "var(--text-muted)",
+                  fontWeight: showBoosts ? 600 : 400,
+                  whiteSpace: "nowrap",
+                  fontSize: "0.8rem",
+                }}
+              >
+                <Icon name="retweet" size="0.85rem" /> {t.profile_show_boosts}
+              </button>
             </div>
 
             {/* Tab content */}

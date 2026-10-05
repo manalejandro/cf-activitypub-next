@@ -3,7 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor } from "@/lib/types";
+import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor, LocalObject } from "@/lib/types";
 import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
@@ -64,7 +64,7 @@ import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
-import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializePoll, serializeNotification, serializeReblog } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
@@ -151,6 +151,53 @@ async function broadcastRemoteStatusRefresh(ctx: InboxContext, objectId: string)
     await broadcastStatusInteraction(ctx.timelineStream, serialized, author);
     await broadcastStatusInteractionToLists(ctx.db, ctx.timelineStream, author.id, serialized);
   } catch { /* streaming refresh is best-effort */ }
+}
+
+/**
+ * Broadcast a new boost to the home feeds of the booster's local followers
+ * (and the booster's own), so a live boost shows up without a timeline
+ * reload. Followers-only/direct originals are skipped — their visibility is
+ * resolved by the timeline query, not by the fan-out — and recipients who
+ * blocked the booster (or its domain) are left out, mirroring the query.
+ */
+async function broadcastNewBoost(
+  ctx: InboxContext,
+  booster: LocalActor,
+  obj: LocalObject,
+  announceId: string,
+  createdAt: string
+): Promise<void> {
+  if (!ctx.timelineStream || obj.mediaPending) return;
+  if (obj.visibility !== "public" && obj.visibility !== "unlisted") return;
+  try {
+    const author = await getActorById(ctx.db, obj.actorId);
+    if (!author) return;
+    const domain = new URL(ctx.baseUrl).hostname;
+    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
+    const original = serializeStatus(obj, author, domain, { authorLastStatusAt: lastStatusAt });
+    const wrapper = serializeReblog(booster, original, {
+      id: encodeStatusId(announceId, true),
+      createdAt,
+      localDomain: domain,
+    });
+    const followers = await ctx.db
+      .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
+      .bind(booster.id)
+      .all<{ actor_id: string }>();
+    const recipients = [booster.id, ...(followers.results ?? []).map((r) => r.actor_id)];
+    const boosterDomain = booster.domain;
+    const local = await ctx.db
+      .prepare(
+        `SELECT a.id FROM actors a
+         WHERE a.is_local = 1
+           AND a.id IN (SELECT value FROM json_each(?))
+           AND a.id NOT IN (SELECT actor_id FROM blocks WHERE target_id = ?)
+           AND NOT EXISTS (SELECT 1 FROM domain_blocks db WHERE db.actor_id = a.id AND db.domain = ?)`
+      )
+      .bind(JSON.stringify(recipients), booster.id, boosterDomain)
+      .all<{ id: string }>();
+    await Promise.all((local.results ?? []).map((row) => broadcastHomeStatus(ctx.timelineStream!, row.id, wrapper)));
+  } catch { /* streaming is best-effort */ }
 }
 
 /**
@@ -1563,12 +1610,14 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
     .first();
 
   if (!existing) {
+    const announceId = generateId();
+    const announceCreatedAt = new Date().toISOString();
     await createAnnounce(ctx.db, {
-      id: generateId(),
+      id: announceId,
       actorId,
       objectId,
       activityId: activity.id,
-      createdAt: new Date().toISOString(),
+      createdAt: announceCreatedAt,
     });
 
     const owner = await getActorById(ctx.db, resolvedObj.actorId);
@@ -1586,6 +1635,7 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
       await broadcastAndPush(ctx, notif);
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
+    await broadcastNewBoost(ctx, announcerActor, resolvedObj, announceId, announceCreatedAt);
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializeReblog } from "@/lib/mastodon/serializers";
 import type { LocalObject, LocalActor, LocalAttachment } from "@/lib/types";
 
 function buildActor(): LocalActor {
@@ -128,5 +128,34 @@ describe("status custom emojis without the catalogue", () => {
 
     expect(s.content).toContain(cached);
     expect(s.emojis[0].url).toBe(cached);
+  });
+});
+
+describe("boost wrapper serialization", () => {
+  it("wraps the original with the booster as account and no content of its own", () => {
+    const original = serializeStatus(buildObject(), buildActor(), "mastodon.social", {});
+    const booster = {
+      ...buildActor(),
+      id: "https://cf-ap.com/users/ale",
+      username: "ale",
+      domain: "cf-ap.com",
+      displayName: "ale",
+    } as unknown as LocalActor;
+
+    const wrapper = serializeReblog(booster, original, {
+      id: "ann-1",
+      createdAt: "2026-10-05T10:00:00Z",
+      localDomain: "cf-ap.com",
+    });
+
+    expect(wrapper.id).toBe("ann-1");
+    expect(wrapper.created_at).toBe("2026-10-05T10:00:00.000Z");
+    expect(wrapper.content).toBe("");
+    expect(wrapper.reblog).toBe(original);
+    expect(wrapper.account.username).toBe("ale");
+    expect(wrapper.url).toBe(original.url);
+    // The wrapper carries no viewer state: interactions target `reblog`.
+    expect(wrapper.favourited).toBe(false);
+    expect(wrapper.reblogged).toBe(false);
   });
 });

@@ -2515,6 +2515,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "exclude_reblogs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
