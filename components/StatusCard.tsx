@@ -1322,7 +1322,7 @@ export const StatusCard = memo(function StatusCard(props: ComponentProps<typeof 
       <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.5rem 1rem 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
         <Icon name="retweet" size="0.85rem" />
         <Link href={boosterHref} style={{ color: "var(--text-muted)", fontWeight: 600, textDecoration: "none" }}>
-          {booster.display_name || booster.username}
+          <DisplayName name={booster.display_name || booster.username} emojis={booster.emojis} />
         </Link>
         <span>{t.status_boosted}</span>
       </div>
