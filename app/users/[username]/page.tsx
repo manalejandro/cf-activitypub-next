@@ -25,6 +25,7 @@ import { EmojiInput } from "@/components/EmojiInput";
 import { useLimits } from "@/lib/limits-client";
 import { purgeStatusFromCache, applyStatusInFeed } from "@/lib/streaming/timeline-cache";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
+import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
 
@@ -738,6 +739,7 @@ export default function ProfilePage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
+      invalidateBlockedAccounts();
       setRelationship((prev) => ({
         ...(prev ?? { id: account.id, following: false, requested: false }),
         blocking: !blocking,

@@ -7,6 +7,7 @@ import {
   updateStatusInCache,
   type TimelineItem,
 } from "./timeline-cache";
+import { fetchBlockedAccounts, statusTouchesBlocked, type BlockedAccounts, type StreamedStatus } from "./blocked-accounts";
 
 /** Distance from the top that still counts as "at the top" (px). */
 export const NEW_STATUSES_TOP_OFFSET = 120;
@@ -34,6 +35,18 @@ export function useNewStatusesBuffer<T extends TimelineItem>(
   const [pendingCount, setPendingCount] = useState(0);
   const pendingRef = useRef<T[]>([]);
   const atTopRef = useRef(true);
+  // Shared channels (public/hashtag) are one payload for every subscriber, so
+  // the viewer's blocks are applied here: a blocked author — or a reply to one
+  // — must never enter the feed live. Server-filtered feeds (home) are a no-op.
+  const blockedRef = useRef<BlockedAccounts | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchBlockedAccounts().then((blocked) => {
+      if (alive) blockedRef.current = blocked;
+    });
+    return () => { alive = false; };
+  }, []);
 
   /** Queue statuses not in the feed yet (dedup by id). */
   const queue = useCallback(
@@ -80,6 +93,14 @@ export function useNewStatusesBuffer<T extends TimelineItem>(
 
   const handleStreamEvent = useCallback(
     (event: string, payload: string): boolean => {
+      if (event === "update") {
+        const blocked = blockedRef.current;
+        if (blocked) {
+          try {
+            if (statusTouchesBlocked(JSON.parse(payload) as StreamedStatus, blocked)) return true;
+          } catch { /* let the normal path report malformed payloads */ }
+        }
+      }
       if (event !== "update" || atTopRef.current) {
         return handleStatusStreamEvent(event, payload, setItems, seenIdsRef.current);
       }

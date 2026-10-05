@@ -61,7 +61,7 @@ import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
 import { relayForActor, relayMatchesActor } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification, serializeReblog } from "@/lib/mastodon/serializers";
@@ -174,7 +174,11 @@ async function broadcastNewBoost(
     if (!author) return;
     const domain = new URL(ctx.baseUrl).hostname;
     const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
-    const original = serializeStatus(obj, author, domain, { authorLastStatusAt: lastStatusAt });
+    const parent = await parentExclusion(ctx.db, obj.inReplyToId);
+    const original = serializeStatus(obj, author, domain, {
+      authorLastStatusAt: lastStatusAt,
+      inReplyToAccountId: parent?.id ?? null,
+    });
     const wrapper = serializeReblog(booster, original, {
       id: encodeStatusId(announceId, true),
       createdAt,
@@ -185,18 +189,16 @@ async function broadcastNewBoost(
       .bind(booster.id)
       .all<{ actor_id: string }>();
     const recipients = [booster.id, ...(followers.results ?? []).map((r) => r.actor_id)];
-    const boosterDomain = booster.domain;
-    const local = await ctx.db
-      .prepare(
-        `SELECT a.id FROM actors a
-         WHERE a.is_local = 1
-           AND a.id IN (SELECT value FROM json_each(?))
-           AND a.id NOT IN (SELECT actor_id FROM blocks WHERE target_id = ?)
-           AND NOT EXISTS (SELECT 1 FROM domain_blocks db WHERE db.actor_id = a.id AND db.domain = ?)`
-      )
-      .bind(JSON.stringify(recipients), booster.id, boosterDomain)
-      .all<{ id: string }>();
-    await Promise.all((local.results ?? []).map((row) => broadcastHomeStatus(ctx.timelineStream!, row.id, wrapper)));
+    // Mirror the timeline query: a viewer who blocked the booster, the
+    // original author or the original's parent (or their domains) never sees
+    // the boost live either.
+    const exclusions: { id: string; domain: string | null }[] = [
+      { id: booster.id, domain: booster.domain },
+      { id: author.id, domain: author.domain },
+    ];
+    if (parent) exclusions.push(parent);
+    const localIds = await eligibleLocalRecipients(ctx.db, recipients, exclusions);
+    await Promise.all(localIds.map((id) => broadcastHomeStatus(ctx.timelineStream!, id, wrapper)));
   } catch { /* streaming is best-effort */ }
 }
 
@@ -740,6 +742,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       const serializedQuoteHere = quoteIdHere
         ? await getObjectById(ctx.db, quoteIdHere).then((q) => (q ? serializeQuote(ctx.db, q, domain) : null)).catch(() => null)
         : null;
+      const parent = await parentExclusion(ctx.db, obj.inReplyTo ?? null);
       const serializedStatus = serializeStatus(
         {
           id: obj.id, type: objType, actorId, content,
@@ -754,21 +757,29 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
         },
         author,
         domain,
-        { attachments: storedAttachments, emojis: allEmojis, poll, quote: serializedQuoteHere, quotesCount: 0 }
+        { attachments: storedAttachments, emojis: allEmojis, poll, quote: serializedQuoteHere, quotesCount: 0, inReplyToAccountId: parent?.id ?? null }
       );
       const broadcastTasks: Promise<void>[] = [];
       if (authorVisibleOnPublic) {
         broadcastTasks.push(broadcastPublicStatus(ctx.timelineStream, serializedStatus, false));
       }
 
-      // Broadcast to home feeds of local followers
+      // Broadcast to home feeds of local followers, minus those who blocked
+      // the author (or its domain) or the parent of this reply.
       try {
         const localFollowers = await ctx.db
           .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
           .bind(actorId)
           .all<{ id: string }>();
-        for (const row of localFollowers.results) {
-          broadcastTasks.push(broadcastHomeStatus(ctx.timelineStream, row.id, serializedStatus));
+        const exclusions = [await actorExclusion(ctx.db, actorId)];
+        if (parent) exclusions.push(parent);
+        const recipients = await eligibleLocalRecipients(
+          ctx.db,
+          localFollowers.results.map((row) => row.id),
+          exclusions
+        );
+        for (const recipientId of recipients) {
+          broadcastTasks.push(broadcastHomeStatus(ctx.timelineStream, recipientId, serializedStatus));
         }
       } catch { /* ignore */ }
 
@@ -1532,7 +1543,11 @@ async function storeRelayedStatus(
   if (!author || author.isLocal || !ctx.timelineStream) return;
   try {
     const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
-    const serialized = serializeStatus(stored, author, new URL(ctx.baseUrl).hostname, { authorLastStatusAt: lastStatusAt });
+    const parent = await parentExclusion(ctx.db, stored.inReplyToId);
+    const serialized = serializeStatus(stored, author, new URL(ctx.baseUrl).hostname, {
+      authorLastStatusAt: lastStatusAt,
+      inReplyToAccountId: parent?.id ?? null,
+    });
     await broadcastStatusCreatedToAudience(ctx.db, ctx.timelineStream, serialized, author);
   } catch { /* streaming is best-effort */ }
 }

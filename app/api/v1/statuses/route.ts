@@ -42,7 +42,7 @@ import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
-import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
+import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists, actorExclusion, eligibleLocalRecipients } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
 import type { APActor, APAttachment, APTag, LocalActor, LocalAttachment } from "@/lib/types";
@@ -759,8 +759,17 @@ export async function POST(request: NextRequest): Promise<Response> {
     .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
     .bind(actor.id)
     .all<{ id: string }>();
-  for (const row of localFollowerRows.results) {
-    broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serializedStatus));
+  // Followers who blocked the author — or the account this replies to — never
+  // receive it live (the REST home timeline filters them too).
+  const exclusions = [await actorExclusion(env.DB, actor.id)];
+  if (replyToAccountId) exclusions.push(await actorExclusion(env.DB, replyToAccountId));
+  const recipients = await eligibleLocalRecipients(
+    env.DB,
+    localFollowerRows.results.map((row) => row.id),
+    exclusions
+  );
+  for (const recipientId of recipients) {
+    broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serializedStatus));
   }
   await Promise.allSettled(broadcastTasks);
 

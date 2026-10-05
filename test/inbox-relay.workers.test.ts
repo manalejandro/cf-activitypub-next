@@ -19,6 +19,11 @@ vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastStatusInteractionToLists: vi.fn().mockResolvedValue(undefined),
   broadcastStatusRefresh: vi.fn().mockResolvedValue(undefined),
   broadcastStatusCreatedToAudience: vi.fn().mockResolvedValue(undefined),
+  // Recipient filtering is covered by streaming-recipients.workers.test.ts;
+  // here every follower stays eligible.
+  eligibleLocalRecipients: vi.fn(async (_db: unknown, ids: string[]) => ids),
+  actorExclusion: vi.fn(async (_db: unknown, id: string) => ({ id, domain: null })),
+  parentExclusion: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/push", () => ({

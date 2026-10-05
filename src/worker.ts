@@ -23,7 +23,7 @@ import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activity
 import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
-import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh } from "../lib/streaming/broadcast";
+import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment } from "@/lib/types";
 import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache } from "../lib/db";
@@ -793,7 +793,11 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       if (env.TIMELINE_STREAM) {
         const stored = await getObjectById(env.DB, noteId);
         if (stored) {
-          const serialized = serializeStatus(stored, actor, domain, { authorLastStatusAt: published.slice(0, 10) });
+          const parent = await parentExclusion(env.DB, stored.inReplyToId);
+          const serialized = serializeStatus(stored, actor, domain, {
+            authorLastStatusAt: published.slice(0, 10),
+            inReplyToAccountId: parent?.id ?? null,
+          });
           const tasks: Promise<void>[] = [];
           if ((visibility === "public" || visibility === "unlisted") && !actor.silenced && !actor.suspended) {
             tasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serialized, true));
@@ -803,7 +807,14 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
             .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
             .bind(actor.id)
             .all<{ id: string }>();
-          for (const row of localFollowers.results) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, row.id, serialized));
+          const exclusions = [await actorExclusion(env.DB, actor.id)];
+          if (parent) exclusions.push(parent);
+          const recipients = await eligibleLocalRecipients(
+            env.DB,
+            localFollowers.results.map((row) => row.id),
+            exclusions
+          );
+          for (const recipientId of recipients) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
           // List channels get new posts live as well.
           tasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serialized, "update"));
           await Promise.allSettled(tasks);
@@ -851,11 +862,13 @@ async function serializeObjectForStream(
     object.quoteId ? getObjectById(env.DB, object.quoteId) : Promise.resolve(null),
   ]);
   const pollOptions = poll ? await getPollOptions(env.DB, poll.id) : [];
+  const parent = await parentExclusion(env.DB, object.inReplyToId);
   const status = serializeStatus(object, author, domain, {
     attachments,
     emojis,
     poll: poll ? serializePoll(poll, pollOptions, false, []) : null,
     quote: await serializeQuote(env.DB, quoteObject, domain),
+    inReplyToAccountId: parent?.id ?? null,
   });
   return { status, authorId: author.id, isLocal: author.isLocal };
 }

@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
+import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
 
@@ -92,7 +93,10 @@ export default function BlocksPage() {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) setBlocked((prev) => prev.filter((a) => a.id !== account.id));
+    if (res.ok) {
+      invalidateBlockedAccounts();
+      setBlocked((prev) => prev.filter((a) => a.id !== account.id));
+    }
     setUnblockingId(null);
   }
 
@@ -108,6 +112,7 @@ export default function BlocksPage() {
       body: JSON.stringify({ domain }),
     });
     if (res.ok) {
+      invalidateBlockedAccounts();
       setDomains((prev) => (prev.includes(domain) ? prev : [domain, ...prev]));
       setNewDomain("");
     } else {
@@ -124,7 +129,10 @@ export default function BlocksPage() {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) setDomains((prev) => prev.filter((d) => d !== domain));
+    if (res.ok) {
+      invalidateBlockedAccounts();
+      setDomains((prev) => prev.filter((d) => d !== domain));
+    }
     setRemovingDomain(null);
   }
 

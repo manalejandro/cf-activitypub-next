@@ -15,7 +15,7 @@ import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
 import { refreshRemotePoll } from "@/lib/activitypub/polls";
-import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate } from "@/lib/streaming/broadcast";
+import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -351,12 +351,14 @@ export async function PUT(
 
   const updatedObj = await getObjectById(env.DB, obj.id);
   const allEmojis = await getAllCustomEmojis(env.DB);
+  const parent = await parentExclusion(env.DB, (updatedObj ?? obj).inReplyToId);
   // `currentAttachments` was re-read after the media replacement above: the
   // response (and the streaming payload) must carry the edited media, not the
   // pre-update list — omitting it made freshly uploaded media vanish on save.
   const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain, {
     emojis: allEmojis,
     attachments: currentAttachments,
+    inReplyToAccountId: parent?.id ?? null,
   });
 
   // Broadcast status.update event to streaming clients
@@ -369,8 +371,17 @@ export async function PUT(
       .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
       .bind(actor.id)
       .all<{ id: string }>();
-    for (const row of localFollowerRows.results) {
-      broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, row.id, serializedUpdated));
+    // Same per-viewer filters as the REST home timeline: a follower who blocked
+    // the author (or the parent of a reply) gets no live update.
+    const exclusions = [await actorExclusion(env.DB, actor.id)];
+    if (parent) exclusions.push(parent);
+    const recipients = await eligibleLocalRecipients(
+      env.DB,
+      localFollowerRows.results.map((row) => row.id),
+      exclusions
+    );
+    for (const recipientId of recipients) {
+      broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, recipientId, serializedUpdated));
     }
     await Promise.allSettled(broadcastTasks);
   }

@@ -3,6 +3,14 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { useNewStatusesBuffer } from "@/lib/streaming/use-new-statuses";
 
+vi.mock("@/lib/streaming/blocked-accounts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/streaming/blocked-accounts")>()),
+  fetchBlockedAccounts: vi.fn(async () => ({
+    ids: new Set(["https://remote.example/users/blocked"]),
+    domains: new Set<string>(),
+  })),
+}));
+
 interface Item {
   id: string;
   created_at: string;
@@ -111,5 +119,39 @@ describe("useNewStatusesBuffer", () => {
     streamUpdate("s1", "2026-09-30T10:00:00Z");
     streamUpdate("s1", "2026-09-30T10:00:00Z");
     expect(screen.getByTestId("count").textContent).toBe("1");
+  });
+
+  it("drops streamed statuses from blocked accounts and replies to them", async () => {
+    render(<Harness />);
+    // Let the viewer's block list load (shared channels are filtered client-side).
+    await act(async () => {});
+
+    act(() => {
+      buffer!.handleStreamEvent("update", JSON.stringify({
+        id: "blocked-author",
+        created_at: "2026-09-30T10:00:00Z",
+        account: { id: "https://remote.example/users/blocked" },
+      }));
+    });
+    expect(screen.queryByText("blocked-author")).toBeNull();
+
+    act(() => {
+      buffer!.handleStreamEvent("update", JSON.stringify({
+        id: "blocked-parent",
+        created_at: "2026-09-30T10:01:00Z",
+        account: { id: "https://ok.example/users/x" },
+        in_reply_to_account_id: "https://remote.example/users/blocked",
+      }));
+    });
+    expect(screen.queryByText("blocked-parent")).toBeNull();
+
+    act(() => {
+      buffer!.handleStreamEvent("update", JSON.stringify({
+        id: "clean",
+        created_at: "2026-09-30T10:02:00Z",
+        account: { id: "https://ok.example/users/x" },
+      }));
+    });
+    expect(screen.getByText("clean")).toBeTruthy();
   });
 });

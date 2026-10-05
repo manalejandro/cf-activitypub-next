@@ -370,6 +370,70 @@ export async function broadcastStatusInteractionToLists(
 
 type StreamDb = { prepare(sql: string): { bind(...args: unknown[]): { all<T = Record<string, unknown>>(): Promise<{ results: T[] }> } } };
 
+/**
+ * Actor row (id + domain) whose content a viewer may have blocked. A missing
+ * row still excludes by id (its domain is simply unknown).
+ */
+export async function actorExclusion(
+  db: D1DatabaseLike,
+  actorId: string
+): Promise<{ id: string; domain: string | null }> {
+  try {
+    const rows = await db
+      .prepare("SELECT id, domain FROM actors WHERE id = ? LIMIT 1")
+      .bind(actorId)
+      .all<{ id: string; domain: string | null }>();
+    return rows.results?.[0] ?? { id: actorId, domain: null };
+  } catch {
+    return { id: actorId, domain: null };
+  }
+}
+
+/** Parent author (id + domain) of a reply, when the parent object is cached. */
+export async function parentExclusion(
+  db: D1DatabaseLike,
+  inReplyToId: string | null | undefined
+): Promise<{ id: string; domain: string | null } | null> {
+  if (!inReplyToId) return null;
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT a.id AS id, a.domain AS domain FROM objects o JOIN actors a ON a.id = o.actor_id WHERE o.id = ? LIMIT 1`
+      )
+      .bind(inReplyToId)
+      .all<{ id: string; domain: string | null }>();
+    return rows.results?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Local actors among `recipientIds` who have not blocked any of the excluded
+ * accounts (nor their domains): the same per-viewer filters the REST timelines
+ * apply, so a live event never shows what the next reload would hide.
+ */
+export async function eligibleLocalRecipients(
+  db: D1DatabaseLike,
+  recipientIds: string[],
+  excluded: { id: string; domain: string | null }[]
+): Promise<string[]> {
+  if (recipientIds.length === 0) return [];
+  let sql = `SELECT a.id FROM actors a
+    WHERE a.is_local = 1 AND a.id IN (SELECT value FROM json_each(?))`;
+  const binds: unknown[] = [JSON.stringify(recipientIds)];
+  for (const account of excluded) {
+    sql += " AND a.id NOT IN (SELECT actor_id FROM blocks WHERE target_id = ?)";
+    binds.push(account.id);
+    if (account.domain) {
+      sql += " AND NOT EXISTS (SELECT 1 FROM domain_blocks db WHERE db.actor_id = a.id AND db.domain = ?)";
+      binds.push(account.domain);
+    }
+  }
+  const rows = await db.prepare(sql).bind(...binds).all<{ id: string }>();
+  return (rows.results ?? []).map((row) => row.id);
+}
+
 /** Fan a status out to the author's audience using insert or replace events. */
 async function broadcastToAuthorAudience(
   db: StreamDb,
@@ -395,11 +459,22 @@ async function broadcastToAuthorAudience(
         )
         .bind(author.id)
         .all<{ id: string }>();
-      for (const row of followers.results ?? []) {
+      // Mirror the REST timeline filters: recipients who blocked the author
+      // (or its domain) and those who blocked the parent of a reply stay out.
+      const exclusions = [await actorExclusion(db, author.id)];
+      const parentAccountId =
+        (status as { in_reply_to_account_id?: string | null } | null)?.in_reply_to_account_id ?? null;
+      if (parentAccountId) exclusions.push(await actorExclusion(db, parentAccountId));
+      const recipients = await eligibleLocalRecipients(
+        db,
+        (followers.results ?? []).map((row) => row.id),
+        exclusions
+      );
+      for (const recipientId of recipients) {
         tasks.push(
           kind === "update"
-            ? broadcastHomeStatus(ns, row.id, status)
-            : broadcastHomeStatusUpdate(ns, row.id, status)
+            ? broadcastHomeStatus(ns, recipientId, status)
+            : broadcastHomeStatusUpdate(ns, recipientId, status)
         );
       }
     } catch { /* streaming refresh is best-effort */ }
