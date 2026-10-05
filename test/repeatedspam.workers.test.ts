@@ -1,76 +1,32 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 import { detectRepeatedSpam } from "@/lib/moderation/cycle";
 
-/** Minimal D1 adapter backed by node:sqlite (in-memory, schema loaded). */
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            const rows = stmt.all(...(bound as never[])) as unknown as T[];
-            return { results: rows, success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            const row = stmt.get(...(bound as never[])) as unknown as T | undefined;
-            return row ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-      async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-        const rows = stmt.all() as unknown as T[];
-        return { results: rows, success: true, meta: {} };
-      },
-      async first<T = unknown>(): Promise<T | null> {
-        const row = stmt.get() as unknown as T | undefined;
-        return row ?? null;
-      },
-      async run(): Promise<D1Result> {
-        const info = stmt.run();
-        return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-      },
-    };
-  }
-}
-
-let db: D1Database;
+const db = env.DB;
 
 const PEM = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----";
 
-function insertActor(id: string, domain: string, opts: { suspended?: boolean } = {}) {
+async function insertActor(id: string, domain: string, opts: { suspended?: boolean } = {}) {
   const username = id.split("/").pop() ?? "u";
-  db.prepare(
+  await db.prepare(
     `INSERT INTO actors (id, username, domain, display_name, public_key_pem, private_key_pem, is_local,
        followers_count, following_count, statuses_count, suspended, created_at)
      VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 0, 0, ?, datetime('now', '-30 days'))`
   ).bind(id, username.toLowerCase(), domain, username, PEM, opts.suspended ? 1 : 0).run();
 }
 
-function insertStatus(actorId: string, content: string, hoursAgo: number) {
+async function insertStatus(actorId: string, content: string, hoursAgo: number) {
   const id = `${actorId}/posts/${Math.random().toString(36).slice(2)}`;
   // Production stores ISO timestamps (toISOString), so the test must too — the
   // space-vs-T difference between `datetime('now')` and ISO makes string
   // comparisons time-of-day dependent around midnight.
   const published = new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
-  db.prepare(
+  await db.prepare(
     `INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, is_local, published)
      VALUES (?, 'Note', ?, ?, NULL, 0, 'public', 0, ?)`
   ).bind(id, actorId, content, published).run();
@@ -83,9 +39,8 @@ async function actionsFor(actorId: string): Promise<Array<{ action: string }>> {
     .all<{ action: string }>()).results;
 }
 
-beforeEach(() => {
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
+beforeEach(async () => {
+  await resetTestDatabase();
 });
 
 /**
@@ -98,9 +53,9 @@ beforeEach(() => {
 describe("detectRepeatedSpam", () => {
   it("does NOT act on repeated benign content (greetings, hashtags, memes)", async () => {
     const actorId = "https://mastodon.social/users/solpizzarro";
-    insertActor(actorId, "mastodon.social");
+    await insertActor(actorId, "mastodon.social");
     for (let i = 0; i < 10; i++) {
-      insertStatus(actorId, `<p>@Solpizzarro ✌️👊</p>`, i);
+      await insertStatus(actorId, `<p>@Solpizzarro ✌️👊</p>`, i);
     }
 
     await detectRepeatedSpam({ DB: db, INSTANCE_URL: "https://cf-ap.example", KV: undefined } as never);
@@ -112,9 +67,9 @@ describe("detectRepeatedSpam", () => {
 
   it("does NOT act on repeated hashtag-heavy captions", async () => {
     const actorId = "https://mastodon.social/users/photog";
-    insertActor(actorId, "mastodon.social");
+    await insertActor(actorId, "mastodon.social");
     const caption = "<p>#colorphotography #colorshots #portrait #landscape #streetphoto</p>";
-    for (let i = 0; i < 6; i++) insertStatus(actorId, caption, i);
+    for (let i = 0; i < 6; i++) await insertStatus(actorId, caption, i);
 
     await detectRepeatedSpam({ DB: db, INSTANCE_URL: "https://cf-ap.example", KV: undefined } as never);
 
@@ -123,9 +78,9 @@ describe("detectRepeatedSpam", () => {
 
   it("warns (not suspends) a first-time account repeating spam-like content 5+ times", async () => {
     const actorId = "https://spam.example/users/bot";
-    insertActor(actorId, "spam.example");
+    await insertActor(actorId, "spam.example");
     const spam = "<p>gana dinero rápido clic aquí https://scam.example/win</p>";
-    for (let i = 0; i < 5; i++) insertStatus(actorId, spam, i);
+    for (let i = 0; i < 5; i++) await insertStatus(actorId, spam, i);
 
     await detectRepeatedSpam({ DB: db, INSTANCE_URL: "https://cf-ap.example", KV: undefined } as never);
 
@@ -136,14 +91,14 @@ describe("detectRepeatedSpam", () => {
 
   it("suspend a repeat offender that already had a warning", async () => {
     const actorId = "https://spam.example/users/offender";
-    insertActor(actorId, "spam.example");
+    await insertActor(actorId, "spam.example");
     db.prepare(
       `INSERT INTO moderation_log (id, source, target_type, target_id, action, reason, confidence, model, details)
        VALUES ('w1', 'heuristic', 'account', ?, 'warned', 'previo', 'medium', 'heuristic', '{}')`
     ).bind(actorId).run();
 
     const spam = "<p>compra barato ahora hazte millonario https://scam.example/deal</p>";
-    for (let i = 0; i < 5; i++) insertStatus(actorId, spam, i);
+    for (let i = 0; i < 5; i++) await insertStatus(actorId, spam, i);
 
     await detectRepeatedSpam({ DB: db, INSTANCE_URL: "https://cf-ap.example", KV: undefined } as never);
 
@@ -152,9 +107,9 @@ describe("detectRepeatedSpam", () => {
 
   it("does nothing below the 5-repeat threshold", async () => {
     const actorId = "https://spam.example/users/small";
-    insertActor(actorId, "spam.example");
+    await insertActor(actorId, "spam.example");
     const spam = "<p>gana dinero https://scam.example/x</p>";
-    for (let i = 0; i < 4; i++) insertStatus(actorId, spam, i);
+    for (let i = 0; i < 4; i++) await insertStatus(actorId, spam, i);
 
     await detectRepeatedSpam({ DB: db, INSTANCE_URL: "https://cf-ap.example", KV: undefined } as never);
 

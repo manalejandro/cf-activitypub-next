@@ -1,47 +1,12 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createAttachment, createObject, getObjectById, updateObject } from "@/lib/db";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    const results: D1Result[] = [];
-    for (const s of statements) results.push(await s.run());
-    return results;
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 const ACTOR = "https://remote.example/users/fan";
 const OBJ = "https://remote.example/objects/1";
@@ -68,11 +33,10 @@ function objectDoc(content: string) {
   };
 }
 
-let db: D1Database;
+const db = env.DB;
 
 beforeEach(async () => {
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
+  await resetTestDatabase();
   await db.prepare(
     `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
      VALUES (?, 'fan', 'remote.example', 'k', NULL, 0)`

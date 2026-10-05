@@ -1,9 +1,11 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import type { D1Database } from "@cloudflare/workers-types";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 import {
   getBlockedActorIds,
@@ -13,40 +15,12 @@ import {
   getListTimeline,
 } from "@/lib/db";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
-
 const ME = "https://local.example/users/me";
 const FOLLOWED = "https://remote.example/users/followed";
 const BLOCKED = "https://blocked.example/users/spammer";
 const OTHER = "https://other.example/users/friend";
+
+const db = env.DB;
 
 async function insertActor(db: D1Database, id: string): Promise<void> {
   const username = id.split("/").pop()!;
@@ -85,11 +59,8 @@ async function ids(db: D1Database, objects: { id: string }[]): Promise<string[]>
 }
 
 describe("blocked accounts in timelines and threads", () => {
-  let db: D1Database;
-
   beforeEach(async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    db = new D1Adapter(schema) as unknown as D1Database;
+    await resetTestDatabase();
     for (const id of [ME, FOLLOWED, BLOCKED, OTHER]) await insertActor(db, id);
     await db
       .prepare("INSERT INTO follows (id, actor_id, target_id, state) VALUES ('f1', ?, ?, 'accepted')")

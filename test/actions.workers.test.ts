@@ -1,9 +1,10 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 import {
   suspendAccount,
   unsuspendAccount,
@@ -13,52 +14,7 @@ import {
   deleteStatus,
 } from "@/lib/moderation/actions";
 
-/** Minimal D1 adapter backed by node:sqlite (in-memory, schema loaded). */
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            const rows = stmt.all(...(bound as never[])) as unknown as T[];
-            return { results: rows, success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            const row = stmt.get(...(bound as never[])) as unknown as T | undefined;
-            return row ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-      async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-        const rows = stmt.all() as unknown as T[];
-        return { results: rows, success: true, meta: {} };
-      },
-      async first<T = unknown>(): Promise<T | null> {
-        const row = stmt.get() as unknown as T | undefined;
-        return row ?? null;
-      },
-      async run(): Promise<D1Result> {
-        const info = stmt.run();
-        return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-      },
-    };
-  }
-}
-
-let db: D1Database;
+const db = env.DB;
 
 const ENV = {
   DB: {} as D1Database,
@@ -67,8 +23,8 @@ const ENV = {
 
 const PEM = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n-----END PUBLIC KEY-----";
 
-function insertActor(id: string, username: string, domain: string, opts: { isLocal?: boolean; email?: string | null; suspended?: boolean } = {}) {
-  db.prepare(
+async function insertActor(id: string, username: string, domain: string, opts: { isLocal?: boolean; email?: string | null; suspended?: boolean } = {}) {
+  await db.prepare(
     `INSERT INTO actors (id, username, domain, display_name, public_key_pem, private_key_pem, is_local, is_bot,
        manually_approves_followers, discoverable, followers_count, following_count, statuses_count,
        email, password_hash, email_verified, suspended, inbox)
@@ -94,15 +50,14 @@ async function countLog(targetType: string, targetId: string, action: string): P
   return row.c ?? 0;
 }
 
-beforeEach(() => {
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
-  (ENV as { DB: D1Database }).DB = db;
+beforeEach(async () => {
+  await resetTestDatabase();
+  (ENV as { DB: typeof db }).DB = db;
 });
 
 describe("suspendAccount / unsuspendAccount", () => {
   it("suspends an account, clears its content, and audits the action", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, email: "ale@example.com" });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, email: "ale@example.com" });
     db.prepare(
       `INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, is_local)
        VALUES ('obj1', 'Note', 'https://cf-ap.example/users/ale', '<p>toxic</p>', NULL, 0, 'public', 1)`
@@ -121,14 +76,14 @@ describe("suspendAccount / unsuspendAccount", () => {
   });
 
   it("is idempotent — does not double-suspend or double-log", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, suspended: true });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, suspended: true });
     const res = await suspendAccount(ENV, { actorId: "https://cf-ap.example/users/ale", reason: "again" });
     expect(res.applied).toBe(false);
     expect(await countLog("account", "https://cf-ap.example/users/ale", "suspended")).toBe(0);
   });
 
   it("unsuspends a suspended account and audits the action", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, suspended: true });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true, suspended: true });
     const res = await unsuspendAccount(ENV, { actorId: "https://cf-ap.example/users/ale", reason: "reinstated" });
     expect(res.applied).toBe(true);
     const actor = await db.prepare("SELECT suspended FROM actors WHERE id = ?").bind("https://cf-ap.example/users/ale").first<{ suspended: number }>();
@@ -137,7 +92,7 @@ describe("suspendAccount / unsuspendAccount", () => {
   });
 
   it("returns applied=false for a non-suspended account", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
     const res = await unsuspendAccount(ENV, { actorId: "https://cf-ap.example/users/ale" });
     expect(res.applied).toBe(false);
   });
@@ -145,8 +100,8 @@ describe("suspendAccount / unsuspendAccount", () => {
 
 describe("blockDomain", () => {
   it("inserts a domain block and suspends all cached remote accounts of the domain", async () => {
-    insertActor("https://spam.example/users/a", "a", "spam.example");
-    insertActor("https://spam.example/users/b", "b", "spam.example");
+    await insertActor("https://spam.example/users/a", "a", "spam.example");
+    await insertActor("https://spam.example/users/b", "b", "spam.example");
 
     const res = await blockDomain(ENV, { domain: "spam.example", instanceDomain: "cf-ap.example", reason: "abuse" });
     expect(res.applied).toBe(true);
@@ -173,17 +128,17 @@ describe("blockDomain", () => {
 });
 
 describe("resolveReport / dismissReport", () => {
-  function insertReport(id: string, actionTaken = 0) {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
-    insertActor("https://cf-ap.example/users/bob", "bob", "cf-ap.example", { isLocal: true });
-    db.prepare(
+  async function insertReport(id: string, actionTaken = 0) {
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
+    await insertActor("https://cf-ap.example/users/bob", "bob", "cf-ap.example", { isLocal: true });
+    await db.prepare(
       `INSERT INTO reports (id, actor_id, target_id, status_ids, comment, category, forwarded, action_taken)
        VALUES (?, 'https://cf-ap.example/users/ale', 'https://cf-ap.example/users/bob', NULL, 'spam', 'spam', 0, ?)`
     ).bind(id, actionTaken).run();
   }
 
   it("marks a report resolved and appends the resolution note", async () => {
-    insertReport("rep1");
+    await insertReport("rep1");
     const res = await resolveReport(ENV, { reportId: "rep1", reason: "actioned", source: "ai", confidence: "high" });
     expect(res.applied).toBe(true);
 
@@ -200,7 +155,7 @@ describe("resolveReport / dismissReport", () => {
   });
 
   it("dismisses a report by deleting it", async () => {
-    insertReport("rep2");
+    await insertReport("rep2");
     const res = await dismissReport(ENV, { reportId: "rep2", reason: "unfounded", source: "ai", confidence: "high" });
     expect(res.applied).toBe(true);
 
@@ -212,7 +167,7 @@ describe("resolveReport / dismissReport", () => {
 
 describe("deleteStatus", () => {
   it("soft-deletes a status (strips content, marks sensitive) and audits it", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
     db.prepare(
       `INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, is_local)
        VALUES ('obj1', 'Note', 'https://cf-ap.example/users/ale', '<p>bad</p>', NULL, 0, 'public', 1)`
@@ -228,7 +183,7 @@ describe("deleteStatus", () => {
   });
 
   it("is idempotent via hadAction", async () => {
-    insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
+    await insertActor("https://cf-ap.example/users/ale", "ale", "cf-ap.example", { isLocal: true });
     db.prepare(
       `INSERT INTO objects (id, type, actor_id, content, content_warning, sensitive, visibility, is_local)
        VALUES ('obj1', 'Note', 'https://cf-ap.example/users/ale', '<p>bad</p>', NULL, 0, 'public', 1)`

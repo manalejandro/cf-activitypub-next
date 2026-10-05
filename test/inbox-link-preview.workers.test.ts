@@ -1,9 +1,10 @@
-// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, vi, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 const federation = vi.hoisted(() => ({
   deliverToInbox: vi.fn().mockResolvedValue(undefined),
@@ -33,43 +34,6 @@ vi.mock("@/lib/push", () => ({
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { getObjectById } from "@/lib/db";
 import { processLinkPreviewQueue, type LinkPreviewBindings, type LinkPreviewLimits } from "@/lib/link-preview";
-
-/** Minimal D1 adapter backed by node:sqlite (in-memory, schema loaded). */
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    const results: D1Result[] = [];
-    for (const s of statements) results.push(await s.run());
-    return results;
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
 
 function okJson(payload: unknown): Response {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -136,14 +100,13 @@ function makeAnnounce(overrides: Record<string, unknown> = {}) {
   };
 }
 
-let db: D1Database;
+const db = env.DB;
 let bindings: LinkPreviewBindings;
 
 beforeEach(async () => {
   federation.safeFetch.mockReset();
   federation.validateOutboundUrl.mockReturnValue({ valid: true });
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
+  await resetTestDatabase();
   bindings = { DB: db, KV: undefined };
   await db
     .prepare("INSERT INTO actors (id, username, domain, public_key_pem, is_local) VALUES (?, ?, ?, ?, 0)")

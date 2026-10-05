@@ -1,9 +1,10 @@
-// @vitest-environment node
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { getPollByObjectId, getPollOptions, getObjectById, getPollsByObjectIds } from "@/lib/db";
 import { broadcastPublicStatus } from "@/lib/streaming/broadcast";
@@ -25,74 +26,7 @@ vi.mock("@/lib/activitypub/federation", () => ({
   fetchRemoteObject: vi.fn().mockResolvedValue(null),
 }));
 
-/** Minimal D1 adapter backed by node:sqlite (in-memory, schema loaded). */
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-  private allCounter = 0;
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    this.sql.exec("BEGIN");
-    try {
-      const results: D1Result[] = [];
-      for (const s of statements) results.push(await s.run());
-      this.sql.exec("COMMIT");
-      return results;
-    } catch (e) {
-      this.sql.exec("ROLLBACK");
-      throw e;
-    }
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const adapter = this;
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            const rows = stmt.all(...(bound as never[])) as unknown as T[];
-            adapter.allCounter++;
-            return { results: rows, success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            const row = stmt.get(...(bound as never[])) as unknown as T | undefined;
-            adapter.allCounter++;
-            return row ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            adapter.allCounter++;
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-      async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-        const rows = stmt.all() as unknown as T[];
-        adapter.allCounter++;
-        return { results: rows, success: true, meta: {} };
-      },
-      async first<T = unknown>(): Promise<T | null> {
-        const row = stmt.get() as unknown as T | undefined;
-        adapter.allCounter++;
-        return row ?? null;
-      },
-      async run(): Promise<D1Result> {
-        const info = stmt.run();
-        adapter.allCounter++;
-        return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-      },
-    };
-  }
-}
-
-let db: D1Database;
+const db = env.DB;
 let BASE: string;
 
 const ACTOR_ID = "https://remote.example/users/alice";
@@ -129,21 +63,18 @@ beforeAll(async () => {
 });
 
 async function freshDb() {
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  const adapter = new D1Adapter(schema);
-  const d = adapter as unknown as D1Database;
-  await d
+  await resetTestDatabase();
+  await db
     .prepare(
       "INSERT INTO actors (id, username, domain, public_key_pem, is_local) VALUES (?, ?, ?, ?, ?)"
     )
     .bind(ACTOR_ID, "alice", "remote.example", "test-key", 0)
     .run();
-  return d;
 }
 
 describe("federated poll ingestion (Create Question)", () => {
   beforeEach(async () => {
-    db = await freshDb();
+    await freshDb();
     vi.mocked(broadcastPublicStatus).mockClear();
   });
 

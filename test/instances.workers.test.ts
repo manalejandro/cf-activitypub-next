@@ -1,9 +1,10 @@
-// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, vi, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 const federation = vi.hoisted(() => ({
   safeFetch: vi.fn(),
@@ -37,42 +38,6 @@ import {
   upsertInstanceMetadata,
 } from "@/lib/db";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    const results: D1Result[] = [];
-    for (const s of statements) results.push(await s.run());
-    return results;
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
-
 class FakeKV {
   store = new Map<string, string>();
   async get(key: string) {
@@ -92,15 +57,14 @@ function jsonResponse(body: unknown): Response {
 
 const DAY = 86_400_000;
 
-let db: D1Database;
+const db = env.DB;
 let kv: FakeKV;
 
 beforeEach(async () => {
   federation.safeFetch.mockReset();
   federation.validateOutboundUrl.mockReturnValue({ valid: true });
   kv = new FakeKV();
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
+  await resetTestDatabase();
 });
 
 describe("instance helpers", () => {

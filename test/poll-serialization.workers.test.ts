@@ -1,51 +1,24 @@
-// @vitest-environment node
-import { describe, it, expect } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, beforeEach, describe, it, expect } from "vitest";
+import { env } from "cloudflare:workers";
+import type { D1Database } from "@cloudflare/workers-types";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 import { loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { createPoll, createPollVotes, getPollById, getPollOptions, listRemotePollsForRefresh } from "@/lib/db";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    const results: D1Result[] = [];
-    for (const s of statements) results.push(await s.run());
-    return results;
-  }
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
+const db = env.DB;
+
+beforeEach(async () => {
+  await resetTestDatabase();
+});
 
 describe("loadSerializedPolls", () => {
   it("marks a poll as voted for the viewer who voted and leaves others untouched", async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    const db = new D1Adapter(schema) as unknown as D1Database;
     await db.prepare(
       `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
        VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
@@ -97,8 +70,6 @@ describe("refreshPollFromQuestion", () => {
   }
 
   it("applies the origin's per-choice counts and totals without touching local votes", async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    const db = new D1Adapter(schema) as unknown as D1Database;
     await seedRemotePoll(db);
     // A local vote already recorded (must survive the refresh).
     await db.prepare(
@@ -126,8 +97,6 @@ describe("refreshPollFromQuestion", () => {
   });
 
   it("ignores a partial document instead of clobbering the counts", async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    const db = new D1Adapter(schema) as unknown as D1Database;
     await seedRemotePoll(db);
 
     const ok = await refreshPollFromQuestion(db, {
@@ -143,8 +112,6 @@ describe("refreshPollFromQuestion", () => {
 
 describe("createPollVotes", () => {
   it("counts one voter for a multiple-choice vote (votes_count per choice)", async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    const db = new D1Adapter(schema) as unknown as D1Database;
     await db.prepare(
       `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
        VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
@@ -175,8 +142,6 @@ describe("createPollVotes", () => {
 
 describe("listRemotePollsForRefresh", () => {
   it("selects only active remote polls from recent statuses", async () => {
-    const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-    const db = new D1Adapter(schema) as unknown as D1Database;
     await db.prepare(
       `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
        VALUES ('https://remote.example/users/author', 'author', 'remote.example', 'k', NULL, 0)`

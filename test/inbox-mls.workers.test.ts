@@ -1,9 +1,10 @@
-// @vitest-environment node
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import {
   getMlsMessagesByRecipient,
@@ -27,79 +28,18 @@ vi.mock("@/lib/activitypub/federation", () => ({
   fetchRemoteObject: vi.fn().mockResolvedValue(null),
 }));
 
-/** Minimal D1 adapter backed by node:sqlite (in-memory, schema loaded). */
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    this.sql.exec("BEGIN");
-    try {
-      const results: D1Result[] = [];
-      for (const s of statements) results.push(await s.run());
-      this.sql.exec("COMMIT");
-      return results;
-    } catch (e) {
-      this.sql.exec("ROLLBACK");
-      throw e;
-    }
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            const rows = stmt.all(...(bound as never[])) as unknown as T[];
-            return { results: rows, success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            const row = stmt.get(...(bound as never[])) as unknown as T | undefined;
-            return row ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-      async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-        const rows = stmt.all() as unknown as T[];
-        return { results: rows, success: true, meta: {} };
-      },
-      async first<T = unknown>(): Promise<T | null> {
-        const row = stmt.get() as unknown as T | undefined;
-        return row ?? null;
-      },
-      async run(): Promise<D1Result> {
-        const info = stmt.run();
-        return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-      },
-    };
-  }
-}
-
-let db: D1Database;
+const db = env.DB;
 const BASE = "https://local.example.test";
 const REMOTE_ACTOR = "https://remote.example/users/alice";
 const LOCAL_ACTOR = `${BASE}/users/bob`;
 
-async function freshDb(): Promise<D1Database> {
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  const adapter = new D1Adapter(schema);
-  const d = adapter as unknown as D1Database;
-  const insertActor = d.prepare(
+async function freshDb(): Promise<void> {
+  await resetTestDatabase();
+  const insertActor = db.prepare(
     "INSERT INTO actors (id, username, domain, public_key_pem, is_local) VALUES (?, ?, ?, ?, ?)"
   );
   await insertActor.bind(REMOTE_ACTOR, "alice", "remote.example", "key-alice", 0).run();
   await insertActor.bind(LOCAL_ACTOR, "bob", "local.example.test", "key-bob", 1).run();
-  return d;
 }
 
 function makeKeyPackageCreateActivity() {
@@ -146,11 +86,11 @@ function makePrivateMessageActivity() {
 }
 
 beforeAll(async () => {
-  db = await freshDb();
+  await freshDb();
 });
 
 beforeEach(async () => {
-  db = await freshDb();
+  await freshDb();
 });
 
 describe("MLS over ActivityPub inbox handling", () => {

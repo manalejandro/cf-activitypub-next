@@ -1,46 +1,18 @@
-// @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import type { D1Database } from "@cloudflare/workers-types";
+import { applyTestSchema, resetTestDatabase } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 import { cleanupUnusedOAuthApps } from "@/lib/db";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
-
-const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
 // The schema ships the insert-time prune trigger; the cron tests exercise the
-// batch cleanup, so they drop it (the trigger has its own describe below).
-const schemaWithoutTrigger = `${schema}\nDROP TRIGGER IF EXISTS prune_unused_oauth_apps;`;
+// batch cleanup, so they drop it (the trigger has its own describe below, which
+// re-creates it from the same SQL the schema was applied with).
+const triggerSql = env.TEST_SCHEMA.find((query) => query.includes("CREATE TRIGGER"));
 const LOCAL_ACTOR = "https://cf-ap.com/users/ale";
 const REMOTE_ACTOR = "https://remote.example/users/fan";
 
@@ -90,11 +62,12 @@ async function tokenCount(db: D1Database): Promise<number> {
   return row?.n ?? 0;
 }
 
-describe("cleanupUnusedOAuthApps", () => {
-  let db: D1Database;
+const db = env.DB;
 
+describe("cleanupUnusedOAuthApps", () => {
   beforeEach(async () => {
-    db = new D1Adapter(schemaWithoutTrigger) as unknown as D1Database;
+    await resetTestDatabase();
+    await db.prepare("DROP TRIGGER IF EXISTS prune_unused_oauth_apps").run();
     await db
       .prepare(
         "INSERT INTO actors (id, username, domain, public_key_pem, is_local, email, email_verified) VALUES (?, ?, ?, ?, 1, ?, 1)"
@@ -199,10 +172,9 @@ describe("cleanupUnusedOAuthApps", () => {
 });
 
 describe("prune trigger (schema)", () => {
-  let db: D1Database;
-
-  beforeEach(() => {
-    db = new D1Adapter(schema) as unknown as D1Database;
+  beforeEach(async () => {
+    await resetTestDatabase();
+    if (triggerSql) await db.prepare(triggerSql).run();
   });
 
   it("prunes an unused app older than the grace window on insert", async () => {

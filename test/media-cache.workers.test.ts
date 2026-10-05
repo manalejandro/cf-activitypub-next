@@ -1,9 +1,10 @@
-// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import { beforeAll, describe, it, expect, vi, beforeEach } from "vitest";
+import { env } from "cloudflare:workers";
+import { applyTestSchema, resetTestStorage } from "./helpers/db";
+
+beforeAll(async () => {
+  await applyTestSchema();
+});
 
 const federation = vi.hoisted(() => ({
   safeFetch: vi.fn(),
@@ -27,86 +28,6 @@ import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cach
 import { resolveLimits } from "@/lib/constants";
 import { recordMediaHit, flushMediaHits, __resetMediaHits } from "@/lib/media/hits";
 
-class D1Adapter {
-  private sql = new DatabaseSync(":memory:");
-
-  constructor(schemaSql: string) {
-    this.sql.exec("PRAGMA foreign_keys = ON");
-    this.sql.exec(schemaSql);
-  }
-
-  async batch(statements: { run(): Promise<D1Result> }[]): Promise<D1Result[]> {
-    const results: D1Result[] = [];
-    for (const s of statements) results.push(await s.run());
-    return results;
-  }
-
-  prepare(query: string) {
-    const stmt = this.sql.prepare(query);
-    return {
-      bind(...params: unknown[]) {
-        const bound = params.map((p) => (typeof p === "boolean" ? (p ? 1 : 0) : p));
-        return {
-          async all<T = unknown>(): Promise<{ results: T[]; success: boolean; meta: Record<string, unknown> }> {
-            return { results: stmt.all(...(bound as never[])) as unknown as T[], success: true, meta: {} };
-          },
-          async first<T = unknown>(): Promise<T | null> {
-            return (stmt.get(...(bound as never[])) as unknown as T | undefined) ?? null;
-          },
-          async run(): Promise<D1Result> {
-            const info = stmt.run(...(bound as never[]));
-            return { success: true, meta: { changes: info.changes }, results: [] } as unknown as D1Result<unknown>;
-          },
-        };
-      },
-    };
-  }
-}
-
-class FakeR2 {
-  store = new Map<string, Uint8Array>();
-  async put(key: string, value: Uint8Array | ReadableStream<Uint8Array>) {
-    // The cache streams bodies into R2; tests may also pass plain bytes.
-    if (value && typeof (value as ReadableStream).getReader === "function") {
-      const reader = (value as ReadableStream<Uint8Array>).getReader();
-      const chunks: Uint8Array[] = [];
-      let total = 0;
-      for (;;) {
-        const { done, value: chunk } = await reader.read();
-        if (done) break;
-        if (!chunk) continue;
-        chunks.push(chunk);
-        total += chunk.byteLength;
-      }
-      const out = new Uint8Array(total);
-      let offset = 0;
-      for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
-      this.store.set(key, out);
-      return;
-    }
-    this.store.set(key, value as Uint8Array);
-  }
-  async delete(key: string) {
-    this.store.delete(key);
-  }
-  async get(key: string) {
-    const value = this.store.get(key);
-    return value ? { body: value } : null;
-  }
-}
-
-class FakeKV {
-  store = new Map<string, string>();
-  async get(key: string) {
-    return this.store.get(key) ?? null;
-  }
-  async put(key: string, value: string) {
-    this.store.set(key, value);
-  }
-  async delete(key: string) {
-    this.store.delete(key);
-  }
-}
 
 const LIMITS: MediaCacheLimits = {
   enabled: true,
@@ -198,19 +119,14 @@ function statusResponse(status: number): Response {
 const SRC = "https://remote.example/media/a.png";
 const ATTACH = "att-1";
 
-let db: D1Database;
-let r2: FakeR2;
-let kv: FakeKV;
+const db = env.DB;
 let bindings: MediaCacheBindings;
 
 beforeEach(async () => {
   federation.safeFetch.mockReset();
   federation.validateOutboundUrl.mockReturnValue({ valid: true });
-  const schema = readFileSync(join(process.cwd(), "lib/db/schema.sql"), "utf8");
-  db = new D1Adapter(schema) as unknown as D1Database;
-  r2 = new FakeR2();
-  kv = new FakeKV();
-  bindings = { DB: db, R2: r2 as never, KV: kv };
+  await resetTestStorage();
+  bindings = { DB: env.DB, R2: env.R2, KV: env.KV };
 
   await db.prepare(
     `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
@@ -247,8 +163,8 @@ describe("remote media cache", () => {
     const stats = await getMediaCacheStats(db);
     expect(stats.ready).toBe(1);
     expect(stats.bytes).toBe(image.byteLength);
-    expect(r2.store.size).toBe(1);
-    const [key] = [...r2.store.keys()];
+    expect((await env.R2.list()).objects.length).toBe(1);
+    const [key] = (await env.R2.list()).objects.map((object) => object.key);
     expect(key).toMatch(/^cache\/media\/[0-9a-f]{64}\.png$/);
 
     // The attachment now serves the cached copy; remote_url keeps the origin.
@@ -276,7 +192,7 @@ describe("remote media cache", () => {
     federation.safeFetch.mockResolvedValue(statusResponse(404));
 
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(0);
-    expect(r2.store.size).toBe(0);
+    expect((await env.R2.list()).objects.length).toBe(0);
     const row = await db.prepare("SELECT status, attempts FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string; attempts: number }>();
     expect(row?.status).toBe("failed");
     expect(row?.attempts).toBe(1);
@@ -286,14 +202,14 @@ describe("remote media cache", () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(okResponse(new TextEncoder().encode("<html></html>") as Uint8Array, "text/html"));
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(0);
-    expect(r2.store.size).toBe(0);
+    expect((await env.R2.list()).objects.length).toBe(0);
 
     await db.prepare("UPDATE media_cache SET status='pending', next_attempt_at=datetime('now') WHERE source_url = ?").bind(SRC).run();
     const huge = new Uint8Array(2 * 1024 * 1024);
     federation.safeFetch.mockReset();
     federation.safeFetch.mockResolvedValue(okResponse(huge, "image/png"));
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(0);
-    expect(r2.store.size).toBe(0);
+    expect((await env.R2.list()).objects.length).toBe(0);
   });
 
   it("ignores queued rows for non-HTTPS URLs", async () => {
@@ -386,7 +302,7 @@ describe("remote media cache", () => {
     await enqueueMediaCache(db, avatarSrc, "avatar", "https://remote.example/users/fan");
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1, 2, 3]), "image/png"));
     await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
-    expect(r2.store.size).toBe(2);
+    expect((await env.R2.list()).objects.length).toBe(2);
     // Age the entries past the orphan grace window.
     await db.prepare("UPDATE media_cache SET created_at = datetime('now', '-10 minutes')").bind().run();
 
@@ -397,7 +313,7 @@ describe("remote media cache", () => {
 
     const left = await db.prepare("SELECT source_url FROM media_cache").bind().all<{ source_url: string }>();
     expect(left.results.map((r) => r.source_url)).toEqual([avatarSrc]);
-    expect(r2.store.size).toBe(1);
+    expect((await env.R2.list()).objects.length).toBe(1);
   });
 
   it("caches media without breaking on duplicate attachment rows of one object", async () => {
@@ -677,8 +593,8 @@ describe("remote media cache", () => {
       );
 
       expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
-      const [key] = [...r2.store.keys()];
-      expect(r2.store.get(key)?.byteLength).toBe(5);
+      const [key] = (await env.R2.list()).objects.map((object) => object.key);
+      expect((await env.R2.head(key))?.size).toBe(5);
       expect((await getMediaCacheStats(db)).bytes).toBe(5);
     } finally {
       (globalThis as Record<string, unknown>).FixedLengthStream = original;
@@ -713,11 +629,14 @@ describe("remote media cache", () => {
       } as unknown as Response;
       await enqueueMediaCache(db, SRC, "attachment", ATTACH);
       federation.safeFetch.mockResolvedValue(res);
-      const put = vi.spyOn(r2, "put").mockRejectedValueOnce(new Error("r2 down"));
+      // Real R2 cannot be spied on; a prototype-delegating wrapper fails only
+      // `put` so the cancel path is exercised.
+      const failingR2 = Object.create(env.R2, {
+        put: { value: async () => { throw new Error("r2 down"); } },
+      }) as R2Bucket;
 
-      expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(0);
+      expect(await processMediaCacheQueue({ ...bindings, R2: failingR2 }, LIMITS, "https://local.example")).toBe(0);
       expect(canceled).toBe(true);
-      put.mockRestore();
     } finally {
       (globalThis as Record<string, unknown>).FixedLengthStream = original;
     }
@@ -730,8 +649,8 @@ describe("remote media cache", () => {
     );
 
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
-    const [key] = [...r2.store.keys()];
-    expect(r2.store.get(key)?.byteLength).toBe(5);
+    const [key] = (await env.R2.list()).objects.map((object) => object.key);
+    expect((await env.R2.head(key))?.size).toBe(5);
     expect((await getMediaCacheStats(db)).bytes).toBe(5);
   });
 
@@ -743,7 +662,7 @@ describe("remote media cache", () => {
 
     const limits = { ...LIMITS, maxObjectBytes: 500_000, maxImageBytes: 500_000 };
     expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(0);
-    expect(r2.store.size).toBe(0);
+    expect((await env.R2.list()).objects.length).toBe(0);
     const row = await db.prepare("SELECT status FROM media_cache WHERE source_url = ?").bind(SRC).first<{ status: string }>();
     expect(row?.status).toBe("failed");
   });
@@ -761,15 +680,19 @@ describe("remote media cache", () => {
     expect(row?.status).toBe("failed");
   });
 
-  it("accepts video/GIF/audio up to Mastodon's VIDEO_LIMIT (99 MiB default)", async () => {
+  it("accepts video above the image limit within Mastodon's VIDEO_LIMIT (99 MiB default)", async () => {
     const defaults: MediaCacheLimits = { enabled: true, userAgents: ["bot-agent"] };
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    // 20 MiB video: above the 16 MiB image default, within the 99 MiB video
+    // default. The body really streams 20 MiB — workerd's FixedLengthStream
+    // rejects a stream shorter than its declared length.
+    const chunk = new Uint8Array(1024 * 1024);
     federation.safeFetch.mockResolvedValue(
-      okSizedStreamResponse([new Uint8Array(8)], "video/mp4", 99 * 1024 * 1024)
+      okSizedStreamResponse(Array.from({ length: 20 }, () => chunk), "video/mp4", 20 * 1024 * 1024)
     );
 
     expect(await processMediaCacheQueue(bindings, defaults, "https://local.example")).toBe(1);
-    expect(r2.store.size).toBe(1);
+    expect((await env.R2.list()).objects.length).toBe(1);
   });
 
   it("strips EXIF from cached images (Mastodon parity)", async () => {
@@ -778,8 +701,8 @@ describe("remote media cache", () => {
     federation.safeFetch.mockResolvedValue(okResponse(withExif, "image/jpeg"));
 
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
-    const [key] = [...r2.store.keys()];
-    const stored = r2.store.get(key)!;
+    const [key] = (await env.R2.list()).objects.map((object) => object.key);
+    const stored = new Uint8Array(await (await env.R2.get(key))!.arrayBuffer());
     expect(new TextDecoder().decode(stored)).not.toContain("Exif");
     expect(stored.byteLength).toBeLessThan(withExif.byteLength);
 
@@ -799,8 +722,8 @@ describe("remote media cache", () => {
 
     const limits = { ...LIMITS, stripMetadata: false };
     expect(await processMediaCacheQueue(bindings, limits, "https://local.example")).toBe(1);
-    const [key] = [...r2.store.keys()];
-    expect(r2.store.get(key)!.byteLength).toBe(withExif.byteLength);
+    const [key] = (await env.R2.list()).objects.map((object) => object.key);
+    expect((await env.R2.head(key))!.size).toBe(withExif.byteLength);
   });
 
   it("zeroes MP4 metadata in place while keeping the byte length", async () => {
@@ -809,8 +732,8 @@ describe("remote media cache", () => {
     federation.safeFetch.mockResolvedValue(okResponse(input, "video/mp4"));
 
     expect(await processMediaCacheQueue(bindings, LIMITS, "https://local.example")).toBe(1);
-    const [key] = [...r2.store.keys()];
-    const stored = r2.store.get(key)!;
+    const [key] = (await env.R2.list()).objects.map((object) => object.key);
+    const stored = new Uint8Array(await (await env.R2.get(key))!.arrayBuffer());
     expect(stored.byteLength).toBe(input.byteLength);
     expect(new TextDecoder().decode(stored)).not.toContain("CameraCo");
   });
@@ -905,12 +828,12 @@ describe("remote media cache", () => {
     await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([1]), "image/png"));
     await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
-    expect(r2.store.size).toBe(1);
+    expect((await env.R2.list()).objects.length).toBe(1);
     const cached = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
     expect(cached?.url).toContain("/api/media/cache/media/");
 
     expect(await purgeMediaCache(bindings)).toBe(1);
-    expect(r2.store.size).toBe(0);
+    expect((await env.R2.list()).objects.length).toBe(0);
     expect((await getMediaCacheStats(db)).ready).toBe(0);
     const restored = await db.prepare("SELECT url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string }>();
     expect(restored?.url).toBe(SRC);

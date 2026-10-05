@@ -190,9 +190,10 @@ const { env } = getCloudflareContext();
 
 ## Testing
 
-- Vitest + jsdom (`globals: true`), tests under `lib/__tests__/` and `lib/activitypub/__tests__/`.
-- API-route tests mock `@/lib/cf`'s `getCloudflareContext` and the DB chain with `vi.hoisted`; match the existing mock style.
-- Inbox/federation tests use an in-memory `node:sqlite` D1 adapter that loads `lib/db/schema.sql` (so schema changes are exercised) and mock `@/lib/streaming/broadcast` + `@/lib/push`.
+- Two Vitest projects in `vitest.config.mts`: **`unit`** (jsdom, tests under `lib/**`: components, pure logic and route handlers with mocked bindings) and **`workers`** (`test/**/*.workers.test.ts`, running inside **workerd** via `@cloudflare/vitest-plugin` with the real bindings from `wrangler.toml` through Miniflare). `npx vitest run` runs both; `npm run test:unit` / `npm run test:workers` filter with `--project`.
+- **Anything that touches D1/KV/R2 belongs in the `workers` project**: storage is isolated per test file, so `beforeAll(applyTestSchema())` applies `lib/db/schema.sql` once and `beforeEach(resetTestDatabase() / resetTestStorage())` gives every test a clean slate (`test/helpers/db.ts`). The schema is split by Wrangler's own SQL splitter in the config and injected as the `TEST_SCHEMA` binding.
+- Workers tests import `env` from `cloudflare:workers` (typed via the `Cloudflare.Env` augmentation in `test/env.d.ts`); route handlers can be called directly after `installTestContext()` (`test/helpers/context.ts`) installs the bindings on OpenNext's global context symbol. `test/worker.ts` is the test Worker entry (re-exports the DO classes) because `src/worker.ts` imports the OpenNext build artifact; the assets directory is overridden so tests run on a fresh clone without a build. The workers project runs serially (`fileParallelism: false`) to avoid a pool-teardown race. AI/Vectorize bindings have no local simulator, so Miniflare prints a warning on every workers run — expected, tests never call them.
+- Unit tests that mock their module graph use `vi.mock` + `vi.hoisted` (federation `safeFetch`, `@/lib/streaming/broadcast`, `@/lib/push`); API-route unit tests mock `@/lib/cf`'s `getCloudflareContext` and the DB chain — match the existing mock style. Real behaviour (D1 constraints/cascades/triggers, R2 and KV) is covered in the workers project.
 - When touching security, add tests: `lib/activitypub/__tests__/security.test.ts` (signatures, SSRF) and `queue.test.ts` (queue vs fallback). When touching call handling, seed the `call:<id>` KV session in the test context.
 
 ## Gotchas that have bitten before
