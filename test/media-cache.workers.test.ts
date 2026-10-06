@@ -24,7 +24,7 @@ import {
   type MediaCacheBindings,
   type MediaCacheLimits,
 } from "@/lib/media/remote-cache";
-import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache } from "@/lib/db";
+import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache, listMediaCacheQueue } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 import { recordMediaHit, flushMediaHits, __resetMediaHits } from "@/lib/media/hits";
 
@@ -147,8 +147,7 @@ beforeEach(async () => {
 });
 
 describe("remote media cache", () => {
-  it("caches a queued attachment using the first accepted user agent", async () => {
-    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+  it("caches a queued attachment using the first accepted user agent", async () => {    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
     const image = new Uint8Array([1, 2, 3, 4]);
     federation.safeFetch
       .mockResolvedValueOnce(statusResponse(403))
@@ -956,5 +955,41 @@ describe("remote media cache", () => {
     // …and collects it once the licence is gone.
     await db.prepare("DELETE FROM licenses WHERE id = ?").bind("mi-lic").run();
     expect(await listOrphanMediaCache(db, 10)).toHaveLength(1);
+  });
+});
+
+describe("media cache queue fairness", () => {
+  async function enqueueDue(id: string, offset = "-1 minute") {
+    await db
+      .prepare(
+        `INSERT INTO media_cache (id, source_url, target_type, next_attempt_at)
+         VALUES (?, ?, 'attachment', datetime('now', ?))`
+      )
+      .bind(id, `https://remote.example/media/${id}.png`, offset)
+      .run();
+  }
+
+  it("reserves part of the batch for the oldest due entries", async () => {
+    for (let i = 1; i <= 10; i++) await enqueueDue(`cache-${i}`);
+
+    const jobs = await listMediaCacheQueue(db, 4);
+    const ids = jobs.map((job) => job.id);
+    expect(ids).toHaveLength(4);
+    // Newest-first majority…
+    expect(ids).toContain("cache-10");
+    // …plus the oldest, which pure newest-first starved forever.
+    expect(ids).toContain("cache-1");
+  });
+
+  it("never returns duplicates when the due set is smaller than the batch", async () => {
+    for (let i = 1; i <= 3; i++) await enqueueDue(`cache-${i}`);
+
+    const jobs = await listMediaCacheQueue(db, 10);
+    expect(jobs.map((job) => job.id).sort()).toEqual(["cache-1", "cache-2", "cache-3"]);
+  });
+
+  it("ignores entries whose retry is not due yet", async () => {
+    await enqueueDue("later", "+1 hour");
+    expect(await listMediaCacheQueue(db, 10)).toHaveLength(0);
   });
 });

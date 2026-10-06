@@ -4948,23 +4948,37 @@ export async function enqueueMediaCache(
     .run();
 }
 
-/** Due cache jobs, oldest attempt first. */
+/**
+ * Due cache jobs. Fresh entries come first (a just-ingested status must be
+ * cached before the older backlog so it can enter the timelines quickly), but
+ * the batch reserves a share for the oldest due entries: with sustained
+ * arrivals a pure newest-first order starves the backlog forever — avatars
+ * needed to release held statuses (and retried failures) never got a turn,
+ * so statuses sat held until the 30-minute safety valve.
+ */
 export async function listMediaCacheQueue(db: D1Database, limit: number): Promise<MediaCacheEntry[]> {
+  const freshCount = Math.max(1, Math.ceil(limit * 0.7));
+  const oldestCount = Math.max(0, limit - freshCount);
+  const due = "status IN ('pending', 'failed') AND datetime(next_attempt_at) <= datetime('now')";
   const rows = await db
     .prepare(
-      `SELECT * FROM media_cache
-       -- datetime(...) normalizes both formats: next_attempt_at is written
-       -- in SQLite format on enqueue and ISO-8601 on backoff. Comparing raw
-       -- strings made same-day ISO rows "not due" until the next day ('T' > ' ').
-       WHERE status IN ('pending', 'failed') AND datetime(next_attempt_at) <= datetime('now')
-       -- Newest first among the due items: a just-ingested status must be
-       -- cached before the older backlog so it can enter the timelines quickly
-       -- (retries keep their original rowid, so they don't jump the queue).
-       ORDER BY rowid DESC LIMIT ?`
+      `SELECT * FROM (SELECT * FROM media_cache WHERE ${due} ORDER BY rowid DESC LIMIT ?)
+       UNION ALL
+       SELECT * FROM (SELECT * FROM media_cache WHERE ${due} ORDER BY rowid ASC LIMIT ?)`
     )
-    .bind(limit)
+    .bind(freshCount, oldestCount)
     .all<Row>();
-  return (rows.results ?? []).map(rowToMediaCache);
+  const seen = new Set<string>();
+  const entries: MediaCacheEntry[] = [];
+  for (const row of rows.results ?? []) {
+    const entry = rowToMediaCache(row);
+    // A small due set appears in both halves; keep one copy and don't let the
+    // duplicate consume a slot.
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    entries.push(entry);
+  }
+  return entries.slice(0, limit);
 }
 
 export async function markMediaCacheReady(
