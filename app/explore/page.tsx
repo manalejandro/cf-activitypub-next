@@ -59,6 +59,10 @@ export default function ExplorePage() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsHasMore, setSuggestionsHasMore] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The search must never apply a response that a newer keystroke superseded:
+  // each run aborts the previous request and carries a sequence number.
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchSeqRef = useRef(0);
   const token = getToken();
   const router = useRouter();
   const { t } = useLocale();
@@ -111,22 +115,48 @@ export default function ExplorePage() {
   }
 
   const runSearch = useCallback(async (q: string) => {
+    // Supersede the search in flight: a slow (or hanging) response for an
+    // earlier prefix can neither overwrite the current results nor leave the
+    // "searching" state stuck.
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const seq = ++searchSeqRef.current;
     setLoading(true);
-    const resolveFlag = q.includes("@") ? "&resolve=true" : "";
-    const res = await fetch(`/api/v2/search?q=${encodeURIComponent(q)}${resolveFlag}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (res.ok) {
-      const data = await res.json() as SearchResults;
-      setResults(data);
-      if (data.accounts.length) setTab("accounts");
-      else if (data.hashtags.length) setTab("hashtags");
-      else if (data.statuses.length) setTab("statuses");
-      else if (data.collections.length) setTab("collections");
-      else setTab("accounts");
+    try {
+      const resolveFlag = q.includes("@") ? "&resolve=true" : "";
+      const res = await fetch(`/api/v2/search?q=${encodeURIComponent(q)}${resolveFlag}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
+      });
+      if (seq !== searchSeqRef.current) return;
+      if (res.ok) {
+        const data = await res.json() as SearchResults;
+        if (seq !== searchSeqRef.current) return;
+        setResults(data);
+        if (data.accounts.length) setTab("accounts");
+        else if (data.hashtags.length) setTab("hashtags");
+        else if (data.statuses.length) setTab("statuses");
+        else if (data.collections.length) setTab("collections");
+        else setTab("accounts");
+      }
+    } catch {
+      // Aborted (superseded/cleared) or network failure: keep what is shown.
+    } finally {
+      if (seq === searchSeqRef.current) setLoading(false);
     }
-    setLoading(false);
   }, [token]);
+
+  /** Leave search mode: cancel the in-flight query and show trending again. */
+  const clearSearch = useCallback(() => {
+    searchAbortRef.current?.abort();
+    searchSeqRef.current++;
+    setLoading(false);
+    setQuery("");
+    setDebouncedQuery("");
+    setResults({ accounts: [], statuses: [], hashtags: [], collections: [] });
+    setTab("trending");
+  }, []);
 
   useEffect(() => {
     void fetchTrending();
@@ -140,6 +170,9 @@ export default function ExplorePage() {
     debounceRef.current = setTimeout(() => setDebouncedQuery(query), 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
+
+  // Never leave a search request running after leaving the page.
+  useEffect(() => () => { searchAbortRef.current?.abort(); }, []);
 
   useEffect(() => {
     if (!debouncedQuery.trim()) return;
@@ -242,17 +275,13 @@ export default function ExplorePage() {
               onChange={(e) => {
                 const next = e.target.value;
                 setQuery(next);
-                if (!next.trim()) {
-                  setDebouncedQuery("");
-                  setResults({ accounts: [], statuses: [], hashtags: [], collections: [] });
-                  setTab("trending");
-                }
+                if (!next.trim()) clearSearch();
               }}
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: "0.9rem", color: "var(--text)" }}
             />
             {loading && <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", flexShrink: 0 }}>{t.explore_searching}</span>}
             {query && !loading && (
-              <button onClick={() => { setQuery(""); setDebouncedQuery(""); }} aria-label={t.a11y_clear_search}
+              <button onClick={clearSearch} aria-label={t.a11y_clear_search}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "1rem", padding: 0, flexShrink: 0 }}>
                 <Icon name="times" color="var(--text-muted)" />
               </button>
