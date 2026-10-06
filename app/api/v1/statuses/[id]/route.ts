@@ -98,7 +98,7 @@ export async function GET(
   const [quotesCount, quote, filtered, authorLastStatusAt, authorExtras, bookmarked, muted, authorFields] = await Promise.all([
     getObjectQuotesCount(env.DB, obj.id),
     obj.quoteId
-      ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain))
+      ? getObjectById(env.DB, obj.quoteId).then((q) => serializeQuote(env.DB, q, domain, authActor?.id ?? null))
       : Promise.resolve(null),
     authActor
       ? getFilterResultsForStatuses(env.DB, authActor.id, [obj]).then((m) => m.get(obj.id) ?? [])

@@ -77,7 +77,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     getAllCustomEmojis(env.DB),
     getReplyToAccountIdMap(env.DB, objects),
     getObjectQuotesCounts(env.DB, objects.map((o) => o.id)),
-    getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain),
+    getQuotesByIds(env.DB, objects.map((o) => o.quoteId).filter(Boolean) as string[], domain, authActor?.id ?? null),
     authActor ? getFilterResultsForStatuses(env.DB, authActor.id, objects) : Promise.resolve(new Map()),
     getLastStatusAtMap(env.DB, objects.map((o) => o.actorId)),
     authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id)) : Promise.resolve(new Set()),

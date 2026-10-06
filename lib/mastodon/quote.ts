@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { LocalObject, MastodonStatus } from "@/lib/types";
 import { getActorById, getAttachmentsByObjectId, getAllCustomEmojis } from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 
 /**
  * Serialize a quoted status for embedding in the `quote` attribute. Never
@@ -10,14 +10,16 @@ import { serializeStatus } from "@/lib/mastodon/serializers";
 export async function serializeQuote(
   db: D1Database,
   quotedObj: LocalObject | null | undefined,
-  localDomain: string
+  localDomain: string,
+  viewerId?: string | null
 ): Promise<MastodonStatus | null> {
   if (!quotedObj) return null;
   const actor = await getActorById(db, quotedObj.actorId);
   if (!actor) return null;
-  const [attachments, allEmojis] = await Promise.all([
+  const [attachments, allEmojis, pollMap] = await Promise.all([
     getAttachmentsByObjectId(db, quotedObj.id),
     getAllCustomEmojis(db),
+    loadSerializedPolls(db, viewerId ?? null, [quotedObj.id]),
   ]);
   return serializeStatus(quotedObj, actor, localDomain, {
     attachments,
@@ -25,6 +27,8 @@ export async function serializeQuote(
     reblogged: false,
     emojis: allEmojis,
     quote: null,
+    // Quoted polls render (read-only) inside the quote card.
+    poll: pollMap.get(quotedObj.id) ?? null,
   });
 }
 
@@ -34,7 +38,8 @@ export async function serializeQuote(
 export async function getQuotesByIds(
   db: D1Database,
   ids: string[],
-  localDomain: string
+  localDomain: string,
+  viewerId?: string | null
 ): Promise<Map<string, MastodonStatus | null>> {
   const map = new Map<string, MastodonStatus | null>();
   for (const id of ids) {
@@ -67,7 +72,7 @@ export async function getQuotesByIds(
       local: Boolean(obj.is_local),
       raw: obj.raw as string,
     } as LocalObject;
-    map.set(id, await serializeQuote(db, quoted, localDomain));
+    map.set(id, await serializeQuote(db, quoted, localDomain, viewerId));
   }
   return map;
 }

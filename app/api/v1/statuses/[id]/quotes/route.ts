@@ -46,7 +46,7 @@ export async function GET(
         getAttachmentsByObjectId(env.DB, o.id),
         getObjectQuotesCount(env.DB, o.id),
         o.quoteId
-          ? getObjectById(env.DB, o.quoteId).then((q) => serializeQuote(env.DB, q, domain))
+          ? getObjectById(env.DB, o.quoteId).then((q) => serializeQuote(env.DB, q, domain, authActor.id))
           : Promise.resolve(null),
       ]);
       return serializeStatus(o, author, domain, {

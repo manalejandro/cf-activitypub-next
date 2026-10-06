@@ -7,7 +7,7 @@ import {
   getAttachmentsByObjectId,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildAnnounce, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/federation";
@@ -98,7 +98,10 @@ export async function POST(
   const attachments = await getAttachmentsByObjectId(env.DB, obj.id);
     const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
   const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-  const serialized = serializeStatus(refreshed ?? obj, author, domain, { reblogged: true, attachments, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+  // The response replaces the boosted entry in the timeline: it must carry the
+  // poll (with the viewer's own votes), or the merge would drop it.
+  const pollMap = await loadSerializedPolls(env.DB, actor.id, [obj.id]);
+  const serialized = serializeStatus(refreshed ?? obj, author, domain, { reblogged: true, attachments, poll: pollMap.get(obj.id) ?? null, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
   if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
   if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
   return json(serialized);

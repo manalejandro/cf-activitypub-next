@@ -487,6 +487,38 @@ export function QuoteInline({ quote }: { quote: Status }) {
           <MemoRichText html={quotedContent} />
         )}
       </div>
+      {/* Polls are read-only inside the quote (the whole card is a link): the
+          results show when the viewer voted or the poll closed, otherwise the
+          options are listed and clicking opens the status to vote. */}
+      {quote.poll && (
+        <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+          {quote.poll.options.map((opt, i) => {
+            const total = quote.poll!.votes_count > 0 ? quote.poll!.votes_count : 1;
+            const pct = Math.round(((opt.votes_count ?? 0) / total) * 100);
+            const showResults = quote.poll!.voted || quote.poll!.expired;
+            const isOwn = quote.poll!.own_votes?.includes(i) ?? false;
+            return (
+              <div
+                key={i}
+                style={{ position: "relative", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden", padding: "0.3rem 0.5rem", fontSize: "0.75rem" }}
+              >
+                {showResults && (
+                  <span aria-hidden style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${pct}%`, background: isOwn ? "var(--accent-bg)" : "var(--bg-overlay)" }} />
+                )}
+                <span style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.title}{isOwn ? " ✓" : ""}</span>
+                  {showResults && <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{pct}%</span>}
+                </span>
+              </div>
+            );
+          })}
+          <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+            {quote.poll.votes_count} {quote.poll.votes_count === 1 ? t.poll_votes_1 : t.poll_votes_n}
+            {quote.poll.expired ? ` · ${t.poll_closed}` : ""}
+            {quote.poll.multiple ? ` · ${t.poll_multiple}` : ""}
+          </span>
+        </div>
+      )}
     </Link>
   );
 }

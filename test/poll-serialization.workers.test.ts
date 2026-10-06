@@ -10,6 +10,7 @@ beforeAll(async () => {
 import { loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { createPoll, createPollVotes, getPollById, getPollOptions, listRemotePollsForRefresh } from "@/lib/db";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
+import { getQuotesByIds } from "@/lib/mastodon/quote";
 
 const db = env.DB;
 
@@ -169,5 +170,45 @@ describe("listRemotePollsForRefresh", () => {
 
     const due = await listRemotePollsForRefresh(db, 10);
     expect(due.map((p) => p.id)).toEqual(["p-fresh"]);
+  });
+});
+
+describe("getQuotesByIds (quoted polls)", () => {
+  it("includes the quoted poll with the viewer's own votes", async () => {
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
+    ).run();
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, is_local)
+       VALUES ('https://remote.example/users/author', 'author', 'remote.example', 'k', 0)`
+    ).run();
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw)
+       VALUES ('https://remote.example/objects/q9', 'Question', 'https://remote.example/users/author', '<p>encuesta</p>', 'public', 0, '{}')`
+    ).run();
+    await createPoll(db, {
+      id: "pq9",
+      objectId: "https://remote.example/objects/q9",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      multiple: false,
+      options: [
+        { id: "o1", title: "A", position: 0 },
+        { id: "o2", title: "B", position: 1 },
+      ],
+    });
+    await createPollVotes(db, "pq9", "https://local.example/users/me", [0]);
+
+    const map = await getQuotesByIds(
+      db,
+      ["https://remote.example/objects/q9"],
+      "local.example",
+      "https://local.example/users/me"
+    );
+    const quoted = map.get("https://remote.example/objects/q9");
+    expect(quoted?.poll).not.toBeNull();
+    expect(quoted?.poll?.options.map((o) => o.title)).toEqual(["A", "B"]);
+    expect(quoted?.poll?.voted).toBe(true);
+    expect(quoted?.poll?.own_votes).toEqual([0]);
   });
 });

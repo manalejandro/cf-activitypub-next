@@ -64,7 +64,7 @@ import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
-import { serializeStatus, serializePoll, serializeNotification, serializeReblog } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializePoll, serializeNotification, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
@@ -175,9 +175,13 @@ async function broadcastNewBoost(
     const domain = new URL(ctx.baseUrl).hostname;
     const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
     const parent = await parentExclusion(ctx.db, obj.inReplyToId);
+    // The streamed boost carries the original's poll (viewer-agnostic counts:
+    // one payload goes to every follower) so the timeline shows it live.
+    const pollMap = await loadSerializedPolls(ctx.db, null, [obj.id]);
     const original = serializeStatus(obj, author, domain, {
       authorLastStatusAt: lastStatusAt,
       inReplyToAccountId: parent?.id ?? null,
+      poll: pollMap.get(obj.id) ?? null,
     });
     const wrapper = serializeReblog(booster, original, {
       id: encodeStatusId(announceId, true),
@@ -421,6 +425,12 @@ async function ensurePollRowsForQuestion(ctx: InboxContext, obj: APNote): Promis
         position: i,
       })),
     });
+    // The document carries the current per-choice counts: apply them so the
+    // poll shows results right away (a boosted poll used to be stored with
+    // every option at zero until the next Update arrived).
+    try {
+      await refreshPollFromQuestion(ctx.db, obj as unknown as Record<string, unknown>);
+    } catch { /* counts are best-effort */ }
   } catch {
     /* ignore */
   }
@@ -1459,6 +1469,9 @@ async function persistRemoteNote(
       });
     }
     if (!ctx.rejectMedia) await saveObjectAttachments(ctx.db, note.id, note.attachment, note.sensitive === true);
+    // An object first cached by a path that skipped polls (or by older code)
+    // must get its poll rows when it is seen again.
+    await ensurePollRowsForQuestion(ctx, note);
     await enqueueNoteLinkPreview(ctx, note, content);
     return;
   }
@@ -1564,9 +1577,11 @@ async function storeRelayedStatus(
   try {
     const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
     const parent = await parentExclusion(ctx.db, stored.inReplyToId);
+    const pollMap = await loadSerializedPolls(ctx.db, null, [stored.id]);
     const serialized = serializeStatus(stored, author, new URL(ctx.baseUrl).hostname, {
       authorLastStatusAt: lastStatusAt,
       inReplyToAccountId: parent?.id ?? null,
+      poll: pollMap.get(stored.id) ?? null,
     });
     await broadcastStatusCreatedToAudience(ctx.db, ctx.timelineStream, serialized, author);
   } catch { /* streaming is best-effort */ }
@@ -1637,6 +1652,13 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
   const resolvedObj = await getObjectById(ctx.db, objectId);
   if (!resolvedObj) {
     return;
+  }
+
+  // A Question cached by a path that skipped polls (or before poll rows were
+  // backfilled on reuse) has no poll to show: the embedded document carries
+  // the choices, so create the rows (and apply its counts) here.
+  if (embedded && String(resolvedObj.type ?? "").split("/").pop() === "Question") {
+    await ensurePollRowsForQuestion(ctx, embedded);
   }
 
   const existing = await ctx.db
@@ -1973,6 +1995,24 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     const { content, contentWarning } = sanitizeRemoteNoteContent(
       note.content, note.summary, note.sensitive ?? false
     );
+    const isQuestion = String(note.type ?? "").split("/").pop() === "Question";
+    // A poll vote update arrives as Update{Question} with the same body: only
+    // the counts change. Going through `updateObject` would stamp `updated_at`
+    // (the status reads as "edited") and record an empty edit-history row, so
+    // the poll is refreshed on its own and the body is left untouched.
+    const bodyUnchanged =
+      (content ?? "") === (existing.content ?? "") &&
+      (contentWarning ?? null) === (existing.contentWarning ?? null) &&
+      (note.sensitive ?? false) === existing.sensitive;
+    if (isQuestion && bodyUnchanged) {
+      await ensurePollRowsForQuestion(ctx, note);
+      try {
+        await refreshPollFromQuestion(ctx.db, note as unknown as Record<string, unknown>);
+      } catch { /* best-effort */ }
+      // Push the new counts to open timelines (no "edited" notification).
+      await broadcastRemoteStatusRefresh(ctx, note.id);
+      return;
+    }
     await updateObject(ctx.db, note.id, {
       content: content ?? undefined,
       contentWarning,
@@ -1984,7 +2024,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     await ensurePollRowsForQuestion(ctx, note);
     // An edited Question carries the current per-choice counts: apply them so
     // remote votes show up without reopening the poll.
-    if (String(note.type ?? "").split("/").pop() === "Question") {
+    if (isQuestion) {
       try {
         await refreshPollFromQuestion(ctx.db, note as unknown as Record<string, unknown>);
       } catch { /* best-effort */ }

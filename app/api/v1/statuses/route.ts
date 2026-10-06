@@ -745,7 +745,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain) : null;
+  const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain, actor.id) : null;
   const serializedStatus = serializeStatus(
     { id: note.id, type: "Note", actorId: actor.id, content: note.content ?? htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, licenseUrl, raw: JSON.stringify(note) },
     actor,

@@ -120,3 +120,113 @@ describe("federated poll ingestion (Create Question)", () => {
     expect(status.poll?.options.map((o) => o.title)).toEqual(["Rojo", "Azul", "Verde"]);
   });
 });
+
+describe("poll vote updates (Update{Question})", () => {
+  beforeEach(async () => {
+    await freshDb();
+  });
+
+  function questionDocument(content: string, counts: number[]) {
+    return {
+      id: QUESTION_ID,
+      type: "Question",
+      attributedTo: ACTOR_ID,
+      content,
+      updated: new Date(Date.now() + 60_000).toISOString(),
+      oneOf: [
+        { type: "Note", name: "Rojo", replies: { type: "Collection", totalItems: counts[0] } },
+        { type: "Note", name: "Azul", replies: { type: "Collection", totalItems: counts[1] } },
+        { type: "Note", name: "Verde", replies: { type: "Collection", totalItems: counts[2] } },
+      ],
+      votersCount: counts.reduce((a, b) => a + b, 0),
+    };
+  }
+
+  function makeUpdateActivity(content: string, counts: number[]) {
+    return {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://remote.example/activities/update-q1",
+      type: "Update",
+      actor: ACTOR_ID,
+      object: questionDocument(content, counts),
+    };
+  }
+
+  it("refreshes the counts without marking the status as edited or recording history", async () => {
+    await processInboxActivity(makeQuestionActivity() as never, { db, baseUrl: BASE } as never);
+    const before = await getObjectById(db, QUESTION_ID);
+
+    await processInboxActivity(
+      makeUpdateActivity("<p>¿Cuál es tu color favorito?</p>", [3, 1, 0]) as never,
+      { db, baseUrl: BASE } as never
+    );
+
+    const after = await getObjectById(db, QUESTION_ID);
+    expect(after?.updatedAt).toBe(before?.updatedAt);
+    const edits = await db
+      .prepare("SELECT COUNT(*) AS n FROM object_edits WHERE object_id = ?")
+      .bind(QUESTION_ID)
+      .all<{ n: number }>();
+    expect(edits.results[0]?.n).toBe(0);
+
+    const poll = await getPollByObjectId(db, QUESTION_ID);
+    expect(poll?.votesCount).toBe(4);
+    const options = poll ? await getPollOptions(db, poll.id) : [];
+    expect(options.map((o) => o.votesCount)).toEqual([3, 1, 0]);
+  });
+
+  it("still records a real content edit as edited with history", async () => {
+    await processInboxActivity(makeQuestionActivity() as never, { db, baseUrl: BASE } as never);
+    const before = await getObjectById(db, QUESTION_ID);
+
+    await processInboxActivity(
+      makeUpdateActivity("<p>¿Cuál es tu color favorito? (editada)</p>", [0, 0, 0]) as never,
+      { db, baseUrl: BASE } as never
+    );
+
+    const after = await getObjectById(db, QUESTION_ID);
+    expect(after?.content).toContain("editada");
+    expect(after?.updatedAt).not.toBe(before?.updatedAt);
+    const edits = await db
+      .prepare("SELECT COUNT(*) AS n FROM object_edits WHERE object_id = ?")
+      .bind(QUESTION_ID)
+      .all<{ n: number }>();
+    expect(edits.results[0]?.n).toBe(1);
+  });
+
+  it("backfills the poll rows of an announce whose Question was cached without them", async () => {
+    // As an older path left it: the object exists with content but no poll.
+    await db
+      .prepare(
+        `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw, published, updated_at)
+         VALUES (?, 'Question', ?, '<p>¿Cuál es tu color favorito?</p>', 'public', 0, '{}', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`
+      )
+      .bind(QUESTION_ID, ACTOR_ID)
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO actors (id, username, domain, public_key_pem, is_local)
+         VALUES ('https://remote.example/users/booster', 'booster', 'remote.example', 'k', 0)`
+      )
+      .run();
+
+    await processInboxActivity(
+      {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: "https://remote.example/activities/announce-q1",
+        type: "Announce",
+        actor: "https://remote.example/users/booster",
+        object: questionDocument("<p>¿Cuál es tu color favorito?</p>", [2, 1, 0]),
+      } as never,
+      { db, baseUrl: BASE } as never
+    );
+
+    const poll = await getPollByObjectId(db, QUESTION_ID);
+    expect(poll).not.toBeNull();
+    const options = poll ? await getPollOptions(db, poll.id) : [];
+    expect(options.map((o) => o.title)).toEqual(["Rojo", "Azul", "Verde"]);
+    // The embedded document carries the counts: they must show up right away.
+    expect(poll?.votesCount).toBe(3);
+    expect(options.map((o) => o.votesCount)).toEqual([2, 1, 0]);
+  });
+});

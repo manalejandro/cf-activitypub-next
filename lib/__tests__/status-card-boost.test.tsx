@@ -105,3 +105,42 @@ describe("boost wrapper header", () => {
     expect(screen.queryByAltText(":party:")).toBeNull();
   });
 });
+
+describe("quoted poll", () => {
+  it("renders the quoted status poll with its results, read-only", () => {
+    const quoting = status({
+      id: "https://local.example/objects/quote-1",
+      quote: status({
+        id: "https://remote.example/objects/poll-1",
+        content: "<p>¿Cuál es tu color favorito?</p>",
+        poll: {
+          id: "poll-1",
+          expires_at: null,
+          expired: true,
+          multiple: false,
+          votes_count: 3,
+          voters_count: 2,
+          voted: true,
+          own_votes: [0],
+          options: [
+            { title: "Rojo", votes_count: 2 },
+            { title: "Azul", votes_count: 1 },
+          ],
+        },
+      }),
+    });
+
+    const { container } = render(
+      <StatusCard status={quoting} onFav={vi.fn()} onReblog={vi.fn()} onReply={vi.fn()} />
+    );
+
+    // Both options and their percentages are visible inside the quote card…
+    expect(screen.getByText(/Rojo/)).toBeTruthy();
+    expect(screen.getByText(/Azul/)).toBeTruthy();
+    expect(screen.getByText("67%")).toBeTruthy();
+    expect(screen.getByText("33%")).toBeTruthy();
+    // …and voting controls are not (the whole card is a link).
+    expect(container.querySelector("input[type='radio'], input[type='checkbox']")).toBeNull();
+    expect(screen.queryByText("Votar")).toBeNull();
+  });
+});
