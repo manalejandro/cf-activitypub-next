@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Wix_Madefor_Text, JetBrains_Mono } from "next/font/google";
 import { getCloudflareContext } from "@/lib/cf";
 import { InstanceTitleProvider } from "@/lib/instance-context";
 import { LocaleProvider } from "@/lib/i18n";
@@ -10,9 +10,19 @@ import { PaletteApplier } from "@/components/PaletteApplier";
 import "fork-awesome/css/fork-awesome.min.css";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
+// UI/body: Wix Madefor Text — designed for small-size interface text (large
+// x-height, warm humanist shapes), variable weight, Latin + Cyrillic (the `ru`
+// locale renders with the same face instead of falling back to system-ui).
+// Code: JetBrains Mono — variable, Cyrillic, made for source code.
+const sans = Wix_Madefor_Text({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -88,7 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   } catch { /* local next dev / build without a Cloudflare context */ }
 
   return (
-    <html lang="en" className={`${inter.variable} h-full`} suppressHydrationWarning>
+    <html lang="en" className={`${sans.variable} ${mono.variable} h-full`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

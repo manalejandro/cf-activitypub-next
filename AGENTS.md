@@ -187,6 +187,7 @@ const { env } = getCloudflareContext();
 - **Brand**: read `useInstanceTitle()` / `INSTANCE_TITLE`; metadata comes from `generateMetadata()` in `app/layout.tsx` and the PWA manifest from `app/manifest.webmanifest/route.ts`. Don't hardcode the instance name in UI.
 - **Limits**: read `resolveLimits(env)` (`lib/constants.ts`) instead of hardcoding page sizes/char limits; new limits get a constant, an env override and a comment in `wrangler.toml`.
 - **Images**: custom loader in `next.config.ts`; prefer `next/image`. For non-square remote avatars force `width`/`height` + `objectFit: "cover"` inline (Tailwind preflight overrides attributes).
+- **Fonts**: Wix Madefor Text for UI/body and JetBrains Mono for code, both self-hosted via `next/font/google` (`app/layout.tsx`) with `subsets: ["latin", "latin-ext", "cyrillic"]` — the `ru` locale must not fall back to system-ui. Reference them through the `--font-sans` / `--font-mono` CSS variables (next/font hashes the family names at build time); never hardcode a family in components.
 - **Remote content**: render via `renderRemoteContent`/helpers in `lib/activitypub/content.ts`; never inject raw remote HTML.
 - **Objects**: set `updated_at = published` explicitly on insert (the column DEFAULT uses a different format and would mark new posts as edited).
 - **Style**: no comments unless they explain *why*; TypeScript strict; `setX`/`handleX`/`fetchX` naming; admin pages keep the emoji prefix in nav/titles.
