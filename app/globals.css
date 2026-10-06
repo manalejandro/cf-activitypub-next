@@ -103,6 +103,15 @@ body {
 .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
 .sidebar-scroll { scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
 
+/* Profile tab bars — when the tabs overflow, a thin horizontal scrollbar in
+   the brand colour (Chromium shows it because custom scrollbar styling
+   disables overlay scrollbars; Firefox gets the same via scrollbar-width). */
+.tab-scroll { scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+.tab-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+.tab-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 9999px; }
+.tab-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-hover); }
+.tab-scroll::-webkit-scrollbar-track { background: transparent; }
+
 ::selection { background: rgba(99,102,241,0.25); color: var(--text-primary); }
 
 /* Mastodon link shortening in federated HTML (overrides Tailwind .invisible) */

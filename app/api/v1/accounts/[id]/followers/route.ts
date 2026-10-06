@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getCloudflareContext, json, notFound } from "@/lib/cf";
-import { getActorById, getFollowers, getLastStatusAt } from "@/lib/db";
+import { getActorById, getFollowers, getLastStatusAtMap, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 
@@ -22,10 +22,17 @@ export async function GET(
   const page = parseInt(request.nextUrl.searchParams.get("page") ?? "0");
   const followers = await getFollowers(env.DB, actor.id, Math.min(limit, limits.maxPageSize), page * limit);
 
-  const result = await Promise.all(
-    followers.map(async (f) => {
-      const lastStatusAt = await getLastStatusAt(env.DB, f.id);
-      return serializeAccount(f, domain, { lastStatusAt });
+  // The bio (note) must render custom emojis, so the serializer needs the
+  // emoji catalogue — same as the account route passes it. The last-status
+  // dates are batched instead of one query per account.
+  const [allEmojis, lastStatusAtMap] = await Promise.all([
+    getAllCustomEmojis(env.DB),
+    getLastStatusAtMap(env.DB, followers.map((f) => f.id)),
+  ]);
+  const result = followers.map((f) =>
+    serializeAccount(f, domain, {
+      lastStatusAt: lastStatusAtMap.get(f.id) ?? null,
+      emojis: allEmojis,
     })
   );
   return json(result);

@@ -873,7 +873,7 @@ function RemoteProfileInner() {
         </div>
 
         {/* Tabs */}
-        <div className="flex" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
+        <div className="flex tab-scroll" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
           {([
             { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
             { key: "replies" as ActiveTab, label: t.profile_replies },
