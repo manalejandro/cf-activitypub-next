@@ -16,6 +16,7 @@ import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
 import { refreshRemotePoll } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
+import { canonicalizeMentionTags } from "@/lib/activitypub/mentions";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -189,6 +190,11 @@ export async function PUT(
     if (Array.isArray(raw.cc)) originalCc = raw.cc as string[];
   } catch { /* ignore */ }
   const tags = [...originalMentions, ...(contentTags ?? []).filter((t) => t.type !== "Mention")];
+  // Legacy objects may carry `/@user` mention hrefs (text-parsed before the
+  // canonicalization existed): rewrite them — and the preserved to/cc — so an
+  // edit heals the addressing instead of carrying it forward.
+  const { tags: canonicalTags, rewrites } = await canonicalizeMentionTags(env.DB, tags, env.KV);
+  const rewriteList = (list?: string[]) => list?.map((iri) => rewrites.get(iri) ?? iri);
 
   // Rebuild the Note with the same ID and original published date but new content
   // FEP-6757: the body may change the license (an id from the catalogue, or an
@@ -213,9 +219,9 @@ export async function PUT(
     sensitive,
     summary: sensitive ? spoilerText : undefined,
     language,
-    tags,
-    to: originalTo,
-    cc: originalCc,
+    tags: canonicalTags,
+    to: rewriteList(originalTo),
+    cc: rewriteList(originalCc),
     location: locationJson ? parseLocationJson(locationJson) : null,
     licenseUrl: licenseUrl ?? undefined,
   });

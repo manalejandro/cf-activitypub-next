@@ -40,6 +40,7 @@ import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
+import { canonicalizeMentionTags } from "@/lib/activitypub/mentions";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists, actorExclusion, eligibleLocalRecipients } from "@/lib/streaming/broadcast";
@@ -394,6 +395,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     allTags.push(tag);
   }
 
+  // Text-parsed remote mentions carry the web profile (`/@user`) as href
+  // because the linkifier has no DB access. Peers match mentions by actor id,
+  // so rewrite them before the Note is built: a `/@user` href silently skips
+  // the mention notification (and the delivery, when the peer does not serve
+  // the actor at that URL).
+  const { tags: canonicalTags } = await canonicalizeMentionTags(env.DB, allTags, env.KV);
+
   // ── AI Guardian: pre-publish content gate ─────────────────────────────────
   // Fast Llama Guard screen on every status with text; flagged content is
   // evaluated by the reasoning model. Clearly harmful posts are blocked before
@@ -426,7 +434,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Address the conversation participants in to/cc (Mastodon TagManager logic:
   // mentions go to `cc` except for direct messages, where they are the `to`).
-  const mentionedIRIs = allTags
+  const mentionedIRIs = canonicalTags
     .filter((t) => t.type === "Mention" && t.href && t.href !== actor.id)
     .map((t) => t.href!);
   const followersAudience = followersIRI(baseUrl, actor.username);
@@ -459,7 +467,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     sensitive,
     summary: sensitive ? spoilerText : undefined,
     language,
-    tags: allTags,
+    tags: canonicalTags,
     to: noteTo,
     cc: noteCc,
     location: locationJson ? parseLocationJson(locationJson) : null,
@@ -617,7 +625,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const parentOwner = await getActorById(env.DB, parent.actorId);
     if (parentOwner?.isLocal) notified.add(parentOwner.id);
   }
-  for (const tag of allTags) {
+  for (const tag of canonicalTags) {
     if (tag.type !== "Mention" || !tag.href || tag.href === actor.id || !tag.href.startsWith(baseUrl)) continue;
     const usernameMatch = tag.href.match(/\/users\/([a-zA-Z0-9_]+)$/);
     if (!usernameMatch) continue;

@@ -426,6 +426,26 @@ async function ensurePollRowsForQuestion(ctx: InboxContext, obj: APNote): Promis
   }
 }
 
+/**
+ * Resolve a Mention href to a local actor. Peers should send the actor IRI,
+ * but some send the web profile the linkifier can build without DB access
+ * (`/@user`): map that path to the local account so the mention notification
+ * still fires instead of being dropped silently.
+ */
+async function resolveLocalMentionedActor(ctx: InboxContext, href: string): Promise<LocalActor | null> {
+  if (!href.startsWith(ctx.baseUrl + "/")) return null;
+  const exact = await getActorById(ctx.db, href);
+  if (exact?.isLocal) return exact;
+  const match = /^\/@([^/@]+)(?:@[^/]+)?$/.exec(href.slice(ctx.baseUrl.length));
+  if (!match) return null;
+  try {
+    const actor = await getActorByUsername(ctx.db, match[1], new URL(ctx.baseUrl).hostname);
+    return actor?.isLocal ? actor : null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APNote | undefined;
   if (!obj || typeof obj !== "object") return;
@@ -626,23 +646,23 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   if (Array.isArray(obj.tag)) {
     for (const tag of obj.tag as import("@/lib/types").APTag[]) {
       if (tag.type === "Mention" && tag.href) {
-        // Only notify actors on this server
-        if (tag.href.startsWith(ctx.baseUrl + "/")) {
-          const mentionedActor = await getActorById(ctx.db, tag.href);
-          if (mentionedActor?.isLocal && !mentionedLocalIds.has(mentionedActor.id)) {
-            mentionedLocalIds.add(mentionedActor.id);
-            const notif: LocalNotification = {
-              id: generateId(),
-              type: "mention",
-              accountId: actorId,
-              targetAccountId: mentionedActor.id,
-              objectId: obj.id,
-              read: false,
-              createdAt: new Date().toISOString(),
-            };
-            await createNotification(ctx.db, notif);
-            await broadcastAndPush(ctx, notif);
-          }
+        // Only notify actors on this server. Peers should send the actor IRI,
+        // but some send the web profile the linkifier can build without DB
+        // access (`/@user`): resolve both so the mention is never dropped.
+        const mentionedActor = await resolveLocalMentionedActor(ctx, tag.href);
+        if (mentionedActor && !mentionedLocalIds.has(mentionedActor.id)) {
+          mentionedLocalIds.add(mentionedActor.id);
+          const notif: LocalNotification = {
+            id: generateId(),
+            type: "mention",
+            accountId: actorId,
+            targetAccountId: mentionedActor.id,
+            objectId: obj.id,
+            read: false,
+            createdAt: new Date().toISOString(),
+          };
+          await createNotification(ctx.db, notif);
+          await broadcastAndPush(ctx, notif);
         }
       }
       // Cache federated custom emoji (silence-level blocks strip media).
