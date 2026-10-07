@@ -17,7 +17,9 @@ vi.mock("@/lib/activitypub/federation", () => federation);
 import { enqueueLinkPreview, getActorById, getObjectById, listLinkPreviewQueue } from "@/lib/db";
 import {
   applyYouTubeFallback,
+  applyInstagramFallback,
   extractFirstLink,
+  instagramEmbedUrl,
   parseOpenGraph,
   youTubeVideoId,
   processLinkPreviewQueue,
@@ -731,5 +733,55 @@ describe("own status permalinks", () => {
       .first<{ image_url: string | null; embed_url: string }>();
     expect(card?.image_url).toBeNull();
     expect(card?.embed_url).toBe("");
+  });
+});
+
+describe("Instagram fallback", () => {
+  function forbidden(): Response {
+    return { ok: false, status: 403, headers: new Headers(), body: undefined } as unknown as Response;
+  }
+
+  it("builds the public embed from post, reel and tv URLs", () => {
+    expect(instagramEmbedUrl("https://www.instagram.com/p/DeFzEGMNWyg")).toBe("https://www.instagram.com/p/DeFzEGMNWyg/embed");
+    expect(instagramEmbedUrl("https://instagram.com/reel/ABC123/")).toBe("https://www.instagram.com/reel/ABC123/embed");
+    expect(instagramEmbedUrl("https://m.instagram.com/tv/XYZ-1")).toBe("https://www.instagram.com/tv/XYZ-1/embed");
+    expect(instagramEmbedUrl("https://instagram.com/opalouistank")).toBeNull();
+    expect(instagramEmbedUrl("https://example.com/p/nope")).toBeNull();
+  });
+
+  it("keeps the page metadata and adds the player", () => {
+    const card = parseOpenGraph(
+      '<html><head><meta property="og:title" content="King Louis &amp; Tank on Instagram"><meta property="og:image" content="https://scontent.cdninstagram.com/x.jpg"></head></html>',
+      "https://www.instagram.com/p/DeFzEGMNWyg"
+    );
+    expect(card).not.toBeNull();
+    applyInstagramFallback(card!, "https://www.instagram.com/p/DeFzEGMNWyg");
+    expect(card?.type).toBe("video");
+    expect(card?.embedUrl).toBe("https://www.instagram.com/p/DeFzEGMNWyg/embed");
+    expect(card?.imageUrl).toBe("https://scontent.cdninstagram.com/x.jpg");
+    expect(card?.html).toContain("instagram.com/p/DeFzEGMNWyg/embed");
+  });
+
+  it("crawls a login-walled Instagram link into a playable card", async () => {
+    await seedObject("https://remote.example/objects/1", '<a href="https://www.instagram.com/p/DeFzEGMNWyg">reel</a>');
+    await enqueueLinkPreview(db, "https://remote.example/objects/1");
+    federation.safeFetch.mockResolvedValue(forbidden());
+
+    expect(await processLinkPreviewQueue(bindings, LIMITS, "local.example")).toBe(1);
+    const card = await db
+      .prepare("SELECT type, embed_url, status FROM preview_cards WHERE source_url = ?")
+      .bind("https://www.instagram.com/p/DeFzEGMNWyg")
+      .first<{ type: string; embed_url: string; status: string }>();
+    expect(card?.status).toBe("ready");
+    expect(card?.type).toBe("video");
+    expect(card?.embed_url).toBe("https://www.instagram.com/p/DeFzEGMNWyg/embed");
+
+    const snapshot = await db
+      .prepare("SELECT card_json FROM objects WHERE id = ?")
+      .bind("https://remote.example/objects/1")
+      .first<{ card_json: string }>();
+    const parsed = JSON.parse(snapshot!.card_json) as { type: string; embed_url: string };
+    expect(parsed.type).toBe("video");
+    expect(parsed.embed_url).toBe("https://www.instagram.com/p/DeFzEGMNWyg/embed");
   });
 });

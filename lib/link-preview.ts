@@ -582,6 +582,53 @@ export function applyYouTubeFallback(card: CardCandidate, url: string): void {
 }
 
 /**
+ * Instagram post/reel/TV shortcode from a post URL. Instagram killed public
+ * oEmbed (token-only) and its pages are a login wall for datacenter fetches,
+ * but the public `/embed` page still plays the reel in an iframe — so the
+ * crawler builds it from the URL alone.
+ */
+export function instagramShortcode(url: string): { kind: string; code: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+  if (host !== "instagram.com") return null;
+  const match = /^\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/.exec(parsed.pathname);
+  if (!match) return null;
+  return { kind: match[1] === "reels" ? "reel" : match[1], code: match[2] };
+}
+
+/** Public Instagram embed player for a post URL, when it is one. */
+export function instagramEmbedUrl(url: string): string | null {
+  const post = instagramShortcode(url);
+  return post ? `https://www.instagram.com/${post.kind}/${post.code}/embed` : null;
+}
+
+/**
+ * Make an Instagram card playable: the embed player is derived from the URL,
+ * so it works even when the page was a login wall (no metadata). Photos show
+ * inside the same embed.
+ */
+export function applyInstagramFallback(card: CardCandidate, url: string): void {
+  const embedUrl = instagramEmbedUrl(url);
+  if (!embedUrl) return;
+  if (!card.embedUrl) card.embedUrl = embedUrl;
+  card.type = "video";
+  if (!card.providerName) card.providerName = "Instagram";
+  if (!card.html) {
+    // Instagram embeds are portrait cards; API clients render `html` as-is.
+    const width = card.width || 480;
+    const height = card.height || 640;
+    card.width = width;
+    card.height = height;
+    card.html = buildIframe(card.embedUrl, width, height);
+  }
+}
+
+/**
  * Placeholder titles of YouTube's consent/bot pages ("- YouTube", or the
  * site suffix of the bare `<title>`): drop them so the card shows the player
  * instead of a fake name.
@@ -640,6 +687,13 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
       applyYouTubeFallback(youtube, url);
       return { ok: true, card: youtube, canonicalUrl: youtube.canonicalUrl ?? url };
     }
+    // Instagram answers a login wall (or 429) to datacenter fetches: the
+    // shortcode alone builds the public embed player.
+    if (instagramEmbedUrl(url)) {
+      const card = emptyCardCandidate();
+      applyInstagramFallback(card, url);
+      return { ok: true, card, canonicalUrl: url };
+    }
     if (fetched.permanent) console.warn(`[link-preview] Not crawlerable ${url}: ${fetched.error}`);
     return { ok: false, permanent: fetched.permanent, error: fetched.error };
   }
@@ -676,7 +730,15 @@ async function crawlPage(url: string, userAgents: string[], maxBytes: number): P
     const youtube = await youTubeFallbackCard(url, userAgents);
     if (youtube?.title) card = youtube;
   }
-  if (card) applyYouTubeFallback(card, url);
+  // A login-wall Instagram page may still yield no metadata: the embed player
+  // only needs the shortcode.
+  if (!card && instagramEmbedUrl(url)) {
+    card = emptyCardCandidate();
+  }
+  if (card) {
+    applyYouTubeFallback(card, url);
+    applyInstagramFallback(card, url);
+  }
   if (!card || (!card.title && !card.html)) {
     return { ok: false, permanent: true, error: "no preview metadata" };
   }
