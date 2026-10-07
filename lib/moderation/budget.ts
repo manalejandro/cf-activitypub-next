@@ -13,6 +13,8 @@
  * Everything degrades gracefully: without KV, no limiting happens (local dev).
  */
 
+import type { ModerationKV } from "./util";
+
 export const TRUSTED_MIN_AGE_DAYS = 2;
 export const TRUSTED_MIN_STATUSES = 5;
 /** Expensive AI calls allowed per day for a new/low-trust account. */
@@ -35,7 +37,7 @@ export const AI_UNITS_VISION = 5;
 export const AI_UNITS_REASON = 25;
 
 export interface GlobalBudgetEnv {
-  KV?: KVNamespace;
+  KV?: ModerationKV;
   /** Instance-wide daily AI budget in abstract units; unset/0 = unlimited. */
   AI_DAILY_BUDGET?: string | number;
 }
@@ -89,7 +91,7 @@ export interface CachedContentVerdict {
 }
 
 interface CacheEnv {
-  KV?: KVNamespace;
+  KV?: ModerationKV;
 }
 
 /** Read a previously cached verdict for identical content from the same author. */

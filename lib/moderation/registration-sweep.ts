@@ -2,6 +2,7 @@ import type { D1Database, SendEmail } from "@cloudflare/workers-types";
 import { emailDomain, isBlockedEmailDomain, registrationBlockedEmailDomains } from "@/lib/constants";
 import { generateId } from "@/lib/activitypub/utils";
 import { recordModeration } from "@/lib/moderation/log";
+import type { ModerationKV } from "./util";
 import { sendAdminAlertEmail } from "@/lib/email";
 
 /**
@@ -23,15 +24,9 @@ import { sendAdminAlertEmail } from "@/lib/email";
  * Every action lands in `moderation_log` and the admins get a digest email.
  */
 
-/** Minimal KV shape (the repo's bindings differ from the plain workers types). */
-interface SweepKV {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
-}
-
 export interface RegistrationSweepEnv {
   DB: D1Database;
-  KV?: SweepKV;
+  KV?: ModerationKV;
   EMAIL?: SendEmail;
   FROM_EMAIL?: string;
   INSTANCE_TITLE?: string;

@@ -121,7 +121,11 @@ export async function deliverPushNotification(
   const dict = LOCALE_DICTS[localeRow?.value ?? "en"] ?? LOCALE_DICTS.en;
   const who = actorRow ? (actorRow.domain ? `@${actorRow.username}@${actorRow.domain}` : `@${actorRow.username}`) : "";
   const preview = snippet(objectRow?.content ?? null);
-  const bodyText = preview ? `${who ? `${who} · ` : ""}${preview}` : who;
+  // Moderation notifications carry no status: the body is the Guardian phrase
+  // from the user's locale instead of a (missing) post preview.
+  const bodyText = notif.type === "moderation"
+    ? [who, dict.notif_moderation].filter(Boolean).join(" · ")
+    : preview ? `${who ? `${who} · ` : ""}${preview}` : who;
 
   const payload = strBuf(JSON.stringify({
     title: notifTitle(dict, notif.type),

@@ -7,6 +7,7 @@ import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
 import { PwaRegister } from "@/components/PwaRegister";
 import { NotificationSound } from "@/components/NotificationSound";
 import { PaletteApplier } from "@/components/PaletteApplier";
+import { SessionGuard } from "@/components/SessionGuard";
 import "fork-awesome/css/fork-awesome.min.css";
 import "./globals.css";
 
@@ -121,6 +122,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <PwaRegister />
             <NotificationSound />
             <PaletteApplier />
+            <SessionGuard />
           </LocaleProvider>
         </InstanceTitleProvider>
       </body>

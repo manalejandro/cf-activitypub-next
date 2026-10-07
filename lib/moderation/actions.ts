@@ -9,8 +9,10 @@
 import { generateId, actorIRI } from "@/lib/activitypub/utils";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { createActor, getActorById, getActorByUsername, getObjectById } from "@/lib/db";
-import { sendModerationNoticeEmail } from "@/lib/email";
+import { sendModerationNoticeEmail, type ModerationNoticeAction } from "@/lib/email";
+import { notify, type NotifyEnv } from "@/lib/notify";
 import { recordModeration, hadAction, type ModerationSource } from "./log";
+import type { ModerationKV } from "./util";
 import { GUARDIAN_MODEL } from "./ai";
 import { rememberAbuse, buildAbuseVectorId } from "./vectors";
 import { stripHtml } from "./heuristics";
@@ -19,7 +21,7 @@ export interface ModerationEnv {
   DB: D1Database;
   AI?: Ai;
   EMAIL?: SendEmail;
-  KV?: KVNamespace;
+  KV?: ModerationKV;
   VECTORIZE?: VectorizeIndex;
   INSTANCE_TITLE?: string;
   INSTANCE_URL?: string;
@@ -99,10 +101,10 @@ export async function ensureGuardianActor(env: ModerationEnv, domain: string): P
 }
 
 /** Try to email the owner of an account about a moderation action. */
-async function notifyOwner(
+export async function notifyAccountOwner(
   env: ModerationEnv,
   actor: { email: string | null; username: string; isLocal: boolean; domain: string },
-  action: "warned" | "deleted" | "suspended" | "rejected",
+  action: ModerationNoticeAction,
   reason: string
 ): Promise<boolean> {
   if (!actor.email || !actor.isLocal) return false;
@@ -120,6 +122,54 @@ async function notifyOwner(
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Tell a local account that a report was filed against it: an in-app
+ * `moderation` notification (always) plus a throttled email. The notification
+ * comes from the reserved Guardian account, never from the reporter, so the
+ * reported user cannot identify or retaliate against whoever filed it. The
+ * email is limited to one per account per day so a report flood cannot be used
+ * to mail-bomb a target.
+ */
+export async function notifyReportedAccount(
+  env: ModerationEnv & NotifyEnv,
+  opts: { actorId: string; reporterId?: string | null }
+): Promise<void> {
+  try {
+    const target = await getActorById(env.DB, opts.actorId);
+    if (!target || !target.isLocal || target.suspended) return;
+    if (opts.reporterId && opts.reporterId === target.id) return;
+
+    let domain = target.domain;
+    try {
+      if (env.INSTANCE_URL) domain = new URL(env.INSTANCE_URL).hostname;
+    } catch { /* keep the actor's own domain */ }
+    const guardianId = await ensureGuardianActor(env, domain);
+    if (!guardianId || guardianId === target.id) return;
+
+    await notify(env, {
+      id: generateId(),
+      type: "moderation",
+      accountId: guardianId,
+      targetAccountId: target.id,
+      objectId: null,
+      read: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    if (!target.email || !env.EMAIL || !env.FROM_EMAIL) return;
+    if (env.KV) {
+      const key = `report:notified:${target.id}`;
+      try {
+        if (await env.KV.get(key)) return;
+        await env.KV.put(key, "1", { expirationTtl: 24 * 60 * 60 });
+      } catch { /* best effort — a missing throttle must not block the notice */ }
+    }
+    await notifyAccountOwner(env, target, "reported", "Un reporte sobre tu cuenta está pendiente de revisión.");
+  } catch (err) {
+    console.error("[moderation] report notification failed:", err);
   }
 }
 
@@ -154,7 +204,7 @@ export async function rejectAccount(env: ModerationEnv, opts: ActionBase & { act
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "rejected", applied: false, emailSent: false };
 
-  const emailSent = await notifyOwner(env, actor, "rejected", reason ?? "Su registro no cumple las normas de la instancia.");
+  const emailSent = await notifyAccountOwner(env, actor, "rejected", reason ?? "Su registro no cumple las normas de la instancia.");
 
   await env.DB.prepare("DELETE FROM actors WHERE id = ?").bind(actorId).run();
   const m = meta(opts, SYSTEM);
@@ -198,7 +248,7 @@ export async function warnAccount(env: ModerationEnv, opts: ActionBase & { actor
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "warned", applied: false, emailSent: false };
 
-  const emailSent = await notifyOwner(env, actor, "warned", reason ?? "Comportamiento que infringe las normas de la comunidad.");
+  const emailSent = await notifyAccountOwner(env, actor, "warned", reason ?? "Comportamiento que infringe las normas de la comunidad.");
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
@@ -231,7 +281,7 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     .run();
   await env.DB.prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
 
-  const emailSent = await notifyOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
+  const emailSent = await notifyAccountOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
@@ -299,6 +349,7 @@ export async function silenceAccount(env: ModerationEnv, opts: ActionBase & { ac
   if (actor.silenced) return { action: "silenced", applied: false, emailSent: false };
 
   await env.DB.prepare("UPDATE actors SET silenced = 1, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
+  const emailSent = await notifyAccountOwner(env, actor, "silenced", reason ?? "Su cuenta ha sido limitada.");
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
@@ -310,11 +361,11 @@ export async function silenceAccount(env: ModerationEnv, opts: ActionBase & { ac
     confidence: opts.confidence ?? null,
     model: m.model,
     details: opts.details ?? {},
-    emailSent: false,
-    emailTo: null,
+    emailSent,
+    emailTo: actor.email,
     relatedId: opts.relatedId ?? null,
   });
-  return { action: "silenced", applied: true, emailSent: false };
+  return { action: "silenced", applied: true, emailSent };
 }
 
 /** Reinstate a silenced account (posts appear on public timelines again). */
@@ -356,7 +407,7 @@ export async function deleteStatus(env: ModerationEnv, opts: ActionBase & { obje
     .run();
 
   const owner = await getActorById(env.DB, obj.actorId);
-  const emailSent = owner ? await notifyOwner(env, owner, "deleted", reason ?? "Contenido que infringe las normas de la comunidad.") : false;
+  const emailSent = owner ? await notifyAccountOwner(env, owner, "deleted", reason ?? "Contenido que infringe las normas de la comunidad.") : false;
 
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {

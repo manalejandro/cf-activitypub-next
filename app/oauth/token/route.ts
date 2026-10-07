@@ -74,12 +74,33 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
     await env.KV.delete(`login-fail:${await mediaCacheId(username.toLowerCase())}`).catch(() => {});
 
+    // Suspended accounts cannot sign in. Without this the web UI would appear
+    // to log in and then fail every API call with a 401 (the API itself
+    // rejects suspended tokens in getAuthenticatedActor).
+    if (actor.suspended) {
+      return json({
+        error: "invalid_grant",
+        error_description: "This account has been suspended.",
+        error_code: "login_error_suspended",
+      }, 403);
+    }
+
     // Block login for accounts that registered via the web form but haven't verified their email.
     if (!actor.emailVerified) {
       return json({
         error: "unverified_email",
         error_description: "Please verify your email address before signing in.",
         error_code: "login_error_unverified_email",
+      }, 403);
+    }
+
+    // Approval-required instances keep the account unusable until an admin
+    // approves it; surface that at login instead of issuing a dead token.
+    if (actor.isLocal && actor.approved === false) {
+      return json({
+        error: "invalid_grant",
+        error_description: "Your account is awaiting administrator approval.",
+        error_code: "login_error_pending_approval",
       }, 403);
     }
 

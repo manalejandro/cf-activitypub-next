@@ -24,6 +24,13 @@ export function getToken(): string | null {
   return null;
 }
 
+export function clearToken(): void {
+  if (typeof document === "undefined") return;
+
+  document.cookie = "auth_token=; Secure; SameSite=Lax; Path=/; Max-Age=0";
+  localStorage.removeItem("access_token");
+}
+
 export function useAuth(): AuthState {
   const [state, setState] = useState<AuthState>({ loading: true, authenticated: false, actor: null });
 

@@ -61,6 +61,7 @@ import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
 import { relayForActor, relayMatchesActor } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
+import { notifyReportedAccount } from "@/lib/moderation/actions";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
@@ -1889,10 +1890,30 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
         false
       );
 
-      // Run the same Guardian report pipeline used for locally-submitted reports
-      // so federated Flags are also AI-managed. The target account must be local
-      // (we can only take action on accounts that live here).
+      // Tell the reported local account it has been reported (in-app
+      // notification + throttled email), then run the same Guardian report
+      // pipeline used for locally-submitted reports so federated Flags are also
+      // AI-managed. The target account must be local (we can only take action on
+      // accounts that live here).
       const targetActor = await getActorById(ctx.db, target.id);
+      if (targetActor?.isLocal) {
+        await notifyReportedAccount(
+          {
+            DB: ctx.db,
+            KV: ctx.kv ?? undefined,
+            AI: ctx.ai ?? undefined,
+            EMAIL: ctx.email ?? undefined,
+            FROM_EMAIL: ctx.fromEmail,
+            INSTANCE_TITLE: ctx.instanceTitle,
+            INSTANCE_URL: ctx.baseUrl,
+            TIMELINE_STREAM: ctx.timelineStream ?? undefined,
+            VAPID_PUBLIC_KEY: ctx.vapidPublicKey,
+            VAPID_PRIVATE_KEY: ctx.vapidPrivateKey,
+            VAPID_EMAIL: ctx.vapidEmail,
+          },
+          { actorId: targetActor.id, reporterId }
+        );
+      }
       if (ctx.ai && targetActor && targetActor.isLocal) {
         try {
           await evaluateReportWithAI(

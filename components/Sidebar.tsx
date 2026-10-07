@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
-import { getToken } from "@/lib/client-api";
+import { clearToken, getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { useInstanceTitle, useInstanceVersion } from "@/lib/instance-context";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
@@ -170,6 +170,9 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    // Also drop any legacy localStorage token: getToken() would otherwise
+    // migrate it back into a cookie and resurrect a revoked session.
+    clearToken();
     window.location.href = "/login";
   }
 

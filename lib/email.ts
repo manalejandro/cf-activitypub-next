@@ -163,13 +163,22 @@ export async function sendReportOutcomeEmail(
  * moderation action on their account or content (warning, deletion, suspension).
  * Used only when the account has an email on file.
  */
+export type ModerationNoticeAction =
+  | "warned"
+  | "deleted"
+  | "suspended"
+  | "rejected"
+  | "silenced"
+  | "reported"
+  | "removed";
+
 export async function sendModerationNoticeEmail(
   emailBinding: SendEmail,
   opts: {
     to: string;
     from: string;
     username: string;
-    action: "warned" | "deleted" | "suspended" | "rejected";
+    action: ModerationNoticeAction;
     reason: string;
     instanceTitle: string;
     instanceUrl: string;
@@ -182,6 +191,9 @@ export async function sendModerationNoticeEmail(
     deleted: `[${instanceTitle}] Publicación eliminada / Post deleted`,
     suspended: `[${instanceTitle}] Cuenta suspendida / Account suspended`,
     rejected: `[${instanceTitle}] Registro rechazado / Registration rejected`,
+    silenced: `[${instanceTitle}] Cuenta limitada / Account limited`,
+    reported: `[${instanceTitle}] Reporte recibido / Report received`,
+    removed: `[${instanceTitle}] Cuenta eliminada / Account removed`,
   };
 
   const en: Record<string, string[]> = {
@@ -201,6 +213,18 @@ export async function sendModerationNoticeEmail(
       `Hello,`,
       `Your registration request for ${instanceTitle} has not been approved.`,
     ],
+    silenced: [
+      `Hello @${username},`,
+      `Your account on ${instanceTitle} has been limited: its posts will not appear in public timelines or search while the limitation is active. You can still sign in and use your account.`,
+    ],
+    reported: [
+      `Hello @${username},`,
+      `A report has been filed against your account on ${instanceTitle}. The administration will review it before taking any action.`,
+    ],
+    removed: [
+      `Hello @${username},`,
+      `Your account on ${instanceTitle} has been removed by the administration.`,
+    ],
   };
 
   const es: Record<string, string[]> = {
@@ -219,6 +243,18 @@ export async function sendModerationNoticeEmail(
     rejected: [
       `Hola,`,
       `Tu solicitud de registro en ${instanceTitle} no ha sido aprobada.`,
+    ],
+    silenced: [
+      `Hola @${username},`,
+      `Tu cuenta en ${instanceTitle} ha sido limitada: sus publicaciones no aparecerán en los timelines públicos ni en las búsquedas mientras la limitación esté activa. Puedes seguir iniciando sesión y usando tu cuenta.`,
+    ],
+    reported: [
+      `Hola @${username},`,
+      `Se ha presentado un reporte contra tu cuenta en ${instanceTitle}. La administración lo revisará antes de tomar cualquier medida.`,
+    ],
+    removed: [
+      `Hola @${username},`,
+      `Tu cuenta en ${instanceTitle} ha sido eliminada por la administración.`,
     ],
   };
 

@@ -8,7 +8,7 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
-import { recordNoAction } from "@/lib/moderation/actions";
+import { notifyReportedAccount, recordNoAction } from "@/lib/moderation/actions";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const { env } = getCloudflareContext();
@@ -111,6 +111,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     ruleIds.length > 0 ? JSON.stringify(ruleIds) : null,
     forward
   );
+
+  // Tell the reported local account it has been reported (in-app notification
+  // + throttled email). The reporter stays anonymous: the notification comes
+  // from the Guardian.
+  if (target.isLocal) {
+    await notifyReportedAccount(env, { actorId: target.id, reporterId: actor.id });
+  }
 
   // Federated forward: when the reported account lives on another instance and
   // the reporter opted in, deliver a Mastodon-compatible Flag activity to that

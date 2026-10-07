@@ -5,6 +5,7 @@ import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
+import { notifyAccountOwner } from "@/lib/moderation/actions";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -170,6 +171,10 @@ export async function DELETE(
     }
   }
 
+  // Tell the owner before the actor row disappears (local accounts with an
+  // email on file only — remote cached actors have nothing to notify).
+  const emailSent = await notifyAccountOwner(env, actor, "removed", "Su cuenta ha sido eliminada por la administración.");
+
   await env.DB.batch([
     env.DB.prepare("DELETE FROM oauth_tokens WHERE actor_id = ?").bind(id),
     env.DB.prepare("DELETE FROM activities WHERE actor_id = ?").bind(id),
@@ -187,7 +192,7 @@ export async function DELETE(
     confidence: null,
     model: "admin",
     details: { username: actor.username, domain: actor.domain },
-    emailSent: false,
+    emailSent,
     emailTo: actor.email,
     relatedId: null,
   });
