@@ -14,6 +14,7 @@ import { collectFollowerInboxes, fetchRemoteObject } from "@/lib/activitypub/fed
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { notify } from "@/lib/notify";
 import { broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@/lib/streaming/broadcast";
+import { broadcastNewBoostToFollowers } from "@/lib/streaming/boost";
 import type { APActor } from "@/lib/types";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 
@@ -42,8 +43,11 @@ export async function POST(
   }
 
   const existing = await getAnnounce(env.DB, actor.id, obj.id);
+  let announceId: string | null = null;
+  let announceCreatedAt = "";
   if (!existing) {
-    const announceId = generateId();
+    announceId = generateId();
+    announceCreatedAt = new Date().toISOString();
     const announceActivity = buildAnnounce(baseUrl, actor.id, obj.id, announceId, `${baseUrl}/users/${actor.username}/followers`);
 
     await createAnnounce(env.DB, {
@@ -51,7 +55,7 @@ export async function POST(
       actorId: actor.id,
       objectId: obj.id,
       activityId: announceActivity.id,
-      createdAt: new Date().toISOString(),
+      createdAt: announceCreatedAt,
     });
 
     if (author.id !== actor.id) {
@@ -104,5 +108,10 @@ export async function POST(
   const serialized = serializeStatus(refreshed ?? obj, author, domain, { reblogged: true, attachments, poll: pollMap.get(obj.id) ?? null, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
   if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
   if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
+  // Live boost for the booster's local followers (mirrors handleAnnounce):
+  // without it the wrapper only appeared on the next timeline reload.
+  if (announceId) {
+    await broadcastNewBoostToFollowers(env.DB, env.TIMELINE_STREAM, actor, refreshed ?? obj, announceId, announceCreatedAt, domain);
+  }
   return json(serialized);
 }

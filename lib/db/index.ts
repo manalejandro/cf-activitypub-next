@@ -5154,10 +5154,11 @@ export async function listEvictableMediaCache(
 /**
  * Hold a freshly ingested remote status out of feeds while its remote media
  * (attachments or the author's avatar) is still being cached in R2: clients
- * must never be sent origin URLs when the media cache is active.
+ * must never be sent origin URLs when the media cache is active. Returns true
+ * when the status was actually held (so callers can skip live streaming too).
  */
-export async function markObjectMediaPending(db: D1Database, objectId: string): Promise<void> {
-  await db
+export async function markObjectMediaPending(db: D1Database, objectId: string): Promise<boolean> {
+  const result = await db
     .prepare(
       `UPDATE objects SET media_pending = 1 WHERE id = ? AND (
          EXISTS (SELECT 1 FROM attachments a JOIN media_cache mc ON mc.source_url = a.remote_url
@@ -5168,6 +5169,7 @@ export async function markObjectMediaPending(db: D1Database, objectId: string): 
     )
     .bind(objectId)
     .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 /**

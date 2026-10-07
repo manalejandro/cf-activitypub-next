@@ -3,7 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor, LocalObject } from "@/lib/types";
+import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor } from "@/lib/types";
 import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
@@ -36,7 +36,6 @@ import {
   getAttachmentsByObjectId,
   clearObjectPreviewCard,
   markObjectMediaPending,
-  getLastStatusAtMap,
   isActorBlockedBy,
   createBlock,
   deleteBlock,
@@ -65,7 +64,9 @@ import { notifyReportedAccount } from "@/lib/moderation/actions";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
-import { serializeStatus, serializePoll, serializeNotification, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
+import { serializeStatusForStream } from "@/lib/streaming/serialize";
+import { broadcastNewBoostToFollowers } from "@/lib/streaming/boost";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
@@ -145,66 +146,18 @@ async function broadcastRemoteStatusRefresh(ctx: InboxContext, objectId: string)
   try {
     const obj = await getObjectById(ctx.db, objectId);
     if (!obj) return;
+    // A held status is not in any client's feed yet (the cron announces it
+    // once its media is cached), so there is nothing to refresh — and a
+    // partial payload would wipe media from copies that do not exist.
+    if (obj.mediaPending) return;
     const author = await getActorById(ctx.db, obj.actorId);
     if (!author) return;
-    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
-    const serialized = serializeStatus(obj, author, new URL(ctx.baseUrl).hostname, { authorLastStatusAt: lastStatusAt });
+    // Full payload: clients replace their cached copy, so a status.update
+    // without media wipes the images of an already-rendered status.
+    const serialized = await serializeStatusForStream(ctx.db, obj, author, new URL(ctx.baseUrl).hostname);
     await broadcastStatusInteraction(ctx.timelineStream, serialized, author);
     await broadcastStatusInteractionToLists(ctx.db, ctx.timelineStream, author.id, serialized);
   } catch { /* streaming refresh is best-effort */ }
-}
-
-/**
- * Broadcast a new boost to the home feeds of the booster's local followers
- * (and the booster's own), so a live boost shows up without a timeline
- * reload. Followers-only/direct originals are skipped — their visibility is
- * resolved by the timeline query, not by the fan-out — and recipients who
- * blocked the booster (or its domain) are left out, mirroring the query.
- */
-async function broadcastNewBoost(
-  ctx: InboxContext,
-  booster: LocalActor,
-  obj: LocalObject,
-  announceId: string,
-  createdAt: string
-): Promise<void> {
-  if (!ctx.timelineStream || obj.mediaPending) return;
-  if (obj.visibility !== "public" && obj.visibility !== "unlisted") return;
-  try {
-    const author = await getActorById(ctx.db, obj.actorId);
-    if (!author) return;
-    const domain = new URL(ctx.baseUrl).hostname;
-    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
-    const parent = await parentExclusion(ctx.db, obj.inReplyToId);
-    // The streamed boost carries the original's poll (viewer-agnostic counts:
-    // one payload goes to every follower) so the timeline shows it live.
-    const pollMap = await loadSerializedPolls(ctx.db, null, [obj.id]);
-    const original = serializeStatus(obj, author, domain, {
-      authorLastStatusAt: lastStatusAt,
-      inReplyToAccountId: parent?.id ?? null,
-      poll: pollMap.get(obj.id) ?? null,
-    });
-    const wrapper = serializeReblog(booster, original, {
-      id: encodeStatusId(announceId, true),
-      createdAt,
-      localDomain: domain,
-    });
-    const followers = await ctx.db
-      .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-      .bind(booster.id)
-      .all<{ actor_id: string }>();
-    const recipients = [booster.id, ...(followers.results ?? []).map((r) => r.actor_id)];
-    // Mirror the timeline query: a viewer who blocked the booster, the
-    // original author or the original's parent (or their domains) never sees
-    // the boost live either.
-    const exclusions: { id: string; domain: string | null }[] = [
-      { id: booster.id, domain: booster.domain },
-      { id: author.id, domain: author.domain },
-    ];
-    if (parent) exclusions.push(parent);
-    const localIds = await eligibleLocalRecipients(ctx.db, recipients, exclusions);
-    await Promise.all(localIds.map((id) => broadcastHomeStatus(ctx.timelineStream!, id, wrapper)));
-  } catch { /* streaming is best-effort */ }
 }
 
 /**
@@ -649,8 +602,9 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   });
 
   // Hold the status out of feeds until its remote media (attachments and the
-  // author's avatar) is in R2: clients must not be sent origin URLs.
-  await markObjectMediaPending(ctx.db, obj.id);
+  // author's avatar) is in R2: clients must not be sent origin URLs. A held
+  // status is not streamed either — the cron announces it once released.
+  const mediaHeld = await markObjectMediaPending(ctx.db, obj.id);
 
   // Process tags: mentions (notify) + emoji (cache federated emoji)
   const mentionedLocalIds = new Set<string>();
@@ -753,7 +707,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   }
 
   // Broadcast to timeline streaming clients (fire-and-forget)
-  if (ctx.timelineStream) {
+  if (ctx.timelineStream && !mediaHeld) {
     const statusVisibility = resolveVisibility(obj.to, obj.cc);
     // Silenced (limited) and suspended authors are hidden from the public
     // streams, but their followers still receive posts on their home feeds.
@@ -1576,14 +1530,7 @@ async function storeRelayedStatus(
   const author = await getActorById(ctx.db, stored.actorId);
   if (!author || author.isLocal || !ctx.timelineStream) return;
   try {
-    const lastStatusAt = (await getLastStatusAtMap(ctx.db, [author.id])).get(author.id) ?? null;
-    const parent = await parentExclusion(ctx.db, stored.inReplyToId);
-    const pollMap = await loadSerializedPolls(ctx.db, null, [stored.id]);
-    const serialized = serializeStatus(stored, author, new URL(ctx.baseUrl).hostname, {
-      authorLastStatusAt: lastStatusAt,
-      inReplyToAccountId: parent?.id ?? null,
-      poll: pollMap.get(stored.id) ?? null,
-    });
+    const serialized = await serializeStatusForStream(ctx.db, stored, author, new URL(ctx.baseUrl).hostname);
     await broadcastStatusCreatedToAudience(ctx.db, ctx.timelineStream, serialized, author);
   } catch { /* streaming is best-effort */ }
 }
@@ -1693,7 +1640,7 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
       await broadcastAndPush(ctx, notif);
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
-    await broadcastNewBoost(ctx, announcerActor, resolvedObj, announceId, announceCreatedAt);
+    await broadcastNewBoostToFollowers(ctx.db, ctx.timelineStream, announcerActor, resolvedObj, announceId, announceCreatedAt, new URL(ctx.baseUrl).hostname);
   }
 }
 

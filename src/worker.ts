@@ -25,10 +25,9 @@ import { enqueueDeliveries } from "../lib/activitypub/queue";
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
-import type { APAttachment } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getPollByObjectId, getPollOptions, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache } from "../lib/db";
-import { serializePoll, serializeStatus } from "../lib/mastodon/serializers";
-import { serializeQuote } from "../lib/mastodon/quote";
+import type { APAttachment, MastodonStatus } from "@/lib/types";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache } from "../lib/db";
+import { serializeStatusForStream } from "../lib/streaming/serialize";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
@@ -794,10 +793,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         const stored = await getObjectById(env.DB, noteId);
         if (stored) {
           const parent = await parentExclusion(env.DB, stored.inReplyToId);
-          const serialized = serializeStatus(stored, actor, domain, {
-            authorLastStatusAt: published.slice(0, 10),
-            inReplyToAccountId: parent?.id ?? null,
-          });
+          const serialized = await serializeStatusForStream(env.DB, stored, actor, domain);
           const tasks: Promise<void>[] = [];
           if ((visibility === "public" || visibility === "unlisted") && !actor.silenced && !actor.suspended) {
             tasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serialized, true));
@@ -850,26 +846,12 @@ async function serializeObjectForStream(
   env: Env,
   objectId: string,
   domain: string
-): Promise<{ status: ReturnType<typeof serializeStatus>; authorId: string; isLocal: boolean } | null> {
+): Promise<{ status: MastodonStatus; authorId: string; isLocal: boolean } | null> {
   const object = await getObjectById(env.DB, objectId);
   if (!object) return null;
   const author = await getActorById(env.DB, object.actorId);
   if (!author) return null;
-  const [attachments, emojis, poll, quoteObject] = await Promise.all([
-    getAttachmentsByObjectId(env.DB, objectId),
-    getAllCustomEmojis(env.DB),
-    getPollByObjectId(env.DB, objectId),
-    object.quoteId ? getObjectById(env.DB, object.quoteId) : Promise.resolve(null),
-  ]);
-  const pollOptions = poll ? await getPollOptions(env.DB, poll.id) : [];
-  const parent = await parentExclusion(env.DB, object.inReplyToId);
-  const status = serializeStatus(object, author, domain, {
-    attachments,
-    emojis,
-    poll: poll ? serializePoll(poll, pollOptions, false, []) : null,
-    quote: await serializeQuote(env.DB, quoteObject, domain),
-    inReplyToAccountId: parent?.id ?? null,
-  });
+  const status = await serializeStatusForStream(env.DB, object, author, domain);
   return { status, authorId: author.id, isLocal: author.isLocal };
 }
 
