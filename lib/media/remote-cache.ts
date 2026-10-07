@@ -585,7 +585,8 @@ export async function backfillMediaCache(
 export async function maintainMediaCache(
   bindings: MediaCacheBindings,
   rawLimits: MediaCacheLimits,
-  batch = 50
+  batch = 50,
+  options: { sweepOrphans?: boolean } = {}
 ): Promise<{ expired: number; evicted: number; orphaned: number; bytesBefore: number; bytesAfter: number; overBudget: boolean }> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) {
@@ -635,13 +636,17 @@ export async function maintainMediaCache(
 
   // 3) Drop entries whose owner is gone: the status/attachment was deleted
   // (cascade), the avatar was replaced, or the account is gone. The avatar of
-  // a live account is never touched — it only dies with the actor row.
+  // a live account is never touched — it only dies with the actor row. The
+  // selection scans every cache entry (~7k D1 rows on cf-ap), so the cron runs
+  // it hourly; entries only become orphans when a status/actor is deleted.
   let orphaned = 0;
-  try {
-    const orphans = await listOrphanMediaCache(bindings.DB, batch);
-    await deleteEntries(bindings, orphans);
-    orphaned = orphans.length;
-  } catch { /* best-effort */ }
+  if (options.sweepOrphans !== false) {
+    try {
+      const orphans = await listOrphanMediaCache(bindings.DB, batch);
+      await deleteEntries(bindings, orphans);
+      orphaned = orphans.length;
+    } catch { /* best-effort */ }
+  }
 
   if (bytes > budget && evicted === 0 && expirable.length === 0) {
     // No progress: the cache is over its limit and this run could not delete

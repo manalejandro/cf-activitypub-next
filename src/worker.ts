@@ -1242,7 +1242,14 @@ async function executeScheduled(env: Env): Promise<void> {
     //
     // 1) Byte budget + orphan cleanup (least served evicted first) before new fetches.
     try {
-      await maintainMediaCache(bindings, mediaLimits);
+      // The orphan selection scans every cache entry; entries only become
+      // orphans when a status/actor is deleted, so once an hour is plenty.
+      const orphanKey = "cron:media:orphans";
+      const sweepOrphans = !(await env.KV.get(orphanKey).catch(() => null));
+      if (sweepOrphans) {
+        await env.KV.put(orphanKey, "1", { expirationTtl: 3600 }).catch(() => {});
+      }
+      await maintainMediaCache(bindings, mediaLimits, 50, { sweepOrphans });
     } catch (err) {
       console.error("[cron] media cache maintenance failed", err);
     }

@@ -101,6 +101,30 @@ describe("getAccountSuggestions", () => {
     expect(day2).not.toEqual(day1);
   });
 
+  it("rotates even when the scores differ (the tie-only rotation was invisible)", async () => {
+    // Distinct local-follow counts: 6, 5, 4, 3, 2, 1. The followers are
+    // remote so they don't compete for slots in the local pool.
+    for (let i = 0; i < 6; i++) {
+      const target = `https://local.example/users/ranked-${i}`;
+      await insertActor(db, target, { isLocal: true, lastStatusAt: "2026-01-01T00:00:00Z" });
+      for (let f = 0; f < 6 - i; f++) {
+        const follower = `https://remote.example/users/fan-${i}-${f}`;
+        await insertActor(db, follower, { isLocal: false });
+        await insertFollow(db, follower, target);
+      }
+    }
+
+    const day1 = (await getAccountSuggestions(db, null, { rotationSeed: 11 })).map((s) => s.actor.id);
+    const day2 = (await getAccountSuggestions(db, null, { rotationSeed: 12 })).map((s) => s.actor.id);
+
+    expect(new Set(day2)).toEqual(new Set(day1));
+    expect(day2).not.toEqual(day1);
+    // Relevance is kept between windows: the five most-followed accounts stay
+    // in the first window, only their order rotates.
+    const topWindow = new Set(day1.slice(0, 5));
+    expect(day2.slice(0, 5).every((id) => topWindow.has(id))).toBe(true);
+  });
+
   it("ranks friends-of-friends first and excludes followed, blocked, muted and dismissed accounts", async () => {
     await insertActor(db, "https://local.example/users/followed", { isLocal: true });
     await insertActor(db, "https://local.example/users/fof1", { isLocal: true, lastStatusAt: "2026-01-01T00:00:00Z" });

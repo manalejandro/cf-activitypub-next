@@ -383,22 +383,40 @@ export async function backfillRemoteSharedInboxes(
   kv: InstanceKV | null | undefined,
   limit = 5
 ): Promise<number> {
-  const rows = await db
-    .prepare(
-      `SELECT a.id FROM actors a
-       WHERE a.is_local = 0 AND a.shared_inbox IS NULL AND a.inbox IS NOT NULL AND a.inbox != ''
-         AND (
-           EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = a.id AND f.state = 'accepted')
-           OR EXISTS (SELECT 1 FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted')
-         )
-       ORDER BY
-         EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = a.id AND f.state = 'accepted') DESC,
-         a.updated_at DESC
-       LIMIT ?`
-    )
-    .bind(Math.max(limit * 4, limit))
-    .all<{ id: string }>();
-  if (!rows.results?.length) return 0;
+  // Two ordered branches instead of one `ORDER BY EXISTS(...)`: the single
+  // query read every remote actor missing a shared inbox (~37k rows on cf-ap)
+  // on every tick. Branch 1 drives from the local accounts' follower rows (a
+  // few hundred) — forcing that order matters, the planner prefers scanning
+  // the `shared_inbox IS NULL` index and probing `follows` per actor (~7k
+  // rows). Branch 2 is naturally cheap because recently-updated remote actors
+  // are usually the ones local users follow. Priority is unchanged: accounts
+  // that follow us first.
+  const candidateLimit = Math.max(limit * 4, limit);
+  const [followers, followed] = await Promise.all([
+    db
+      .prepare(
+        `SELECT a.id FROM follows f INDEXED BY idx_follows_target
+         CROSS JOIN actors a
+         WHERE a.id = f.actor_id AND f.state = 'accepted'
+           AND f.target_id IN (SELECT id FROM actors WHERE is_local = 1)
+           AND a.is_local = 0 AND a.shared_inbox IS NULL AND a.inbox IS NOT NULL AND a.inbox != ''
+         ORDER BY a.updated_at DESC LIMIT ?`
+      )
+      .bind(candidateLimit)
+      .all<{ id: string }>(),
+    db
+      .prepare(
+        `SELECT a.id FROM actors a
+         WHERE a.is_local = 0 AND a.shared_inbox IS NULL AND a.inbox IS NOT NULL AND a.inbox != ''
+           AND NOT EXISTS (SELECT 1 FROM follows f WHERE f.actor_id = a.id AND f.state = 'accepted')
+           AND EXISTS (SELECT 1 FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted')
+         ORDER BY a.updated_at DESC LIMIT ?`
+      )
+      .bind(candidateLimit)
+      .all<{ id: string }>(),
+  ]);
+  const candidates = [...(followers.results ?? []), ...(followed.results ?? [])];
+  if (candidates.length === 0) return 0;
 
   const signer = await db
     .prepare("SELECT id, private_key_pem FROM actors WHERE is_local = 1 AND private_key_pem IS NOT NULL AND suspended = 0 LIMIT 1")
@@ -407,7 +425,7 @@ export async function backfillRemoteSharedInboxes(
   if (!signer?.private_key_pem) return 0;
 
   let done = 0;
-  for (const row of rows.results) {
+  for (const row of candidates) {
     if (done >= limit) break;
     const skipKey = `actor:shared:skip:${row.id}`;
     try {

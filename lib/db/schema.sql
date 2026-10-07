@@ -63,6 +63,11 @@ CREATE INDEX IF NOT EXISTS idx_actors_discoverable_active ON actors(discoverable
 -- Resetting avatar/header cache URLs back to the origin on eviction/purge.
 CREATE INDEX IF NOT EXISTS idx_actors_avatar_url ON actors(avatar_url);
 CREATE INDEX IF NOT EXISTS idx_actors_header_url ON actors(header_url);
+-- Shared-inbox backfill: remote actors still missing one are scanned in
+-- `updated_at` order (followers first, see backfillRemoteSharedInboxes);
+-- without this index the cron read every remote actor without a shared inbox
+-- (~32k rows on cf-ap) on every tick.
+CREATE INDEX IF NOT EXISTS idx_actors_shared_inbox ON actors(is_local, shared_inbox, updated_at);
 -- Dangling-reference repair scans only the cached entries (NULLs are not
 -- stored in an index, so the scan is tiny instead of the whole actors table).
 CREATE INDEX IF NOT EXISTS idx_actors_avatar_cache ON actors(avatar_cache_url);

@@ -1094,6 +1094,8 @@ export interface AccountSuggestion {
  */
 /** Rows fetched per pool: enough to shuffle ties without depending on `wanted`. */
 const SUGGESTION_POOL_LIMIT = 200;
+/** Daily rotation window: accounts this close in rank rotate every day. */
+const SUGGESTION_ROTATE_WINDOW = 5;
 
 /**
  * One slot in `SUGGESTION_FRESH_EVERY` comes from the "new instances" pool.
@@ -1117,6 +1119,26 @@ function suggestionRank(id: string, seed: number): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+/**
+ * Rotate a relevance-sorted pool within windows of `size`: the day seed
+ * decides the order inside each window, so the suggested page changes every
+ * day instead of staying frozen whenever the scores differ. The tie-only
+ * rotation was invisible on any instance whose top accounts had distinct
+ * follower counts (the same list was suggested for days).
+ */
+function rotateSuggestionWindows<T>(
+  rows: T[],
+  size: number,
+  idOf: (row: T) => string,
+  rank: (id: string) => number
+): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < rows.length; i += size) {
+    out.push(...rows.slice(i, i + size).sort((a, b) => rank(idOf(a)) - rank(idOf(b))));
+  }
+  return out;
 }
 
 export async function getAccountSuggestions(
@@ -1155,7 +1177,12 @@ export async function getAccountSuggestions(
       )
       .bind(viewerId, viewerId, viewerId, viewerId, viewerId, viewerId, SUGGESTION_POOL_LIMIT)
       .all<{ id: string; score: number }>();
-    const fofOrdered = [...(fof.results ?? [])].sort((a, b) => b.score - a.score || rank(a.id) - rank(b.id));
+    const fofOrdered = rotateSuggestionWindows(
+      [...(fof.results ?? [])].sort((a, b) => b.score - a.score || rank(a.id) - rank(b.id)),
+      SUGGESTION_ROTATE_WINDOW,
+      (row) => row.id,
+      rank
+    );
     for (const row of fofOrdered) picked.set(row.id, "friends_of_friends");
   }
 
@@ -1190,8 +1217,11 @@ export async function getAccountSuggestions(
     )
     .bind(...binds, SUGGESTION_POOL_LIMIT)
     .all<{ id: string; local_follows: number }>();
-  const localOrdered = [...(local.results ?? [])].sort(
-    (a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)
+  const localOrdered = rotateSuggestionWindows(
+    [...(local.results ?? [])].sort((a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)),
+    SUGGESTION_ROTATE_WINDOW,
+    (row) => row.id,
+    rank
   );
   for (const row of localOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
@@ -1214,8 +1244,11 @@ export async function getAccountSuggestions(
     )
     .bind(...binds, SUGGESTION_POOL_LIMIT)
     .all<{ id: string; local_follows: number }>();
-  const popularOrdered = [...(popular.results ?? [])].sort(
-    (a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)
+  const popularOrdered = rotateSuggestionWindows(
+    [...(popular.results ?? [])].sort((a, b) => b.local_follows - a.local_follows || rank(a.id) - rank(b.id)),
+    SUGGESTION_ROTATE_WINDOW,
+    (row) => row.id,
+    rank
   );
   for (const row of popularOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
@@ -1234,8 +1267,13 @@ export async function getAccountSuggestions(
     )
     .bind(...binds, SUGGESTION_POOL_LIMIT)
     .all<{ id: string; last_status_at: string | null }>();
-  const activeOrdered = [...(activeLocal.results ?? [])].sort(
-    (a, b) => String(b.last_status_at ?? "").localeCompare(String(a.last_status_at ?? "")) || rank(a.id) - rank(b.id)
+  const activeOrdered = rotateSuggestionWindows(
+    [...(activeLocal.results ?? [])].sort(
+      (a, b) => String(b.last_status_at ?? "").localeCompare(String(a.last_status_at ?? "")) || rank(a.id) - rank(b.id)
+    ),
+    SUGGESTION_ROTATE_WINDOW,
+    (row) => row.id,
+    rank
   );
   for (const row of activeOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
@@ -1267,8 +1305,11 @@ export async function getAccountSuggestions(
     )
     .bind(...binds, SUGGESTION_POOL_LIMIT)
     .all<{ id: string; remote_followers: number }>();
-  const freshOrdered = [...(fresh.results ?? [])].sort(
-    (a, b) => b.remote_followers - a.remote_followers || rank(a.id) - rank(b.id)
+  const freshOrdered = rotateSuggestionWindows(
+    [...(fresh.results ?? [])].sort((a, b) => b.remote_followers - a.remote_followers || rank(a.id) - rank(b.id)),
+    SUGGESTION_ROTATE_WINDOW,
+    (row) => row.id,
+    rank
   );
   const freshIds = freshOrdered.map((row) => row.id).filter((id) => !picked.has(id));
 

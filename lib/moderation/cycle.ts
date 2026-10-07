@@ -286,10 +286,22 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
   }
   const cutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   const startedAt = Date.now();
+  // Group in SQL first: only content that repeats can ever reach the action
+  // threshold, so the per-row signal analysis (regexes) runs on the repeated
+  // groups instead of every note of the last 24h — this stage used to load up
+  // to 3000 posts and analyse them in JS every 5 minutes on every instance.
+  // `>= 3` lets case/whitespace variants merge into one group below, where
+  // `contentHash` normalizes them and the total must still reach 5.
   const rows = await env.DB
-    .prepare("SELECT id, actor_id, content FROM objects WHERE type = 'Note' AND content IS NOT NULL AND content != '' AND published >= ? LIMIT 3000")
+    .prepare(
+      `SELECT actor_id, content, COUNT(*) AS n FROM objects
+       WHERE type = 'Note' AND content IS NOT NULL AND content != '' AND published >= ?
+       GROUP BY actor_id, content
+       HAVING COUNT(*) >= 3
+       LIMIT 500`
+    )
     .bind(cutoff)
-    .all<{ id: string; actor_id: string; content: string }>();
+    .all<{ actor_id: string; content: string; n: number }>();
 
   // Only content that looks like real spam can trigger an action. Repeating a
   // harmless message (a greeting, hashtags, a meme caption) many times is normal
@@ -310,11 +322,12 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
 
     const hash = contentHash(row.content);
     const key = `${row.actor_id}:${hash}`;
+    const count = Number(row.n ?? 1);
     const existing = groups.get(key);
     if (existing) {
-      existing.count += 1;
+      existing.count += count;
     } else {
-      groups.set(key, { actorId: row.actor_id, count: 1, sample: row.content });
+      groups.set(key, { actorId: row.actor_id, count, sample: row.content });
     }
   }
 
