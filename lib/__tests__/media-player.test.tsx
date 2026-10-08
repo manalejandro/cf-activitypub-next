@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import {
   mediaPreference,
@@ -130,5 +130,26 @@ describe("media player progress", () => {
       raf.mockRestore();
       cancel.mockRestore();
     }
+  });
+});
+
+describe("media player audio waveform", () => {
+  it("fills the bars up to the seeked position", () => {
+    const { container } = render(<MediaPlayer src="/a.mp3" kind="audio" />);
+    const slider = container.querySelector('[role="slider"]') as HTMLElement;
+    expect(slider).toBeTruthy();
+    // jsdom lays everything out at 0×0: give the slider a width so a clientX
+    // maps to a seek ratio.
+    slider.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 100, bottom: 32, width: 100, height: 32, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+
+    fireEvent.pointerDown(slider, { clientX: 50, pointerId: 1 });
+
+    const bars = Array.from(slider.querySelectorAll("span"));
+    expect(bars).toHaveLength(44);
+    expect(slider.getAttribute("aria-valuenow")).toBe("50");
+    // Half the bars take the played colour, the rest stay idle.
+    const played = bars.filter((b) => (b as HTMLElement).style.background.includes("accent"));
+    expect(played.length).toBe(22);
   });
 });

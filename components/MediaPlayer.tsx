@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
+import {
+  canAnalyseSource,
+  getMediaAnalyser,
+  resumeSharedAudioContext,
+  sampleFrequencyLevels,
+} from "@/lib/audio-visualizer";
 import {
   mediaPreference,
   mediaPreferenceServerSnapshot,
@@ -126,28 +132,121 @@ function waveformHeights(count: number): number[] {
   return Array.from({ length: count }, (_, i) => 0.22 + 0.78 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.53)));
 }
 
-function AudioWaveform({
-  played,
+const BAR_COUNT = 44;
+
+/**
+ * Seek waveform with a live visualizer: while the audio plays the bars follow
+ * the real frequency spectrum (Web Audio analyser) and fall back to the static
+ * seek pattern when paused. The animation loop writes styles directly on the
+ * bar elements — no React state per frame — and only runs while playing; the
+ * component is memoised so the parent's per-frame progress updates never reach
+ * it. Sources that cannot be analysed (cross-origin without CORS, no Web Audio)
+ * keep the static pattern and only get the progress fill.
+ */
+const AudioWaveform = memo(function AudioWaveform({
+  mediaRef,
+  playing,
   onSeek,
   label,
   tone = "light",
   height = 34,
 }: {
-  played: number;
+  mediaRef: RefObject<HTMLMediaElement | null>;
+  playing: boolean;
   onSeek: (ratio: number) => void;
   label: string;
   tone?: "light" | "accent";
   height?: number;
 }) {
-  const heights = useMemo(() => waveformHeights(44), []);
+  const heights = useMemo(() => waveformHeights(BAR_COUNT), []);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const barsRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const filledRef = useRef(0);
+  const ariaRef = useRef(-1);
   const playedColor = tone === "light" ? "#fff" : "var(--accent)";
   const idleColor = tone === "light" ? "rgba(255,255,255,0.32)" : "var(--border)";
+
+  // Repaint only the bars whose fill state changed (the boundary moves one bar
+  // at a time while playing; a seek repaints the whole span in one pass).
+  const paintFill = useCallback((ratio: number) => {
+    const filled = Math.round(clampRatio(ratio) * BAR_COUNT);
+    if (filled !== filledRef.current) {
+      const from = Math.min(filled, filledRef.current);
+      const to = Math.max(filled, filledRef.current);
+      for (let i = from; i < to && i < BAR_COUNT; i++) {
+        const bar = barsRef.current[i];
+        if (bar) bar.style.background = i < filled ? playedColor : idleColor;
+      }
+      filledRef.current = filled;
+    }
+    const percent = Math.round(clampRatio(ratio) * 100);
+    if (percent !== ariaRef.current) {
+      ariaRef.current = percent;
+      wrapRef.current?.setAttribute("aria-valuenow", String(percent));
+    }
+  }, [idleColor, playedColor]);
+
+  const paintPattern = useCallback(() => {
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const bar = barsRef.current[i];
+      if (bar) bar.style.transform = `scaleY(${heights[i]})`;
+    }
+  }, [heights]);
+
+  // While playing the loop owns the bars (levels + fill); the static pattern is
+  // restored on pause and on unmount.
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    const ratio = () =>
+      Number.isFinite(el.duration) && el.duration > 0 ? clampRatio(el.currentTime / el.duration) : 0;
+    if (!playing) {
+      paintPattern();
+      paintFill(ratio());
+      return;
+    }
+    // Same-origin media only: a cross-origin element without CORS would be
+    // silenced the moment it is routed through Web Audio.
+    const analyser = canAnalyseSource(el.currentSrc || el.src) ? getMediaAnalyser(el) : null;
+    if (analyser) resumeSharedAudioContext();
+    const levels = analyser ? new Uint8Array(BAR_COUNT) : null;
+    const bytes = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    const smoothed = new Float32Array(BAR_COUNT);
+    let frame = 0;
+    let lastRatio = -1;
+    const tick = () => {
+      const next = ratio();
+      if (Math.abs(next - lastRatio) > 0.002) {
+        lastRatio = next;
+        paintFill(next);
+      }
+      if (analyser && levels && bytes && analyser.context.state === "running") {
+        sampleFrequencyLevels(analyser, levels, bytes);
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const target = Math.pow(levels[i] / 255, 0.85);
+          const prev = smoothed[i];
+          // Fast attack, slow release: bars jump with the beat and fall back
+          // smoothly instead of flickering.
+          smoothed[i] = target > prev ? target : prev * 0.82 + target * 0.18;
+          const bar = barsRef.current[i];
+          if (bar) bar.style.transform = `scaleY(${Math.max(0.08, smoothed[i])})`;
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      paintPattern();
+    };
+  }, [playing, mediaRef, paintFill, paintPattern]);
 
   const seekFromEvent = (clientX: number) => {
     const rect = wrapRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return;
-    onSeek(clampRatio((clientX - rect.left) / rect.width));
+    const ratio = clampRatio((clientX - rect.left) / rect.width);
+    paintFill(ratio);
+    onSeek(ratio);
   };
 
   return (
@@ -158,7 +257,7 @@ function AudioWaveform({
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(played * 100)}
+      aria-valuenow={0}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture?.(e.pointerId);
         seekFromEvent(e.clientX);
@@ -167,29 +266,38 @@ function AudioWaveform({
         if (e.buttons === 1) seekFromEvent(e.clientX);
       }}
       onKeyDown={(e) => {
-        if (e.key === "ArrowLeft") onSeek(clampRatio(played - 0.05));
-        if (e.key === "ArrowRight") onSeek(clampRatio(played + 0.05));
+        const el = mediaRef.current;
+        const ratio =
+          el && Number.isFinite(el.duration) && el.duration > 0 ? clampRatio(el.currentTime / el.duration) : 0;
+        if (e.key === "ArrowLeft") {
+          paintFill(clampRatio(ratio - 0.05));
+          onSeek(clampRatio(ratio - 0.05));
+        }
+        if (e.key === "ArrowRight") {
+          paintFill(clampRatio(ratio + 0.05));
+          onSeek(clampRatio(ratio + 0.05));
+        }
       }}
       style={{ display: "flex", alignItems: "center", gap: "2px", height: `${height}px`, cursor: "pointer", touchAction: "none" }}
     >
-      {heights.map((h, i) => {
-        const fill = (i + 0.5) / heights.length <= played;
-        return (
-          <span
-            key={i}
-            style={{
-              flex: 1,
-              height: `${Math.round(h * 100)}%`,
-              borderRadius: "2px",
-              background: fill ? playedColor : idleColor,
-              transition: "background 0.15s",
-            }}
-          />
-        );
-      })}
+      {heights.map((h, i) => (
+        <span
+          key={i}
+          ref={(node) => { barsRef.current[i] = node; }}
+          style={{
+            flex: 1,
+            height: "100%",
+            transform: `scaleY(${h})`,
+            transformOrigin: "center",
+            borderRadius: "2px",
+            background: idleColor,
+            transition: "background 0.15s",
+          }}
+        />
+      ))}
     </div>
   );
-}
+});
 
 export function MediaPlayer({
   src,
@@ -511,7 +619,8 @@ export function MediaPlayer({
         </button>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           <AudioWaveform
-            played={playedRatio}
+            mediaRef={mediaRef as RefObject<HTMLMediaElement | null>}
+            playing={playing}
             onSeek={seekTo}
             label={t.media_seek}
             tone={lightbox ? "light" : "accent"}
