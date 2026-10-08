@@ -24,6 +24,14 @@ const cspHeader = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Federated media lives outside the client build: attachments/avatars are
+  // served by the worker from R2 and the media cache at `/api/media/...`, and
+  // remote fallbacks point at arbitrary origins. vinext routes `next/image`
+  // local paths through `/_next/image`, whose asset resolver only serves the
+  // static client bundle — every `/api/media/...` image 404'd there. Unoptimized
+  // renders a plain <img> with the original URL (the media cache already stores
+  // the exact bytes), matching the old custom-loader behaviour.
+  images: { unoptimized: true },
   experimental: {
     serverActions: {
       allowedOrigins: ["*"],

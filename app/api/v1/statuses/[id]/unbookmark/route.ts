@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getLike, getAnnounce, deleteBookmark, canViewStatus, isAcceptedFollower } from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { getObjectById, getActorById, deleteBookmark, canViewStatus, isAcceptedFollower } from "@/lib/db";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { env } from "cloudflare:workers";
 
@@ -21,19 +21,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   await deleteBookmark(env.DB, actor.id, obj.id);
 
-  const [author, attachments, favourited, reblogged] = await Promise.all([
-    getActorById(env.DB, obj.actorId),
-    getAttachmentsByObjectId(env.DB, obj.id),
-    getLike(env.DB, actor.id, obj.id),
-    getAnnounce(env.DB, actor.id, obj.id),
-  ]);
-
+  const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound();
 
-  return json(serializeStatus(obj, author, domain, {
-    favourited: favourited !== null,
-    reblogged: reblogged !== null,
+  const viewerState = await loadViewerStatusState(env.DB, actor.id, obj);
+  return json(await serializeStatusForStream(env.DB, obj, author, domain, {
+    ...viewerState,
+    viewerId: actor.id,
     bookmarked: false,
-    attachments,
   }));
 }

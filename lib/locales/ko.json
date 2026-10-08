@@ -583,6 +583,7 @@
   "media_reveal": "언론보도",
   "media_hide": "비밀번호",
   "media_sensitive_label": "민감한 내용",
+  "media_unavailable": "미디어를 불러올 수 없습니다",
   "compose_label": "새로운 게시물",
   "edit_label": "게시물 편집",
   "action_block": "제품정보",

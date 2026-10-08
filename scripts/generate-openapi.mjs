@@ -390,6 +390,10 @@ function buildTypeCatalog() {
   }
   // serializeTag declares its return type inline; it is structurally MastodonTag.
   if (declarations.has("MastodonTag")) serializerMap.set("serializeTag", "MastodonTag");
+  // serializeStatusForStream (lib/streaming/serialize.ts) is the full-context
+  // status serializer used by interaction routes and stream payloads; it lives
+  // outside lib/mastodon but returns the same MastodonStatus shape.
+  if (declarations.has("MastodonStatus")) serializerMap.set("serializeStatusForStream", "MastodonStatus");
 
   while (true) {
     const next = [...queued].find((name) => !(name in schemas));

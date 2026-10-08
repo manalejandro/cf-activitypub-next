@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, notFound, unauthorized } from "@/lib/cf";
-import { getObjectById, getActorById, deleteLike, getAttachmentsByObjectId } from "@/lib/db";
+import { getObjectById, getActorById, deleteLike } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { buildLike, buildUndo, generateId } from "@/lib/activitypub/utils";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
@@ -43,8 +43,13 @@ export async function POST(
   }
 
   const refreshed = await getObjectById(env.DB, obj.id);
-  const attachments = await getAttachmentsByObjectId(env.DB, obj.id);
-  const serialized = serializeStatus(refreshed ?? obj, author, domain, { favourited: false, attachments });
+  const target = refreshed ?? obj;
+  const viewerState = await loadViewerStatusState(env.DB, actor.id, target);
+  const serialized = await serializeStatusForStream(env.DB, target, author, domain, {
+    ...viewerState,
+    viewerId: actor.id,
+    favourited: false,
+  });
   if (env.TIMELINE_STREAM) await broadcastStatusInteraction(env.TIMELINE_STREAM, serialized, author);
   if (env.TIMELINE_STREAM) await broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, author.id, serialized);
   return json(serialized);

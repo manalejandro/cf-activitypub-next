@@ -1,9 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis,
-  getLastStatusAtMap} from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { getObjectById, getActorById } from "@/lib/db";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
@@ -53,11 +52,13 @@ export async function POST(
       .bind(pinId, me.id, id)
       .run();
   }
-  const [attachments, allEmojis] = await Promise.all([
-    getAttachmentsByObjectId(env.DB, id),
-    getAllCustomEmojis(env.DB),
-  ]);
-    const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
   const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-  return json(serializeStatus(obj, author, domain, { pinned: true, attachments, emojis: allEmojis, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null }));
+  const viewerState = await loadViewerStatusState(env.DB, me.id, obj);
+  return json(await serializeStatusForStream(env.DB, obj, author, domain, {
+    ...viewerState,
+    viewerId: me.id,
+    pinned: true,
+    authorSupportsCalls: authorExtras?.supportsCalls,
+    authorMoved: authorExtras?.moved ?? null,
+  }));
 }

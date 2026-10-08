@@ -583,6 +583,7 @@
   "media_reveal": "Supporti di rivelazione",
   "media_hide": "Nascondi i media",
   "media_sensitive_label": "Contenuto sensibile",
+  "media_unavailable": "Contenuto multimediale non disponibile",
   "compose_label": "Nuovo post",
   "edit_label": "Modifica",
   "action_block": "Blocco",

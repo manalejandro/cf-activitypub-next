@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmojis } from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { getObjectById, getActorById } from "@/lib/db";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { env } from "cloudflare:workers";
 
@@ -23,9 +23,10 @@ export async function POST(
     .prepare("DELETE FROM status_pins WHERE actor_id = ? AND status_id = ?")
     .bind(me.id, id)
     .run();
-  const [attachments, allEmojis] = await Promise.all([
-    getAttachmentsByObjectId(env.DB, id),
-    getAllCustomEmojis(env.DB),
-  ]);
-  return json(serializeStatus(obj, author, domain, { pinned: false, attachments, emojis: allEmojis }));
+  const viewerState = await loadViewerStatusState(env.DB, me.id, obj);
+  return json(await serializeStatusForStream(env.DB, obj, author, domain, {
+    ...viewerState,
+    viewerId: me.id,
+    pinned: false,
+  }));
 }

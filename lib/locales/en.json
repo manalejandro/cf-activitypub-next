@@ -583,6 +583,7 @@
   "media_reveal": "Reveal media",
   "media_hide": "Hide media",
   "media_sensitive_label": "Sensitive content",
+  "media_unavailable": "Media unavailable",
   "compose_label": "New post",
   "edit_label": "Edit post",
   "action_block": "Block",

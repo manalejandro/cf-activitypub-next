@@ -3,6 +3,7 @@ import { json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
@@ -355,15 +356,19 @@ export async function PUT(
   }
 
   const updatedObj = await getObjectById(env.DB, obj.id);
-  const allEmojis = await getAllCustomEmojis(env.DB);
-  const parent = await parentExclusion(env.DB, (updatedObj ?? obj).inReplyToId);
-  // `currentAttachments` was re-read after the media replacement above: the
-  // response (and the streaming payload) must carry the edited media, not the
-  // pre-update list — omitting it made freshly uploaded media vanish on save.
-  const serializedUpdated = serializeStatus(updatedObj ?? obj, actor, domain, {
-    emojis: allEmojis,
-    attachments: currentAttachments,
-    inReplyToAccountId: parent?.id ?? null,
+  const target = updatedObj ?? obj;
+  const parent = await parentExclusion(env.DB, target.inReplyToId);
+  // The response (and the streaming payload) replaces the client's cached copy:
+  // it must carry the edited media (re-read from the DB, so a replacement made
+  // above is included) *and* the rest of the context — poll, quote, emojis — or
+  // the merge drops them.
+  const authorExtras = (await getStatusAuthorExtras(env.DB, [actor.id], domain)).get(actor.id);
+  const viewerState = await loadViewerStatusState(env.DB, actor.id, target);
+  const serializedUpdated = await serializeStatusForStream(env.DB, target, actor, domain, {
+    ...viewerState,
+    viewerId: actor.id,
+    authorSupportsCalls: authorExtras?.supportsCalls,
+    authorMoved: authorExtras?.moved ?? null,
   });
 
   // Broadcast status.update event to streaming clients
@@ -444,7 +449,13 @@ export async function DELETE(
   }
   await env.KV.delete(`ap:obj:${id}`).catch(() => {});
 
-  const allEmojis = await getAllCustomEmojis(env.DB);
-  const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
-  return json(serializeStatus(obj, author ?? actor, domain, { emojis: allEmojis, authorLastStatusAt }));
+  const deletedAuthor = author ?? actor;
+  const authorExtras = (await getStatusAuthorExtras(env.DB, [deletedAuthor.id], domain)).get(deletedAuthor.id);
+  const viewerState = await loadViewerStatusState(env.DB, actor.id, obj);
+  return json(await serializeStatusForStream(env.DB, obj, deletedAuthor, domain, {
+    ...viewerState,
+    viewerId: actor.id,
+    authorSupportsCalls: authorExtras?.supportsCalls,
+    authorMoved: authorExtras?.moved ?? null,
+  }));
 }

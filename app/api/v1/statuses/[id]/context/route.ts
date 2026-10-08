@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds,
+import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getLikedObjectIds, getAnnouncedObjectIds, getObjectQuotesCounts,
   getBlockedActorIds,
   getBlockedDomains, getActorFieldsMap } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { LocalObject, LocalActor } from "@/lib/types";
@@ -101,7 +102,7 @@ export async function GET(
   }
 
   const serializeAll = async (objs: LocalObject[]) => {
-    const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds] = await Promise.all([
+    const [pollMap, attachmentMap, allEmojis, filteredMap, lastStatusAtMap, bookmarkedIds, likedIds, announcedIds, quotesCountMap, quotesById] = await Promise.all([
       loadSerializedPolls(env.DB, authActor?.id ?? null, objs.map((o) => o.id)),
       objs.length > 0 ? getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)) : Promise.resolve(new Map()),
       getAllCustomEmojis(env.DB),
@@ -110,6 +111,10 @@ export async function GET(
         : Promise.resolve(new Map()),
       getLastStatusAtMap(env.DB, objs.map((o) => o.actorId)),
       authActor ? getBookmarkedObjectIds(env.DB, authActor.id, objs.map((o) => o.id)) : Promise.resolve(new Set()),
+      authActor ? getLikedObjectIds(env.DB, authActor.id, objs.map((o) => o.id)) : Promise.resolve(new Set()),
+      authActor ? getAnnouncedObjectIds(env.DB, authActor.id, objs.map((o) => o.id)) : Promise.resolve(new Set()),
+      getObjectQuotesCounts(env.DB, objs.map((o) => o.id)),
+      getQuotesByIds(env.DB, objs.map((o) => o.quoteId).filter(Boolean) as string[], domain, authActor?.id ?? null),
     ]);
     const mutedIds = new Set(mutedIdList);
     const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
@@ -122,7 +127,7 @@ export async function GET(
           if (!author) return null;
           const poll = pollMap.get(obj.id) ?? null;
           const inReplyToAccountId = await getReplyToAccountId(env.DB, obj);
-          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, bookmarked: bookmarkedIds.has(obj.id), muted: mutedIds.has(obj.actorId), authorFields: authorFieldsMap.get(obj.actorId) ?? [] });
+          return serializeStatus(obj, author, domain, { poll, attachments: attachmentMap.get(obj.id) ?? [], emojis: allEmojis, inReplyToAccountId, filtered: filteredMap.get(obj.id) ?? [], authorLastStatusAt: lastStatusAtMap.get(obj.actorId) ?? null, authorSupportsCalls: authorExtras.get(obj.actorId)?.supportsCalls, authorMoved: authorExtras.get(obj.actorId)?.moved ?? null, bookmarked: bookmarkedIds.has(obj.id), muted: mutedIds.has(obj.actorId), authorFields: authorFieldsMap.get(obj.actorId) ?? [], favourited: likedIds.has(obj.id), reblogged: announcedIds.has(obj.id), quote: obj.quoteId ? (quotesById.get(obj.quoteId) ?? null) : null, quotesCount: quotesCountMap.get(obj.id) ?? 0 });
         })
       )
     ).filter(Boolean);

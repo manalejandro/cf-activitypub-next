@@ -583,6 +583,7 @@
   "media_reveal": "メディア",
   "media_hide": "メディアを隠す",
   "media_sensitive_label": "敏感な内容",
+  "media_unavailable": "メディアを読み込めません",
   "compose_label": "新着情報",
   "edit_label": "編集投稿",
   "action_block": "ブロック",

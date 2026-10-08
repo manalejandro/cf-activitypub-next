@@ -583,6 +583,7 @@
   "media_reveal": "Médias de révélation",
   "media_hide": "Masquer les médias",
   "media_sensitive_label": "Contenu sensible",
+  "media_unavailable": "Média indisponible",
   "compose_label": "Nouveau poste",
   "edit_label": "Modifier le poste",
   "action_block": "Bloc",

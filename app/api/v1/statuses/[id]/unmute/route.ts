@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
-import { serializeStatus } from "@/lib/mastodon/serializers";
+import { getObjectById, getActorById } from "@/lib/db";
+import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { env } from "cloudflare:workers";
 
@@ -19,6 +19,10 @@ export async function POST(
   if (!obj) return notFound();
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound();
-  const attachments = await getAttachmentsByObjectId(env.DB, id);
-  return json(serializeStatus(obj, author, domain, { attachments }));
+  const viewerState = await loadViewerStatusState(env.DB, me.id, obj);
+  return json(await serializeStatusForStream(env.DB, obj, author, domain, {
+    ...viewerState,
+    viewerId: me.id,
+    muted: false,
+  }));
 }

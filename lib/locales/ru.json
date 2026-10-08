@@ -583,6 +583,7 @@
   "media_reveal": "Раскрывать СМИ",
   "media_hide": "Скрыть СМИ",
   "media_sensitive_label": "Чувствительный контент",
+  "media_unavailable": "Медиа недоступно",
   "compose_label": "Новый пост",
   "edit_label": "Редактировать сообщение",
   "action_block": "Блокировать",

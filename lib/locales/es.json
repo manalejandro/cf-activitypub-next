@@ -583,6 +583,7 @@
   "media_reveal": "Revelar multimedia",
   "media_hide": "Ocultar multimedia",
   "media_sensitive_label": "Contenido sensible",
+  "media_unavailable": "Contenido multimedia no disponible",
   "compose_label": "Nueva publicación",
   "edit_label": "Editar publicación",
   "action_block": "Bloquear",

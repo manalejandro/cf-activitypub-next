@@ -183,6 +183,13 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: { attachments: MediaAttachment[]; sensitive?: boolean; defaultRevealed?: boolean }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(defaultRevealed);
+  // Attachment URLs that failed to load (dead/expired origin, evicted cache
+  // entry) render as a labelled placeholder instead of the browser's broken
+  // image icon — the status stays readable.
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const markFailed = useCallback((id: string) => {
+    setFailedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
   const closeLb = useCallback(() => setLbIdx(null), []);
   const { t } = useLocale();
   if (!attachments.length) return null;
@@ -259,6 +266,32 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
       >
         {attachments.map((att, i) => {
           if (att.type === "image") {
+            if (failedIds.has(att.id)) {
+              return (
+                <div
+                  key={att.id}
+                  style={{
+                    position: "relative",
+                    aspectRatio: attachments.length === 1 ? "16/9" : "1/1",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.35rem",
+                    padding: "0.5rem",
+                    textAlign: "center",
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-muted)",
+                    fontSize: "0.72rem",
+                  }}
+                >
+                  <Icon name="file-image-o" size="1.3rem" color="var(--text-muted)" />
+                  <span style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>
+                    {att.description || t.media_unavailable}
+                  </span>
+                </div>
+              );
+            }
             return (
               <button
                 key={att.id}
@@ -283,6 +316,7 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
                   fill
                   sizes="(max-width: 768px) 100vw, 600px"
                   style={{ objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }}
+                  onError={() => markFailed(att.id)}
                 />
               </button>
             );
@@ -548,6 +582,9 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
   const { t } = useLocale();
   const [revealed, setRevealed] = useState(false);
   const [embedOpen, setEmbedOpen] = useState(false);
+  // A dead card image (origin gone) just drops the image area: the title,
+  // description and link keep working.
+  const [imageFailed, setImageFailed] = useState(false);
   const blurred = sensitive && !revealed;
   const host = (() => {
     try { return new URL(card.url).hostname; } catch { return card.url; }
@@ -580,7 +617,7 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
         overflow: "hidden",
       }}
     >
-      {card.image && (
+      {card.image && !imageFailed && (
         <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "var(--bg-overlay)" }}>
           <Image
             src={card.image}
@@ -588,6 +625,7 @@ function LinkPreview({ card, sensitive }: { card: LinkPreviewCardData; sensitive
             fill
             sizes="(max-width: 768px) 100vw, 600px"
             style={{ objectFit: "cover", filter: blurred ? "blur(12px)" : undefined }}
+            onError={() => setImageFailed(true)}
           />
           {!blurred && embedUrl && (
             <button
