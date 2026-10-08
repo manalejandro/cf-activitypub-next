@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { parseGuardOutput } from "@/lib/moderation/classifier";
+import { parseClefSafety } from "@/lib/moderation/classifier";
+import type { ClefAnswers } from "@/lib/moderation/clef";
 import {
   stripHtml,
   countUrls,
@@ -40,24 +41,35 @@ describe("chargeGlobalAI", () => {
   });
 });
 
-describe("parseGuardOutput", () => {
-  it("parses a safe verdict", () => {
-    const v = parseGuardOutput("safe");
-    expect(v).toEqual({ safe: true, categories: [], raw: "safe" });
+describe("parseClefSafety", () => {
+  function answers(unsafe: number, probabilities: Record<string, number> = {}): ClefAnswers {
+    return {
+      unsafe: { type: "noul", noul: unsafe },
+      category: { type: "choice", choice: "none", probabilities, confidence: 0.9 },
+    };
+  }
+
+  it("treats a low unsafe probability as safe", () => {
+    const v = parseClefSafety(answers(0.2, { none: 0.9, S1: 0.05 }));
+    expect(v?.safe).toBe(true);
+    expect(v?.categories).toEqual([]);
   });
 
-  it("parses an unsafe verdict with categories", () => {
-    const v = parseGuardOutput("unsafe\nS1\nS2: Non-Violent Crimes");
+  it("reports every category above the threshold when unsafe", () => {
+    const v = parseClefSafety(answers(0.9, { none: 0.1, S10: 0.7, S2: 0.4, S1: 0.05 }));
     expect(v?.safe).toBe(false);
-    expect(v?.categories.length).toBe(2);
-    expect(v?.categories[0]).toContain("S1");
-    expect(v?.categories[1]).toContain("Non-Violent Crimes");
+    expect(v?.categories).toEqual(["S10: Hate", "S2: Non-Violent Crimes"]);
   });
 
-  it("returns null for empty/unparseable output", () => {
-    expect(parseGuardOutput("")).toBeNull();
-    expect(parseGuardOutput("  ")).toBeNull();
-    expect(parseGuardOutput("maybe")).toBeNull();
+  it("falls back to the model's top category when none clears the threshold", () => {
+    const v = parseClefSafety(answers(0.8, { none: 0.6, S12: 0.2, S11: 0.15 }));
+    expect(v?.safe).toBe(false);
+    expect(v?.categories).toEqual(["S12: Sexual Content"]);
+  });
+
+  it("returns null when the model did not answer", () => {
+    expect(parseClefSafety(null)).toBeNull();
+    expect(parseClefSafety({} as ClefAnswers)).toBeNull();
   });
 });
 

@@ -32,7 +32,7 @@
 | Streaming en tiempo real | Cloudflare Durable Objects (TimelineStreamDO) |
 | Señalización WebRTC | Cloudflare Durable Objects (CallSignalingDO) |
 | ICE WebRTC | STUN de Cloudflare + TURN opcional de Cloudflare Calls |
-| Inferencia IA | Cloudflare Workers AI (LLaVA para descripciones multimedia; Llama Guard + Llama 3.3 + embeddings BGE-M3 para moderación) |
+| Inferencia IA | Cloudflare Workers AI (LLaVA para descripciones multimedia; clef-flash + clef para decisiones + embeddings BGE-M3 para moderación) |
 | Memoria semántica | Cloudflare Vectorize (memoria de abuso de moderación + precedente RAG) |
 | Correo electrónico | Cloudflare Email Workers (vía binding `send_email`) |
 | Criptografía | Web Crypto API (RSASSA-PKCS1-v1_5 + PBKDF2 + ECDH + AES-128-GCM) |
@@ -255,7 +255,7 @@ Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (binding
 Moderación totalmente autónoma — no hay administrador humano, la IA gestiona la seguridad de la instancia. La instancia es bilingüe (inglés + español); los prompts y los correos de notificación se adaptan al idioma.
 
 - **Resolución automática de reportes** — los reportes de Mastodon entrantes se evalúan y resuelven (dismiss / warn / delete / suspend), notificando el resultado al denunciante
-- **Filtrado previo a la publicación** — cada estado nuevo se filtra con Llama Guard; el contenido marcado se eleva a un modelo de razonamiento (allow / mark_sensitive / delete / escalate)
+- **Filtrado previo a la publicación** — cada estado nuevo se filtra con clef-flash; el contenido marcado se eleva al modelo de razonamiento clef (allow / mark_sensitive / delete / escalate)
 - **Revisión de registros** — los nuevos registros se revisan por si hubiera abuso antes de aprobarse
 - **Patrulla de cuentas** — un ciclo programado escanea estados recientes, cuentas sospechosas, spam duplicado y dominios de spam
 - **Heurísticas deterministas** — señales basadas en reglas (publicaciones solo con enlaces, abuso de mayúsculas/emojis, palabras clave de estafa en inglés y español, inundaciones de publicaciones, seguimiento masivo) alimentan cada decisión de la IA, de modo que el spam se detecta incluso si el LLM no está disponible

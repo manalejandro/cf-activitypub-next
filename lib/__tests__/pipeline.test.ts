@@ -32,7 +32,7 @@ vi.mock("@/lib/moderation/actions", () => ({
   deleteStatus: mockDeleteStatus,
   markStatusSensitive: mockMarkStatusSensitive,
   recordNoAction: mockRecordNoAction,
-  GUARDIAN_MODEL: "cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  GUARDIAN_MODEL: "cf/cloudflare/clef",
 }));
 
 vi.mock("@/lib/moderation/log", () => ({

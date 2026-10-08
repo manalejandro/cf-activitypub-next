@@ -32,7 +32,7 @@
 | Realtime streaming | Cloudflare Durable Objects (TimelineStreamDO) |
 | WebRTC signaling | Cloudflare Durable Objects (CallSignalingDO) |
 | WebRTC ICE | Cloudflare STUN + optional Cloudflare Calls TURN |
-| AI inference | Cloudflare Workers AI (LLaVA for media descriptions; Llama Guard + Llama 3.3 + BGE-M3 embeddings for moderation) |
+| AI inference | Cloudflare Workers AI (LLaVA for media descriptions; clef-flash + clef decisions + BGE-M3 embeddings for moderation) |
 | Semantic memory | Cloudflare Vectorize (moderation abuse memory + RAG precedent) |
 | Email | Cloudflare Email Workers (via `send_email` binding) |
 | Crypto | Web Crypto API (RSASSA-PKCS1-v1_5 + PBKDF2 + ECDH + AES-128-GCM) |
@@ -254,7 +254,7 @@ Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindin
 Fully autonomous moderation — there is no human admin, the AI runs the instance's safety. The instance is bilingual (English + Spanish); prompts and notification emails are language-aware.
 
 - **Report auto-resolution** — incoming Mastodon reports are evaluated and resolved (dismiss / warn / delete / suspend), with the reporter notified of the outcome
-- **Pre-publish screening** — every new status is filtered by Llama Guard; flagged content is escalated to a reasoning model (allow / mark_sensitive / delete / escalate)
+- **Pre-publish screening** — every new status is filtered by clef-flash; flagged content is escalated to the clef reasoning model (allow / mark_sensitive / delete / escalate)
 - **Registration screening** — new sign-ups are reviewed for abuse before approval
 - **Account patrol** — a scheduled cycle scans recent statuses, suspicious accounts, duplicate spam and spam domains
 - **Deterministic heuristics** — rule-based signals (link-only posts, caps/emoji abuse, scam keywords in English and Spanish, posting floods, mass-following) feed every AI decision, so spam is caught even if the LLM is unavailable

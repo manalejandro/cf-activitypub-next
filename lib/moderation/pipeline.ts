@@ -8,8 +8,8 @@
  *                       cache. Clean content from a trusted author → allow with
  *                       ZERO AI calls. Identical content already reviewed →
  *                       reuse the stored verdict.
- *   Tier 1 (cheap)      Llama Guard 8B fast screen + Vectorize similarity.
- *   Tier 2 (expensive)  Reasoning model (70B) — only when Tier 1 flags content
+ *   Tier 1 (cheap)      clef-flash decision screen + Vectorize similarity.
+ *   Tier 2 (expensive)  clef reasoning model — only when Tier 1 flags content
  *                       or the author has a behavior review flag.
  *
  * A per-account daily budget (KV) caps how many times any AI tier may run for a
@@ -37,8 +37,8 @@ const SENSITIVE_GUARD_CODES = new Set(["S12"]);
  * Heuristic flags strong enough to act on directly, without an LLM call.
  * Deliberately conservative: only unmistakable spam patterns and content that
  * is essentially nothing but links. Softer signals (muchos_enlaces,
- * mensaje_corto_con_enlace, mayusculas, emoji) still go to the cheap Llama
- * Guard screen rather than auto-blocking a possibly-legitimate post.
+ * mensaje_corto_con_enlace, mayusculas, emoji) still go to the cheap
+ * clef-flash screen rather than auto-blocking a possibly-legitimate post.
  *
  * `patron_estafa` is a keyword match (crypto, work-from-home, ...) that a
  * trusted user could legitimately discuss, so it only auto-blocks new/low-trust
@@ -205,7 +205,7 @@ export async function screenStatus(
     return { blocked: false, markedSensitive: false };
   }
 
-  // ── Tier 1: cheap Llama Guard screen + Vectorize similarity in parallel ────
+  // ── Tier 1: cheap clef-flash screen + Vectorize similarity in parallel ────
   const globalOk = await chargeGlobalAI(env, AI_UNITS_GUARD);
   const [screen, vector] = await Promise.all([
     env.AI && globalOk ? runWithTimeout(screenContent(env.AI, plainText), 2500, null) : Promise.resolve(null),

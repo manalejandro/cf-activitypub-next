@@ -403,8 +403,8 @@ export async function POST(request: NextRequest): Promise<Response> {
   const { tags: canonicalTags } = await canonicalizeMentionTags(env.DB, allTags, env.KV);
 
   // ── AI Guardian: pre-publish content gate ─────────────────────────────────
-  // Fast Llama Guard screen on every status with text; flagged content is
-  // evaluated by the reasoning model. Clearly harmful posts are blocked before
+  // Fast clef-flash screen on every status with text; flagged content is
+  // evaluated by the clef reasoning model. Clearly harmful posts are blocked before
   // they are published or delivered; borderline adult content is auto-marked
   // sensitive. When the AI is unavailable the post proceeds and the scheduled
   // moderation cycle reviews it later.

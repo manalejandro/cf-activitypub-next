@@ -1,14 +1,25 @@
 /**
  * AI decision engine — the "Guardian".
  *
- * Wraps Workers AI LLM calls behind small typed functions used by the
- * moderation pipeline. All functions return a structured verdict (or null when
- * the model is unavailable / output is invalid), so callers never crash.
+ * Wraps clef (@cf/cloudflare/clef) behind the typed functions used by the
+ * moderation pipeline. Clef returns probabilities for the options of each
+ * question and never writes prose, so a verdict is assembled from three
+ * answers: the `action` choice question, the probability of the chosen option
+ * (verdict confidence) and the answered yes/no signals (the `reason`, written
+ * in the instance language). All functions return null when the model is
+ * unavailable or the answers are invalid, so callers never crash.
  *
- * The prompts are defined in ./prompts.ts and always ask for strict JSON.
+ * The question schemas (policy, criteria, signals) live in ./prompts.ts.
  */
 
-import { GUARDIAN_SYSTEM_PROMPT, buildReportPrompt, buildRegistrationPrompt, buildContentPrompt, buildAccountPrompt } from "./prompts";
+import { CLEF, confidenceFromProbability, pickChoice, runClef, signalsReason } from "./clef";
+import {
+  buildAccountDecision,
+  buildContentDecision,
+  buildRegistrationDecision,
+  buildReportDecision,
+  type DecisionSchema,
+} from "./prompts";
 
 export interface Verdict {
   action: string;
@@ -21,59 +32,41 @@ export type RegistrationVerdict = Verdict & { action: "approve" | "reject" };
 export type ContentVerdict = Verdict & { action: "allow" | "mark_sensitive" | "delete" | "escalate" };
 export type AccountVerdict = Verdict & { action: "monitor" | "warn" | "suspend" };
 
-const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as Parameters<Ai["run"]>[0];
-
 /** Model id used for audit logging. */
-export const GUARDIAN_MODEL = String(MODEL).replace(/^@/, "");
+export const GUARDIAN_MODEL = String(CLEF).replace(/^@/, "");
 
 interface AiEnv {
   AI?: Ai;
 }
 
-async function ask(
+/**
+ * Run a decision schema through clef and turn the answers into a verdict.
+ * Returns null when the model is unavailable or the chosen action is not one
+ * of the allowed ones (defensive: a model glitch must never widen the action
+ * set).
+ */
+async function decide<T extends Verdict>(
   env: AiEnv,
-  userPrompt: string,
-  allowedActions: string[],
-  maxTokens = 256
-): Promise<Verdict | null> {
+  schema: DecisionSchema,
+  allowedActions: string[]
+): Promise<T | null> {
   if (!env.AI) return null;
 
-  try {
-    const result = (await env.AI.run(MODEL, {
-      messages: [
-        { role: "system", content: GUARDIAN_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.1,
-    } as Parameters<Ai["run"]>[1])) as { response?: string };
+  const answers = await runClef(env.AI, CLEF, schema.state, schema.questions);
+  const action = pickChoice(answers, "action");
+  if (!action || !allowedActions.includes(action.option)) return null;
 
-    const text = (result.response ?? "").trim();
-    if (!text) return null;
+  const reason = (
+    signalsReason(answers, schema.signalLabels) ??
+    schema.fallbackReasons[action.option] ??
+    "Clasificado por el Guardian."
+  ).slice(0, 500);
 
-    const parsed = JSON.parse(text) as Partial<Verdict>;
-    if (
-      typeof parsed.action !== "string" ||
-      !allowedActions.includes(parsed.action) ||
-      typeof parsed.reason !== "string"
-    ) {
-      return null;
-    }
-
-    const confidence = (["low", "medium", "high"] as const).includes(
-      parsed.confidence as Verdict["confidence"]
-    )
-      ? (parsed.confidence as Verdict["confidence"])
-      : "medium";
-
-    return {
-      action: parsed.action,
-      reason: parsed.reason.slice(0, 500),
-      confidence,
-    };
-  } catch {
-    return null;
-  }
+  return {
+    action: action.option,
+    reason,
+    confidence: confidenceFromProbability(action.probability),
+  } as T;
 }
 
 /** Evaluate a user report. */
@@ -89,8 +82,7 @@ export async function evaluateReport(
     mismatchedOwnership: boolean;
   }
 ): Promise<ReportVerdict | null> {
-  const v = await ask(env, buildReportPrompt(report), ["dismiss", "warn", "delete", "suspend"]);
-  return v as ReportVerdict | null;
+  return decide<ReportVerdict>(env, buildReportDecision(report), ["dismiss", "warn", "delete", "suspend"]);
 }
 
 /** Review a brand-new local account profile. */
@@ -104,8 +96,7 @@ export async function evaluateRegistration(
     ipSuspicious: boolean;
   }
 ): Promise<RegistrationVerdict | null> {
-  const v = await ask(env, buildRegistrationPrompt(profile), ["approve", "reject"]);
-  return v as RegistrationVerdict | null;
+  return decide<RegistrationVerdict>(env, buildRegistrationDecision(profile), ["approve", "reject"]);
 }
 
 /** Screen individual status content. */
@@ -126,8 +117,7 @@ export async function evaluateContent(
     precedent?: string | null;
   }
 ): Promise<ContentVerdict | null> {
-  const v = await ask(env, buildContentPrompt(status), ["allow", "mark_sensitive", "delete", "escalate"], 320);
-  return v as ContentVerdict | null;
+  return decide<ContentVerdict>(env, buildContentDecision(status), ["allow", "mark_sensitive", "delete", "escalate"]);
 }
 
 /** Evaluate long-term account behavior. */
@@ -153,6 +143,5 @@ export async function evaluateAccount(
     flags: string[];
   }
 ): Promise<AccountVerdict | null> {
-  const v = await ask(env, buildAccountPrompt(account), ["monitor", "warn", "suspend"], 320);
-  return v as AccountVerdict | null;
+  return decide<AccountVerdict>(env, buildAccountDecision(account), ["monitor", "warn", "suspend"]);
 }
