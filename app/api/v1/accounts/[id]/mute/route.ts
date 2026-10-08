@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, createMute, isMuted } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
 import { buildRelationship } from "@/lib/mastodon/relationships";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

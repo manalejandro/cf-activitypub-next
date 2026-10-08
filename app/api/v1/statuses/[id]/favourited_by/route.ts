@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getObjectById, getActorById, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/statuses/:id/favourited_by
 // Returns accounts that liked the given status.
@@ -12,7 +13,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;

@@ -1,18 +1,18 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getFollow, createFollow } from "@/lib/db";
 import { buildFollow, generateId } from "@/lib/activitypub/utils";
 import { resolveWebFinger } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/import/follows — Mastodon-compatible CSV import
 // Accepts "Account address[,Show boosts]" rows (one per line, optional header).
 // Resolves every handle via WebFinger, follows the remote account, and returns
 // a per-handle report.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 

@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const me = await getAuthenticatedActor(_request, env.DB);
   if (!me) return unauthorized();

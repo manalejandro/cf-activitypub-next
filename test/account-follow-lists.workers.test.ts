@@ -2,7 +2,6 @@ import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET as getFollowers } from "@/app/api/v1/accounts/[id]/followers/route";
 import { GET as getFollowing } from "@/app/api/v1/accounts/[id]/following/route";
-import { installTestContext } from "./helpers/context";
 import { applyTestSchema, resetTestDatabase } from "./helpers/db";
 
 /**
@@ -12,7 +11,6 @@ import { applyTestSchema, resetTestDatabase } from "./helpers/db";
  * emoji <img> and reports the used emojis in `account.emojis`.
  */
 beforeAll(async () => {
-  installTestContext();
   await applyTestSchema();
 });
 

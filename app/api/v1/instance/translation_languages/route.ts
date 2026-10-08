@@ -1,8 +1,9 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { discardBody } from "@/lib/http";
 import { getInstanceSetting } from "@/lib/db";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
+import { env } from "cloudflare:workers";
 
 interface LtLanguage {
   code: string;
@@ -17,7 +18,6 @@ interface LtLanguage {
  * the instance's configured languages.
  */
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const ltUrl = env.LIBRETRANSLATE_URL?.trim();
   if (ltUrl) {

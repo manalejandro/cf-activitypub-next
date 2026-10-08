@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { clearAuthCookie } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // POST /oauth/revoke  (RFC 7009)
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   let body: Record<string, string> = {};
   const contentType = request.headers.get("Content-Type") ?? "";

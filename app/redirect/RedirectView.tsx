@@ -8,7 +8,7 @@ import { useInstanceTitle } from "@/lib/instance-context";
 /**
  * Mastodon-style external-link interstitial. The target arrives as a prop from
  * the server page: `useSearchParams` reads the browser URL on the client, which
- * for a middleware rewrite (`/@user@domain` → `/redirect?url=…`) does not carry
+ * for a proxy rewrite (`/@user@domain` → `/redirect?url=…`) does not carry
  * the rewritten query — reading it there made every target look invalid.
  */
 export function RedirectView({ target }: { target: string }) {

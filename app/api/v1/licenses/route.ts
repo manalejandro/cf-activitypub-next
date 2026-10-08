@@ -1,6 +1,7 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { cachedMediaUrl, listLicenses } from "@/lib/db";
 import { licenseIconsForUrl } from "@/lib/licenses";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/licenses — licenses offered by this instance (FEP-6757).
 //
@@ -8,7 +9,6 @@ import { licenseIconsForUrl } from "@/lib/licenses";
 // catalogue before the user posts, and the list carries no secrets. Clients
 // resolve `status.license_url` against it to render the badge.
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
   const licenses = await listLicenses(env.DB);
   const payload = await Promise.all(
     licenses.map(async (license) => ({

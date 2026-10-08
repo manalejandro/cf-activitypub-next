@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
+import { getBaseUrl, json } from "@/lib/cf";
 import { parseCoordinatePair, routeRequestUrls } from "@/lib/location";
 import { safeFetch } from "@/lib/activitypub/federation";
+import { env } from "cloudflare:workers";
 
 /**
  * Routing proxy for the location page.
@@ -16,7 +17,6 @@ import { safeFetch } from "@/lib/activitypub/federation";
  * GET /api/route?profile=driving|foot&from=lat,lng&to=lat,lng
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const base = getBaseUrl(env);
   const params = new URL(request.url).searchParams;
   const profile = params.get("profile") === "foot" ? "foot" : "driving";

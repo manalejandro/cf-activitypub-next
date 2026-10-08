@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { allowed } = await checkRateLimit(env.KV, `confemail:${clientIp}`, 10, 60);
   if (!allowed) {

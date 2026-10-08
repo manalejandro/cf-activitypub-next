@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
 import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 import { putMediaObject } from "@/lib/media/r2-put";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();

@@ -1,11 +1,11 @@
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getUnreadNotificationCount } from "@/lib/db";
 import type { NextRequest } from "next/server";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/notifications/unread_count
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, notFound } from "@/lib/cf";
+import { notFound } from "@/lib/cf";
 import { getInstanceStats } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // GET /nodeinfo/:version
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ version: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { version } = await params;
 
   if (!version.startsWith("2")) {

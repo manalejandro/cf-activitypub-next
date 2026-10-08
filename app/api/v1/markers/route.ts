@@ -1,11 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getMarkers, upsertMarker } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -28,7 +28,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

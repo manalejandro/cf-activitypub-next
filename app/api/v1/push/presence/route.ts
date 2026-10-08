@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
+import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { updatePushPresence } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // How long a presence heartbeat is valid. The client renews it every 60s while
 // the tab is focused, so a crashed tab starts receiving push within two minutes.
@@ -11,7 +12,6 @@ const PRESENCE_TTL_SECONDS = 120;
 // skips Web Push for that device (the in-app streaming event still updates the
 // UI). `active: false` (blur/hide/pagehide) releases it immediately.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();

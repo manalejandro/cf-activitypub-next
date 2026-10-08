@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
+import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import {
   getActorByEmail,
   getActorByCanonicalEmailHash,
@@ -25,10 +25,10 @@ import { canonicalEmailHash } from "@/lib/canonical-email";
 import { recordModeration } from "@/lib/moderation/log";
 import { emailDomain, isBlockedEmailDomain, MIN_PASSWORD_LENGTH, registrationBlockedEmailDomains } from "@/lib/constants";
 import { clampScope } from "@/lib/oauth-scopes";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts — Register a new account
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   // Canonical instance URL: local actor ids must never be derived from the
   // request Host (workers.dev alias / host-header poisoning would create
   // actors whose id/inbox point at a foreign host).

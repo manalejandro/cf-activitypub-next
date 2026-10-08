@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getHomeTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap, getBookmarkedObjectIds , getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializeReblog, loadSerializedPolls } from "@/lib/mastodon/serializers";
@@ -9,10 +9,10 @@ import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/timelines/home
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;

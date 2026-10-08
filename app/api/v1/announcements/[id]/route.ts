@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAdminRole } from "@/lib/admin-auth";
+import { env } from "cloudflare:workers";
 
 // DELETE /api/v1/announcements/:id — Delete an announcement (admin/moderator only).
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const role = await getAdminRole(request, env);
   if (role === null) return unauthorized();

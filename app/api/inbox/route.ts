@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
 import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 import { getActorById, getObjectById } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // POST /inbox — Shared inbox for federation delivery
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 

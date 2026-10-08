@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
+import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, createPasswordReset } from "@/lib/db";
 import { generateSecureToken } from "@/lib/auth";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest): Promise<Response> {
   let email: string;
@@ -24,7 +25,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "email is required" }, 400);
   }
 
-  const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
 
   // Recovery is browser-only: bots were able to omit the token and skip the

@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest } from "@/lib/cf";
+import { json, badRequest } from "@/lib/cf";
 import { getAdminRole } from "@/lib/admin-auth";
 import {
   createCanonicalEmailBlock,
@@ -9,10 +9,10 @@ import {
 import { canonicalEmail, canonicalEmailHash } from "@/lib/canonical-email";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/admin/canonical_email_blocks — mailboxes that cannot register.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
@@ -31,7 +31,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // POST /api/v1/admin/canonical_email_blocks — block a mailbox (any variant).
 // body: { email, reason? }
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
@@ -74,7 +73,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 // DELETE /api/v1/admin/canonical_email_blocks?hash=… — unblock a mailbox.
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);

@@ -1,16 +1,16 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { canViewStatus, getActorById, getObjectById, getPollById, getPollOptions, getPollVotesByActor, createPollVotes, isAcceptedFollower } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializePoll } from "@/lib/mastodon/serializers";
 import { buildVote, generateId } from "@/lib/activitypub/utils";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import { env } from "cloudflare:workers";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

@@ -1,16 +1,16 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getMlsKeyPackagesByActor, countMlsMessagesByRecipient, getAllCustomEmojis, getPreferredLicenseUrl } from "@/lib/db";
 import { buildActor } from "@/lib/activitypub/utils";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { processStatusContent, localSummaryToPlain } from "@/lib/activitypub/content";
+import { env } from "cloudflare:workers";
 
 // GET /users/:username
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
 

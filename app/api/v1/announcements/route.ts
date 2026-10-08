@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAdminRole } from "@/lib/admin-auth";
 import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
 import { linkifyHtmlText, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
+import { env } from "cloudflare:workers";
 
 // Announcements are stored as the plain text an admin types in the composer.
 // Convert it to the same linkified HTML used for statuses (URLs, @mentions,
@@ -26,7 +27,6 @@ function renderAnnouncementContent(content: string, domain: string): string {
 // GET /api/v1/announcements — List announcements, with `read` status for the
 // current actor (read = they have dismissed it).
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -63,7 +63,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 // POST /api/v1/announcements — Create a new announcement (admin/moderator only).
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   // getAdminRole also accepts ADMIN_TOKEN operators (the old inline role

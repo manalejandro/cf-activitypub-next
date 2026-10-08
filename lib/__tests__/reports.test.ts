@@ -28,13 +28,7 @@ const mockDb = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/lib/cf", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/cf")>();
-  return {
-    ...actual,
-    getCloudflareContext: () => ({ env: { DB: mockDb } }),
-  };
-});
+vi.mock("cloudflare:workers", () => ({ env: { DB: mockDb } }));
 
 vi.mock("@/lib/db", () => ({
   getReportById: mockGetReportById,

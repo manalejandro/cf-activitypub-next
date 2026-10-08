@@ -1,7 +1,7 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
+import { env } from "cloudflare:workers";
 
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
   const weeks: { week: string; statuses: string; logins: string; registrations: string }[] = [];
   for (let i = 0; i < 12; i++) {
     const start = new Date();

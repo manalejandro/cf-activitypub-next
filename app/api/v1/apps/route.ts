@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
+import { json, checkRateLimit } from "@/lib/cf";
 import { createOAuthApp } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/apps — Register a new OAuth application
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   // Mastodon clients register one app per installation; the tighter window
   // keeps crawlers from filling the table while normal onboarding still fits.

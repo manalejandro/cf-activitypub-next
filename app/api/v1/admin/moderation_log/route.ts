@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { countModerationLog, getModerationLog } from "@/lib/moderation/log";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 /**
  * GET /api/v1/admin/moderation_log — audit trail of every automated decision
@@ -14,7 +15,6 @@ import { resolveLimits } from "@/lib/constants";
  * Query params: limit, offset, target_type, action, target_id
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
@@ -41,7 +41,6 @@ export async function GET(request: NextRequest): Promise<Response> {
  * Lets an admin wipe the audit trail in one go.
  */
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);

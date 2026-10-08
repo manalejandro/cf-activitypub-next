@@ -8,7 +8,6 @@
 
 import { type NextRequest } from "next/server";
 import {
-  getCloudflareContext,
   getBaseUrl,
   getDomain,
   json,
@@ -22,6 +21,7 @@ import { getActorById } from "@/lib/db";
 import { broadcastEvent } from "@/lib/streaming/broadcast";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { CallSession, CallEventPayload } from "@/lib/types/call";
+import { env } from "cloudflare:workers";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -30,7 +30,6 @@ const CALL_TTL = 600;
 // ── GET ───────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -49,7 +48,6 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 // ── POST — signal ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -204,7 +202,6 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
 // ── DELETE — hang up ──────────────────────────────────────────────────────────
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

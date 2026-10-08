@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getBaseUrl, getCloudflareContext } from "@/lib/cf";
+import { getBaseUrl } from "@/lib/cf";
 import {
   locationLabel,
   locationPageUrl,
@@ -9,6 +9,7 @@ import {
   staticLocationTileUrl,
 } from "@/lib/location";
 import LocationMapFull from "@/components/LocationMapFull";
+import { env } from "cloudflare:workers";
 
 /**
  * Public map page for a geolocated status.
@@ -31,7 +32,6 @@ export async function generateMetadata({
   try {
     const location = await loadLocation(searchParams);
     if (!location) return {};
-    const { env } = getCloudflareContext();
     const base = getBaseUrl(env);
     const canonical = locationPageUrl(base, location);
     const title = locationLabel(location);

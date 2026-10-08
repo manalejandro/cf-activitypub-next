@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getCollectionById, getCollectionItems } from "@/lib/db";
 import { buildFeaturedCollection } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 // GET /users/:username/collections/:id — a single FeaturedCollection object
 // (FEP-7aa9), as referenced by its `id` in the actor's collections listing.
@@ -9,7 +10,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string; id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username, id } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

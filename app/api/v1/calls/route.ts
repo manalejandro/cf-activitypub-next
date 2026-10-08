@@ -12,7 +12,6 @@
 
 import { type NextRequest } from "next/server";
 import {
-  getCloudflareContext,
   getBaseUrl,
   getDomain,
   json,
@@ -26,11 +25,11 @@ import { generateId } from "@/lib/activitypub/utils";
 import { broadcastEvent } from "@/lib/streaming/broadcast";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { CallSession, CallIncomingEvent } from "@/lib/types/call";
+import { env } from "cloudflare:workers";
 
 const CALL_TTL = 600; // 10 minutes in seconds
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const caller = await getAuthenticatedActor(request, env.DB);
   if (!caller) return unauthorized();
 

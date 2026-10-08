@@ -1,11 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getConversations, getObjectById, getActorById, getActorByUri, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectId } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { env } from "cloudflare:workers";
 
 // IRIs of the other participants of a direct object: everyone addressed in
 // to/cc/mentions except the viewer. Public/collection recipients are skipped.
@@ -35,7 +36,6 @@ function otherParticipantIds(raw: string, ownerId: string): string[] {
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
 

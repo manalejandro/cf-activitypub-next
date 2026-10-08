@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { createReport, getActorById, getReportsByActor, getObjectById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -9,9 +9,9 @@ import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { notifyReportedAccount, recordNoAction } from "@/lib/moderation/actions";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -62,7 +62,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);

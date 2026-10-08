@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
+import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { createCollection, addAccountToCollection, getCollectionById } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
 import { generateId } from "@/lib/activitypub/utils";
 import { resolveLimits } from "@/lib/constants";
 import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/collections — create a new Collection.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

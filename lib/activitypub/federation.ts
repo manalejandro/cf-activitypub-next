@@ -4,8 +4,8 @@
 
 import { signRequest, signRequestRfc9421 } from "./security";
 import { discardBody } from "@/lib/http";
-import { getCloudflareContext } from "@/lib/cf";
 import type { APActivity, APActor, APObject } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 const AP_CONTENT_TYPE = "application/activity+json";
 const AP_ACCEPT = 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
@@ -22,7 +22,6 @@ let fetchSigner: { id: string; privateKeyPem: string } | null | undefined;
 export async function getInstanceSigner(): Promise<{ id: string; privateKeyPem: string } | null> {
   if (fetchSigner !== undefined) return fetchSigner;
   try {
-    const { env } = getCloudflareContext();
     const row = await env.DB
       .prepare(
         `SELECT id, private_key_pem FROM actors

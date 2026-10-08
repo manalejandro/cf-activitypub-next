@@ -1,4 +1,4 @@
-import { getBaseUrl, json, getCloudflareContext, unauthorized } from "@/lib/cf";
+import { getBaseUrl, json, unauthorized } from "@/lib/cf";
 import { discardBody } from "@/lib/http";
 import { getActorByUsername, getActorById } from "@/lib/db";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
@@ -6,6 +6,7 @@ import { safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 import { getAuthenticatedActor } from "@/lib/auth";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { NextRequest } from "next/server";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/e2ee/resolve?handle=<handle>
 //
@@ -20,7 +21,6 @@ export async function GET(request: NextRequest): Promise<Response> {
   const handle = (request.nextUrl.searchParams.get("handle") ?? "").replace(/^@/, "").trim();
   if (!handle) return json({ error: "handle parameter required" }, 422);
 
-  const { env } = getCloudflareContext();
   // Resolving recipients (WebFinger + remote actor fetch) is authenticated-only.
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();

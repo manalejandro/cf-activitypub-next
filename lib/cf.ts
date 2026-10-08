@@ -1,14 +1,13 @@
 /**
- * Cloudflare context helper — retrieves the bound env from the Next.js request.
+ * Response helpers and env-derived utilities shared by the API routes.
+ *
+ * Bindings are read directly with `import { env } from "cloudflare:workers"`
+ * (typed through `Cloudflare.Env`, see worker-configuration.d.ts) — there is no
+ * request-context indirection anymore.
  */
 
-import { getCloudflareContext as _getCloudflareContext } from "@opennextjs/cloudflare";
+import { env } from "cloudflare:workers";
 import type { CloudflareEnv } from "./types/env";
-
-export function getCloudflareContext(): { env: CloudflareEnv } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return _getCloudflareContext() as any;
-}
 
 export function getBaseUrl(env: CloudflareEnv): string {
   // In production, INSTANCE_URL should be set. Fallback for local dev.
@@ -22,13 +21,12 @@ export function getDomain(env: CloudflareEnv): string {
 /**
  * Instance brand name (INSTANCE_TITLE) for code that runs inside a request but
  * has no env at hand (serializers). Falls back to the project default outside a
- * Cloudflare context (tests, build).
+ * Worker context (unit tests, build).
  */
 export function getInstanceTitle(): string {
   try {
-    const { env } = getCloudflareContext();
     if (env.INSTANCE_TITLE) return env.INSTANCE_TITLE;
-  } catch { /* no Cloudflare context */ }
+  } catch { /* no Cloudflare env (unit tests, build) */ }
   return "CF ActivityPub";
 }
 

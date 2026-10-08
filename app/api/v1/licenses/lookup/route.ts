@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { cachedMediaUrl, enqueueMediaCache, getLicenseByUrl, mediaCacheId } from "@/lib/db";
 import { licenseIconsForUrl, licenseOrigin } from "@/lib/licenses";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 /**
  * GET /api/v1/licenses/lookup?url=… — resolve a license that is not in this
@@ -16,7 +17,6 @@ import { resolveLimits } from "@/lib/constants";
  * falls back to the letters of the license id and links to the origin.
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const url = request.nextUrl.searchParams.get("url") ?? "";
   if (!url || !validateOutboundUrl(url).valid) return json(null);
 

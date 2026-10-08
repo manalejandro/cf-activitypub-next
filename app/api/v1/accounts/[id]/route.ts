@@ -1,18 +1,18 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { syncRemoteCollections } from "@/lib/activitypub/collections";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/:id
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const rawId = decodeURIComponent(id);

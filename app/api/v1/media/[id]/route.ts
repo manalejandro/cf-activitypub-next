@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
+import { env } from "cloudflare:workers";
+import type { CloudflareEnv } from "@/lib/types/env";
 
 /** R2 key embedded in a media URL (`/api/media/<key>`), if any. */
 function r2KeyFromUrl(url: string): string | null {
@@ -17,7 +19,7 @@ function r2KeyFromUrl(url: string): string | null {
  *  - legacy unattached rows fall back to the `media/<username>/` key prefix.
  */
 async function ownsAttachment(
-  env: ReturnType<typeof getCloudflareContext>["env"],
+  env: CloudflareEnv,
   me: { id: string; username: string },
   id: string,
   att: Record<string, unknown> | null
@@ -62,7 +64,6 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const att = await env.DB
     .prepare("SELECT * FROM attachments WHERE id = ?")
@@ -98,7 +99,6 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const me = await getAuthenticatedActor(_request, env.DB);
   if (!me) return unauthorized();
@@ -120,7 +120,6 @@ export async function PUT(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const me = await getAuthenticatedActor(_request, env.DB);
   if (!me) return unauthorized();

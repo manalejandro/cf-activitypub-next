@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, getCollectionItemById, deleteCollectionItem } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/collections/:collection_id/items/:item_id/revoke — remove the
 // current user from a Collection created by a different user.
@@ -9,7 +10,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id, itemId } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getAllCustomEmojis, getInstanceSetting } from "@/lib/db";
 import { processStatusContent } from "@/lib/activitypub/content";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/instance/settings — public instance content that the admin has
 // configured. Only returns the settings that are actually set, rendered to
 // HTML (links, mentions, hashtags and custom emoji) via processStatusContent.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const baseUrl = `https://${new URL(request.url).hostname}`;
   const emojis = await getAllCustomEmojis(env.DB);
 

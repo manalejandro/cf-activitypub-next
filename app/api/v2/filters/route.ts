@@ -2,7 +2,7 @@
 // POST /api/v2/filters — create a filter group (Mastodon 4.0+ v2 API)
 import { MAX_FILTER_TITLE_CHARS } from "@/lib/constants";
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest, unauthorized } from "@/lib/cf";
+import { json, badRequest, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import {
   getAllFiltersForAccount,
@@ -19,9 +19,9 @@ import {
   type FilterAction,
   type FilterContext,
 } from "@/lib/mastodon/filters";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -31,7 +31,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

@@ -1,10 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext } from "@/lib/cf";
 import { clearAuthCookie, extractBearerToken } from "@/lib/auth";
 import { deleteOAuthTokenByAccessToken } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   // Clearing the cookie isn't enough: revoke the token server-side so a copy
   // of it (or a stolen one) stops working immediately.
   const token = extractBearerToken(request);

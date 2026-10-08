@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   verifyIncomingSignature: vi.fn(),
   purgeGoneSignerData: vi.fn(async () => false),
   processInboxActivity: vi.fn(async () => {}),
@@ -11,10 +11,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/activitypub/signer-key", () => ({
   verifyIncomingSignature: mocks.verifyIncomingSignature,
   purgeGoneSignerData: mocks.purgeGoneSignerData,
@@ -46,9 +46,7 @@ beforeEach(() => {
   mocks.purgeGoneSignerData.mockResolvedValue(false);
   mocks.getActorById.mockResolvedValue(null);
   mocks.getObjectById.mockResolvedValue(null);
-  mocks.getCloudflareContext.mockReturnValue({
-    env: { DB: { prepare: () => ({ first: async () => null }) }, KV: {} },
-  });
+  mocks.env = { DB: { prepare: () => ({ first: async () => null }) }, KV: {} };
 });
 
 describe("POST /inbox — unverifiable Delete", () => {

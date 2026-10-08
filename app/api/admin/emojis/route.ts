@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getAllCustomEmojis, upsertCustomEmoji } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { resolveLimits } from "@/lib/constants";
 import { putMediaObject } from "@/lib/media/r2-put";
+import { env } from "cloudflare:workers";
 
 // GET /api/admin/emojis — List all custom emoji (including disabled)
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -18,7 +18,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 // POST /api/admin/emojis — Upload a new custom emoji
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);

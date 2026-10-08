@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectIds, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds,
   getBlockedActorIds,
   getBlockedDomains, getActorFieldsMap } from "@/lib/db";
@@ -10,6 +10,7 @@ import type { LocalObject, LocalActor } from "@/lib/types";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { MAX_THREAD_ANCESTORS, MAX_THREAD_DESCENDANTS } from "@/lib/constants";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/statuses/:id/context
 // Returns { ancestors: Status[], descendants: Status[] }
@@ -17,7 +18,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 

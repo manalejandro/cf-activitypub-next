@@ -24,7 +24,7 @@
 | Layer | Technology |
 |---|---|
 | Runtime | Cloudflare Workers |
-| Framework | Next.js 16 App Router via @opennextjs/cloudflare |
+| Framework | Next.js 16 App Router via vinext + @vinext/cloudflare (Vite) |
 | Database | Cloudflare D1 (SQLite) |
 | Cache / Sessions | Cloudflare KV |
 | Media storage | Cloudflare R2 |
@@ -216,7 +216,7 @@ npm run deploy
 npm run preview
 ```
 
-Runs the Cloudflare Workers runtime locally via `wrangler dev` (uses remote D1 by default).
+Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindings from `wrangler.toml`).
 
 ## Features
 

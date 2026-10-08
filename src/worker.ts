@@ -1,21 +1,19 @@
 /**
  * Cloudflare Worker entry point.
  *
- * Wraps the OpenNext Next.js worker and adds a Cloudflare Queue consumer for
+ * Wraps the vinext app handler and adds a Cloudflare Queue consumer for
  * reliable ActivityPub activity delivery with automatic retries.
  *
  * This file is used as `main` in wrangler.toml so that wrangler bundles BOTH
- * the Next.js handler (from .open-next/worker.js) and the queue consumer.
+ * the Next.js handler (from `vinext/server/fetch-handler`) and the queue
+ * consumer.
  */
 
-// Re-export the OpenNext worker as the default fetch handler and any
-// Durable Object classes it needs.
-export { DOQueueHandler, DOShardedTagCache, BucketCachePurge } from "../.open-next/worker.js";
 // Export the timeline streaming Durable Object
 export { TimelineStreamDO } from "../lib/streaming/timeline-do";
 // Export the call signaling Durable Object
 export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
-import openNextDefault from "../.open-next/worker.js";
+import handler from "vinext/server/fetch-handler";
 
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
@@ -1399,7 +1397,7 @@ const localRows = await env.DB
 }
 
 const worker = {
-  // Proxy all HTTP requests to the OpenNext Next.js handler,
+  // Proxy all HTTP requests to the vinext Next.js handler,
   // but intercept streaming and WebSocket endpoints first.
   async fetch(
     request: Request,
@@ -1409,7 +1407,7 @@ const worker = {
     const url = new URL(request.url);
 
     // ── R2 media ─────────────────────────────────────────────────────────────
-    // Serve bytes before OpenNext: the framework appends `Vary: rsc,
+    // Serve bytes before vinext: the framework appends `Vary: rsc,
     // next-router-state-tree, …` to app responses and Cloudflare only honours
     // `Vary: Accept-Encoding` when caching, so every video range request would
     // stream R2 → Worker → client. Browsers cancel buffered streams (normal for
@@ -1451,7 +1449,7 @@ const worker = {
         return handleCallSignalingUpgrade(request, env, callMatch[1]);
       }
     }
-    return openNextDefault.fetch(request, env, ctx);
+    return handler.fetch(request, env, ctx);
   },
 
   // Queue consumer: process ActivityPub delivery jobs

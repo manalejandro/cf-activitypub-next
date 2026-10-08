@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { getMediaCacheStats } from "@/lib/db";
 import { enforceMediaCacheBudget, mediaCacheLimitsFrom, purgeMediaCache } from "@/lib/media/remote-cache";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/admin/media_cache — cache size/queue stats and effective config.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -45,7 +45,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // (least served evicted until under budget, bounded) and report what happened. Useful
 // after lowering the limit or when the cron is behind.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);
@@ -71,7 +70,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 // DELETE /api/v1/admin/media_cache — purge every cached object and row.
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);

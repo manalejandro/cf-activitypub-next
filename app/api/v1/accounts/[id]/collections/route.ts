@@ -1,17 +1,17 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, listCollectionsForAccount } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { syncRemoteCollections } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/:account_id/collections — all Collections from an account.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;

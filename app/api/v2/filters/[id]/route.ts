@@ -3,7 +3,7 @@
 // DELETE /api/v2/filters/:id — delete a filter group
 import { MAX_FILTER_TITLE_CHARS } from "@/lib/constants";
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest, unauthorized, notFound } from "@/lib/cf";
+import { json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import {
   getFilterById,
@@ -24,11 +24,11 @@ import {
   type FilterAction,
   type FilterContext,
 } from "@/lib/mastodon/filters";
+import { env } from "cloudflare:workers";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -40,7 +40,6 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 }
 
 export async function PUT(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -124,7 +123,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

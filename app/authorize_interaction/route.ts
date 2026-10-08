@@ -1,8 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext } from "@/lib/cf";
 import { getObjectById, getActorById } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // Response.redirect requires an absolute URL; the Fetch API cannot parse a
 // path-only target and throws (remote instances hit this route directly).
@@ -30,7 +30,6 @@ function looksLikeObject(uri: string): boolean {
 // profile; anonymous visitors are sent to the login page (which also offers
 // continuing on their own instance) preserving the original URI.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const uri = request.nextUrl.searchParams.get("uri");
 
   if (!uri) return redirectTo(request, "/login");

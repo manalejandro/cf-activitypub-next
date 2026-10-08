@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@/lib/cf";
 
 // GET /.well-known/security.txt  (RFC 9116)
 //
@@ -6,7 +5,6 @@ import { getCloudflareContext } from "@/lib/cf";
 // configured sender email when set, otherwise the site root. Expires is rolled
 // forward one year so the file never goes stale (RFC 9116 §2.5.2).
 export async function GET(request: Request): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 

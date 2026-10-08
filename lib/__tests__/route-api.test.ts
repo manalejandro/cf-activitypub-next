@@ -4,10 +4,10 @@ import type { NextRequest } from "next/server";
 
 const { safeFetch } = vi.hoisted(() => ({ safeFetch: vi.fn() }));
 
+vi.mock("cloudflare:workers", () => ({
+  env: { INSTANCE_URL: "https://cf-ap.com", INSTANCE_TITLE: "CF AP", INSTANCE_VERSION: "1.3.4" },
+}));
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: () => ({
-    env: { INSTANCE_URL: "https://cf-ap.com", INSTANCE_TITLE: "CF AP", INSTANCE_VERSION: "1.3.4" },
-  }),
   getBaseUrl: (env: { INSTANCE_URL?: string }) => env.INSTANCE_URL ?? "https://cf-ap.com",
   json: (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),

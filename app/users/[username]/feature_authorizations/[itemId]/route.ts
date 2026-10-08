@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername } from "@/lib/db";
 import { collectionIRI, featureAuthorizationIRI, getCollectionItemContext } from "@/lib/activitypub/collections";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
+import { env } from "cloudflare:workers";
 
 // GET /users/:username/feature_authorizations/:itemId — FEP-7aa9 authorization
 // that lets a remote instance include this (local) account in a collection.
@@ -12,7 +13,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string; itemId: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username, itemId } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

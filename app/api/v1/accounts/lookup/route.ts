@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/lookup?acct=username[@domain]
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const acct = request.nextUrl.searchParams.get("acct");
 

@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, unauthorized, checkRateLimit } from "@/lib/cf";
 import {
   getActorById,
   getObjectById,
@@ -47,6 +47,7 @@ import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction,
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
 import type { APActor, APAttachment, APTag, LocalActor, LocalAttachment } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 function toAPAttachment(att: LocalAttachment): APAttachment {
   const mimeType = att.mimeType ?? "application/octet-stream";
@@ -155,7 +156,6 @@ async function remoteQuoteAllowed(
 
 // POST /api/v1/statuses — Publish a new status
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;

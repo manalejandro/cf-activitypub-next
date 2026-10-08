@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
+import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference, getPreferredLicenseUrl } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
@@ -11,10 +11,10 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
 import { putMediaObject } from "@/lib/media/r2-put";
 import { profileImageDecision } from "@/lib/media/profile-image";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/verify_credentials
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -54,7 +54,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 // PATCH /api/v1/accounts/update_credentials
 export async function PATCH(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const baseUrl = `https://${domain}`;

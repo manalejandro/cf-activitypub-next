@@ -1,17 +1,17 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getPollById, getPollOptions, getPollVotesByActor, getObjectById, getActorById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializePoll } from "@/lib/mastodon/serializers";
 import { refreshRemotePoll } from "@/lib/activitypub/polls";
 import { generateId } from "@/lib/activitypub/utils";
 import { notify } from "@/lib/notify";
+import { env } from "cloudflare:workers";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   let poll = await getPollById(env.DB, id);

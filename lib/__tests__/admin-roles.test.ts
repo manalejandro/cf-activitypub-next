@@ -12,17 +12,17 @@ const mocks = vi.hoisted(() => ({
   first: vi.fn(),
 }));
 
-vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: () => ({
-    env: {
-      DB: {
-        prepare: () => ({
-          bind: (...args: unknown[]) => ({ run: () => mocks.run(...args), first: () => mocks.first(...args) }),
-        }),
-        batch: async (statements: { run(): Promise<unknown> }[]) => Promise.all(statements.map((s) => s.run())),
-      },
+vi.mock("cloudflare:workers", () => ({
+  env: {
+    DB: {
+      prepare: () => ({
+        bind: (...args: unknown[]) => ({ run: () => mocks.run(...args), first: () => mocks.first(...args) }),
+      }),
+      batch: async (statements: { run(): Promise<unknown> }[]) => Promise.all(statements.map((s) => s.run())),
     },
-  }),
+  },
+}));
+vi.mock("@/lib/cf", () => ({
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
   notFound: (message = "Not found") =>

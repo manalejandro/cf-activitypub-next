@@ -1,8 +1,7 @@
-// @opennextjs/cloudflare does not support Node.js middleware, and Next.js 16
-// forces any file named `proxy.ts` to run on the Node.js runtime. This file is
-// therefore named `middleware.ts` (the legacy convention), which compiles to
-// the Edge Runtime that Cloudflare Workers require. It only uses `next/server`,
-// so it is fully Edge-compatible.
+// Next.js 16 renamed the middleware convention to `proxy.ts` (same API, the
+// function is exported as `proxy`). vinext supports both; this project uses the
+// modern name. The file only imports `next/server`, so it runs inside the same
+// Worker as the app.
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { externalProfileUrl } from "@/lib/remote-link";
@@ -41,7 +40,7 @@ function isAPRequest(request: NextRequest): boolean {
   return AP_TYPES.some((t) => accept.includes(t));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const method = request.method;
 
@@ -159,9 +158,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // "/@:path*" compiles to a regex that requires a slash between @ and the username,
-  // so it never matches /@ale. Use separate patterns for exact and sub-path cases.
-  // The catch-all (excluding static assets) ensures the Next-Action guard also
-  // covers the root and any path a scanner may probe with a forged action ID.
-  matcher: ["/", "/users/:path*", "/api/:path*", "/nodeinfo/:path*", "/@:username", "/@:username/:path*", "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$).*)"],
+  // No matcher: the proxy runs on every dynamic route (like Next.js's default),
+  // which keeps the Next-Action guard and the security headers on any path a
+  // scanner may probe. Static assets never reach the Worker — the Workers
+  // Assets layer serves them before it (wrangler.toml `assets`).
 };

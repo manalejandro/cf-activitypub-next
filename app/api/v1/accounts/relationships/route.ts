@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildRelationship } from "@/lib/mastodon/relationships";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/relationships?id[]=xxx&id[]=yyy
 // Used by Mastodon clients to display the follow/block/mute state for one or more accounts.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, listCollectionsForAccount, getCollectionItems, countCollectionsForAccount } from "@/lib/db";
 import { buildFeaturedCollection } from "@/lib/activitypub/collections";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
+import { env } from "cloudflare:workers";
 
 const PAGE_SIZE = 20;
 
@@ -13,7 +14,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

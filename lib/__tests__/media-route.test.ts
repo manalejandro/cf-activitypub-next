@@ -13,7 +13,7 @@ const r2 = {
   get: vi.fn(),
 };
 
-vi.mock("@/lib/cf", () => ({ getCloudflareContext: () => ({ env: { R2: r2 } }) }));
+vi.mock("cloudflare:workers", () => ({ get env() { return { R2: r2 }; } }));
 
 import { GET, HEAD } from "@/app/api/media/[...key]/route";
 import { serveMediaObject } from "@/lib/media/serve";

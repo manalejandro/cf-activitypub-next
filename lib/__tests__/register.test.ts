@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   getActorByCanonicalEmailHash: vi.fn(),
   getCanonicalEmailBlock: vi.fn(),
   createCanonicalEmailBlock: vi.fn(),
@@ -37,12 +37,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   getBaseUrl: mocks.getBaseUrl,
   checkRateLimit: mocks.checkRateLimit,
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
   getActorByCanonicalEmailHash: mocks.getActorByCanonicalEmailHash,
@@ -114,16 +114,14 @@ async function post(body: Record<string, unknown>): Promise<{ status: number; bo
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getCloudflareContext.mockReturnValue({
-    env: {
-      DB: fakeDb,
-      KV: {},
-      EMAIL: {},
-      FROM_EMAIL: "noreply@local.example",
-      INSTANCE_TITLE: "Test",
-      TURNSTILE_SECRET: "secret",
-    },
-  });
+  mocks.env = {
+    DB: fakeDb,
+    KV: {},
+    EMAIL: {},
+    FROM_EMAIL: "noreply@local.example",
+    INSTANCE_TITLE: "Test",
+    TURNSTILE_SECRET: "secret",
+  };
   mocks.getRegistrationSettings.mockResolvedValue({
     enabled: true,
     approvalRequired: false,
@@ -152,9 +150,7 @@ describe("POST /api/v1/accounts", () => {
   });
 
   it("allows tokenless registration only when no captcha secret is configured", async () => {
-    mocks.getCloudflareContext.mockReturnValue({
-      env: { DB: fakeDb, KV: {}, EMAIL: {}, FROM_EMAIL: "noreply@local.example", INSTANCE_TITLE: "Test" },
-    });
+    mocks.env = { DB: fakeDb, KV: {}, EMAIL: {}, FROM_EMAIL: "noreply@local.example", INSTANCE_TITLE: "Test" };
     const { status, body } = await post({ username: "newbie", email: "new@example.com", password: "password123" });
 
     expect(status).toBe(200);

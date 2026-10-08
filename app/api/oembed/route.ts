@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json } from "@/lib/cf";
+import { getBaseUrl, json } from "@/lib/cf";
 import { getActorById, getObjectById } from "@/lib/db";
 import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { locationEmbedUrl, locationLabel, locationPageUrl, parseLocationQuery, staticLocationTileUrl } from "@/lib/location";
+import { env } from "cloudflare:workers";
 
 /**
  * oEmbed provider for local statuses (Mastodon's `/api/oembed`).
@@ -12,7 +13,6 @@ import { locationEmbedUrl, locationLabel, locationPageUrl, parseLocationQuery, s
  * embeddable.
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const base = getBaseUrl(env);
   const host = new URL(base).hostname;
   const target = new URL(request.url).searchParams.get("url") ?? "";

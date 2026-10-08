@@ -2,8 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+vi.mock("cloudflare:workers", () => ({ env: { INSTANCE_URL: "https://cf-ap.com", INSTANCE_TITLE: "CF AP" } }));
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: () => ({ env: { INSTANCE_URL: "https://cf-ap.com", INSTANCE_TITLE: "CF AP" } }),
   getBaseUrl: (env: { INSTANCE_URL?: string }) => env.INSTANCE_URL ?? "https://cf-ap.com",
   json: (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),

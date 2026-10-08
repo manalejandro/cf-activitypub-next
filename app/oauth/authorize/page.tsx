@@ -1,6 +1,6 @@
 import Image from "next/image";
-import { getCloudflareContext } from "@/lib/cf";
 import { getOAuthAppByClientId } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 interface Props {
   searchParams: Promise<Record<string, string>>;
@@ -30,7 +30,6 @@ export default async function OAuthAuthorizePage({ searchParams }: Props) {
   let errorBody: string | null = null;
 
   try {
-    const { env } = getCloudflareContext();
     const app = await getOAuthAppByClientId(env.DB, client_id);
     if (!app) {
       errorTitle = "Unknown application";

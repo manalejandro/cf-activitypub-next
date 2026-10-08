@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest } from "@/lib/cf";
+import { json, badRequest } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import {
   getInstanceDomainBlocks,
@@ -9,10 +9,10 @@ import {
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { normalizeDomain } from "@/lib/activitypub/instances";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/admin/domain_blocks — list instance-wide domain blocks.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
@@ -35,7 +35,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 // POST /api/v1/admin/domain_blocks — block a domain instance-wide.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 // DELETE /api/v1/admin/domain_blocks?domain=… — remove an instance-wide block.
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const role = await getAdminRole(request, env);
   if (role !== "admin") {

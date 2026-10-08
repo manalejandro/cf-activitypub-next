@@ -17,6 +17,12 @@
 /.next/
 /out/
 
+# vinext / Cloudflare build output
+/dist/
+/.cloudflare/
+/.wrangler/
+/.vinext/
+
 # production
 /build
 

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildVote } from "@/lib/activitypub/utils";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   enqueueDeliveries: vi.fn(async () => {}),
   getPollById: vi.fn(),
   getObjectById: vi.fn(),
@@ -18,12 +18,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
   notFound: (msg = "Not found") => new Response(JSON.stringify({ error: msg }), { status: 404 }),
   unauthorized: () => new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/db", () => ({
   getPollById: mocks.getPollById,
   getObjectById: mocks.getObjectById,
@@ -60,9 +60,7 @@ describe("buildVote", () => {
 describe("POST /api/v1/polls/:id/votes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getCloudflareContext.mockReturnValue({
-      env: { DB: {}, KV: {}, DELIVERY_QUEUE: {} },
-    });
+    mocks.env = { DB: {}, KV: {}, DELIVERY_QUEUE: {} };
     mocks.getAuthenticatedActor.mockResolvedValue({
       id: "https://local.example/users/me",
       domain: "local.example",

@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getMlsKeyPackagesByActor } from "@/lib/db";
 import { actorIRI } from "@/lib/activitypub/utils";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import type { LocalMlsKeyPackage } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 // GET /users/:username/keyPackages
 //
@@ -14,7 +15,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

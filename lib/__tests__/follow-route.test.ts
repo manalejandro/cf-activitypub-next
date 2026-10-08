@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   getAuthenticatedActor: vi.fn(),
   getActorById: vi.fn(),
   getFollow: vi.fn(),
@@ -15,12 +15,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
   notFound: (msg = "Not found") => new Response(JSON.stringify({ error: msg }), { status: 404 }),
   unauthorized: () => new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor }));
 vi.mock("@/lib/db", () => ({
   getActorById: mocks.getActorById,
@@ -59,7 +59,7 @@ function request(): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.statements.length = 0;
-  mocks.getCloudflareContext.mockReturnValue({ env: { DB: makeDb(), KV: {} } });
+  mocks.env = { DB: makeDb(), KV: {} };
   mocks.getAuthenticatedActor.mockResolvedValue({ id: LOCAL, username: "me", privateKeyPem: "priv" });
   mocks.getActorById.mockResolvedValue({
     id: REMOTE,

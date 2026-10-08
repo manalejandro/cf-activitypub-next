@@ -2,17 +2,17 @@
 // PUT /api/v2/filters/keywords/:id — edit a keyword
 // DELETE /api/v2/filters/keywords/:id — delete a keyword
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest, unauthorized, notFound } from "@/lib/cf";
+import { json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterKeyword } from "@/lib/db";
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
 import { serializeFilterKeyword } from "@/lib/mastodon/filters";
 import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -26,7 +26,6 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 }
 
 export async function PUT(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -60,7 +59,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, getCollectionItemById, deleteCollectionItem } from "@/lib/db";
 import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 // DELETE /api/v1/collections/:collection_id/items/:item_id — remove an account
 // from a Collection (owner only).
@@ -10,7 +11,6 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id, itemId } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

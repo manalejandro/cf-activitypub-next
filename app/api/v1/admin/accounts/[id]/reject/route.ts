@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getActorById } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 /**
  * POST /api/v1/admin/accounts/:id/reject — deny a pending registration and
@@ -17,7 +18,6 @@ import { generateId } from "@/lib/activitypub/utils";
  * through the audited delete flow.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);

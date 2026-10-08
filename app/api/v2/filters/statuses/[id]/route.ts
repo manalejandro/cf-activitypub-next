@@ -1,16 +1,16 @@
 // GET /api/v2/filters/statuses/:id — view one status filter
 // DELETE /api/v2/filters/statuses/:id — remove a status from a filter group
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterStatusById, getFilterById, deleteFilterStatus } from "@/lib/db";
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
 import { serializeFilterStatus } from "@/lib/mastodon/filters";
+import { env } from "cloudflare:workers";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -24,7 +24,6 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

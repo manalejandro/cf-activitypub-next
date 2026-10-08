@@ -13,9 +13,9 @@ const root = fileURLToPath(new URL(".", import.meta.url));
  *   wrangler.toml (D1, KV, R2, queues, DOs…) through Miniflare. workerd has no
  *   DOM and no `node:sqlite`, so the projects stay separate.
  *
- * `main` is overridden because production's `src/worker.ts` imports the
- * OpenNext build artifact (`.open-next/worker.js`), which only exists after a
- * build; `test/worker.ts` re-exports the Durable Object classes instead. The
+ * `main` is overridden because production's `src/worker.ts` imports the vinext
+ * app handler, which only exists after a Vite build; `test/worker.ts`
+ * re-exports the Durable Object classes instead. The
  * assets directory is overridden too, so tests run on a fresh clone without a
  * build. `lib/db/schema.sql` is split with Wrangler's own SQL splitter and
  * injected as the `TEST_SCHEMA` binding for `test/helpers/db.ts`.
@@ -30,6 +30,22 @@ export default defineConfig({
     projects: [
       {
         extends: true,
+        plugins: [
+          {
+            // The real `cloudflare:workers` only exists inside workerd: map the
+            // specifier to a stub for the jsdom project (tests override `env`
+            // with vi.mock). A resolveId plugin wins over Vite's externalization,
+            // which plain resolve/test aliases do not.
+            name: "stub-cloudflare-workers",
+            enforce: "pre",
+            resolveId(source: string) {
+              if (source === "cloudflare:workers") {
+                return fileURLToPath(new URL("./test/stubs/cloudflare-workers.ts", import.meta.url));
+              }
+              return null;
+            },
+          },
+        ],
         test: {
           name: "unit",
           environment: "jsdom",

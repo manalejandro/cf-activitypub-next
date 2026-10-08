@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // Helper: deterministic numeric ID for a tag name
 function tagId(name: string): string {
@@ -13,7 +14,6 @@ function tagId(name: string): string {
 
 // GET /api/v1/followed_tags
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const authActor = await getAuthenticatedActor(request, env.DB);

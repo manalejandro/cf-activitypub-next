@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound, badRequest } from "@/lib/cf";
+import { json, unauthorized, notFound, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, addAccountToCollection } from "@/lib/db";
 import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/collections/:collection_id/items — add an account to a Collection.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

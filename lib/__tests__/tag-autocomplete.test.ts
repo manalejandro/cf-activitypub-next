@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
   env: { DB: {}, KV: {} },
 }));
 
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: () => ({ env: mocks.env }),
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
 }));

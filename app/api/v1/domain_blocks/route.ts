@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getDomainBlocks, createDomainBlock, deleteDomainBlock, getInstanceDomainBlocks } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/domain_blocks — the user's own blocks plus the instance-wide
 // domain blocks (so clients see every domain this instance rejects).
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -22,7 +22,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 // POST /api/v1/domain_blocks  (body: { domain: string })
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
@@ -36,7 +35,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 // DELETE /api/v1/domain_blocks  (body or query: { domain: string })
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

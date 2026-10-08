@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getActorById, listCollectionsFeaturedIn } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/:account_id/in_collections — all Collections the account
 // is featured in.
@@ -10,7 +11,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const { id } = await params;
   const domain = new URL(request.url).hostname;

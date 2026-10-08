@@ -1,16 +1,16 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAccountSuggestions, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 // GET /api/v2/suggestions — recommended accounts (Mastodon-compatible shape:
 // `[{ source, account }]`). Optional auth: anonymous visitors get active local
 // accounts; authenticated users get friends-of-friends first, minus the
 // accounts they follow, block, mute or dismissed.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
 

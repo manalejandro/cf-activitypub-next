@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // Helper: deterministic numeric ID for a tag name
 function tagId(name: string): string {
@@ -35,7 +36,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const { name } = await params;
   const tagName = decodeURIComponent(name).replace(/^#/, "").toLowerCase();

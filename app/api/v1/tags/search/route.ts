@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
 import { serializeTag } from "@/lib/mastodon/tags";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/tags/search?q=...&limit=...
 //
@@ -9,7 +10,6 @@ import { serializeTag } from "@/lib/mastodon/tags";
 // `object_tags` index (extracted at ingest), most used first. Anonymous
 // callers get the same results as trending tags (tag names are public).
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const url = new URL(request.url);
   const domain = url.hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);

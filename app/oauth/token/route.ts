@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
+import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getActorById, getOAuthAppByClientId, getOAuthAppById, getOAuthTokenByRefreshToken, createOAuthToken, mediaCacheId, refreshOAuthTokenAccessToken } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { clampScope } from "@/lib/oauth-scopes";
+import { env } from "cloudflare:workers";
 
 // POST /oauth/token — standard Mastodon OAuth token endpoint (also used by the
 // web login form). External clients call this path directly.
@@ -18,7 +19,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
   }
 
-  const { env } = getCloudflareContext();
   const grantType = body.grant_type;
 
   // Rate limit: 10 attempts per IP per 60s window

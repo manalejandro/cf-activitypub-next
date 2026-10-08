@@ -362,6 +362,7 @@
     "/.well-known/security.txt": {
       "get": {
         "summary": "Get /.well-known/security.txt",
+        "description": "Machine-readable security contact info. The Contact is the instance's configured sender email when set, otherwise the site root. Expires is rolled forward one year so the file never goes stale (RFC 9116 §2.5.2).",
         "operationId": "get_wellknown_securitytxt",
         "tags": [
           "ActivityPub"
@@ -13202,7 +13203,7 @@
     "/inbox": {
       "post": {
         "summary": "Create /inbox",
-        "description": "Direct ActivityPub shared inbox handler at /inbox. Bypasses Next.js middleware rewriting (unreliable for external POST in OpenNext/Cloudflare).",
+        "description": "Direct ActivityPub shared inbox handler at /inbox. Bypasses the proxy rewriting (route files answer external POSTs directly).",
         "operationId": "post_inbox",
         "tags": [
           "ActivityPub"
@@ -13776,7 +13777,7 @@
     "/users/{username}/inbox": {
       "post": {
         "summary": "Create /users/{username}/inbox",
-        "description": "Direct ActivityPub per-user inbox handler at /users/[username]/inbox. Bypasses Next.js middleware rewriting (unreliable for external POST in OpenNext/Cloudflare).",
+        "description": "Direct ActivityPub per-user inbox handler at /users/[username]/inbox. Bypasses the proxy rewriting (route files answer external POSTs directly).",
         "operationId": "post_users_Byusername_inbox",
         "tags": [
           "ActivityPub"

@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
-import { getCloudflareContext, getBaseUrl } from "@/lib/cf";
+import { getBaseUrl } from "@/lib/cf";
 import { getActorById, getObjectById } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
+import { env } from "cloudflare:workers";
 
 /**
  * Minimal, iframe-friendly status view used by the oEmbed `rich` HTML.
@@ -10,7 +11,6 @@ import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
  */
 export default async function EmbedStatusPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { env } = getCloudflareContext();
   const base = getBaseUrl(env);
   const host = new URL(base).hostname;
 

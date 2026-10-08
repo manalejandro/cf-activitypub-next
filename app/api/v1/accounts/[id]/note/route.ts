@@ -1,14 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getAllCustomEmojis, getActorFields } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
+import { env } from "cloudflare:workers";
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(_request.url).hostname;
   const { id } = await params;
   const rawId = decodeURIComponent(id);

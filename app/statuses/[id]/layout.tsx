@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { getCloudflareContext, getBaseUrl } from "@/lib/cf";
+import { getBaseUrl } from "@/lib/cf";
 import { getActorById, getObjectById } from "@/lib/db";
 import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
+import { env } from "cloudflare:workers";
 
 /**
  * Server-side metadata for status permalinks: OpenGraph/Twitter tags plus the
@@ -11,7 +12,6 @@ import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
     const { id } = await params;
-    const { env } = getCloudflareContext();
     const base = getBaseUrl(env);
     const host = new URL(base).hostname;
     const obj = await getObjectById(env.DB, decodeStatusId(decodeURIComponent(id), host));

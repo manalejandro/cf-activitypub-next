@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { verifyMoveTarget, performMove } from "@/lib/activitypub/migration";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts/migrate — migrate this account to another instance.
 // Body: { target_acct: "user@remote.example" }
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 

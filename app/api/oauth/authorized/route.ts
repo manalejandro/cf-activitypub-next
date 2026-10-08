@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor, extractBearerToken } from "@/lib/auth";
 import { listOAuthTokensForActor, getTokenByAccessToken } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // GET /api/oauth/authorized — list the authenticated user's app connections
 // and web sessions (Mastodon "Authorized apps"). Never exposes access tokens.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

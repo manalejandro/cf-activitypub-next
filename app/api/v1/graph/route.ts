@@ -1,5 +1,6 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 interface EdgeRow {
   source: string;
@@ -16,7 +17,6 @@ interface EdgeRow {
  * cap is configurable via GRAPH_MAX_NODES (wrangler var, default 100).
  */
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
   const maxNodes = resolveLimits(env as unknown as Record<string, unknown>).graphMaxNodes;
   // Each edge can add at most two nodes; bound the query so the configured
   // node cap is actually reachable.

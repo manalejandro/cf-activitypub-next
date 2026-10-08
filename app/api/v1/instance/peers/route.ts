@@ -1,8 +1,8 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/instance/peers — Mastodon-compatible list of federated domains.
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
   const rows = await env.DB
     .prepare(
       `SELECT domain FROM (

@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
 import { serializeTag } from "@/lib/mastodon/tags";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/trends/tags
 // Returns trending hashtags from the last 7 days.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const limit = Math.min(

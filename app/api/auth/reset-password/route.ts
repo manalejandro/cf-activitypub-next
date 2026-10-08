@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, checkRateLimit } from "@/lib/cf";
+import { json, checkRateLimit } from "@/lib/cf";
 import { deleteOAuthTokensForActor, getPasswordResetByToken, markPasswordResetUsed, updatePassword } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { getBaseUrl } from "@/lib/cf";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest): Promise<Response> {
   const contentType = request.headers.get("Content-Type") ?? "";
@@ -32,7 +33,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Password must be at least 8 characters" }, 422);
   }
 
-  const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
 
   const turnstile = await enforceTurnstilePolicy({

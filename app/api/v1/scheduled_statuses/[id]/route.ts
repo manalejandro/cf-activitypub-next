@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatusById, updateScheduledStatus, deleteScheduledStatus } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -23,7 +23,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -59,7 +58,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

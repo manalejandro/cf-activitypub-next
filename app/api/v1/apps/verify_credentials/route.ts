@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getOAuthAppById } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace("Bearer ", "").trim();
   if (!token) return unauthorized();

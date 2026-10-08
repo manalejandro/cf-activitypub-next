@@ -24,7 +24,7 @@
 | Capa | Tecnología |
 |---|---|
 | Runtime | Cloudflare Workers |
-| Framework | Next.js 16 App Router via @opennextjs/cloudflare |
+| Framework | Next.js 16 App Router via vinext + @vinext/cloudflare (Vite) |
 | Base de datos | Cloudflare D1 (SQLite) |
 | Caché / Sesiones | Cloudflare KV |
 | Almacenamiento multimedia | Cloudflare R2 |
@@ -217,7 +217,7 @@ npm run deploy
 npm run preview
 ```
 
-Ejecuta el runtime de Cloudflare Workers localmente vía `wrangler dev` (usa D1 remoto por defecto).
+Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (bindings de Miniflare desde `wrangler.toml`).
 
 ## Características
 

@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getActorById } from "@/lib/db";
 import { getAdminRole } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 /**
  * POST /api/v1/admin/accounts/:id/promote — raise an account one step:
@@ -12,7 +13,6 @@ import { generateId } from "@/lib/activitypub/utils";
  * without admin rights while only the Guardian bot kept them).
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const role = await getAdminRole(request, env);
   if (role !== "admin") {

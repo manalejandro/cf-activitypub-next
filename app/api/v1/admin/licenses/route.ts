@@ -1,11 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest } from "@/lib/cf";
+import { json, badRequest } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { createLicense, deleteLicense, enqueueMediaCache, getLicenseById, getLicenseByUrl, listLicenses, updateLicense } from "@/lib/db";
 import { normalizeLicenseId, normalizeLicenseUrl } from "@/lib/licenses";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import type { D1Database } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
 
 /** Audit every catalogue change in the moderation log. */
 async function logLicense(
@@ -33,7 +34,6 @@ async function logLicense(
 
 // GET /api/v1/admin/licenses — full catalogue (FEP-6757) for the admin screen.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -44,7 +44,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // POST /api/v1/admin/licenses — add, edit or remove a catalogue entry.
 // body: { action: "add" | "update" | "delete", id?, name?, url?, icon?, sort_order? }
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     return json({ error: role ? "Administrator role required" : "Unauthorized" }, role ? 403 : 401);

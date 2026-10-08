@@ -1,12 +1,13 @@
 import { type NextRequest } from "next/server";
 import type { D1Database } from "@cloudflare/workers-types";
-import { getBaseUrl, getCloudflareContext, json, badRequest } from "@/lib/cf";
+import { getBaseUrl, json, badRequest } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { createRelay, deleteRelay, getRelayById, getRelayByInbox, listRelays } from "@/lib/db";
 import { disableRelay, enableRelay, normalizeRelayInbox } from "@/lib/activitypub/relays";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import type { LocalRelay } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 /** Audit every relay mutation in the moderation log. */
 async function logRelay(
@@ -34,7 +35,6 @@ async function logRelay(
 
 // GET /api/v1/admin/relays — subscribed ActivityPub relays with their state.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -45,7 +45,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // POST /api/v1/admin/relays — add a relay or change its subscription state.
 // body: { action: "add" | "enable" | "disable" | "remove", inbox_url?, id? }
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     // Authenticated moderators get a 403 (they can see the section); anonymous

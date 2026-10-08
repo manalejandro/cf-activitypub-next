@@ -1,16 +1,16 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound } from "@/lib/cf";
+import { json, notFound } from "@/lib/cf";
 import { getActorByUsername } from "@/lib/db";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
 import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
+import { env } from "cloudflare:workers";
 
 // POST /users/:username/inbox
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
@@ -56,7 +56,7 @@ export async function POST(
   const sigKeyId = extractSigningKeyId(headers);
   const signingActorId = sigKeyId ? sigKeyId.replace(/#.*$/, "") : actorId;
 
-  // Use the canonical inbox URL (before middleware rewrite) for signature
+  // Use the canonical inbox URL (before the proxy rewrite) for signature
   // verification: the sender signed against the original path.
   const canonicalUrl = `${baseUrl}/users/${username}/inbox`;
   const check = await verifyIncomingSignature(env.DB, env.KV, {

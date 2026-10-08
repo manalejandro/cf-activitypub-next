@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import type { D1Database } from "@cloudflare/workers-types";
-import { getCloudflareContext, json, unauthorized, notFound, badRequest } from "@/lib/cf";
+import { json, unauthorized, notFound, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { resolveLimits } from "@/lib/constants";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/lib/db";
 import { serializeCollection, serializeAccount } from "@/lib/mastodon/serializers";
 import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
+import { env } from "cloudflare:workers";
 
 async function serializeWithAccounts(
   db: D1Database,
@@ -46,7 +47,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const me = await getAuthenticatedActor(request, env.DB);
@@ -65,7 +65,6 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 
@@ -110,7 +109,6 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

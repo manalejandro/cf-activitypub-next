@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import {
   getObjectById, getActorById, createAnnounce, getAnnounce,
   isAcceptedFollower, canViewStatus,
@@ -17,13 +17,13 @@ import { broadcastStatusInteraction, broadcastStatusInteractionToLists } from "@
 import { broadcastNewBoostToFollowers } from "@/lib/streaming/boost";
 import type { APActor } from "@/lib/types";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/statuses/:id/reblog
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

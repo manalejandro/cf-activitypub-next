@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   getActorByEmail: vi.fn(),
   getActorById: vi.fn(),
   getOAuthAppByClientId: vi.fn(),
@@ -20,12 +20,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   getBaseUrl: () => "https://cf-ap.com",
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
   checkRateLimit: mocks.checkRateLimit,
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
   getActorById: mocks.getActorById,
@@ -71,17 +71,15 @@ function seedCode(code: string, payload: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.kv.clear();
-  mocks.getCloudflareContext.mockReturnValue({
-    env: {
-      DB: {},
+  mocks.env = {
+    DB: {},
       KV: {
         get: async (k: string) => mocks.kv.get(k) ?? null,
         put: async (k: string, v: string) => { mocks.kv.set(k, v); },
         delete: async (k: string) => { mocks.kv.delete(k); },
       },
-      TURNSTILE_SECRET: undefined,
-    },
-  });
+    TURNSTILE_SECRET: undefined,
+  };
   mocks.getOAuthAppByClientId.mockImplementation(async (_db: unknown, clientId: string) =>
     clientId === APP.clientId ? APP : null
   );

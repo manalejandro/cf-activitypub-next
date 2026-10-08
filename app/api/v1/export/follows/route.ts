@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, unauthorized } from "@/lib/cf";
+import { unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/export/follows — Mastodon-compatible following-list CSV
 // Columns: Account address (plus Show boosts, always false) so it round-trips
 // with Mastodon and with our import endpoint.
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 

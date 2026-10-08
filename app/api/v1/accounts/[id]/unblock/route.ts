@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, deleteBlock } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildRelationship } from "@/lib/mastodon/relationships";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts/:id/unblock
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getConversationById, deleteConversation, getObjectById, getActorById, getActorByUri, getAttachmentsByObjectId } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
+import { env } from "cloudflare:workers";
 
 function otherParticipantIds(raw: string, ownerId: string): string[] {
   const seen = new Set<string>();
@@ -31,7 +32,6 @@ function otherParticipantIds(raw: string, ownerId: string): string[] {
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -75,7 +75,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

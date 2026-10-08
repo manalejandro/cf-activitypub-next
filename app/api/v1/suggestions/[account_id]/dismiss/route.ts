@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, dismissSuggestedAccount } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/suggestions/:account_id/dismiss — hide an account from the
 // viewer's suggestions. Idempotent.
@@ -9,7 +10,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ account_id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { account_id } = await params;
 
   const me = await getAuthenticatedActor(request, env.DB);

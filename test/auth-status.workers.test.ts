@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET } from "@/app/api/auth/status/route";
-import { installTestContext } from "./helpers/context";
 import { applyTestSchema, resetTestDatabase } from "./helpers/db";
 
 const BASE = "https://local.example.test";
@@ -9,7 +8,6 @@ const ACTOR = `${BASE}/users/manalejandro`;
 const TOKEN = "session-token";
 
 beforeAll(async () => {
-  installTestContext();
   await applyTestSchema();
 });
 

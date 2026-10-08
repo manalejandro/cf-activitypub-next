@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Wix_Madefor_Text, JetBrains_Mono } from "next/font/google";
-import { getCloudflareContext } from "@/lib/cf";
 import { InstanceTitleProvider } from "@/lib/instance-context";
 import { LocaleProvider } from "@/lib/i18n";
 import { CallOverlayWrapper } from "@/components/CallOverlayWrapper";
@@ -10,6 +9,7 @@ import { PaletteApplier } from "@/components/PaletteApplier";
 import { SessionGuard } from "@/components/SessionGuard";
 import "fork-awesome/css/fork-awesome.min.css";
 import "./globals.css";
+import { env } from "cloudflare:workers";
 
 // UI/body: Wix Madefor Text — designed for small-size interface text (large
 // x-height, warm humanist shapes), variable weight, Latin + Cyrillic (the `ru`
@@ -34,7 +34,6 @@ export async function generateMetadata(): Promise<Metadata> {
   let baseUrl = "http://localhost:3000";
   let brand = "CF ActivityPub";
   try {
-    const { env } = getCloudflareContext();
     if (env.INSTANCE_URL) baseUrl = env.INSTANCE_URL;
     if (env.INSTANCE_TITLE) brand = env.INSTANCE_TITLE;
   } catch { /* local next dev / build without a Cloudflare context */ }
@@ -93,7 +92,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   let instanceTitle = "CF ActivityPub";
   let instanceVersion = "";
   try {
-    const { env } = getCloudflareContext();
     if (env.INSTANCE_TITLE) instanceTitle = env.INSTANCE_TITLE;
     if (env.INSTANCE_VERSION) instanceVersion = env.INSTANCE_VERSION;
   } catch { /* local next dev / build without a Cloudflare context */ }

@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound, unauthorized } from "@/lib/cf";
+import { activityJson, notFound, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getMlsMessagesByRecipient, countMlsMessagesByRecipient } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { resolveLimits } from "@/lib/constants";
 import { actorIRI } from "@/lib/activitypub/utils";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
+import { env } from "cloudflare:workers";
 
 // GET /users/:username/messages
 //
@@ -17,7 +18,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

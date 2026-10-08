@@ -1,14 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getInstanceTitle, json, notFound } from "@/lib/cf";
+import { getInstanceTitle, json, notFound } from "@/lib/cf";
 import { getObjectById, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { env } from "cloudflare:workers";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(_request.url).hostname;
   const rawId = (await params).id;
   const id = decodeStatusId(rawId, domain);

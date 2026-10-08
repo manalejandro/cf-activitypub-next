@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, badRequest } from "@/lib/cf";
+import { json, badRequest } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import {
   getInstance,
@@ -11,10 +11,10 @@ import { normalizeDomain, purgeInstanceDomain, refreshInstance, setInstancePause
 import { resolveLimits } from "@/lib/constants";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/admin/instances — federation registry (search/filter/paginate).
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -39,7 +39,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // POST /api/v1/admin/instances — add/refresh an instance or change its state.
 // body: { domain, action?: "add" | "refresh" | "reset" | "suspend" | "unsuspend" }
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     // Authenticated moderators get a 403 (the admin UI shows the section but
@@ -129,7 +128,6 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 // DELETE /api/v1/admin/instances?domain= — purge every cached actor/post.
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     // Authenticated moderators get a 403 (the admin UI shows the section but

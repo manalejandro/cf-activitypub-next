@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { extractBearerToken } from "@/lib/auth";
 import { getTokenByAccessToken, getActorById } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // GET /api/auth/status — session probe for the web client.
 //
@@ -13,7 +14,6 @@ import { getTokenByAccessToken, getActorById } from "@/lib/db";
 //   - "invalid":   unknown or expired token
 //   - "unverified" / "pending": registration gates (email / admin approval)
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const token = extractBearerToken(request);
   if (!token) return json({ authenticated: false }, 200);
 

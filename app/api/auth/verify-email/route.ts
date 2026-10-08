@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getCloudflareContext, getBaseUrl } from "@/lib/cf";
+import { getBaseUrl } from "@/lib/cf";
 import {
   getEmailVerificationByToken,
   deleteEmailVerification,
   markEmailVerified,
 } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 /**
  * GET /api/auth/verify-email?token=...
@@ -16,7 +17,6 @@ import {
 export async function GET(request: NextRequest): Promise<Response> {
   const token = request.nextUrl.searchParams.get("token");
 
-  const { env } = getCloudflareContext();
   const baseUrl = getBaseUrl(env);
 
   if (!token) {

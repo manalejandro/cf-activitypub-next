@@ -1,9 +1,9 @@
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getInstanceSetting } from "@/lib/db";
 import { SUPPORTED_LANGUAGES } from "@/lib/locales/supported";
+import { env } from "cloudflare:workers";
 
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
   const raw = await getInstanceSetting(env.DB, "languages");
   if (raw) {
     try {

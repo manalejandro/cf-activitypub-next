@@ -1,12 +1,11 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext } from "@/lib/cf";
 import { getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/instance (legacy Mastodon v1)
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
 

@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
+import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const limit = Math.min(
     parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.trendingTagsLimit)),

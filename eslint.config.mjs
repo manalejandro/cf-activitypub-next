@@ -13,8 +13,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     // Generated / tooling output:
-    ".open-next/**",
+    "dist/**",
+    ".cloudflare/**",
     ".wrangler/**",
+    ".vinext/**",
     ".turbo/**",
     "coverage/**",
     // Static assets (swagger-ui-dist is vendored minified third-party code)

@@ -36,7 +36,6 @@ vi.mock("@/lib/activitypub/federation", () => ({
 import { POST } from "@/app/api/v1/statuses/[id]/reblog/route";
 import { createAttachment } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
-import { installTestContext } from "./helpers/context";
 
 const db = env.DB;
 const BASE = "https://local.example.test";
@@ -53,7 +52,6 @@ interface StreamedStatus {
 }
 
 beforeAll(async () => {
-  installTestContext();
   await applyTestSchema();
 });
 

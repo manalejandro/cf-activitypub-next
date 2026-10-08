@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, activityJson, notFound } from "@/lib/cf";
+import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, countActorPublicStatuses } from "@/lib/db";
 import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI } from "@/lib/activitypub/utils";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
@@ -15,6 +15,7 @@ import {
   insertMlsMessage,
 } from "@/lib/db";
 import type { APAttachment, APTag, LocalAttachment, APActor, APActivity } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 interface MlsOutboxObject {
   id?: string;
@@ -55,7 +56,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
@@ -192,7 +192,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { username } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

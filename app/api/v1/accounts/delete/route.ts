@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor, clearAuthCookie } from "@/lib/auth";
 import { countUsableAdmins, getActorById } from "@/lib/db";
 import { buildDelete, generateId } from "@/lib/activitypub/utils";
@@ -7,12 +7,12 @@ import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { recordModeration } from "@/lib/moderation/log";
 import type { APActor } from "@/lib/types";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts/delete — permanently delete the current account.
 // Removes the actor and all cascade-dependent data, federates a Delete
 // tombstone to followers, revokes every session token and clears the cookie.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 

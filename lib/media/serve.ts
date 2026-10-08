@@ -2,7 +2,7 @@
  * R2 media serving shared by the Next route (`app/api/media/[...key]`) and the
  * worker entry (`src/worker.ts`).
  *
- * The worker intercepts `/api/media/…` **before** OpenNext on purpose: the
+ * The worker intercepts `/api/media/…` **before** vinext on purpose: the
  * framework appends `Vary: rsc, next-router-state-tree, next-router-prefetch,
  * next-router-segment-prefetch` to every app response and Cloudflare only
  * honours `Vary: Accept-Encoding` when caching, so with the framework header

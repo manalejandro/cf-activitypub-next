@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   getBaseUrl: vi.fn(() => "https://local.example"),
   checkRateLimit: vi.fn(async () => ({ allowed: true, remaining: 10 })),
   json: (data: unknown, status = 200) =>
@@ -28,11 +28,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   getBaseUrl: mocks.getBaseUrl,
   checkRateLimit: mocks.checkRateLimit,
   json: mocks.json,
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
   createPasswordReset: mocks.createPasswordReset,
@@ -70,16 +70,14 @@ function post(path: string, body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getCloudflareContext.mockReturnValue({
-    env: {
-      DB: {},
-      KV: { get: vi.fn(), put: vi.fn(), delete: vi.fn(async () => {}) },
-      EMAIL: {},
-      FROM_EMAIL: "noreply@local.example",
-      INSTANCE_TITLE: "Test",
-      TURNSTILE_SECRET: "secret",
-    },
-  });
+  mocks.env = {
+    DB: {},
+    KV: { get: vi.fn(), put: vi.fn(), delete: vi.fn(async () => {}) },
+    EMAIL: {},
+    FROM_EMAIL: "noreply@local.example",
+    INSTANCE_TITLE: "Test",
+    TURNSTILE_SECRET: "secret",
+  };
   mocks.checkRateLimit.mockResolvedValue({ allowed: true, remaining: 10 });
   mocks.verifyPassword.mockResolvedValue(true);
 });

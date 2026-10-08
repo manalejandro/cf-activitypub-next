@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl } from "@/lib/cf";
+import { getBaseUrl } from "@/lib/cf";
+import { env } from "cloudflare:workers";
 
 /**
  * OSM tile proxy.
@@ -27,7 +28,6 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const { env } = getCloudflareContext();
   const base = getBaseUrl(env);
   const cache = typeof caches !== "undefined"
     ? (caches as unknown as { default?: Cache }).default ?? null

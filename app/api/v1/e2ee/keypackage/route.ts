@@ -1,8 +1,9 @@
-import { getCloudflareContext, json, getBaseUrl, unauthorized } from "@/lib/cf";
+import { json, getBaseUrl, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getMlsKeyPackagesByActor } from "@/lib/db";
 import { safeFetch, signedGetHeaders, validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { NextRequest } from "next/server";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/e2ee/keypackage?iri=<actorIri>
 //
@@ -14,7 +15,6 @@ export async function GET(request: NextRequest): Promise<Response> {
   const iri = (request.nextUrl.searchParams.get("iri") ?? "").trim();
   if (!iri) return json({ error: "iri parameter required" }, 422);
 
-  const { env } = getCloudflareContext();
   // Resolving remote key packages triggers outbound fetches — require a session.
   const me = await getAuthenticatedActor(request, env.DB);
   if (!me) return unauthorized();

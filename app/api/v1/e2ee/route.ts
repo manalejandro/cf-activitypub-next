@@ -1,4 +1,4 @@
-import { getCloudflareContext, json, getBaseUrl } from "@/lib/cf";
+import { json, getBaseUrl } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import {
   getActorById,
@@ -10,6 +10,7 @@ import {
   deleteMlsMessagesByConversation,
 } from "@/lib/db";
 import type { NextRequest } from "next/server";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/e2ee
 //
@@ -17,7 +18,6 @@ import type { NextRequest } from "next/server";
 // conversations of the authenticated actor. Never decrypts content.
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const baseUrl = getBaseUrl(env);
 
   const actor = await getAuthenticatedActor(request, env.DB);
@@ -90,7 +90,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 // received message (by id) or a whole conversation (by conversation).
 
 export async function DELETE(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return json({ error: "No autorizado" }, 401);
 

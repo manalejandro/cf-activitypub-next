@@ -1,14 +1,14 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { deleteCustomEmoji, disableCustomEmoji, invalidateCustomEmojiCache } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { env } from "cloudflare:workers";
 
 // DELETE /api/admin/emojis/:id — Permanently delete a custom emoji
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -24,7 +24,6 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }

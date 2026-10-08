@@ -1,3 +1,3 @@
 // Direct ActivityPub shared inbox handler at /inbox.
-// Bypasses Next.js middleware rewriting (unreliable for external POST in OpenNext/Cloudflare).
+// Bypasses the proxy rewriting (route files answer external POSTs directly).
 export { POST } from "@/app/api/inbox/route";

@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
 const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_required", "registrations_reason_required", "registrations_message", "registrations_min_age", "registrations_url"] as const;
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   if (!(await requireAdmin(request, env))) {
     return json({ error: "Unauthorized" }, 401);
   }
@@ -43,7 +43,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 export async function PUT(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const role = await getAdminRole(request, env);
   if (role !== "admin") {
     // Authenticated moderators get a 403 (the admin UI shows the section but

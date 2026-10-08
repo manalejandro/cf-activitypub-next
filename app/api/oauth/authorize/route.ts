@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, checkRateLimit } from "@/lib/cf";
+import { checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, getOAuthAppByClientId } from "@/lib/db";
 import { verifyPassword, generateSecureToken } from "@/lib/auth";
+import { env } from "cloudflare:workers";
 
 // POST /api/oauth/authorize — processes the authorize form submission
 export async function POST(request: NextRequest): Promise<Response> {
@@ -22,7 +23,6 @@ export async function POST(request: NextRequest): Promise<Response> {
   const email = form.get("email") as string;
   const password = form.get("password") as string;
 
-  const { env } = getCloudflareContext();
 
   // Validate app
   const app = await getOAuthAppByClientId(env.DB, client_id);

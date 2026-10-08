@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, badRequest } from "@/lib/cf";
+import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { normalizeLicenseId } from "@/lib/licenses";
 import { SUPPORTED_LANGUAGE_CODES } from "@/lib/locales/supported";
+import { env } from "cloudflare:workers";
 
 const DEFAULT_PREFERENCES: Record<string, string | null> = {
   "posting:default:visibility": "public",
@@ -64,7 +65,6 @@ function toApiValue(key: string, stored: string | null): string | boolean | null
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
@@ -83,7 +83,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 }
 
 export async function PUT(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();

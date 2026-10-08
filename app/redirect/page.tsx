@@ -1,6 +1,6 @@
 import { RedirectView } from "./RedirectView";
 
-// /redirect?url=… — server-rendered so the rewritten query (from middleware) is
+// /redirect?url=… — server-rendered so the rewritten query (from the proxy) is
 // available even though the browser URL still shows the original /@user@domain.
 export default async function RedirectPage({
   searchParams,

@@ -24,17 +24,6 @@ const cspHeader = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  // Required for @opennextjs/cloudflare
-  outputFileTracingExcludes: {
-    "*": [
-      "node_modules/@swc/core-linux-x64-gnu",
-      "node_modules/@swc/core-linux-x64-musl",
-    ],
-  },
-  images: {
-    loader: "custom",
-    loaderFile: "./app/image-loader.ts",
-  },
   experimental: {
     serverActions: {
       allowedOrigins: ["*"],
@@ -42,7 +31,7 @@ const nextConfig: NextConfig = {
   },
   // Rewrite /@username → /users/username (Mastodon profile URL convention).
   // Next.js App Router reserves @ for parallel routes so there is no app/@[username].
-  // This runs after middleware; it acts as a reliable fallback for browsers.
+  // This runs after the proxy; it acts as a reliable fallback for browsers.
   async rewrites() {
     return [
       { source: "/@:username", destination: "/users/:username" },
@@ -56,9 +45,9 @@ const nextConfig: NextConfig = {
       { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, Accept" },
     ];
     return [
-      // CORS for routes not matched by the Edge middleware (which only covers
-      // /users, /api, /nodeinfo and /@username). Keeping a single source per
-      // path prevents duplicated Access-Control-Allow-Origin headers (e.g. "*, *").
+      // CORS for routes the proxy does not add CORS to (it covers /api,
+      // /nodeinfo and the AP rewrites). Keeping a single source per path
+      // prevents duplicated Access-Control-Allow-Origin headers (e.g. "*, *").
       { source: "/.well-known/:path*", headers: CORS },
       { source: "/oauth/:path*", headers: CORS },
       // The service worker must never be cached long: browsers check for

@@ -1,15 +1,15 @@
 import { type NextRequest } from "next/server";
-import { json, getCloudflareContext } from "@/lib/cf";
+import { json } from "@/lib/cf";
 import { getObjectById, getObjectEditHistory, getActorById, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { env } from "cloudflare:workers";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
 

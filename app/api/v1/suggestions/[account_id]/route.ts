@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized, notFound } from "@/lib/cf";
+import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, undismissSuggestedAccount } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // DELETE /api/v1/suggestions/:account_id — undo a previous dismissal so the
 // account can be suggested again. Idempotent.
@@ -9,7 +10,6 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ account_id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { account_id } = await params;
 
   const actor = await getAuthenticatedActor(request, env.DB);

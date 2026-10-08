@@ -2,16 +2,14 @@ import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET } from "@/app/api/v1/licenses/route";
 import { createLicense } from "@/lib/db";
-import { installTestContext } from "./helpers/context";
 import { applyTestSchema } from "./helpers/db";
 
 /**
- * Route handlers on the real runtime: `installTestContext()` hands the test
- * Worker's bindings to OpenNext's `getCloudflareContext()`, so the handler
- * reads the same D1/KV/R2 the test seeds.
+ * Route handlers on the real runtime: the handler reads its bindings from
+ * `cloudflare:workers` (`lib/cf.ts`), so it sees the same D1/KV/R2 the test
+ * seeds — no context shim needed.
  */
 beforeAll(async () => {
-  installTestContext();
   await applyTestSchema();
 });
 

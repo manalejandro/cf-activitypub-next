@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCloudflareContext: vi.fn(),
+  env: {} as Record<string, unknown>,
   getAdminRole: vi.fn(),
   requireAdmin: vi.fn(),
   listLicenses: vi.fn(async (): Promise<unknown> => []),
@@ -15,12 +15,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cf", () => ({
-  getCloudflareContext: mocks.getCloudflareContext,
   json: (data: unknown, status = 200) =>
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
   badRequest: (message = "Bad request") =>
     new Response(JSON.stringify({ error: message }), { status: 422, headers: { "Content-Type": "application/json" } }),
 }));
+vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
 vi.mock("@/lib/admin-auth", () => ({
   getAdminRole: mocks.getAdminRole,
   requireAdmin: mocks.requireAdmin,
@@ -56,7 +56,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getCloudflareContext.mockReturnValue({ env: { DB: {} } });
+  mocks.env = { DB: {} };
   mocks.requireAdmin.mockResolvedValue(true);
   mocks.getAdminRole.mockResolvedValue("admin");
   mocks.listLicenses.mockResolvedValue([LICENSE]);

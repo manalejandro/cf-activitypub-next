@@ -8,7 +8,7 @@ const getObjectById = vi.hoisted(() => vi.fn());
 const getActorById = vi.hoisted(() => vi.fn());
 const getAuthenticatedActor = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/cf", () => ({ getCloudflareContext: () => ({ env: { DB: db } }) }));
+vi.mock("cloudflare:workers", () => ({ get env() { return { DB: db }; } }));
 vi.mock("@/lib/db", () => ({ getObjectById, getActorById }));
 vi.mock("@/lib/auth", () => ({ getAuthenticatedActor }));
 

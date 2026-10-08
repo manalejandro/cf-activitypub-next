@@ -1,11 +1,10 @@
-import { getCloudflareContext } from "@/lib/cf";
 import { getAllCustomEmojis } from "@/lib/db";
+import { env } from "cloudflare:workers";
 
 // GET /api/v1/custom_emojis — fetched by every client when composing; cache in
 // KV so a burst of clients doesn't query D1 per request. Emoji changes appear
 // within the TTL (admins rarely edit emojis mid-session).
 export async function GET(): Promise<Response> {
-  const { env } = getCloudflareContext();
 
   const cacheKey = "custom_emojis:v1";
   const cached = await env.KV.get(cacheKey).catch(() => null);

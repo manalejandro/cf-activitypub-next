@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, getBaseUrl, json, checkRateLimit } from "@/lib/cf";
+import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import { getActorByEmail, createEmailVerification } from "@/lib/db";
 import { generateSecureToken } from "@/lib/auth";
 import { sendVerificationEmail } from "@/lib/email";
+import { env } from "cloudflare:workers";
 
 /**
  * POST /api/auth/resend-verification
@@ -27,7 +28,6 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "email is required" }, 400);
   }
 
-  const { env } = getCloudflareContext();
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { allowed } = await checkRateLimit(env.KV, `resend:${clientIp}`, 5, 60);
   if (!allowed) {

@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getFollow, createFollow } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { buildFollow, generateId } from "@/lib/activitypub/utils";
@@ -7,13 +7,13 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
 import { notify } from "@/lib/notify";
 import { buildRelationship } from "@/lib/mastodon/relationships";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts/:id/follow
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  const { env } = getCloudflareContext();
   const { id } = await params;
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

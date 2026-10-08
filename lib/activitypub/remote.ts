@@ -1,6 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { discardBody } from "@/lib/http";
-import { getCloudflareContext } from "@/lib/cf";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
 import { extractQuoteId } from "@/lib/activitypub/utils";
@@ -24,6 +23,7 @@ import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
+import { env } from "cloudflare:workers";
 
 /**
  * Status of the last failed actor fetch, keyed by the requested URL (0 =
@@ -80,7 +80,6 @@ const UA_BROWSER =
  */
 function buildUserAgent(): string {
   try {
-    const { env } = getCloudflareContext();
     const e = env as unknown as Record<string, string | undefined>;
     const version = e.INSTANCE_VERSION ?? "0.1.0";
     const domain = new URL(e.INSTANCE_URL ?? "http://localhost:3000").hostname;

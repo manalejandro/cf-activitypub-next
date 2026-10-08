@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
-import { getCloudflareContext, json, unauthorized } from "@/lib/cf";
+import { json, unauthorized } from "@/lib/cf";
 import { requireAdmin } from "@/lib/admin-auth";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
+import { env } from "cloudflare:workers";
 
 // POST /api/v1/admin/verify_account — force a rel="me" verification for any
 // actor cached on this instance (local or remote). Useful to refresh a remote
 // account's badge without waiting for the periodic cron.
 export async function POST(request: NextRequest): Promise<Response> {
-  const { env } = getCloudflareContext();
   const isAdmin = await requireAdmin(request, env as Parameters<typeof requireAdmin>[1]);
   if (!isAdmin) return unauthorized();
 
