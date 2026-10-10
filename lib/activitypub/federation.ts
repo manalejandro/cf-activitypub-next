@@ -4,6 +4,7 @@
 
 import { signRequest, signRequestRfc9421 } from "./security";
 import { discardBody } from "@/lib/http";
+import { federationUserAgent } from "@/lib/user-agent";
 import type { APActivity, APActor, APObject } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
@@ -160,8 +161,15 @@ export async function safeFetchTracked(
       console.warn(`[federation] Blocked outbound request to ${current}: ${validation.reason}`);
       return { res: null, finalUrl: current };
     }
+    // Workers' fetch sends no User-Agent and strict servers (GoToSocial)
+    // reject such requests with 418 "no user-agent sent with request" —
+    // WebFinger, actor documents and inbox deliveries all failed silently
+    // against them. Callers may override it (the media cache sends its own).
+    const headers = new Headers(init.headers);
+    if (!headers.has("User-Agent")) headers.set("User-Agent", federationUserAgent());
     const res = await fetch(current, {
       ...init,
+      headers,
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });

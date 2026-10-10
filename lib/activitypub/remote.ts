@@ -18,12 +18,12 @@ import {
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders, signedGetHeadersRfc9421 } from "@/lib/activitypub/federation";
+import { federationUserAgent, FEDERATION_BROWSER_UA } from "@/lib/user-agent";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
 import { isContentObjectType } from "@/lib/activitypub/vocab";
 import type { APAttachment, APNote, LocalAttachment, LocalObject, LocalActor } from "@/lib/types";
 import { generateId } from "@/lib/activitypub/utils";
-import { env } from "cloudflare:workers";
 
 /**
  * Status of the last failed actor fetch, keyed by the requested URL (0 =
@@ -70,25 +70,6 @@ export function pickActorPublicKey(doc: Record<string, unknown>, keyId?: string)
   return candidates[0].pem;
 }
 
-const UA_BROWSER =
-  "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0";
-
-/**
- * Federated User-Agent carrying the instance's version and domain, e.g.
- * "CFActivityPub/1.1.9 (+https://cf-ap.com)". Falls back to the env-less
- * defaults outside the Worker runtime (tests, local dev).
- */
-function buildUserAgent(): string {
-  try {
-    const e = env as unknown as Record<string, string | undefined>;
-    const version = e.INSTANCE_VERSION ?? "0.1.0";
-    const domain = new URL(e.INSTANCE_URL ?? "http://localhost:3000").hostname;
-    return `CFActivityPub/${version} (+https://${domain})`;
-  } catch {
-    return "CFActivityPub/0.1.0 (+http://localhost:3000)";
-  }
-}
-
 /**
  * Fetch with an explicit federated User-Agent, retrying with a browser UA when
  * the remote server blocks non-browser clients (Friendica's anti-bot guard
@@ -99,7 +80,7 @@ async function remoteFetch(
   headers: Record<string, string>,
   timeoutMs = 8000
 ): Promise<Response | null> {
-  const uas = [buildUserAgent(), UA_BROWSER];
+  const uas = [federationUserAgent(), FEDERATION_BROWSER_UA];
   // Authorized-fetch instances answer unsigned GETs with 401 "Request not
   // signed"; sign once for both UA attempts (same Date header).
   const signed = await signedGetHeaders(url);
@@ -189,7 +170,7 @@ async function remoteActorFetch(
   headers: Record<string, string>,
   timeoutMs = 8000
 ): Promise<{ res: Response | null; moved: boolean }> {
-  const uas = [buildUserAgent(), UA_BROWSER];
+  const uas = [federationUserAgent(), FEDERATION_BROWSER_UA];
   const signed = await signedGetHeaders(url);
   const originalHost = new URL(url).hostname;
   let last: Response | null = null;

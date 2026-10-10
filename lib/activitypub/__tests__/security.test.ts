@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { generateKeyPair, signRequest, signRequestRfc9421, verifySignature } from "@/lib/activitypub/security";
-import { fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "@/lib/activitypub/federation";
+import { fetchRemoteObject, postToInboxSigned, safeFetch, validateOutboundUrl } from "@/lib/activitypub/federation";
 
 const TARGET = "https://remote.example/inbox";
 const KEY_ID = "https://local.example/users/alice#main-key";
@@ -181,8 +181,52 @@ describe("HTTP signature verification", () => {
   });
 });
 
-describe("validateOutboundUrl", () => {
-  it.each([
+describe("outbound User-Agent", () => {
+  it("sets a federated User-Agent when the caller sends none", async () => {
+    const calls: RequestInit[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return new Response(JSON.stringify({ id: TARGET }), {
+        status: 200,
+        headers: { "content-type": "application/activity+json" },
+      });
+    }) as typeof fetch;
+    try {
+      // A plain fetch (the search route's WebFinger) and a signed fetch.
+      await safeFetch(TARGET);
+      const { privateKeyPem } = await generateKeyPair();
+      await fetchRemoteObject(TARGET, KEY_ID, privateKeyPem);
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      for (const init of calls) {
+        const ua = new Headers(init.headers).get("user-agent");
+        // Workers' fetch sends no User-Agent and GoToSocial answers 418
+        // "no user-agent sent with request" to such requests.
+        expect(ua).toBeTruthy();
+        expect(ua).toContain("CFActivityPub/");
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps the caller's User-Agent (the media cache sends its own)", async () => {
+    const calls: RequestInit[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return new Response("ok", { status: 200 });
+    }) as typeof fetch;
+    try {
+      await safeFetch(TARGET, { headers: { "User-Agent": "CFActivityPub/9.9 (+https://x; federated media cache)" } });
+      expect(new Headers(calls[0].headers).get("user-agent")).toContain("federated media cache");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("validateOutboundUrl", () => {  it.each([
     "http://mastodon.social/users/x",
     "https://localhost/x",
     "https://foo.internal/x",

@@ -129,11 +129,14 @@ export async function GET(request: NextRequest): Promise<Response> {
             const selfLink = wf.links?.find((l) => l.rel === "self");
             if (selfLink?.href) {
               const cached = await fetchAndCacheRemoteActor(env.DB, selfLink.href, env.KV);
-              if (cached) {
-                const actor = await getActorById(env.DB, cached.id);
-                if (actor && !actor.suspended && !actor.silenced) {
-                  results.accounts.push(serializeAccount(actor, domain));
-                }
+              // Fall back to the stored copy when the origin is unreachable: an
+              // account resolved before (e.g. while its instance was up) must
+              // stay findable instead of vanishing on a transient failure.
+              const actor = cached
+                ? await getActorById(env.DB, cached.id)
+                : await getActorById(env.DB, selfLink.href);
+              if (actor && !actor.suspended && !actor.silenced) {
+                results.accounts.push(serializeAccount(actor, domain));
               }
             }
           } else {
