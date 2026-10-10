@@ -15,7 +15,7 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 # MAX_HEADER_SIZE = "5242880"
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.4.3"
+INSTANCE_VERSION = "1.4.4"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""
@@ -53,7 +53,11 @@ MEDIA_CACHE_MAX_BYTES = "10737418240"
 # MEDIA_CACHE_MAX_OBJECT_BYTES is also the absolute ceiling for every type.
 MEDIA_CACHE_MAX_OBJECT_BYTES = "103809024"
 MEDIA_CACHE_MAX_IMAGE_BYTES = "16777216"
-MEDIA_CACHE_FETCH_BATCH = "50"
+# Downloads per cron tick. The steady state is a handful of new media objects
+# per minute, so this is a guardrail: at 50/tick a bug that re-queued evicted
+# URLs turned into ~70k R2 writes per day. Keep it a small multiple of the
+# ingest rate.
+MEDIA_CACHE_FETCH_BATCH = "20"
 # Maintenance never shrinks the cache below this many entries (FIFO eviction:
 # the oldest are replaced first when a limit is reached).
 MEDIA_CACHE_MIN_ENTRIES = "20"
@@ -100,7 +104,7 @@ INSTANCE_EXPIRE_DAYS = "90"
 # DEFAULT_TIMELINE_PAGE, MAX_PAGE_SIZE, MAX_COLLECTION_PAGE,
 # TRENDING_TAGS_LIMIT, TRENDING_TAGS_MAX, ADMIN_LOG_PAGE_SIZE,
 # MAX_IMAGE_SIZE, MAX_VIDEO_SIZE, IMAGE_MATRIX_LIMIT, VIDEO_FRAME_RATE_LIMIT,
-# VIDEO_MATRIX_LIMIT.
+# VIDEO_MATRIX_LIMIT, TIMELINE_CACHE_MAX_ITEMS.
 
 # Guardian vector memory (Cloudflare Vectorize). OPTIONAL — the moderation
 # system works without it; this adds semantic spam detection + RAG precedent.
