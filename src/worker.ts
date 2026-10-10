@@ -33,7 +33,7 @@ import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCa
 import { serveMediaObject } from "../lib/media/serve";
 import { recordMediaHit, flushMediaHits } from "../lib/media/hits";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
-import { normalizeLocationInput, parseLocationJson } from "../lib/activitypub/utils";
+import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
 import {
   backfillRemoteSharedInboxes,
@@ -614,6 +614,13 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         licenseUrl = license?.url ?? null;
       }
 
+      // Scheduled posts keep the thread identity: a reply joins its parent's
+      // conversation, a root starts one (see `conversationUri`).
+      const parentObj = inReplyToId ? await getObjectById(env.DB, inReplyToId) : null;
+      const conversation = inReplyToId
+        ? conversationFromRaw(parentObj?.raw)
+        : conversationUri(baseUrl, noteId, published);
+
       const note = buildNote(baseUrl, noteId, {
         actorUsername: actor.username,
         content,
@@ -626,6 +633,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         tags: [],
         location: locationJson ? parseLocationJson(locationJson) : null,
         licenseUrl: licenseUrl ?? undefined,
+        conversation,
       });
 
       // Link pending media uploads (same `pending_media:` KV contract as

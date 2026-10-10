@@ -127,7 +127,7 @@ export async function performMove(
       .map((f) => f.inbox!);
     const inboxes = [...new Set(remoteInboxes)];
     if (inboxes.length > 0) {
-      const moveActivity = buildMove(baseUrl, sourceId, targetId, generateId(), inboxes);
+      const moveActivity = buildMove(baseUrl, sourceId, targetId, generateId());
       await enqueueDeliveries(
         queue,
         inboxes,

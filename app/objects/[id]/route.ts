@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
-import { buildNote, parseLocationJson } from "@/lib/activitypub/utils";
+import { buildNote, conversationFromRaw, parseLocationJson } from "@/lib/activitypub/utils";
+import { applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
@@ -81,6 +82,9 @@ export async function GET(
     to,
     cc,
     location: parseLocationJson(obj.locationJson),
+    conversation: conversationFromRaw(obj.raw) ?? undefined,
+    favouritesCount: obj.favouritesCount,
+    reblogsCount: obj.reblogsCount,
   });
 
   // FEP-044f: expose the quoted post so remote instances can verify the quote
@@ -88,6 +92,11 @@ export async function GET(
   if (obj.quoteId) {
     (note as Record<string, unknown>).quote = obj.quoteId;
   }
+
+  // Poll statuses are served as a Question with their current counts: peers
+  // re-fetch this URL to refresh a poll (Mastodon's `Poll#sync` does exactly
+  // that), so a plain Note here made the poll invisible to them.
+  await applyPollToNoteFromDb(env.DB, note);
 
   const body = JSON.stringify(note);
   await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});

@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, countActorPublicStatuses } from "@/lib/db";
-import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI } from "@/lib/activitypub/utils";
+import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, getPollsByObjectIds, countActorPublicStatuses } from "@/lib/db";
+import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI, conversationFromRaw } from "@/lib/activitypub/utils";
+import { applyPollToNote } from "@/lib/activitypub/polls";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { mlsObjectTypeFromType } from "@/lib/activitypub/vocab";
@@ -86,6 +87,10 @@ export async function GET(
     const entries = await getActorStatuses(env.DB, actor.id, 20, maxId);
     const statuses = entries.map((entry) => entry.object);
     const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
+    // Poll statuses are serialized as Questions (Mastodon's NoteSerializer
+    // does): a peer that reads the outbox instead of the Create must still see
+    // the choices and their current counts.
+    const pollMap = await getPollsByObjectIds(env.DB, statuses.map((s) => s.id));
 
     const items = statuses
       .filter((s) => s.visibility === "public")
@@ -117,10 +122,15 @@ export async function GET(
           tags,
           to,
           cc,
+          conversation: conversationFromRaw(s.raw) ?? undefined,
+          favouritesCount: s.favouritesCount,
+          reblogsCount: s.reblogsCount,
         });
         if (attachments.length > 0) {
           note.attachment = attachments;
         }
+        const poll = pollMap.get(s.id);
+        if (poll) applyPollToNote(note, poll.poll, poll.options);
         return buildCreate(baseUrl, actorIRI(baseUrl, username), note, objectUuid + "-create");
       });
 

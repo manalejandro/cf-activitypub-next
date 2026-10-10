@@ -9,8 +9,11 @@ beforeAll(async () => {
 
 import { loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { createPoll, createPollVotes, getPollById, getPollOptions, listRemotePollsForRefresh } from "@/lib/db";
-import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
+import { applyPollToNoteFromDb, refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
+import { buildNote } from "@/lib/activitypub/utils";
+import { GET as getObjectRoute } from "@/app/objects/[id]/route";
+import { resetTestStorage } from "./helpers/db";
 
 const db = env.DB;
 
@@ -45,6 +48,102 @@ describe("loadSerializedPolls", () => {
     const anonymous = await loadSerializedPolls(db, null, ["https://local.example/objects/1"]);
     expect(anonymous.get("https://local.example/objects/1")?.voted).toBe(false);
     expect(anonymous.get("https://local.example/objects/1")?.own_votes).toEqual([]);
+  });
+});
+
+describe("outbound poll serialization (applyPollToNote)", () => {
+  const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+  beforeEach(async () => {
+    await resetTestStorage();
+  });
+
+  async function seedLocalPoll(multiple = false): Promise<void> {
+    await db.prepare(
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local)
+       VALUES ('https://local.example/users/me', 'me', 'local.example', 'k', 'p', 1)`
+    ).bind().run();
+    await db.prepare(
+      `INSERT INTO objects (id, type, actor_id, content, visibility, is_local, raw)
+       VALUES ('https://local.example/objects/q1', 'Note', 'https://local.example/users/me', '¿A o B?', 'public', 1, '{}')`
+    ).bind().run();
+    await createPoll(db, {
+      id: "p-local",
+      objectId: "https://local.example/objects/q1",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      multiple,
+      options: [
+        { id: "lo1", title: "A", position: 0 },
+        { id: "lo2", title: "B", position: 1 },
+      ],
+    });
+    await db.prepare("UPDATE poll_options SET votes_count = 3 WHERE id = 'lo1'").bind().run();
+    await db.prepare("UPDATE poll_options SET votes_count = 1 WHERE id = 'lo2'").bind().run();
+    await db.prepare("UPDATE polls SET voters_count = 4 WHERE id = 'p-local'").bind().run();
+  }
+
+  function localNote() {
+    return buildNote("https://local.example", "q1", {
+      actorUsername: "me",
+      content: "¿A o B?",
+      published: "2026-01-01T00:00:00Z",
+      visibility: "public",
+    });
+  }
+
+  it("renders the choices with their counts, the deadline and the voters", async () => {
+    await seedLocalPoll();
+    const note = localNote();
+    await applyPollToNoteFromDb(db, note);
+    const ap = note as Record<string, unknown>;
+
+    expect(ap.type).toBe("Question");
+    expect(ap.oneOf).toEqual([
+      { type: "Note", name: "A", replies: { type: "Collection", totalItems: 3 } },
+      { type: "Note", name: "B", replies: { type: "Collection", totalItems: 1 } },
+    ]);
+    expect(ap.anyOf).toBeUndefined();
+    expect(ap.votersCount).toBe(4);
+    expect(typeof ap.endTime).toBe("string");
+    expect(ap.closed).toBeUndefined();
+  });
+
+  it("uses anyOf for a multiple-choice poll and marks an expired one closed", async () => {
+    await seedLocalPoll(true);
+    await db.prepare("UPDATE polls SET expires_at = ? WHERE id = 'p-local'")
+      .bind(new Date(Date.now() - 60_000).toISOString())
+      .run();
+
+    const note = localNote();
+    await applyPollToNoteFromDb(db, note);
+    const ap = note as Record<string, unknown>;
+
+    expect(ap.anyOf).toBeDefined();
+    expect(ap.oneOf).toBeUndefined();
+    expect(typeof ap.closed).toBe("string");
+  });
+
+  it("leaves a note without a poll untouched", async () => {
+    const note = localNote();
+    await applyPollToNoteFromDb(db, note);
+    expect((note as Record<string, unknown>).type).toBe("Note");
+    expect((note as Record<string, unknown>).oneOf).toBeUndefined();
+  });
+
+  it("serves a poll status as a Question on the object endpoint", async () => {
+    await seedLocalPoll();
+    const request = new Request("https://local.example/objects/q1", {
+      headers: { accept: "application/activity+json" },
+    });
+    const response = await getObjectRoute(request as never, { params: Promise.resolve({ id: "q1" }) });
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(body.type).toBe("Question");
+    expect(body.oneOf).toEqual([
+      { type: "Note", name: "A", replies: { type: "Collection", totalItems: 3 } },
+      { type: "Note", name: "B", replies: { type: "Collection", totalItems: 1 } },
+    ]);
+    expect(body.interactionPolicy).toEqual({ canQuote: { automaticApproval: [PUBLIC] } });
   });
 });
 

@@ -200,6 +200,18 @@ export function isRenderableObjectType(type: string): boolean {
  */
 export const FEP_6757_CONTEXT = "https://w3id.org/fep/6757";
 
+/**
+ * OStatus conversation terms (Mastodon's `ostatus:conversation`). Kept out of
+ * `DEFAULT_CONTEXT` because our MLS extension uses the `conversation` short key
+ * for `mls:conversation`: notes that carry a conversation append this object, so
+ * their `conversation` resolves to the OStatus property (the last JSON-LD
+ * definition wins) while MLS documents keep theirs.
+ */
+export const OSTATUS_CONVERSATION_CONTEXT = {
+  ostatus: "http://ostatus.org#",
+  conversation: "ostatus:conversation",
+} as const;
+
 /** Full Mastodon-compatible context — required for PropertyValue fields,
  *  toot: extensions (discoverable, indexable, etc.) and schema.org terms. */
 export const DEFAULT_CONTEXT = [
@@ -222,6 +234,24 @@ export const DEFAULT_CONTEXT = [
     Hashtag:       "as:Hashtag",
     Emoji:         "toot:Emoji",
     focalPoint:    { "@container": "@list", "@id": "toot:focalPoint" },
+  },
+  // Mastodon's `toot`/`gts`/FEP extension terms (its ContextHelper). Every
+  // property we serialize must be declared: a JSON-LD processor silently drops
+  // terms the context does not define (sensitive, blurhash, votersCount, the
+  // quote and interaction policies…).
+  {
+    sensitive:   "as:sensitive",
+    blurhash:    "toot:blurhash",
+    votersCount: "toot:votersCount",
+    gts: "https://gotosocial.org/ns#",
+    interactionPolicy: { "@id": "gts:interactionPolicy", "@type": "@id" },
+    canFeature: { "@id": "https://w3id.org/fep/7aa9#canFeature", "@type": "@id" },
+    canQuote:   { "@id": "gts:canQuote", "@type": "@id" },
+    automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
+    manualApproval:    { "@id": "gts:manualApproval", "@type": "@id" },
+    quote:              { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+    quoteAuthorization: { "@id": "https://w3id.org/fep/044f#quoteAuthorization", "@type": "@id" },
+    featuredCollections: { "@id": "https://w3id.org/fep/7aa9#featuredCollections", "@type": "@id" },
   },
   // MLS (Messaging Layer Security) over ActivityPub — see MLS_CONTEXT.
   {

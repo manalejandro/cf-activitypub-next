@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
+import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, OSTATUS_CONVERSATION_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
 import { emojiImgsToShortcodes, fieldValueForVerification } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
@@ -109,6 +109,9 @@ export function buildActor(
     id,
     type: options.isBot ? "Service" : "Person",
     preferredUsername: username,
+    // Mastodon's ActorSerializer advertises the handle as `webfinger`; some
+    // implementations display it without a WebFinger lookup.
+    webfinger: `${username}@${new URL(baseUrl).hostname}`,
     name: emojiImgsToShortcodes(options.displayName ?? username),
     summary: emojiImgsToShortcodes(options.summary ?? ""),
     url: `${baseUrl}/@${username}`,
@@ -167,6 +170,19 @@ export function buildActor(
 // Note builder
 // ─────────────────────────────────────────
 
+/**
+ * Note context: the license (FEP-6757) and conversation (OStatus) extensions
+ * are appended only when the document uses them — for notes the conversation
+ * term must resolve to `ostatus:conversation`, not the MLS one that
+ * `DEFAULT_CONTEXT` carries for our E2EE documents.
+ */
+function noteContext(options: { licenseUrl?: string; conversation?: string | null }): (string | Record<string, unknown>)[] {
+  const extensions: (string | Record<string, unknown>)[] = [];
+  if (options.licenseUrl) extensions.push(FEP_6757_CONTEXT);
+  if (options.conversation) extensions.push(OSTATUS_CONVERSATION_CONTEXT);
+  return extensions.length > 0 ? [...DEFAULT_CONTEXT, ...extensions] : DEFAULT_CONTEXT;
+}
+
 export function buildNote(
   baseUrl: string,
   id: string,
@@ -186,6 +202,11 @@ export function buildNote(
     location?: GeoLocation | null;
     /** FEP-6757: canonical license URI for this status (dcterms:license). */
     licenseUrl?: string;
+    /** OStatus conversation URI (`conversationUri`/`conversationFromRaw`). */
+    conversation?: string | null;
+    /** Counters advertised as the `likes`/`shares` collections. */
+    favouritesCount?: number;
+    reblogsCount?: number;
   }
 ): APNote {
   const actorId = actorIRI(baseUrl, options.actorUsername);
@@ -235,7 +256,7 @@ export function buildNote(
     ? `<p><a href="${locationUrl}" rel="nofollow noopener noreferrer">\u{1F4CD} ${locationLabel(options.location).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a></p>`
     : "";
   const note: APNote = {
-    "@context": options.licenseUrl ? [...DEFAULT_CONTEXT, FEP_6757_CONTEXT] : DEFAULT_CONTEXT,
+    "@context": noteContext(options),
     id: noteId,
     type: "Note",
     attributedTo: actorId,
@@ -255,6 +276,18 @@ export function buildNote(
         items: [],
       },
     },
+    // Mastodon's NoteSerializer advertises the interaction collections with
+    // their counts (the URLs are informational for peers).
+    likes: {
+      id: `${noteId}/likes`,
+      type: "Collection",
+      totalItems: options.favouritesCount ?? 0,
+    },
+    shares: {
+      id: `${noteId}/shares`,
+      type: "Collection",
+      totalItems: options.reblogsCount ?? 0,
+    },
     ...(options.location
       ? {
           location: {
@@ -271,8 +304,24 @@ export function buildNote(
   };
 
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
+  // OStatus conversation (Mastodon groups threads by it when the root is not
+  // reachable; peers only accept a `tag:` URI).
+  if (options.conversation) (note as Record<string, unknown>).conversation = options.conversation;
   // FEP-6757: the canonical license URI of the status (Dublin Core license).
   if (options.licenseUrl) (note as Record<string, unknown>).license = options.licenseUrl;
+  // FEP-044f / Mastodon's NoteSerializer: the quote policy. Without it a
+  // Mastodon 4.4+ receiver resolves `canQuote` to `:denied` and its users
+  // cannot quote the post at all (the policy is read from the raw JSON, but
+  // declaring it keeps the document valid JSON-LD).
+  const quoteAudience =
+    options.visibility === "public" || options.visibility === "unlisted"
+      ? PUBLIC_ADDRESS
+      : options.visibility === "private"
+        ? followers
+        : actorId;
+  (note as Record<string, unknown>).interactionPolicy = {
+    canQuote: { automaticApproval: [quoteAudience] },
+  };
   // Mastodon sends the *source* note in ActivityPub (shortcodes + the Emoji
   // tags) and renders the emojis itself: a rendered `<img>` is dropped by its
   // sanitizer (MASTODON_STRICT has no `img`) and the emoji disappears. The
@@ -316,15 +365,14 @@ export function buildVote(
   activityId: string,
   to: string[]
 ): APActivity {
-  const published = new Date().toISOString();
+  // Mastodon's VoteSerializer: Create{Note} addressed to the poll author, with
+  // no `published`/`cc` anywhere.
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, activityId),
     type: "Create",
     actor: actorId,
-    published,
     to,
-    cc: [],
     object: {
       id: activityIRI(baseUrl, `vote-${activityId}`),
       type: "Note",
@@ -332,19 +380,19 @@ export function buildVote(
       inReplyTo: pollObjectId,
       name: choiceTitle,
       to,
-      published,
     } as unknown as APNote,
   };
 }
 
 export function buildFollow(baseUrl: string, actorId: string, targetId: string, id: string): APActivity {
+  // Mastodon's FollowSerializer carries only id/type/actor/object (the target
+  // is the delivery recipient, not an audience).
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Follow",
     actor: actorId,
     object: targetId,
-    to: [targetId],
   };
 }
 
@@ -363,33 +411,36 @@ export function buildRelayFollow(baseUrl: string, actorId: string, id: string): 
   };
 }
 
-/** Move activity for account migration: actor moves to object (target). */
+/** Move activity for account migration: the actor moves to `target`. */
 export function buildMove(
   baseUrl: string,
   actorId: string,
   targetId: string,
-  id: string,
-  followerIds: string[]
+  id: string
 ): APActivity {
+  // Mastodon's MoveSerializer: id/type/actor/object (the moving account) plus
+  // `target` — its handler rejects the activity unless
+  // `origin_account.uri == object_uri`. No audience: the Move is delivered to
+  // the followers' inboxes explicitly.
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Move",
     actor: actorId,
-    object: targetId,
+    object: actorId,
     target: targetId,
-    to: followerIds,
   };
 }
 
 export function buildAccept(baseUrl: string, actorId: string, followActivity: APActivity, id: string): APActivity {
+  // Mastodon's AcceptFollowSerializer: the inlined Follow and nothing else (the
+  // follower is the delivery recipient).
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Accept",
     actor: actorId,
     object: followActivity,
-    to: [typeof followActivity.actor === "string" ? followActivity.actor : followActivity.actor.id],
   };
 }
 
@@ -400,39 +451,41 @@ export function buildReject(baseUrl: string, actorId: string, followActivity: AP
     type: "Reject",
     actor: actorId,
     object: followActivity,
-    to: [typeof followActivity.actor === "string" ? followActivity.actor : followActivity.actor.id],
   };
 }
 
 export function buildUndo(baseUrl: string, actorId: string, activity: APActivity, id: string): APActivity {
-  return {
+  const undo: APActivity = {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Undo",
     actor: actorId,
     object: activity,
-    to: activity.to ?? [PUBLIC_ADDRESS],
-    cc: activity.cc,
   };
+  // Mirror the retracted activity's addressing: an Undo must never reach a
+  // wider audience than the activity it undoes. A relay Follow carries no
+  // `to`/`cc`, and the old `?? [PUBLIC_ADDRESS]` made its Undo public.
+  if (activity.to) undo.to = activity.to;
+  if (activity.cc) undo.cc = activity.cc;
+  return undo;
 }
 
 export function buildLike(
   baseUrl: string,
   actorId: string,
   objectId: string,
-  id: string,
-  followers?: string
+  id: string
 ): APActivity {
-  const activity: APActivity = {
+  // Mastodon's LikeSerializer sends only id/type/actor/object: a Like is
+  // delivered to the author's inbox, so it must not claim a public or
+  // followers audience (the Undo of a Like mirrors this).
+  return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Like",
     actor: actorId,
     object: objectId,
-    to: [PUBLIC_ADDRESS],
   };
-  if (followers) activity.cc = [followers];
-  return activity;
 }
 
 export function buildAnnounce(
@@ -468,6 +521,7 @@ export function buildUpdate(baseUrl: string, actorId: string, note: APNote, id: 
 }
 
 export function buildDelete(baseUrl: string, actorId: string, objectId: string, id: string): APActivity {
+  // Mastodon's DeleteNoteSerializer: id/type/actor/to + a Tombstone object.
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
@@ -475,7 +529,6 @@ export function buildDelete(baseUrl: string, actorId: string, objectId: string, 
     actor: actorId,
     object: { id: objectId, type: "Tombstone" },
     to: [PUBLIC_ADDRESS],
-    published: new Date().toISOString(),
   };
 }
 
@@ -508,15 +561,14 @@ export function buildFlag(
 }
 
 export function buildUpdateActor(baseUrl: string, actor: APActor, id: string): APActivity {
-  const followersUrl = followersIRI(baseUrl, actor.preferredUsername);
+  // Mastodon's UpdateActorSerializer: id/type/actor/to + the actor object (the
+  // followers are the delivery recipients, not a `cc` audience).
   return {
     "@context": DEFAULT_CONTEXT,
     id: activityIRI(baseUrl, id),
     type: "Update",
     actor: actor.id,
-    published: new Date().toISOString(),
     to: [PUBLIC_ADDRESS],
-    cc: [followersUrl],
     object: actor,
   };
 }
@@ -561,9 +613,26 @@ export function buildOrderedCollectionPage(
 // Helpers
 // ─────────────────────────────────────────
 
-export function isPublic(activity: APActivity): boolean {
-  const audiences = [...(activity.to ?? []), ...(activity.cc ?? [])];
-  return audiences.includes(PUBLIC_ADDRESS);
+/**
+ * Mastodon-style conversation URI (`ostatus:conversation`) for a local thread:
+ * `tag:<domain>,<YYYY-MM-DD>:objectId=<id>:objectType=Conversation`. Peers only
+ * join the conversation when the URI starts with `tag:` (Mastodon's
+ * `ActivityPub::Activity#conversation_from_uri`), so the shape matters.
+ */
+export function conversationUri(baseUrl: string, objectId: string, published: string): string {
+  const date = (published || new Date().toISOString()).slice(0, 10);
+  return `tag:${new URL(baseUrl).hostname},${date}:objectId=${objectId}:objectType=Conversation`;
+}
+
+/** The `conversation` URI stored in an AP document, if any. */
+export function conversationFromRaw(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const value = (JSON.parse(raw) as Record<string, unknown>).conversation;
+    return typeof value === "string" && value ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export function extractDomain(url: string): string {

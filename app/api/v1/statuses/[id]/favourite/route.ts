@@ -4,7 +4,7 @@ import { getObjectById, getActorById, createLike, getLike, isAcceptedFollower, c
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { buildLike, generateId, followersIRI } from "@/lib/activitypub/utils";
+import { buildLike, generateId } from "@/lib/activitypub/utils";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { notify } from "@/lib/notify";
@@ -39,7 +39,7 @@ export async function POST(
   const existing = await getLike(env.DB, actor.id, obj.id);
   if (!existing) {
     const likeId = generateId();
-    const likeActivity = buildLike(baseUrl, actor.id, obj.id, likeId, followersIRI(baseUrl, actor.username));
+    const likeActivity = buildLike(baseUrl, actor.id, obj.id, likeId);
 
     await createLike(env.DB, {
       id: likeId,

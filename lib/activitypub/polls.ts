@@ -7,9 +7,9 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { getPollByObjectId, getPollOptions, setPollVoteCounts } from "@/lib/db";
+import { getPollByObjectId, getPollOptions, getPollsByObjectIds, setPollVoteCounts } from "@/lib/db";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
-import type { LocalObject, LocalPoll } from "@/lib/types";
+import type { APNote, LocalObject, LocalPoll, LocalPollOption } from "@/lib/types";
 
 interface RefreshBindings {
   DB: D1Database;
@@ -62,6 +62,38 @@ export function hasVoteCounts(question: Record<string, unknown>): boolean {
     const replies = choice?.replies as { totalItems?: unknown } | undefined;
     return replies == null || typeof replies.totalItems === "number";
   });
+}
+
+/**
+ * Render a local poll on an AP Note as a Mastodon-style `Question`: the choices
+ * with their current per-choice counts, the deadline and the voter count. Every
+ * path that serves a local status must apply it — Mastodon's NoteSerializer
+ * always serializes a poll status as a Question, and peers re-fetch the object
+ * URL to refresh the counts (exactly what `refreshRemotePoll` does for remote
+ * polls here).
+ */
+export function applyPollToNote(note: APNote, poll: LocalPoll, options: LocalPollOption[]): void {
+  if (options.length === 0) return;
+  const target = note as Record<string, unknown>;
+  const choices = options.map((option) => ({
+    type: "Note",
+    name: option.title,
+    replies: { type: "Collection", totalItems: Number(option.votesCount ?? 0) },
+  }));
+  target.type = "Question";
+  if (poll.multiple) target.anyOf = choices;
+  else target.oneOf = choices;
+  target.endTime = poll.expiresAt;
+  // Mastodon marks a finished poll with `closed` (and keeps `endTime`).
+  if (new Date(poll.expiresAt) <= new Date()) target.closed = poll.expiresAt;
+  if (poll.votersCount > 0) target.votersCount = poll.votersCount;
+}
+
+/** Fetch the note's poll (if any) and render it as a Question. */
+export async function applyPollToNoteFromDb(db: D1Database, note: APNote): Promise<void> {
+  const polls = await getPollsByObjectIds(db, [note.id]);
+  const entry = polls.get(note.id);
+  if (entry) applyPollToNote(note, entry.poll, entry.options);
 }
 
 /**

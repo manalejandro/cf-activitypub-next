@@ -153,11 +153,14 @@ describe("disableRelay", () => {
     expect(patch).toEqual({ state: "idle", followActivityId: null });
 
     const [, , payload] = mocks.enqueueDeliveries.mock.calls[0] as unknown as [unknown, string[], string];
-    const activity = JSON.parse(payload) as { type: string; object: { type: string; id: string; object: string } };
+    const activity = JSON.parse(payload) as { type: string; object: { type: string; id: string; object: string }; to?: string[]; cc?: string[] };
     expect(activity.type).toBe("Undo");
     expect(activity.object.type).toBe("Follow");
     expect(activity.object.id).toBe(`${BASE}/activities/relay-follow-1`);
     expect(activity.object.object).toBe("https://www.w3.org/ns/activitystreams#Public");
+    // The Undo mirrors the Follow's (empty) audience: it must not become public.
+    expect(activity.to).toBeUndefined();
+    expect(activity.cc).toBeUndefined();
   });
 
   it("does not send an Undo when nothing was subscribed", async () => {

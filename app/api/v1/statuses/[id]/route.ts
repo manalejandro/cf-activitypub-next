@@ -8,14 +8,14 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
-import { buildDelete, buildUpdate, buildNote, generateId } from "@/lib/activitypub/utils";
+import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
-import { refreshRemotePoll } from "@/lib/activitypub/polls";
+import { refreshRemotePoll, applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
 import { canonicalizeMentionTags } from "@/lib/activitypub/mentions";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
@@ -224,9 +224,16 @@ export async function PUT(
     cc: rewriteList(originalCc),
     location: locationJson ? parseLocationJson(locationJson) : null,
     licenseUrl: licenseUrl ?? undefined,
+    // Preserve the thread identity across edits (see `conversationUri`).
+    conversation: conversationFromRaw(obj.raw) ?? undefined,
+    favouritesCount: obj.favouritesCount,
+    reblogsCount: obj.reblogsCount,
   });
   note.attachment = (await getAttachmentsByObjectId(env.DB, obj.id)).map(toAPAttachment);
   note.updated = updatedAt;
+  // A poll status keeps its Question shape on edits: the Update must carry the
+  // choices and current counts, like Mastodon's NoteSerializer does.
+  await applyPollToNoteFromDb(env.DB, note);
 
   // If media_ids was provided, replace the status attachments with the given
   // list: existing attachments are kept (with their sensitive flag refreshed),

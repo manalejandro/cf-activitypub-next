@@ -26,9 +26,12 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
+import { applyPollToNote } from "@/lib/activitypub/polls";
 import {
   buildNote,
   buildCreate,
+  conversationFromRaw,
+  conversationUri,
   generateId,
   followersIRI,
   isLocalIRI,
@@ -458,6 +461,14 @@ export async function POST(request: NextRequest): Promise<Response> {
   const id = generateId();
   const published = new Date().toISOString();
 
+  // OStatus conversation (`ostatus:conversation`): a root post starts the
+  // thread identity, a reply joins the parent's when it has one (peers accept
+  // only `tag:` URIs). Keeps a thread grouped on instances that cannot fetch
+  // the root.
+  const conversation = inReplyToId
+    ? conversationFromRaw(parent?.raw)
+    : conversationUri(baseUrl, id, published);
+
   const note = buildNote(baseUrl, id, {
     actorUsername: actor.username,
     content: htmlContent,
@@ -472,6 +483,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     cc: noteCc,
     location: locationJson ? parseLocationJson(locationJson) : null,
     licenseUrl: licenseUrl ?? undefined,
+    conversation,
   });
   // note.attachment will be set after linkedAttachments is populated below
 
@@ -581,20 +593,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (pollDb) serializedPoll = serializePoll(pollDb, pollOpts, false, []);
 
     // Attach poll data to the AP object so remote instances receive a Question
-    const pollChoices = validOptions.map((title) => ({
-      type: "Note",
-      name: title,
-      replies: { type: "Collection", totalItems: 0 },
-    }));
-    const noteAny = note as Record<string, unknown>;
-    noteAny.type = "Question";
-    if (pollRaw.multiple) {
-      noteAny.anyOf = pollChoices;
-    } else {
-      noteAny.oneOf = pollChoices;
-    }
-    noteAny.endTime = expiresAt;
-    noteAny.votersCount = 0;
+    // (Mastodon's NoteSerializer shape: choices with counts, deadline, voters).
+    if (pollDb) applyPollToNote(note, pollDb, pollOpts);
   }
 
   // If it's a reply, increment replies count on parent
