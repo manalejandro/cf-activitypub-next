@@ -24,7 +24,7 @@ import {
   type MediaCacheBindings,
   type MediaCacheLimits,
 } from "@/lib/media/remote-cache";
-import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache, listMediaCacheQueue } from "@/lib/db";
+import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache, listMediaCacheQueue, upsertRemoteActor } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 import { recordMediaHit, flushMediaHits, __resetMediaHits } from "@/lib/media/hits";
 
@@ -442,7 +442,7 @@ describe("remote media cache", () => {
     expect(result.bytesAfter).toBe((await getMediaCacheStats(db)).bytes);
   });
 
-  it("backfills existing attachments and avatars, then serves them from the cache", async () => {
+  it("backfills profiles of followed accounts but never re-queues evicted media", async () => {
     // The local account follows the remote actor so its profile is a priority.
     await db.prepare(
       "INSERT INTO follows (id, actor_id, target_id, state) VALUES ('f1', 'https://local.example/users/me', 'https://remote.example/users/fan', 'accepted')"
@@ -453,16 +453,20 @@ describe("remote media cache", () => {
 
     federation.safeFetch.mockResolvedValue(okResponse(new Uint8Array([7, 7]), "image/webp"));
     const queued = await backfillMediaCache(bindings, LIMITS);
-    expect(queued).toBe(2); // attachment + avatar
+    // Only the followed account's avatar: the historical attachment seed is
+    // gone (it re-queued whatever the byte budget had just evicted, so the
+    // same media was downloaded over and over).
+    expect(queued).toBe(1);
 
-    // The backfill queues behind fresh ingests (30 min); simulate time passing.
+    // The backfill queues behind fresh ingests (5 min); simulate time passing.
     await db.prepare("UPDATE media_cache SET next_attempt_at = datetime('now', '-1 second')").bind().run();
 
     const cachedCount = await processMediaCacheQueue(bindings, LIMITS, "https://local.example");
-    expect(cachedCount).toBe(2);
+    expect(cachedCount).toBe(1);
 
+    // The historical attachment stays on the origin: it was never queued.
     const att = await db.prepare("SELECT url, remote_url FROM attachments WHERE id = ?").bind(ATTACH).first<{ url: string; remote_url: string }>();
-    expect(att?.url).toContain("/api/media/cache/media/");
+    expect(att?.url).toBe(SRC);
     expect(att?.remote_url).toBe(SRC);
 
     const actor = await db
@@ -470,6 +474,61 @@ describe("remote media cache", () => {
       .bind()
       .first<{ avatar_cache_url: string }>();
     expect(actor?.avatar_cache_url).toContain("/api/media/cache/media/");
+  });
+
+  it("queues a remote profile only when it is new or changed (no re-download loop)", async () => {
+    const doc = (icon: string) => ({
+      id: "https://remote.example/users/newbie",
+      type: "Person",
+      preferredUsername: "newbie",
+      inbox: "https://remote.example/users/newbie/inbox",
+      publicKey: { publicKeyPem: "k" },
+      icon: { url: icon },
+    }) as unknown as import("@/lib/types").APActor;
+    const queued = (url: string) =>
+      db.prepare("SELECT COUNT(*) AS n FROM media_cache WHERE source_url = ?").bind(url).first<{ n: number }>();
+
+    // First sight: the avatar is queued once.
+    await upsertRemoteActor(db, doc("https://remote.example/newbie.png"));
+    expect((await queued("https://remote.example/newbie.png"))?.n).toBe(1);
+
+    // The entry is evicted; the next update of the same actor must NOT queue it
+    // again (that loop burned tens of thousands of R2 PUTs per day).
+    await db.prepare("DELETE FROM media_cache WHERE source_url = ?").bind("https://remote.example/newbie.png").run();
+    await upsertRemoteActor(db, doc("https://remote.example/newbie.png"));
+    expect((await queued("https://remote.example/newbie.png"))?.n).toBe(0);
+
+    // A changed avatar is queued…
+    await upsertRemoteActor(db, doc("https://remote.example/newbie-2.png"));
+    expect((await queued("https://remote.example/newbie-2.png"))?.n).toBe(1);
+
+    // …but not twice, and an actor that already has the URL stored is skipped.
+    await upsertRemoteActor(db, doc("https://remote.example/newbie-2.png"));
+    expect((await queued("https://remote.example/newbie-2.png"))?.n).toBe(1);
+  });
+
+  it("does not let a delayed backfill enqueue reset a failed entry's backoff", async () => {
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    await db
+      .prepare("UPDATE media_cache SET status = 'failed', attempts = 3, next_attempt_at = datetime('now', '+7 days')")
+      .bind()
+      .run();
+
+    // The backfill re-queues with a delay: the earned backoff must stand.
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH, 300);
+    let due = await db
+      .prepare("SELECT COUNT(*) AS n FROM media_cache WHERE next_attempt_at <= datetime('now')")
+      .bind()
+      .first<{ n: number }>();
+    expect(due?.n).toBe(0);
+
+    // A fresh ingest (no delay) still jumps the queue.
+    await enqueueMediaCache(db, SRC, "attachment", ATTACH);
+    due = await db
+      .prepare("SELECT COUNT(*) AS n FROM media_cache WHERE next_attempt_at <= datetime('now')")
+      .bind()
+      .first<{ n: number }>();
+    expect(due?.n).toBe(1);
   });
 
   it("lets a fresh ingest jump the backfill queue", async () => {

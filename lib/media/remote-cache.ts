@@ -35,7 +35,6 @@ import {
   listMediaCacheQueue,
   listEvictableMediaCache,
   listOrphanMediaCache,
-  listPreviewCardsMissingImageCache,
   markMediaCacheFailed,
   markMediaCacheReady,
   resetMediaCacheReferences,
@@ -467,10 +466,14 @@ async function deleteEntries(
 }
 
 /**
- * Queue federated resources that were ingested before the cache existed (or
- * were never queued): recent remote attachments plus avatars/headers of
- * accounts followed locally, then recently active remote accounts. Bounded per
- * tick so the D1 write budget stays small.
+ * Seed the profiles of accounts with a local follow relation and heal stale
+ * references. The historical attachment/card/avatar seeds were removed: the
+ * cache holds a few thousand objects while the instance has tens of thousands
+ * of remote attachments, so re-queueing whatever the byte budget had just
+ * evicted turned the cache into a re-download loop (tens of thousands of R2
+ * PUTs per day). Media is now queued where it is ingested — attachments and
+ * card images on create, profiles from `upsertRemoteActor` when they are new
+ * or changed. Bounded per tick so the D1 write budget stays small.
  */
 export async function backfillMediaCache(
   bindings: MediaCacheBindings,
@@ -479,14 +482,11 @@ export async function backfillMediaCache(
 ): Promise<number> {
   const limits = normalizeLimits(rawLimits);
   if (!limits.enabled) return 0;
-  // Backfill is optional work: while over budget, only fresh media (and
-  // maintenance) get the tick.
-  const cacheStats = await getMediaCacheStats(bindings.DB);
-  if (cacheStats.bytes > limits.maxBytes) return 0;
   let queued = 0;
 
   // Heal references that were left on the origin before the URL-based
-  // rewrite existed (or when the same file backs several posts).
+  // rewrite existed (or when the same file backs several posts). D1 only:
+  // this never fetches, so it runs even while the cache is over budget.
   try {
     const stale = await bindings.DB
       .prepare(
@@ -505,40 +505,17 @@ export async function backfillMediaCache(
     }
   } catch { /* best-effort */ }
 
-  try {
-    const attachments = await bindings.DB
-      .prepare(
-        `SELECT a.id, a.url FROM attachments a
-         JOIN objects o ON o.id = a.object_id
-         WHERE o.is_local = 0 AND a.url LIKE 'https://%' AND a.url NOT LIKE '%/api/media/cache/media/%'
-           AND NOT EXISTS (SELECT 1 FROM media_cache mc WHERE mc.source_url = a.url)
-         ORDER BY o.published DESC LIMIT ?`
-      )
-      .bind(batch)
-      .all<{ id: string; url: string }>();
-    for (const row of attachments.results ?? []) {
-      await enqueueMediaCache(bindings.DB, row.url, "attachment", row.id, BACKFILL_DELAY_SECONDS);
-      queued++;
-    }
-  } catch { /* the table may be missing pre-migration */ }
-
-  // Preview card images of recently crawled links (served from R2 once done).
-  try {
-    const cards = await listPreviewCardsMissingImageCache(bindings.DB, batch);
-    for (const card of cards) {
-      await enqueueMediaCache(bindings.DB, card.imageUrl, "card", card.id, BACKFILL_DELAY_SECONDS);
-      queued++;
-    }
-  } catch { /* the table may be missing pre-migration */ }
-
-  // Profiles of accounts with a local follow relation first (small set),
-  // then recently active remote accounts.
+  // Profiles of accounts with a local follow relation: the small set whose
+  // posts show up in the home timeline. Only URLs that are actually pending
+  // (a null cache URL on a non-null origin URL) are queued — an actor whose
+  // avatar is cached but has no header must not be re-queued every tick.
   try {
     const followed = await bindings.DB
       .prepare(
         `SELECT a.id, a.avatar_url, a.header_url FROM actors a
-         WHERE a.is_local = 0 AND a.avatar_url LIKE 'https://%'
-           AND (a.avatar_cache_url IS NULL OR a.header_cache_url IS NULL)
+         WHERE a.is_local = 0
+           AND ((a.avatar_url LIKE 'https://%' AND a.avatar_cache_url IS NULL)
+             OR (a.header_url LIKE 'https://%' AND a.header_cache_url IS NULL))
            AND EXISTS (
              SELECT 1 FROM follows f
              WHERE f.state = 'accepted' AND (f.actor_id = a.id OR f.target_id = a.id)
@@ -556,20 +533,6 @@ export async function backfillMediaCache(
         await enqueueMediaCache(bindings.DB, row.header_url, "header", row.id, BACKFILL_DELAY_SECONDS);
         queued++;
       }
-    }
-
-    const recent = await bindings.DB
-      .prepare(
-        `SELECT a.id, a.avatar_url FROM actors a
-         WHERE a.is_local = 0 AND a.avatar_url LIKE 'https://%' AND a.avatar_cache_url IS NULL
-           AND a.last_status_at IS NOT NULL AND a.last_status_at >= date('now', '-14 days')
-         ORDER BY a.last_status_at DESC LIMIT ?`
-      )
-      .bind(batch)
-      .all<{ id: string; avatar_url: string }>();
-    for (const row of recent.results ?? []) {
-      await enqueueMediaCache(bindings.DB, row.avatar_url, "avatar", row.id, BACKFILL_DELAY_SECONDS);
-      queued++;
     }
   } catch { /* best-effort */ }
 

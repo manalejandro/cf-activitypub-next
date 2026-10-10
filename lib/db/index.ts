@@ -588,6 +588,38 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
 }
 
 /**
+ * Queue a remote actor's profile images for the R2 media cache — but only when
+ * the URL is new or changed. The check reads the stored `actors` row, so it
+ * must run before the upsert overwrites it. Queueing on every update made the
+ * cron re-download the same avatar each time its entry was evicted (the cache
+ * is bounded and evicts least-served entries first), which on a busy instance
+ * burned tens of thousands of R2 PUTs per day.
+ */
+async function enqueueNewProfileImages(
+  db: D1Database,
+  actorId: string,
+  images: [string, "avatar" | "header"][]
+): Promise<void> {
+  try {
+    const statements = [];
+    for (const [url, kind] of images) {
+      if (!/^https:\/\//i.test(url)) continue;
+      const column = kind === "avatar" ? "avatar_url" : "header_url";
+      statements.push(
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO media_cache (id, source_url, target_type, target_id)
+             SELECT ?, ?, ?, ?
+             WHERE NOT EXISTS (SELECT 1 FROM actors WHERE id = ? AND ${column} = ?)`
+          )
+          .bind(await mediaCacheId(url), url, kind, actorId, actorId, url)
+      );
+    }
+    if (statements.length > 0) await db.batch(statements);
+  } catch { /* caching is best-effort */ }
+}
+
+/**
  * Upsert a remote actor — inserts on first encounter, updates on subsequent
  * fetches (e.g. key rotation, profile changes). Preserves local-only fields.
  */
@@ -605,6 +637,15 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
   // use it verbatim instead of computing from the (subset of) statuses we saw.
   const lastStatusAt = (actor as unknown as Record<string, unknown>).last_status_at;
   const lastStatusAtStr = typeof lastStatusAt === "string" && lastStatusAt ? lastStatusAt.slice(0, 10) : null;
+  // Queue the profile images for the R2 media cache — but only when the URL is
+  // new or changed. This runs BEFORE the upsert so the stored (previous) URL is
+  // still readable: queueing on every actor update was a write amplifier, since
+  // an evicted avatar was re-queued (and re-downloaded) the next time the actor
+  // was touched — tens of thousands of R2 PUTs per day on a busy instance.
+  await enqueueNewProfileImages(db, actor.id, [
+    [actor.icon?.url ?? "", "avatar"],
+    [actor.image?.url ?? "", "header"],
+  ]);
   try {
     try {
       await db
@@ -734,28 +775,6 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
         .run();
     } catch { /* ignore */ }
   }
-
-  // Queue the profile images for the R2 media cache (deduped by source URL);
-  // the cron downloads them so clients render profiles from our own domain.
-  try {
-    const images: [string, "avatar" | "header"][] = [
-      [actor.icon?.url ?? "", "avatar"],
-      [actor.image?.url ?? "", "header"],
-    ];
-    const statements = [];
-    for (const [url, kind] of images) {
-      if (!/^https:\/\//i.test(url)) continue;
-      statements.push(
-        db
-          .prepare(
-            `INSERT OR IGNORE INTO media_cache (id, source_url, target_type, target_id)
-             VALUES (?, ?, ?, ?)`
-          )
-          .bind(await mediaCacheId(url), url, kind, actor.id)
-      );
-    }
-    if (statements.length > 0) await db.batch(statements);
-  } catch { /* caching is best-effort */ }
 }
 
 // ─────────────────────────────────────────
@@ -4818,22 +4837,6 @@ export async function listOrphanMediaCache(
   return rows.results ?? [];
 }
 
-/** Cards whose image was never cached (media cache backfill). */
-export async function listPreviewCardsMissingImageCache(
-  db: D1Database,
-  limit: number
-): Promise<{ id: string; imageUrl: string }[]> {
-  const rows = await db
-    .prepare(
-      `SELECT id, image_url FROM preview_cards
-       WHERE status = 'ready' AND image_url LIKE 'https://%' AND image_cache_url IS NULL
-       ORDER BY fetched_at DESC LIMIT ?`
-    )
-    .bind(limit)
-    .all<Row>();
-  return (rows.results ?? []).map((r) => ({ id: r.id as string, imageUrl: r.image_url as string }));
-}
-
 /** Remove old cards no status points at (bounded per tick). */
 export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): Promise<number> {
   const result = await db
@@ -4982,10 +4985,14 @@ export async function enqueueMediaCache(
          target_id = excluded.target_id,
          next_attempt_at = CASE
            WHEN media_cache.status = 'ready' THEN media_cache.next_attempt_at
+           -- A delayed (backfill) enqueue must never pull a failed entry's
+           -- retry forward: the old rule let the backfill re-try dead origins
+           -- every few minutes, resetting the backoff the failure had earned.
+           WHEN media_cache.status = 'failed' AND ? > 0 THEN media_cache.next_attempt_at
            WHEN excluded.next_attempt_at < media_cache.next_attempt_at THEN excluded.next_attempt_at
            ELSE media_cache.next_attempt_at END`
     )
-    .bind(id, sourceUrl, targetType, targetId, `+${delay} seconds`)
+    .bind(id, sourceUrl, targetType, targetId, `+${delay} seconds`, delay)
     .run();
 }
 
