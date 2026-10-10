@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActor, buildAnnounce, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri } from "@/lib/activitypub/utils";
+import { buildActor, buildAnnounce, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, normalizeAttributionDomains } from "@/lib/activitypub/utils";
 
 const BASE = "https://local.example";
 const ACTOR = "https://local.example/users/me";
@@ -171,5 +171,43 @@ describe("buildActor", () => {
     expect(actor.webfinger).toBe("me@local.example");
     expect(actor.preferredUsername).toBe("me");
     expect(actor.url).toBe(`${BASE}/@me`);
+  });
+
+  it("emits the profile display toggles, memorial, suspended and attribution domains", () => {
+    const actor = buildActor(BASE, "me", {
+      publicKeyPem: "k",
+      memorial: true,
+      suspended: true,
+      showFeatured: false,
+      showMedia: false,
+      showMediaReplies: false,
+      attributionDomains: ["example.com"],
+    });
+    expect(actor.memorial).toBe(true);
+    expect(actor.suspended).toBe(true);
+    expect(actor.showFeatured).toBe(false);
+    expect(actor.showMedia).toBe(false);
+    expect(actor.showRepliesInMedia).toBe(false);
+    expect(actor.attributionDomains).toEqual(["example.com"]);
+
+    // Defaults: the toggles are always sent (true); the flags and the domains
+    // only when set.
+    const plain = buildActor(BASE, "me", { publicKeyPem: "k" });
+    expect(plain.showFeatured).toBe(true);
+    expect(plain.showMedia).toBe(true);
+    expect(plain.showRepliesInMedia).toBe(true);
+    expect(plain.memorial).toBeUndefined();
+    expect(plain.suspended).toBeUndefined();
+    expect(plain.attributionDomains).toBeUndefined();
+  });
+});
+
+describe("normalizeAttributionDomains", () => {
+  it("strips schemes and wildcards, dedupes and rejects invalid entries", () => {
+    expect(
+      normalizeAttributionDomains(["https://example.com", "*.MiWeb.org", "example.com", "not a domain", 7, ""])
+    ).toEqual(["example.com", "miweb.org"]);
+    expect(normalizeAttributionDomains(undefined)).toEqual([]);
+    expect(normalizeAttributionDomains("example.com")).toEqual([]);
   });
 });

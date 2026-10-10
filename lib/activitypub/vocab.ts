@@ -252,6 +252,12 @@ export const DEFAULT_CONTEXT = [
     quote:              { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
     quoteAuthorization: { "@id": "https://w3id.org/fep/044f#quoteAuthorization", "@type": "@id" },
     featuredCollections: { "@id": "https://w3id.org/fep/7aa9#featuredCollections", "@type": "@id" },
+    // Mastodon's profile display settings and attribution domains (its
+    // `profile_settings`/`attribution_domains` context extensions).
+    showFeatured: "toot:showFeatured",
+    showMedia:    "toot:showMedia",
+    showRepliesInMedia: "toot:showRepliesInMedia",
+    attributionDomains: { "@id": "toot:attributionDomains", "@container": "@set" },
   },
   // MLS (Messaging Layer Security) over ActivityPub — see MLS_CONTEXT.
   {

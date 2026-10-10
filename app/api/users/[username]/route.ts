@@ -29,7 +29,7 @@ export async function GET(
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
-  if (!actor || !actor.isLocal || actor.suspended) return notFound("Actor not found");
+  if (!actor || !actor.isLocal) return notFound("Actor not found");
 
   const fields = await getActorFields(env.DB, actor.id);
   const baseUrl = `https://${domain}`;
@@ -66,6 +66,14 @@ export async function GET(
     alsoKnownAs: actor.alsoKnownAs ?? undefined,
     movedTo: actor.movedTo ?? undefined,
     preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, actor.id)) ?? undefined,
+    // Mastodon profile settings: a suspended account keeps serving its actor
+    // document with `suspended: true` so peers learn about the suspension.
+    memorial: actor.memorial === true,
+    suspended: actor.suspended === true,
+    showFeatured: actor.showFeatured !== false,
+    showMedia: actor.showMedia !== false,
+    showMediaReplies: actor.showMediaReplies !== false,
+    attributionDomains: actor.attributionDomains ?? undefined,
   });
 
   return activityJson({

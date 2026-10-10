@@ -170,7 +170,8 @@ export type ModerationNoticeAction =
   | "rejected"
   | "silenced"
   | "reported"
-  | "removed";
+  | "removed"
+  | "memorial";
 
 export async function sendModerationNoticeEmail(
   emailBinding: SendEmail,
@@ -194,6 +195,7 @@ export async function sendModerationNoticeEmail(
     silenced: `[${instanceTitle}] Cuenta limitada / Account limited`,
     reported: `[${instanceTitle}] Reporte recibido / Report received`,
     removed: `[${instanceTitle}] Cuenta eliminada / Account removed`,
+    memorial: `[${instanceTitle}] Cuenta en memoria / Account in memoriam`,
   };
 
   const en: Record<string, string[]> = {
@@ -225,6 +227,10 @@ export async function sendModerationNoticeEmail(
       `Hello @${username},`,
       `Your account on ${instanceTitle} has been removed by the administration.`,
     ],
+    memorial: [
+      `Hello,`,
+      `The account @${username} on ${instanceTitle} has been preserved in memoriam at the request of their family or representatives. The profile and posts remain available and the account can no longer sign in.`,
+    ],
   };
 
   const es: Record<string, string[]> = {
@@ -255,6 +261,10 @@ export async function sendModerationNoticeEmail(
     removed: [
       `Hola @${username},`,
       `Tu cuenta en ${instanceTitle} ha sido eliminada por la administración.`,
+    ],
+    memorial: [
+      `Hola,`,
+      `La cuenta @${username} en ${instanceTitle} se conserva en memoria a petición de sus familiares o representantes. El perfil y las publicaciones siguen disponibles y la cuenta ya no puede iniciar sesión.`,
     ],
   };
 

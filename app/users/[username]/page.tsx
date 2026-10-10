@@ -57,6 +57,11 @@ interface Account {
   fields: MastodonField[];
   roles?: { id: string; name: string; color: string }[];
   supports_calls?: boolean;
+  /** Mastodon profile settings. */
+  memorial?: boolean;
+  show_featured?: boolean;
+  show_media?: boolean;
+  show_media_replies?: boolean;
   source?: {
     note: string;
     fields: MastodonField[];
@@ -573,7 +578,11 @@ export default function ProfilePage() {
 
   function handleTabChange(tab: ActiveTab) {
     setActiveTab(tab);
-    if (account) void loadTab(tab, account.id);
+    if (account) {
+      // The Media tab includes the replies when the account allows it.
+      if (tab === "media" && account.show_media_replies !== false) void loadTab("replies", account.id);
+      void loadTab(tab, account.id);
+    }
   }
 
   /** Refetch the posts tab honoring the "show boosts" filter. */
@@ -789,7 +798,10 @@ export default function ProfilePage() {
   }
 
   const isOwnProfile = me && account && me.id === account.id;
-  const allAttachments = statuses.flatMap((s) => s.media_attachments);
+  // Mastodon's `showRepliesInMedia` (default true): the Media tab also shows the
+  // attachments of the profile's replies.
+  const mediaStatuses = account?.show_media_replies !== false ? [...statuses, ...replies] : statuses;
+  const allAttachments = mediaStatuses.flatMap((s) => s.media_attachments);
   const limits = useLimits();
   const { startCall: initiateCall, pending: callPending } = useStartCallButton(token);
 
@@ -1120,6 +1132,18 @@ export default function ProfilePage() {
                 @{account.acct}
               </div>
 
+              {account.memorial && (
+                <div
+                  style={{
+                    marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                    background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                    fontSize: "0.85rem", color: "var(--text-secondary)",
+                  }}
+                >
+                  {t.account_in_memoriam}
+                </div>
+              )}
+
               {account.note && (
                 <div
                   style={{ fontSize: "0.9rem", lineHeight: 1.55, marginBottom: "0.75rem", whiteSpace: "pre-line" }}
@@ -1168,8 +1192,14 @@ export default function ProfilePage() {
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
                 { key: "boosts" as ActiveTab, label: t.profile_boosts },
                 { key: "replies" as ActiveTab, label: t.profile_replies },
-                { key: "pinned" as ActiveTab, label: <Icon name="thumb-tack" size="0.9rem" />, count: pinnedStatuses.length },
-                { key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length },
+                // Mastodon's profile display settings: the Featured (pinned) and
+                // Media tabs can be hidden by the account itself.
+                ...(account.show_featured !== false
+                  ? [{ key: "pinned" as ActiveTab, label: <Icon name="thumb-tack" size="0.9rem" />, count: pinnedStatuses.length }]
+                  : []),
+                ...(account.show_media !== false
+                  ? [{ key: "media" as ActiveTab, label: t.profile_media, count: allAttachments.length }]
+                  : []),
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
                 { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
                 { key: "collections" as ActiveTab, label: t.profile_collections },

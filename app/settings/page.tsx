@@ -30,8 +30,12 @@ interface Me {
   avatar: string;
   locked: boolean;
   bot: boolean;
+  show_featured?: boolean;
+  show_media?: boolean;
+  show_media_replies?: boolean;
   source?: {
     auto_delete_after?: number | null;
+    attribution_domains?: string[];
   };
 }
 
@@ -50,6 +54,9 @@ export default function SettingsPage() {
   }, []);
   const [locked, setLocked] = useState(false);
   const [bot, setBot] = useState(false);
+  const [showFeatured, setShowFeatured] = useState(true);
+  const [showMedia, setShowMedia] = useState(true);
+  const [showMediaReplies, setShowMediaReplies] = useState(true);
   const [autoDelete, setAutoDelete] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,6 +75,9 @@ export default function SettingsPage() {
         setMe(data);
         setLocked(Boolean(data.locked));
         setBot(Boolean(data.bot));
+        setShowFeatured(data.show_featured !== false);
+        setShowMedia(data.show_media !== false);
+        setShowMediaReplies(data.show_media_replies !== false);
         setAutoDelete(data.source?.auto_delete_after ?? 0);
       }
     }
@@ -103,6 +113,9 @@ export default function SettingsPage() {
     const form = new FormData();
     form.append("locked", locked ? "true" : "false");
     form.append("bot", bot ? "true" : "false");
+    form.append("show_featured", showFeatured ? "true" : "false");
+    form.append("show_media", showMedia ? "true" : "false");
+    form.append("show_media_replies", showMediaReplies ? "true" : "false");
     form.append("auto_delete_after", autoDelete > 0 ? String(autoDelete) : "");
     const res = await fetch("/api/v1/accounts/verify_credentials", {
       method: "PATCH",
@@ -246,6 +259,25 @@ export default function SettingsPage() {
               onChange={(e) => setBot(e.target.checked)}
             />
             <label htmlFor="bot" style={{ fontSize: "0.875rem" }}>{t.settings_bot}</label>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_profile_display}</label>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>{t.settings_profile_display_hint}</div>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="show-featured" checked={showFeatured} onChange={(e) => setShowFeatured(e.target.checked)} />
+                <label htmlFor="show-featured" style={{ fontSize: "0.875rem" }}>{t.settings_show_featured}</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="show-media" checked={showMedia} onChange={(e) => setShowMedia(e.target.checked)} />
+                <label htmlFor="show-media" style={{ fontSize: "0.875rem" }}>{t.settings_show_media}</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="show-media-replies" checked={showMediaReplies} onChange={(e) => setShowMediaReplies(e.target.checked)} />
+                <label htmlFor="show-media-replies" style={{ fontSize: "0.875rem" }}>{t.settings_show_media_replies}</label>
+              </div>
+            </div>
           </div>
 
           <div>

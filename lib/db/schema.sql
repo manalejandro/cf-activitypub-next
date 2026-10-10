@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS actors (
   verified           INTEGER NOT NULL DEFAULT 0,     -- 1 when a profile field's rel="me" link verifies
   approved           INTEGER NOT NULL DEFAULT 1,     -- 0 = registration pending admin approval (can't log in)
   registration_reason TEXT,                          -- sign-up reason when registrations.reason_required is on
+  memorial           INTEGER NOT NULL DEFAULT 0,     -- 1 = in memoriam (Mastodon: no login, badge, AP `memorial`)
+  show_featured      INTEGER NOT NULL DEFAULT 1,     -- profile display: Featured tab (toot:showFeatured)
+  show_media         INTEGER NOT NULL DEFAULT 1,     -- profile display: Media tab (toot:showMedia)
+  show_media_replies INTEGER NOT NULL DEFAULT 1,     -- profile display: include replies in Media (toot:showRepliesInMedia)
+  attribution_domains TEXT NOT NULL DEFAULT '[]',    -- JSON array of domains whose links are attributed to this account
   UNIQUE (username, domain)
 );
 

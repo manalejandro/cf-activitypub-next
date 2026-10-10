@@ -27,6 +27,10 @@ export async function getAuthenticatedActor(
   // Suspended accounts cannot authenticate (Guardian / admin suspension).
   if (actor.suspended) return null;
 
+  // Memorialized accounts cannot log in either (Mastodon's
+  // `User#active_for_authentication?`): the account is preserved in memoriam.
+  if (actor.memorial) return null;
+
   // Local accounts must confirm their email and be approved before any API
   // access. Registration issues a token before confirmation (Mastodon
   // behaviour), so this is what keeps an unconfirmed account unusable.

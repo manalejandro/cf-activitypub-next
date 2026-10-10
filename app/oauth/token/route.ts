@@ -85,6 +85,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       }, 403);
     }
 
+    // Memorialized accounts are preserved in memoriam and cannot sign in
+    // (Mastodon's `User#active_for_authentication?`).
+    if (actor.memorial) {
+      return json({
+        error: "invalid_grant",
+        error_description: "This account is in memoriam.",
+        error_code: "login_error_memorial",
+      }, 403);
+    }
+
     // Block login for accounts that registered via the web form but haven't verified their email.
     if (!actor.emailVerified) {
       return json({

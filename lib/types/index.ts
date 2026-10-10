@@ -75,6 +75,13 @@ export interface APActor extends APObject {
   movedTo?: string;
   /** FEP-7aa9: URI of the actor's featured collections listing. */
   featuredCollections?: string;
+  /** Mastodon profile settings. `memorial`/`suspended` are only sent when true. */
+  memorial?: boolean;
+  suspended?: boolean;
+  showFeatured?: boolean;
+  showMedia?: boolean;
+  showRepliesInMedia?: boolean;
+  attributionDomains?: string[];
   attachment?: APPropertyValue[];
   tag?: APTag[];
 }
@@ -215,6 +222,13 @@ export interface LocalActor {
   registrationReason?: string | null;
   // 1 when a profile field's rel="me" link verifies
   verified?: boolean;
+  // Mastodon profile settings (ActorSerializer)
+  memorial?: boolean;
+  showFeatured?: boolean;
+  showMedia?: boolean;
+  showMediaReplies?: boolean;
+  /** Domains whose links are attributed to this account (toot:attributionDomains). */
+  attributionDomains?: string[] | null;
   // account migration
   alsoKnownAs?: string[] | null;
   movedTo?: string | null;
@@ -522,6 +536,10 @@ export interface MastodonAccount {
   suspended?: boolean;
   limited?: boolean;
   memorial?: boolean;
+  /** Mastodon profile display settings (always present). */
+  show_featured?: boolean;
+  show_media?: boolean;
+  show_media_replies?: boolean;
   source?: MastodonSource;
   supports_calls?: boolean;
 }
@@ -858,6 +876,8 @@ export interface MastodonSource {
   hide_collections: boolean;
   discoverable: boolean | null;
   indexable: boolean;
+  /** Domains whose links are attributed to the account (Settings → Verifications). */
+  attribution_domains?: string[];
 }
 
 export interface MastodonNotification {

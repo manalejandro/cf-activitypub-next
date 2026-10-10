@@ -1140,5 +1140,18 @@
   "media_error_type": "Ce type de fichier n’est pas pris en charge",
   "media_error_too_large": "Le fichier est trop volumineux (max {value})",
   "emoji_error_shortcode": "Le code court ne peut contenir que des lettres, des chiffres et des traits de soulignement",
-  "compose_uploading": "Envoi…"
+  "compose_uploading": "Envoi…",
+  "settings_profile_display": "Affichage du profil",
+  "settings_profile_display_hint": "Choisissez les sections que les autres voient sur votre profil.",
+  "settings_show_featured": "Afficher l’onglet des publications épinglées",
+  "settings_show_media": "Afficher l’onglet des médias",
+  "settings_show_media_replies": "Inclure les réponses dans l’onglet des médias",
+  "settings_attribution_domains": "Domaines d’attribution",
+  "settings_attribution_domains_hint": "Domaines que vous possédez (séparés par des virgules). Les liens de ces domaines sont attribués à votre compte sans lien rel=\"me\".",
+  "settings_attribution_domains_invalid": "Les domaines d’attribution doivent être des noms de domaine valides.",
+  "account_in_memoriam": "In memoriam. Ce compte est conservé et ne peut plus se connecter ni interagir.",
+  "admin_btn_memorialize": "Transformer en mémorial",
+  "admin_status_memorial": "In memoriam",
+  "admin_memorialize_confirm": "Conserver ce compte en mémorial ? Il ne pourra plus se connecter.",
+  "login_error_memorial": "Ce compte est en mémorial et ne peut plus se connecter."
 }

@@ -1553,6 +1553,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "min_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "security": [],
@@ -1582,6 +1589,13 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "min_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -3368,6 +3382,58 @@
                     "id": {},
                     "role": {},
                     "changed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts/{id}/memorialize": {
+      "post": {
+        "summary": "Create /api/v1/admin/accounts/{id}/memorialize",
+        "operationId": "post_api_v1_admin_accounts_Byid_memorialize",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {},
+                    "memorial": {
                       "type": "boolean"
                     }
                   }
@@ -13501,6 +13567,53 @@
         }
       }
     },
+    "/objects/{id}/{collection}": {
+      "get": {
+        "summary": "Get /objects/{id}/{collection}",
+        "operationId": "get_objects_Byid_Bycollection",
+        "tags": [
+          "ActivityPub"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "min_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/objects/{id}": {
       "get": {
         "summary": "Get /objects/{id}",
@@ -13972,6 +14085,19 @@
             "nullable": true
           },
           "memorial": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "show_featured": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Mastodon profile display settings (always present)."
+          },
+          "show_media": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "show_media_replies": {
             "type": "boolean",
             "nullable": true
           },
@@ -14706,6 +14832,14 @@
           },
           "indexable": {
             "type": "boolean"
+          },
+          "attribution_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Domains whose links are attributed to the account (Settings → Verifications)."
           }
         }
       },

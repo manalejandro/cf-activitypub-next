@@ -193,6 +193,13 @@ export function serializeAccount(
   account.verified = actor.verified === true || (opts.fields ?? []).some((f) => f.verifiedAt != null);
   account.supports_calls = opts.supportsCalls ?? isLocal;
 
+  // Mastodon profile settings: the display toggles are always exposed, and
+  // `memorial` only when set (like `suspended`).
+  account.show_featured = actor.showFeatured !== false;
+  account.show_media = actor.showMedia !== false;
+  account.show_media_replies = actor.showMediaReplies !== false;
+  if (actor.memorial) account.memorial = true;
+
   // Moderation state — Mastodon clients use these to render silence/suspension.
   if (actor.suspended) account.suspended = true;
   if (actor.silenced) account.limited = true;
@@ -217,6 +224,9 @@ export function serializeAccount(
       hide_collections: opts.hideCollections ?? false,
       discoverable: actor.discoverable ? true : null,
       indexable: actor.discoverable !== false,
+      // Mastodon's CredentialAccountSerializer exposes the attribution domains
+      // (Settings → Verifications) so clients can edit them.
+      attribution_domains: actor.attributionDomains ?? [],
     };
   }
 

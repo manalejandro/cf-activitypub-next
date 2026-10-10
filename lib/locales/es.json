@@ -1140,5 +1140,18 @@
   "media_error_type": "Ese tipo de archivo no es compatible",
   "media_error_too_large": "El archivo es demasiado grande (máx {value})",
   "emoji_error_shortcode": "El shortcode solo puede contener letras, números y guiones bajos",
-  "compose_uploading": "Subiendo…"
+  "compose_uploading": "Subiendo…",
+  "settings_profile_display": "Perfil público",
+  "settings_profile_display_hint": "Elige qué secciones ven las demás personas en tu perfil.",
+  "settings_show_featured": "Mostrar la pestaña de destacados (fijados)",
+  "settings_show_media": "Mostrar la pestaña multimedia",
+  "settings_show_media_replies": "Incluir respuestas en la pestaña multimedia",
+  "settings_attribution_domains": "Dominios de atribución",
+  "settings_attribution_domains_hint": "Dominios que te pertenecen (separados por comas). Los enlaces de esos dominios se atribuyen a tu cuenta sin necesidad de un enlace rel=\"me\".",
+  "settings_attribution_domains_invalid": "Los dominios de atribución deben ser nombres de dominio válidos.",
+  "account_in_memoriam": "En memoria. Esta cuenta se conserva y ya no puede iniciar sesión ni interactuar.",
+  "admin_btn_memorialize": "Convertir en memoria",
+  "admin_status_memorial": "En memoria",
+  "admin_memorialize_confirm": "¿Conservar esta cuenta en memoria? Ya no podrá iniciar sesión.",
+  "login_error_memorial": "Esta cuenta se conserva en memoria y ya no puede iniciar sesión."
 }

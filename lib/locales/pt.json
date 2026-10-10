@@ -1140,5 +1140,18 @@
   "media_error_type": "Esse tipo de ficheiro não é suportado",
   "media_error_too_large": "O ficheiro é demasiado grande (máx. {value})",
   "emoji_error_shortcode": "O shortcode só pode conter letras, números e sublinhados",
-  "compose_uploading": "Enviando…"
+  "compose_uploading": "Enviando…",
+  "settings_profile_display": "Exibição do perfil",
+  "settings_profile_display_hint": "Escolha quais seções as outras pessoas veem no seu perfil.",
+  "settings_show_featured": "Mostrar a aba de destaques (fixados)",
+  "settings_show_media": "Mostrar a aba de mídia",
+  "settings_show_media_replies": "Incluir respostas na aba de mídia",
+  "settings_attribution_domains": "Domínios de atribuição",
+  "settings_attribution_domains_hint": "Domínios que você possui (separados por vírgulas). Links deles são atribuídos à sua conta sem um link rel=\"me\".",
+  "settings_attribution_domains_invalid": "Os domínios de atribuição devem ser nomes de domínio válidos.",
+  "account_in_memoriam": "Em memória. Esta conta é preservada e não pode mais entrar nem interagir.",
+  "admin_btn_memorialize": "Transformar em memorial",
+  "admin_status_memorial": "Em memória",
+  "admin_memorialize_confirm": "Preservar esta conta em memória? Ela não poderá mais entrar.",
+  "login_error_memorial": "Esta conta está em memória e não pode mais entrar."
 }

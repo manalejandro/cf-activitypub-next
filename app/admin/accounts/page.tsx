@@ -20,6 +20,7 @@ interface AdminAccount {
   confirmed: boolean;
   suspended: boolean;
   silenced: boolean;
+  memorial: boolean;
   approved: boolean;
   registration_reason: string | null;
   account: {
@@ -205,6 +206,8 @@ export default function AdminAccountsPage() {
                     <td style={{ padding: "0.625rem 0.75rem" }}>
                       {a.suspended ? (
                         <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
+                      ) : a.memorial ? (
+                        <span className="badge" style={{ background: "rgba(148,163,184,0.18)", color: "var(--text-secondary)" }}>{t.admin_status_memorial}</span>
                       ) : a.silenced ? (
                         <span className="badge" style={{ background: "rgba(251,191,36,0.12)", color: "var(--warning)" }}>{t.admin_status_silenced}</span>
                       ) : a.approved === false ? (
@@ -251,6 +254,15 @@ export default function AdminAccountsPage() {
                             </button>
                             <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "suspend")} style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
                               {isBusy && actionLoading === `${a.id}:suspend` ? "..." : t.admin_btn_suspend}
+                            </button>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              disabled={isBusy}
+                              onClick={() => {
+                                if (window.confirm(t.admin_memorialize_confirm)) void performAction(a.id, "memorialize");
+                              }}
+                            >
+                              {isBusy && actionLoading === `${a.id}:memorialize` ? "..." : t.admin_btn_memorialize}
                             </button>
                           </>
                         )}

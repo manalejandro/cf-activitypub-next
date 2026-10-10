@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { activityJson, notFound } from "@/lib/cf";
-import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, getPollsByObjectIds, countActorPublicStatuses } from "@/lib/db";
+import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, getObjectById, getPollsByObjectIds, countActorPublicStatuses } from "@/lib/db";
 import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI, conversationFromRaw } from "@/lib/activitypub/utils";
 import { applyPollToNote } from "@/lib/activitypub/polls";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
@@ -80,12 +80,36 @@ export async function GET(
   let response: Record<string, unknown>;
   if (!page) {
     // totalItems must count only what the collection actually exposes (public),
-    // not statusesCount (which includes followers-only/direct posts).
-    response = buildOrderedCollection(outboxId, await countActorPublicStatuses(env.DB, actor.id));
+    // not statusesCount (which includes followers-only/direct posts). `last`
+    // mirrors Mastodon's outbox (`?page=true&min_id=0`).
+    response = buildOrderedCollection(
+      outboxId,
+      await countActorPublicStatuses(env.DB, actor.id),
+      `${outboxId}?page=true&min_id=0`
+    );
   } else {
-    const maxId = page !== "true" ? page : undefined;
-    const entries = await getActorStatuses(env.DB, actor.id, 20, maxId);
-    const statuses = entries.map((entry) => entry.object);
+    // `?page=true&min_id=0` is Mastodon's "last page" link: the oldest public
+    // statuses (Mastodon's own pagination returns the newest page for it; ours
+    // resolves the link to what it says it is). The page is still ordered
+    // newest-first, like every other page of the collection.
+    const oldestPage = page === "true" && request.nextUrl.searchParams.get("min_id") === "0";
+    let statuses;
+    if (oldestPage) {
+      const oldest = await env.DB
+        .prepare(
+          `SELECT id FROM objects
+           WHERE actor_id = ? AND visibility = 'public' AND media_pending = 0
+           ORDER BY published ASC LIMIT 20`
+        )
+        .bind(actor.id)
+        .all<{ id: string }>();
+      const loaded = await Promise.all(oldest.results.map((row) => getObjectById(env.DB, row.id)));
+      statuses = loaded.filter((s): s is NonNullable<typeof s> => s !== null).reverse();
+    } else {
+      const maxId = page !== "true" ? page : undefined;
+      const entries = await getActorStatuses(env.DB, actor.id, 20, maxId);
+      statuses = entries.map((entry) => entry.object);
+    }
     const attachmentMap = await getAttachmentsByObjectIds(env.DB, statuses.map((s) => s.id));
     // Poll statuses are serialized as Questions (Mastodon's NoteSerializer
     // does): a peer that reads the outbox instead of the Create must still see

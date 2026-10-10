@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
+import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import type {
   LocalActor,
   ActorField,
@@ -95,6 +96,11 @@ function rowToActor(r: Row): LocalActor {
     approved: r.approved === undefined ? undefined : Boolean(r.approved),
     registrationReason: r.registration_reason ?? null,
     verified: r.verified === undefined ? undefined : Boolean(r.verified),
+    memorial: r.memorial === undefined ? undefined : Boolean(r.memorial),
+    showFeatured: r.show_featured === undefined ? undefined : Boolean(r.show_featured),
+    showMedia: r.show_media === undefined ? undefined : Boolean(r.show_media),
+    showMediaReplies: r.show_media_replies === undefined ? undefined : Boolean(r.show_media_replies),
+    attributionDomains: r.attribution_domains ? safeJsonParseArray(r.attribution_domains as string) : null,
     alsoKnownAs: r.also_known_as ? safeJsonParseArray(r.also_known_as) : null,
     movedTo: r.moved_to ?? null,
     collectionsUrl: r.collections_url ?? null,
@@ -637,6 +643,23 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
   // use it verbatim instead of computing from the (subset of) statuses we saw.
   const lastStatusAt = (actor as unknown as Record<string, unknown>).last_status_at;
   const lastStatusAtStr = typeof lastStatusAt === "string" && lastStatusAt ? lastStatusAt.slice(0, 10) : null;
+  // Mastodon's ActorSerializer profile settings. `memorial` and the
+  // attribution domains clear when the document omits them (Mastodon does the
+  // same); the display toggles only update when the key is present, so the
+  // stored value is read first (a NULL bind would violate their NOT NULL).
+  const rawDoc = actor as unknown as Record<string, unknown>;
+  let existingProfile: { show_featured: number | null; show_media: number | null; show_media_replies: number | null } | null = null;
+  try {
+    existingProfile = await db
+      .prepare("SELECT show_featured, show_media, show_media_replies FROM actors WHERE id = ?")
+      .bind(actor.id)
+      .first<{ show_featured: number | null; show_media: number | null; show_media_replies: number | null }>();
+  } catch { /* pre-migration DB: the columns do not exist yet */ }
+  const memorial = rawDoc.memorial === true ? 1 : 0;
+  const showFeatured = "showFeatured" in rawDoc ? (rawDoc.showFeatured === true ? 1 : 0) : (existingProfile?.show_featured ?? 1);
+  const showMedia = "showMedia" in rawDoc ? (rawDoc.showMedia === true ? 1 : 0) : (existingProfile?.show_media ?? 1);
+  const showMediaReplies = "showRepliesInMedia" in rawDoc ? (rawDoc.showRepliesInMedia === true ? 1 : 0) : (existingProfile?.show_media_replies ?? 1);
+  const attributionDomains = JSON.stringify(normalizeAttributionDomains(rawDoc.attributionDomains));
   // Queue the profile images for the R2 media cache — but only when the URL is
   // new or changed. This runs BEFORE the upsert so the stored (previous) URL is
   // still readable: queueing on every actor update was a write amplifier, since
@@ -654,8 +677,9 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
             id, username, domain, display_name, summary, avatar_url, header_url,
             public_key_pem, private_key_pem, is_local, is_bot,
             manually_approves_followers, discoverable,
-            followers_count, following_count, statuses_count, inbox, shared_inbox, also_known_as, last_status_at, collections_url
-          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?,?,?)
+            followers_count, following_count, statuses_count, inbox, shared_inbox, also_known_as, last_status_at, collections_url,
+            memorial, show_featured, show_media, show_media_replies, attribution_domains
+          ) VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?,?,0,0,0,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(id) DO UPDATE SET
             display_name = excluded.display_name,
             summary = CASE WHEN excluded.summary IS NOT NULL THEN excluded.summary ELSE actors.summary END,
@@ -672,6 +696,11 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
               WHEN excluded.last_status_at > COALESCE(actors.last_status_at, '') THEN excluded.last_status_at
               ELSE actors.last_status_at END,
             collections_url = COALESCE(NULLIF(excluded.collections_url, ''), actors.collections_url),
+            memorial = excluded.memorial,
+            show_featured = excluded.show_featured,
+            show_media = excluded.show_media,
+            show_media_replies = excluded.show_media_replies,
+            attribution_domains = excluded.attribution_domains,
             updated_at = datetime('now')
           WHERE actors.is_local = 0`
         )
@@ -691,7 +720,12 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
           actor.endpoints?.sharedInbox ?? null,
           alsoKnownAs,
           lastStatusAtStr,
-          actor.featuredCollections ?? null
+          actor.featuredCollections ?? null,
+          memorial,
+          showFeatured,
+          showMedia,
+          showMediaReplies,
+          attributionDomains
         )
         .run();
     } catch {
@@ -1184,7 +1218,7 @@ export async function getAccountSuggestions(
          JOIN actors a ON a.id = f2.target_id
          WHERE f1.actor_id = ? AND f1.state = 'accepted'
            AND f2.target_id != ?
-           AND a.suspended = 0 AND a.silenced = 0
+           AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
            AND NOT EXISTS (SELECT 1 FROM instance_domain_blocks idb WHERE idb.domain = a.domain AND idb.severity = 'suspend')
            AND NOT EXISTS (SELECT 1 FROM follows mf WHERE mf.actor_id = ? AND mf.target_id = f2.target_id)
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.actor_id = ? AND b.target_id = f2.target_id)
@@ -1228,7 +1262,7 @@ export async function getAccountSuggestions(
       `SELECT a.id,
               (SELECT COUNT(*) FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted') AS local_follows
        FROM actors a
-       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
          AND COALESCE(a.reserved, 0) = 0
          ${excludedSql}
        ORDER BY local_follows DESC, a.id
@@ -1253,7 +1287,7 @@ export async function getAccountSuggestions(
       `SELECT a.id, COUNT(*) AS local_follows
        FROM actors a
        JOIN follows f ON f.target_id = a.id AND f.state = 'accepted'
-       WHERE a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+       WHERE a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
          AND COALESCE(a.reserved, 0) = 0
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
@@ -1277,7 +1311,7 @@ export async function getAccountSuggestions(
   const activeLocal = await db
     .prepare(
       `SELECT a.id FROM actors a
-       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
          AND COALESCE(a.reserved, 0) = 0
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
@@ -1314,7 +1348,7 @@ export async function getAccountSuggestions(
          JOIN actors lf ON lf.id = f.actor_id AND lf.is_local = 1
          WHERE f.state = 'accepted'
        ) followed_domain ON followed_domain.domain = a.domain
-       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0
+       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
          AND a.last_status_at IS NOT NULL
          AND COALESCE(a.followers_count, 0) > 0
          AND followed_domain.domain IS NULL

@@ -5,7 +5,7 @@ import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCu
 import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
+import { buildActor, buildUpdateActor, generateId, normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActor } from "@/lib/types";
@@ -74,6 +74,11 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   let autoDeleteAfter: number | null | undefined;
   let sourceQuotePolicy: string | undefined;
   let sourceHideCollections: boolean | undefined;
+  let showFeatured: boolean | undefined;
+  let showMedia: boolean | undefined;
+  let showMediaReplies: boolean | undefined;
+  let attributionDomains: string[] | undefined;
+  let attributionDomainsInvalid = false;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -94,6 +99,22 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (quotePolicyVal !== null) sourceQuotePolicy = quotePolicyVal;
     const hideCollectionsVal = form.get("source[hide_collections]") as string | null;
     if (hideCollectionsVal !== null) sourceHideCollections = hideCollectionsVal === "true";
+
+    // Mastodon profile settings (Settings → Profile / Verifications).
+    const showFeaturedVal = form.get("show_featured") as string | null;
+    if (showFeaturedVal !== null) showFeatured = showFeaturedVal === "true";
+    const showMediaVal = form.get("show_media") as string | null;
+    if (showMediaVal !== null) showMedia = showMediaVal === "true";
+    const showMediaRepliesVal = form.get("show_media_replies") as string | null;
+    if (showMediaRepliesVal !== null) showMediaReplies = showMediaRepliesVal === "true";
+    const attributionEntries = [
+      ...form.getAll("attribution_domains[]").map(String),
+      ...(form.get("attribution_domains") ? String(form.get("attribution_domains")).split(/[\s,]+/) : []),
+    ].filter((entry) => entry.trim().length > 0);
+    if (attributionEntries.length > 0) {
+      attributionDomains = normalizeAttributionDomains(attributionEntries);
+      attributionDomainsInvalid = attributionDomains.length < attributionEntries.length;
+    }
 
     // Avatar / header: a file uploads, an empty string removes it (Mastodon's
     // update_credentials contract). Type and size are validated first.
@@ -169,6 +190,19 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       if (src.quote_policy !== undefined) sourceQuotePolicy = src.quote_policy;
       if (src.hide_collections !== undefined) sourceHideCollections = Boolean(src.hide_collections);
     }
+    // Mastodon profile settings (also accepted here so clients that predate
+    // `PATCH /api/v1/profile` can edit them, like Mastodon's own
+    // update_credentials accepts `attribution_domains`).
+    if (body.show_featured !== undefined) showFeatured = body.show_featured === "true" || body.show_featured === true;
+    if (body.show_media !== undefined) showMedia = body.show_media === "true" || body.show_media === true;
+    if (body.show_media_replies !== undefined) showMediaReplies = body.show_media_replies === "true" || body.show_media_replies === true;
+    if (body.attribution_domains !== undefined) {
+      const entries = (Array.isArray(body.attribution_domains) ? body.attribution_domains : String(body.attribution_domains).split(/[\s,]+/))
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0);
+      attributionDomains = normalizeAttributionDomains(entries);
+      attributionDomainsInvalid = attributionDomains.length < entries.length;
+    }
   }
 
   // Enforce the same profile limits the client applies (lib/constants).
@@ -185,6 +219,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (fieldsRaw.some((f) => f.name.length > limits.maxProfileFieldChars || f.value.length > limits.maxProfileFieldChars)) {
       return badRequest(`Profile field names and values must be ${limits.maxProfileFieldChars} characters or less`);
     }
+  }
+  if (attributionDomainsInvalid) {
+    return badRequest("attribution_domains must be valid domain names");
+  }
+  if (attributionDomains !== undefined && attributionDomains.length > 100) {
+    return badRequest("attribution_domains must be 100 domains or fewer");
   }
 
   // Build SET clauses dynamically
@@ -216,6 +256,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     values.push(headerUrl);
   }
   if (autoDeleteAfter !== undefined) { setClauses.push("auto_delete_after = ?"); values.push(autoDeleteAfter); }
+  // Mastodon profile settings (ActorSerializer: showFeatured/showMedia/
+  // showRepliesInMedia and the attribution domains).
+  if (showFeatured !== undefined) { setClauses.push("show_featured = ?"); values.push(showFeatured ? 1 : 0); }
+  if (showMedia !== undefined) { setClauses.push("show_media = ?"); values.push(showMedia ? 1 : 0); }
+  if (showMediaReplies !== undefined) { setClauses.push("show_media_replies = ?"); values.push(showMediaReplies ? 1 : 0); }
+  if (attributionDomains !== undefined) { setClauses.push("attribution_domains = ?"); values.push(JSON.stringify(attributionDomains)); }
 
   if (values.length > 0) {
     values.push(actor.id);
@@ -223,6 +269,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       .prepare(`UPDATE actors SET ${setClauses.join(", ")} WHERE id = ?`)
       .bind(...values)
       .run();
+  }
+
+  // The federated actor document changed: drop the cached copy so peers refetch
+  // the new profile settings instead of the stale one.
+  if (showFeatured !== undefined || showMedia !== undefined || showMediaReplies !== undefined || attributionDomains !== undefined) {
+    await env.KV.delete(`ap:actor:${actor.username.toLowerCase()}`).catch(() => {});
   }
 
   // Save fields if provided

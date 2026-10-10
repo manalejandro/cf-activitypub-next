@@ -101,6 +101,13 @@ export function buildActor(
     movedTo?: string;
     /** FEP-6757: preferred license for new objects created by this actor. */
     preferredLicenseUrl?: string;
+    /** Mastodon profile settings (ActorSerializer). */
+    memorial?: boolean;
+    suspended?: boolean;
+    showFeatured?: boolean;
+    showMedia?: boolean;
+    showMediaReplies?: boolean;
+    attributionDomains?: string[];
   }
 ): APActor {
   const id = actorIRI(baseUrl, username);
@@ -157,6 +164,17 @@ export function buildActor(
   }
   if (options.movedTo) {
     actor.movedTo = options.movedTo;
+  }
+  // Mastodon profile settings: the display toggles are always sent (defaults
+  // true), `memorial`/`suspended` only when true and the attribution domains
+  // only when the account lists any.
+  actor.showFeatured = options.showFeatured ?? true;
+  actor.showMedia = options.showMedia ?? true;
+  actor.showRepliesInMedia = options.showMediaReplies ?? true;
+  if (options.memorial) actor.memorial = true;
+  if (options.suspended) actor.suspended = true;
+  if (options.attributionDomains && options.attributionDomains.length > 0) {
+    actor.attributionDomains = options.attributionDomains;
   }
   // FEP-6757: what new statuses default to on other instances' clients.
   if (options.preferredLicenseUrl) {
@@ -579,14 +597,18 @@ export function buildUpdateActor(baseUrl: string, actor: APActor, id: string): A
 
 export function buildOrderedCollection(
   id: string,
-  totalItems: number
+  totalItems: number,
+  lastUrl?: string
 ): APCollection {
+  // Mastodon's outbox collection carries `first` and `last` links
+  // (`?page=true` and `?page=true&min_id=0`); other collections only `first`.
   return {
     "@context": DEFAULT_CONTEXT,
     id,
     type: "OrderedCollection",
     totalItems,
     first: `${id}?page=true`,
+    ...(lastUrl ? { last: lastUrl } : {}),
   };
 }
 
@@ -633,6 +655,25 @@ export function conversationFromRaw(raw: string | null | undefined): string | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize an `attributionDomains` list the way Mastodon does
+ * (`Account::AttributionDomains#normalizes`): bare domains, no scheme or `*.`
+ * wildcard prefix, trimmed, unique, capped at 100 entries.
+ */
+export function normalizeAttributionDomains(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const domain = entry.trim().replace(/^https?:\/\//i, "").replace(/^\*\./, "").toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) continue;
+    if (out.includes(domain)) continue;
+    out.push(domain);
+    if (out.length >= 100) break;
+  }
+  return out;
 }
 
 export function extractDomain(url: string): string {

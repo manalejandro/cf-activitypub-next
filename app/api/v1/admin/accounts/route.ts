@@ -87,6 +87,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       confirmed: actor.emailVerified,
       suspended: Boolean(r.suspended),
       silenced: Boolean(r.silenced),
+      memorial: Boolean(r.memorial),
       approved: r.approved !== undefined ? Boolean(r.approved) : true,
       registration_reason: r.registration_reason ?? null,
       account: serializeAccount(actor, domain),

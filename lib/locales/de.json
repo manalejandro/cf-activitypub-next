@@ -1140,5 +1140,18 @@
   "media_error_type": "Dieser Dateityp wird nicht unterstützt",
   "media_error_too_large": "Die Datei ist zu groß (max. {value})",
   "emoji_error_shortcode": "Der Shortcode darf nur Buchstaben, Zahlen und Unterstriche enthalten",
-  "compose_uploading": "Wird hochgeladen…"
+  "compose_uploading": "Wird hochgeladen…",
+  "settings_profile_display": "Profilanzeige",
+  "settings_profile_display_hint": "Wähle, welche Bereiche andere Personen in deinem Profil sehen.",
+  "settings_show_featured": "Tab „Hervorgehoben“ (angeheftet) anzeigen",
+  "settings_show_media": "Medien-Tab anzeigen",
+  "settings_show_media_replies": "Antworten im Medien-Tab einschließen",
+  "settings_attribution_domains": "Attributions-Domains",
+  "settings_attribution_domains_hint": "Domains, die dir gehören (durch Kommas getrennt). Links von ihnen werden deinem Konto auch ohne rel=\"me\"-Rückverweis zugeordnet.",
+  "settings_attribution_domains_invalid": "Attributions-Domains müssen gültige Domainnamen sein.",
+  "account_in_memoriam": "In memoriam. Dieses Konto bleibt erhalten und kann sich nicht mehr anmelden oder interagieren.",
+  "admin_btn_memorialize": "In Memoriam umwandeln",
+  "admin_status_memorial": "In memoriam",
+  "admin_memorialize_confirm": "Dieses Konto in Memoriam erhalten? Es kann sich dann nicht mehr anmelden.",
+  "login_error_memorial": "Dieses Konto ist in memoriam und kann sich nicht mehr anmelden."
 }

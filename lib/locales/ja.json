@@ -1140,5 +1140,18 @@
   "media_error_type": "このファイル形式には対応していません",
   "media_error_too_large": "ファイルが大きすぎます（最大 {value}）",
   "emoji_error_shortcode": "ショートコードは英数字とアンダースコアのみ使用できます",
-  "compose_uploading": "アップロード中…"
+  "compose_uploading": "アップロード中…",
+  "settings_profile_display": "プロフィール表示",
+  "settings_profile_display_hint": "他のユーザーに表示するプロフィールのセクションを選択します。",
+  "settings_show_featured": "固定した投稿のタブを表示する",
+  "settings_show_media": "メディアタブを表示する",
+  "settings_show_media_replies": "メディアタブに返信を含める",
+  "settings_attribution_domains": "帰属ドメイン",
+  "settings_attribution_domains_hint": "あなたが所有するドメイン（カンマ区切り）。そこからのリンクは rel=\"me\" がなくてもあなたのアカウントに帰属されます。",
+  "settings_attribution_domains_invalid": "帰属ドメインは有効なドメイン名である必要があります。",
+  "account_in_memoriam": "追悼。このアカウントは保存されており、ログインや操作はできません。",
+  "admin_btn_memorialize": "追悼アカウントにする",
+  "admin_status_memorial": "追悼",
+  "admin_memorialize_confirm": "このアカウントを追悼として保存しますか？ログインできなくなります。",
+  "login_error_memorial": "このアカウントは追悼として保存されており、ログインできません。"
 }

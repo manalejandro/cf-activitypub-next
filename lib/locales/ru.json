@@ -1140,5 +1140,18 @@
   "media_error_type": "Этот тип файла не поддерживается",
   "media_error_too_large": "Файл слишком большой (макс. {value})",
   "emoji_error_shortcode": "Код может содержать только буквы, цифры и подчёркивания",
-  "compose_uploading": "Загрузка…"
+  "compose_uploading": "Загрузка…",
+  "settings_profile_display": "Отображение профиля",
+  "settings_profile_display_hint": "Выберите, какие разделы видят другие люди в вашем профиле.",
+  "settings_show_featured": "Показывать вкладку закреплённых публикаций",
+  "settings_show_media": "Показывать вкладку медиа",
+  "settings_show_media_replies": "Включать ответы на вкладке медиа",
+  "settings_attribution_domains": "Домены атрибуции",
+  "settings_attribution_domains_hint": "Домены, которыми вы владеете (через запятую). Ссылки с них приписываются вашему аккаунту без обратной ссылки rel=\"me\".",
+  "settings_attribution_domains_invalid": "Домены атрибуции должны быть корректными доменными именами.",
+  "account_in_memoriam": "In memoriam. Аккаунт сохранён и больше не может входить или взаимодействовать.",
+  "admin_btn_memorialize": "Превратить в мемориал",
+  "admin_status_memorial": "In memoriam",
+  "admin_memorialize_confirm": "Сохранить этот аккаунт как мемориал? Вход будет невозможен.",
+  "login_error_memorial": "Этот аккаунт сохранён как мемориал, вход невозможен."
 }

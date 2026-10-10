@@ -1140,5 +1140,18 @@
   "media_error_type": "不支持该文件类型",
   "media_error_too_large": "文件太大（最多 {value}）",
   "emoji_error_shortcode": "短代码只能包含字母、数字和下划线",
-  "compose_uploading": "上传中…"
+  "compose_uploading": "上传中…",
+  "settings_profile_display": "个人资料显示",
+  "settings_profile_display_hint": "选择其他人可以在你的个人资料中看到的部分。",
+  "settings_show_featured": "显示精选（置顶）标签页",
+  "settings_show_media": "显示媒体标签页",
+  "settings_show_media_replies": "在媒体标签页中包含回复",
+  "settings_attribution_domains": "归属域名",
+  "settings_attribution_domains_hint": "你拥有的域名（用逗号分隔）。来自这些域名的链接无需 rel=\"me\" 反向链接即可归属于你的账号。",
+  "settings_attribution_domains_invalid": "归属域名必须是有效的域名。",
+  "account_in_memoriam": "悼念。此账号已被保留，无法登录或互动。",
+  "admin_btn_memorialize": "转为悼念账号",
+  "admin_status_memorial": "悼念",
+  "admin_memorialize_confirm": "将此账号转为悼念？之后将无法登录。",
+  "login_error_memorial": "此账号已被转为悼念，无法登录。"
 }

@@ -399,7 +399,6 @@ describe("actor id binding (cache poisoning guard)", () => {
     following: "https://attacker.example/following",
     publicKey: { id: `${id}#main-key`, owner: id, publicKeyPem: "attacker-key" },
   }) as unknown as import("@/lib/types").APActor;
-
   it("refuses a document that claims a different id than the fetched URL", async () => {
     await upsertRemoteActor(db, doc("https://victim.example/users/victim"), "https://attacker.example/x");
     expect(await getActorById(db, "https://victim.example/users/victim")).toBeNull();
@@ -408,5 +407,45 @@ describe("actor id binding (cache poisoning guard)", () => {
   it("stores the document when id and fetched URL match", async () => {
     await upsertRemoteActor(db, doc("https://attacker.example/x"), "https://attacker.example/x");
     expect((await getActorById(db, "https://attacker.example/x"))?.publicKeyPem).toBe("attacker-key");
+  });
+});
+
+describe("remote actor profile settings (Mastodon's ActorSerializer)", () => {
+  const profileDoc = (extra: Record<string, unknown>) => ({
+    id: "https://remote.example/users/settings",
+    type: "Person",
+    preferredUsername: "settings",
+    inbox: "https://remote.example/users/settings/inbox",
+    publicKey: { publicKeyPem: "k" },
+    ...extra,
+  }) as unknown as import("@/lib/types").APActor;
+
+  it("stores memorial, the display toggles and the attribution domains", async () => {
+    await upsertRemoteActor(
+      db,
+      profileDoc({
+        memorial: true,
+        showMedia: false,
+        attributionDomains: ["https://Example.com", "*.other.org", "Example.com"],
+      })
+    );
+    const actor = await getActorById(db, "https://remote.example/users/settings");
+    expect(actor?.memorial).toBe(true);
+    expect(actor?.showMedia).toBe(false);
+    // Absent from the document: the stored value (default true) is kept.
+    expect(actor?.showFeatured).toBe(true);
+    expect(actor?.showMediaReplies).toBe(true);
+    expect(actor?.attributionDomains).toEqual(["example.com", "other.org"]);
+  });
+
+  it("clears memorial/domains when the document omits them but keeps the toggles", async () => {
+    await upsertRemoteActor(db, profileDoc({ memorial: true, showMedia: false, attributionDomains: ["example.com"] }));
+    await upsertRemoteActor(db, profileDoc({ showFeatured: false }));
+
+    const actor = await getActorById(db, "https://remote.example/users/settings");
+    expect(actor?.memorial).toBe(false);
+    expect(actor?.attributionDomains).toEqual([]);
+    expect(actor?.showMedia).toBe(false); // not sent → unchanged
+    expect(actor?.showFeatured).toBe(false); // sent → updated
   });
 });

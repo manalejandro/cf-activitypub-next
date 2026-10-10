@@ -28,6 +28,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   // Mirror getAuthenticatedActor: a suspended, unconfirmed or pending-approval
   // account is not authenticated, whatever token it holds.
   if (actor.suspended) return json({ authenticated: false, reason: "suspended" }, 200);
+  if (actor.memorial) return json({ authenticated: false, reason: "memorial" }, 200);
   if (actor.isLocal && !actor.emailVerified) return json({ authenticated: false, reason: "unverified" }, 200);
   if (actor.isLocal && actor.approved === false) return json({ authenticated: false, reason: "pending" }, 200);
 

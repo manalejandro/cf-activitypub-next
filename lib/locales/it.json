@@ -1140,5 +1140,18 @@
   "media_error_type": "Questo tipo di file non è supportato",
   "media_error_too_large": "Il file è troppo grande (max {value})",
   "emoji_error_shortcode": "Lo shortcode può contenere solo lettere, numeri e underscore",
-  "compose_uploading": "Caricamento…"
+  "compose_uploading": "Caricamento…",
+  "settings_profile_display": "Visualizzazione del profilo",
+  "settings_profile_display_hint": "Scegli quali sezioni vedono le altre persone sul tuo profilo.",
+  "settings_show_featured": "Mostra la scheda dei contenuti in evidenza (fissati)",
+  "settings_show_media": "Mostra la scheda dei media",
+  "settings_show_media_replies": "Includi le risposte nella scheda dei media",
+  "settings_attribution_domains": "Domini di attribuzione",
+  "settings_attribution_domains_hint": "Domini che possiedi (separati da virgole). I link da quei domini vengono attribuiti al tuo account senza un link rel=\"me\".",
+  "settings_attribution_domains_invalid": "I domini di attribuzione devono essere nomi di dominio validi.",
+  "account_in_memoriam": "In memoriam. Questo account è conservato e non può più accedere né interagire.",
+  "admin_btn_memorialize": "Trasforma in memoriale",
+  "admin_status_memorial": "In memoriam",
+  "admin_memorialize_confirm": "Conservare questo account in memoriam? Non potrà più accedere.",
+  "login_error_memorial": "Questo account è in memoriam e non può più accedere."
 }

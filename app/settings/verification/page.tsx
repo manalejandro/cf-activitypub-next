@@ -22,7 +22,7 @@ interface Account extends Me {
   username: string;
   fields?: Field[];
   verified?: boolean;
-  source?: { fields?: Field[] };
+  source?: { fields?: Field[]; attribution_domains?: string[] };
 }
 
 export default function VerificationPage() {
@@ -33,16 +33,51 @@ export default function VerificationPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Mastodon's attribution domains: links from these domains count as yours.
+  const [attrDomains, setAttrDomains] = useState("");
+  const [attrSaving, setAttrSaving] = useState(false);
+  const [attrSaved, setAttrSaved] = useState(false);
 
   useEffect(() => {
     if (!token) { router.push("/login"); return; }
     void fetch("/api/v1/accounts/verify_credentials", {
       headers: { Authorization: `Bearer ${token}` },
     }).then((res) => (res.ok ? res.json() as Promise<Account> : null)).then((a) => {
-      if (a) { setAccount(a); setMe(a); }
+      if (a) {
+        setAccount(a);
+        setMe(a);
+        setAttrDomains((a.source?.attribution_domains ?? []).join(", "));
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSaveAttribution() {
+    if (!token) return;
+    setAttrSaving(true);
+    try {
+      const res = await fetch("/api/v1/accounts/verify_credentials", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attribution_domains: attrDomains.split(/[\s,]+/).filter(Boolean),
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as Account;
+        setAccount(updated);
+        setAttrDomains((updated.source?.attribution_domains ?? []).join(", "));
+        setAttrSaved(true);
+        setTimeout(() => setAttrSaved(false), 2000);
+      } else {
+        const data = await res.json().catch(() => null) as { error?: string } | null;
+        setMessage({ ok: false, text: data?.error ?? t.settings_attribution_domains_invalid });
+      }
+    } catch {
+      setMessage({ ok: false, text: t.settings_attribution_domains_invalid });
+    }
+    setAttrSaving(false);
+  }
 
   async function handleCheck() {
     if (!token) return;
@@ -163,7 +198,6 @@ const accountFields =
               {checking ? t.settings_verification_checking : t.settings_verification_check}
             </button>
           </div>
-
           {!account ? (
             <Loading />
           ) : accountFields.length === 0 ? (
@@ -197,6 +231,26 @@ const accountFields =
               ))}
             </div>
           )}
+        </div>
+        {/* Attribution domains (Mastodon's Settings → Verifications) */}
+        <div>
+          <label style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.375rem" }}>{t.settings_attribution_domains}</label>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 0, marginBottom: "0.5rem", lineHeight: 1.5 }}>
+            {t.settings_attribution_domains_hint}
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input
+              className="input"
+              value={attrDomains}
+              onChange={(e) => setAttrDomains(e.target.value)}
+              placeholder="example.com, miweb.org"
+              style={{ flex: 1 }}
+            />
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleSaveAttribution()} disabled={attrSaving}>
+              {attrSaving ? "..." : t.save}
+            </button>
+            {attrSaved && <span style={{ color: "var(--success)", fontSize: "0.8rem" }}>{t.settings_saved}</span>}
+          </div>
         </div>
       </div>
     </PageLayout>

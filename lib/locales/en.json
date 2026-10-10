@@ -1140,5 +1140,18 @@
   "media_error_type": "That file type is not supported",
   "media_error_too_large": "The file is too large (max {value})",
   "emoji_error_shortcode": "The shortcode can only contain letters, numbers and underscores",
-  "compose_uploading": "Uploading…"
+  "compose_uploading": "Uploading…",
+  "settings_profile_display": "Profile display",
+  "settings_profile_display_hint": "Choose which sections other people see on your profile.",
+  "settings_show_featured": "Show the featured (pinned) tab",
+  "settings_show_media": "Show the media tab",
+  "settings_show_media_replies": "Include replies in the media tab",
+  "settings_attribution_domains": "Attribution domains",
+  "settings_attribution_domains_hint": "Domains you own (comma separated). Links from them are attributed to your account without a rel=\"me\" backlink.",
+  "settings_attribution_domains_invalid": "Attribution domains must be valid domain names.",
+  "account_in_memoriam": "In memoriam. This account is preserved and cannot sign in or interact.",
+  "admin_btn_memorialize": "Memorialize",
+  "admin_status_memorial": "In memoriam",
+  "admin_memorialize_confirm": "Preserve this account in memoriam? It will no longer be able to sign in.",
+  "login_error_memorial": "This account is in memoriam and can no longer sign in."
 }
