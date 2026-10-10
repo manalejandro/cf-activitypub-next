@@ -88,6 +88,10 @@ export const TRENDING_TAGS_MAX = 20;
 export const ADMIN_LOG_PAGE_SIZE = 50;
 export const MLS_MESSAGES_PAGE_SIZE = 50; // AP /messages collection page size
 export const GRAPH_MAX_NODES = 100; // max instances on the /graph federation graph
+// Statuses kept per cached client timeline (newest first). A feed can be
+// scrolled forever; without a cap the client cache grew with every page, so
+// restoring a feed re-rendered thousands of cards.
+export const TIMELINE_CACHE_MAX_ITEMS = 1000;
 
 // Remote media cache (R2). User agents are tried in order: the Mastodon-style
 // bot UA first (well-behaved crawlers are welcome), then common browser UAs for
@@ -184,6 +188,8 @@ export interface InstanceLimits {
   defaultTimelinePage: number;
   maxPageSize: number;
   maxCollectionPage: number;
+  /** Client feed cache: statuses kept per cached timeline (newest first). */
+  timelineCacheMaxItems: number;
   trendingTagsLimit: number;
   trendingTagsMax: number;
   adminLogPageSize: number;
@@ -246,6 +252,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   defaultTimelinePage: DEFAULT_TIMELINE_PAGE,
   maxPageSize: MAX_PAGE_SIZE,
   maxCollectionPage: MAX_COLLECTION_PAGE,
+  timelineCacheMaxItems: TIMELINE_CACHE_MAX_ITEMS,
   trendingTagsLimit: TRENDING_TAGS_LIMIT,
   trendingTagsMax: TRENDING_TAGS_MAX,
   adminLogPageSize: ADMIN_LOG_PAGE_SIZE,
@@ -340,6 +347,9 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     defaultTimelinePage: num(env, "DEFAULT_TIMELINE_PAGE", DEFAULT_LIMITS.defaultTimelinePage),
     maxPageSize: num(env, "MAX_PAGE_SIZE", DEFAULT_LIMITS.maxPageSize),
     maxCollectionPage: num(env, "MAX_COLLECTION_PAGE", DEFAULT_LIMITS.maxCollectionPage),
+    // A cache smaller than a page is useless (and 0 would silently empty every
+    // restored feed), so the floor stays well above the timeline page size.
+    timelineCacheMaxItems: Math.max(40, num(env, "TIMELINE_CACHE_MAX_ITEMS", DEFAULT_LIMITS.timelineCacheMaxItems)),
     trendingTagsLimit: num(env, "TRENDING_TAGS_LIMIT", DEFAULT_LIMITS.trendingTagsLimit),
     trendingTagsMax: num(env, "TRENDING_TAGS_MAX", DEFAULT_LIMITS.trendingTagsMax),
     adminLogPageSize: num(env, "ADMIN_LOG_PAGE_SIZE", DEFAULT_LIMITS.adminLogPageSize),

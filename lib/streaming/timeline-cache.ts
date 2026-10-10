@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { TIMELINE_CACHE_MAX_ITEMS } from "@/lib/constants";
 
 export interface TimelineCacheEntry<T> {
   items: T[];
@@ -16,14 +17,48 @@ export interface TimelineCacheEntry<T> {
 
 const TIMELINE_CACHE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Maximum number of feeds kept in memory. Together with the per-entry item cap
+ * this bounds the client's timeline memory: without it every visited tag or
+ * list piled up forever. The least recently written feed is evicted first — a
+ * feed whose entry is gone simply refetches.
+ */
+export const TIMELINE_CACHE_MAX_ENTRIES = 12;
+
 const entries = new Map<string, TimelineCacheEntry<unknown>>();
 
 export function getTimelineCache<T>(key: string): TimelineCacheEntry<T> | undefined {
   return entries.get(key) as TimelineCacheEntry<T> | undefined;
 }
 
-export function setTimelineCache<T>(key: string, entry: TimelineCacheEntry<T>): void {
-  entries.set(key, entry as TimelineCacheEntry<unknown>);
+/** Keep only the newest `maxItems` items (feeds are newest-first). */
+export function trimTimelineItems<T>(items: T[], maxItems: number): T[] {
+  if (maxItems <= 0 || items.length <= maxItems) return items;
+  return items.slice(0, maxItems);
+}
+
+/**
+ * Store a feed. `items` is capped to `maxItems` (the instance's
+ * `timelineCacheMaxItems`): a feed can be scrolled forever, and caching every
+ * page made a restore re-render thousands of statuses. The **newest** items are
+ * kept so the cache stays a prefix of the live feed — restoring it and
+ * paginating from its tail never leaves a gap, and a missing scroll anchor
+ * falls back to the remembered offset.
+ */
+export function setTimelineCache<T>(
+  key: string,
+  entry: TimelineCacheEntry<T>,
+  maxItems: number = TIMELINE_CACHE_MAX_ITEMS
+): void {
+  // Re-inserting moves the key to the end of the Map's iteration order, which
+  // tracks write recency for the eviction below.
+  entries.delete(key);
+  entries.set(key, { ...entry, items: trimTimelineItems(entry.items, maxItems) } as TimelineCacheEntry<unknown>);
+  while (entries.size > TIMELINE_CACHE_MAX_ENTRIES) {
+    const oldest = entries.keys().next().value;
+    if (oldest === undefined) break;
+    entries.delete(oldest);
+  }
 }
 
 export function clearTimelineCache(key: string): void {

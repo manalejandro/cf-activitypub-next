@@ -15870,6 +15870,10 @@
           "maxCollectionPage": {
             "type": "number"
           },
+          "timelineCacheMaxItems": {
+            "type": "number",
+            "description": "Client feed cache: statuses kept per cached timeline (newest first)."
+          },
           "trendingTagsLimit": {
             "type": "number"
           },

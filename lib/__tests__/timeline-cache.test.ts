@@ -8,6 +8,9 @@ import {
   setTimelineCache,
   getTimelineCache,
   clearAllTimelineCaches,
+  trimTimelineItems,
+  TIMELINE_CACHE_MAX_ENTRIES,
+  type TimelineCacheEntry,
 } from "@/lib/streaming/timeline-cache";
 
 interface S {
@@ -138,5 +141,58 @@ describe("pruneMissingInWindow (pagination)", () => {
       s("page3", "2026-01-01T07:00:00Z"),
     ];
     expect(pruneMissingInWindow(fetched, cached).map((i) => i.id)).toEqual(["feed-newest", "page3"]);
+  });
+});
+
+describe("trimTimelineItems", () => {
+  it("keeps the newest items and leaves a short feed untouched (same array)", () => {
+    const items = [s("1"), s("2"), s("3")];
+    expect(trimTimelineItems(items, 2).map((i) => i.id)).toEqual(["1", "2"]);
+    expect(trimTimelineItems(items, 3)).toBe(items);
+    expect(trimTimelineItems(items, 0)).toBe(items);
+  });
+});
+
+describe("setTimelineCache caps", () => {
+  beforeEach(() => clearAllTimelineCaches());
+
+  const entry = (items: S[]): TimelineCacheEntry<S> => ({
+    items,
+    hasMore: true,
+    scrollY: 0,
+    fetchedAt: Date.now(),
+    ready: true,
+  });
+
+  it("keeps only the newest items of a long feed", () => {
+    const items = Array.from({ length: 10 }, (_, i) => s(`s${i}`));
+    setTimelineCache("home", entry(items), 4);
+    expect(getTimelineCache<S>("home")?.items.map((i) => i.id)).toEqual(["s0", "s1", "s2", "s3"]);
+  });
+
+  it("caps at the default (1000) without touching a short feed", () => {
+    setTimelineCache("home", entry(Array.from({ length: 1005 }, (_, i) => s(`s${i}`))));
+    const capped = getTimelineCache<S>("home");
+    expect(capped?.items).toHaveLength(1000);
+    expect(capped?.items[999]?.id).toBe("s999");
+
+    const short = [s("a"), s("b")];
+    setTimelineCache("tag:x", entry(short));
+    expect(getTimelineCache<S>("tag:x")?.items).toBe(short);
+  });
+
+  it("evicts the least recently written feed beyond the entry cap", () => {
+    for (let i = 0; i <= TIMELINE_CACHE_MAX_ENTRIES; i++) {
+      setTimelineCache(`tag:${i}`, entry([s(`s${i}`)]));
+    }
+    // Writing one more feed dropped the oldest one…
+    expect(getTimelineCache("tag:0")).toBeUndefined();
+    expect(getTimelineCache(`tag:${TIMELINE_CACHE_MAX_ENTRIES}`)).toBeDefined();
+
+    // …unless it was re-written recently.
+    setTimelineCache("tag:1", entry([s("s1")]));
+    setTimelineCache("tag:new", entry([s("new")]));
+    expect(getTimelineCache("tag:1")).toBeDefined();
+    expect(getTimelineCache("tag:2")).toBeUndefined();
   });
 });

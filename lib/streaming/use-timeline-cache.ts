@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import { useLimits } from "@/lib/limits-client";
 import {
   getTimelineCache,
   isTimelineCacheFresh,
@@ -162,6 +163,15 @@ export function useTimelineCache<T extends { id: string }>(
   // cache entry while a tab switch's load is still pending.
   const loadedKeyRef = useRef(key);
 
+  // Feed cache cap (instance limit). Read through a ref so the load effect —
+  // which must only re-run on a key change — never depends on the limits
+  // object, while every write still applies the current value.
+  const limits = useLimits();
+  const cacheMaxItemsRef = useRef(limits.timelineCacheMaxItems);
+  useEffect(() => {
+    cacheMaxItemsRef.current = limits.timelineCacheMaxItems;
+  }, [limits.timelineCacheMaxItems]);
+
   // Keep the latest values available to stable callbacks without re-creating them
   useEffect(() => {
     keyRef.current = key;
@@ -197,7 +207,7 @@ export function useTimelineCache<T extends { id: string }>(
             hasMore: hasMoreRef.current,
             scrollY: window.scrollY > 0 ? window.scrollY : prevEntry.scrollY,
             anchorId: topVisibleStatusId() ?? prevEntry.anchorId ?? null,
-          });
+          }, cacheMaxItemsRef.current);
         }
       }
       prevKeyRef.current = key;
@@ -302,7 +312,7 @@ export function useTimelineCache<T extends { id: string }>(
               scrollY: cached?.scrollY ?? 0,
               fetchedAt: Date.now(),
               ready: true,
-            });
+            }, cacheMaxItemsRef.current);
             return merged;
           });
           setHasMore(result.hasMore);
@@ -360,7 +370,7 @@ useIsomorphicLayoutEffect(() => {
       scrollY: prev?.scrollY ?? 0,
       fetchedAt: prev?.fetchedAt ?? Date.now(),
       ready: prev?.ready ?? false,
-    });
+    }, cacheMaxItemsRef.current);
   }, [key, statuses, hasMore]);
 
   const loadMore = useCallback(async () => {
@@ -417,7 +427,7 @@ useIsomorphicLayoutEffect(() => {
         scrollY: typeof window !== "undefined" ? window.scrollY : 0,
         fetchedAt: Date.now(),
         ready: true,
-      });
+      }, cacheMaxItemsRef.current);
     } catch {
       setLoading(false);
     }
@@ -438,7 +448,7 @@ useIsomorphicLayoutEffect(() => {
           scrollY: getTimelineCache<T>(keyRef.current)?.scrollY ?? 0,
           fetchedAt: Date.now(),
           ready: true,
-        });
+        }, cacheMaxItemsRef.current);
         return merged;
       });
       setHasMore(result.hasMore);

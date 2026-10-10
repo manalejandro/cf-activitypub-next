@@ -135,7 +135,8 @@ describe("getAccountSuggestions", () => {
     await insertActor(db, "https://local.example/users/dismissed", { isLocal: true, lastStatusAt: "2026-03-01T00:00:00Z" });
 
     await insertFollow(db, ME, "https://local.example/users/followed");
-    // followed -> fof1 and fof2; another follower also -> fof1, so fof1 scores higher
+    // followed -> fof1 and fof2; another follower also -> fof1, so fof1 scores
+    // higher (the score decides which window it lands in, not its exact slot).
     await insertFollow(db, "https://local.example/users/followed", "https://local.example/users/fof1");
     await insertFollow(db, "https://local.example/users/followed", "https://local.example/users/fof2");
     await insertActor(db, "https://local.example/users/other", { isLocal: true });
@@ -159,8 +160,13 @@ describe("getAccountSuggestions", () => {
     const fof1 = ids.indexOf("https://local.example/users/fof1");
     const fof2 = ids.indexOf("https://local.example/users/fof2");
     const popular = ids.indexOf("https://local.example/users/popular");
+    // The whole friends-of-friends pool leads the page (before the local pool
+    // that holds `popular`). Their relative order is deliberately not asserted:
+    // inside a window of SUGGESTION_ROTATE_WINDOW the order rotates with the
+    // day seed, so the assertion used to pass or fail depending on the date.
     expect(fof1).toBeGreaterThanOrEqual(0);
-    expect(fof1).toBeLessThan(fof2);
+    expect(fof2).toBeGreaterThanOrEqual(0);
+    expect(fof1).toBeLessThan(popular);
     expect(fof2).toBeLessThan(popular);
 
     const byId = new Map((await getAccountSuggestions(db, ME)).map((s) => [s.actor.id, s.source]));
