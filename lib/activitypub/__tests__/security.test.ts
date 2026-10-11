@@ -21,6 +21,33 @@ function pemToDer(pem: string): ArrayBuffer {
   return Uint8Array.from(Buffer.from(b64, "base64")).buffer;
 }
 
+/** Unwrap the SPKI envelope back to a PKCS#1 RSAPublicKey (test helper). */
+function spkiToPkcs1(spki: ArrayBuffer): Uint8Array {
+  const bytes = new Uint8Array(spki);
+  const readLength = (offset: number) => {
+    const first = bytes[offset];
+    if ((first & 0x80) === 0) return { length: first, header: 1 };
+    const count = first & 0x7f;
+    let length = 0;
+    for (let i = 0; i < count; i++) length = (length << 8) | bytes[offset + 1 + i];
+    return { length, header: 1 + count };
+  };
+  const sequence = readLength(1);
+  let offset = 1 + sequence.header;
+  const algorithm = readLength(offset + 1);
+  offset += 1 + algorithm.header + algorithm.length;
+  const bitString = readLength(offset + 1);
+  offset += 1 + bitString.header;
+  return bytes.slice(offset + 1, offset + 1 + bitString.length - 1);
+}
+
+function toPkcs1Pem(publicKeyPem: string): string {
+  const der = spkiToPkcs1(pemToDer(publicKeyPem));
+  const b64 = Buffer.from(der).toString("base64");
+  const lines = b64.match(/.{1,64}/g)?.join("\n") ?? b64;
+  return `-----BEGIN RSA PUBLIC KEY-----\n${lines}\n-----END RSA PUBLIC KEY-----\n`;
+}
+
 async function sha256Base64(data: string): Promise<string> {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
   return Buffer.from(new Uint8Array(hash)).toString("base64");
@@ -31,6 +58,14 @@ describe("HTTP signature verification", () => {
     const { publicKeyPem, privateKeyPem } = await generateKeyPair();
     const headers = await signedHeaders(privateKeyPem);
     expect(await verifySignature("POST", TARGET, headers, publicKeyPem, BODY)).toBe(true);
+  });
+
+  it("verifies a signature from an actor publishing a PKCS#1 key (relay.toot.io)", async () => {
+    const { publicKeyPem, privateKeyPem } = await generateKeyPair();
+    const headers = await signedHeaders(privateKeyPem);
+    // Peers may publish the older `-----BEGIN RSA PUBLIC KEY-----` (PKCS#1)
+    // format instead of SPKI: the key must still import.
+    expect(await verifySignature("POST", TARGET, headers, toPkcs1Pem(publicKeyPem), BODY)).toBe(true);
   });
 
   it("rejects a tampered body even when the digest header matches the original", async () => {

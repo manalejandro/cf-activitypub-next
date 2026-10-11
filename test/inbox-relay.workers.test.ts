@@ -191,3 +191,104 @@ describe("relayed announces", () => {
     expect(broadcastStatusCreatedToAudience).not.toHaveBeenCalled();
   });
 });
+
+describe("relay-forwarded activities (activity-relay sends the original Create/Update/Delete)", () => {
+  const FORWARDED_NOTE = "https://remote.example/users/alice/statuses/2";
+
+  function forwardedCreate(id = FORWARDED_NOTE) {
+    return {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: `${id}/activity`,
+      type: "Create",
+      // The relay forwards the author's own activity: actor = the author,
+      // signature = the relay.
+      actor: "https://remote.example/users/alice",
+      object: {
+        id,
+        type: "Note",
+        attributedTo: "https://remote.example/users/alice",
+        content: "<p>hola, reenviado por el relay</p>",
+        published: "2026-10-11T00:00:00Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      },
+    };
+  }
+
+  it("stores a Create forwarded by an accepted relay, attributed to its author", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+
+    await processInboxActivity(forwardedCreate() as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    const stored = await getObjectById(db, FORWARDED_NOTE);
+    expect(stored?.actorId).toBe("https://remote.example/users/alice");
+    expect(stored?.content).toContain("reenviado por el relay");
+  });
+
+  it("ignores a forward from a relay that is not accepted", async () => {
+    await seedRelay("pending", RELAY_ACTOR);
+
+    await processInboxActivity(forwardedCreate() as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    expect(await getObjectById(db, FORWARDED_NOTE)).toBeNull();
+  });
+
+  it("never lets a relay forward an activity for a local account", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+    const local = forwardedCreate("https://local.example.test/objects/1");
+    (local.object as { attributedTo: string }).attributedTo = `${BASE}/users/admin`;
+    local.actor = `${BASE}/users/admin`;
+
+    await processInboxActivity(local as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    expect(await getObjectById(db, "https://local.example.test/objects/1")).toBeNull();
+  });
+
+  it("only forwards content activities: a cross-actor Follow is dropped", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+
+    await processInboxActivity(
+      {
+        id: "https://remote.example/activities/follow-1",
+        type: "Follow",
+        actor: "https://remote.example/users/alice",
+        object: "https://remote.example/users/bob",
+      } as never,
+      { db, baseUrl: BASE, signingActorId: RELAY_ACTOR, timelineStream: fakeStream() } as never
+    );
+
+    const follows = await db.prepare("SELECT COUNT(*) AS n FROM follows").first<{ n: number }>();
+    expect(follows?.n).toBe(0);
+  });
+
+  it("applies the author's domain block, not the relay's", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+    await db
+      .prepare("INSERT INTO instance_domain_blocks (domain, severity) VALUES (?, 'suspend')")
+      .bind("remote.example")
+      .run();
+
+    await processInboxActivity(forwardedCreate() as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    expect(await getObjectById(db, FORWARDED_NOTE)).toBeNull();
+  });
+});

@@ -195,22 +195,28 @@ export async function processInboxActivity(
   // Mastodon (ProcessActivityService#different_actor?) only processes activities
   // whose `actor` differs from the signer when they carry a verifiable embedded
   // (Linked-Data) signature. We don't support embedded signatures, so any
-  // cross-actor activity is dropped here.
+  // cross-actor activity is dropped here — except the one legitimate case:
+  // an accepted relay forwarding third-party content (activity-relay and
+  // Mastodon's relay mode deliver the original Create/Update/Delete signed by
+  // the relay's own key).
   const activityActorId = typeof activity.actor === "string"
     ? activity.actor
     : (activity.actor as { id?: string } | undefined)?.id;
-  if (
+  const crossActor = Boolean(
     ctx.signingActorId &&
     activityActorId &&
     !signerOwnsActor(ctx.signingActorId, activityActorId)
-  ) {
-    return;
+  );
+  if (crossActor) {
+    if (!activityActorId || !(await isAcceptedRelayForward(ctx, type, activityActorId))) return;
   }
 
   // Apply the instance's domain block policy (like Mastodon's severity):
   // suspend drops the activity entirely; silence still processes content but
-  // strips media and ignores forwarded reports.
-  const blockedActorId = ctx.signingActorId ?? activityActorId;
+  // strips media and ignores forwarded reports. A relay-forwarded activity is
+  // judged by the **author's** instance, not the relay's (the relay is only
+  // the courier, like in `storeRelayedStatus`).
+  const blockedActorId = crossActor ? activityActorId : (ctx.signingActorId ?? activityActorId);
   if (blockedActorId) {
     try {
       const domain = new URL(blockedActorId).hostname;
@@ -2380,6 +2386,32 @@ function resolveObjectUrl(url: unknown, fallback: string): string {
  */
 function signerOwnsActor(signingActorId: string, actorId: string): boolean {
   return signingActorId === actorId;
+}
+
+/**
+ * Content activities an accepted relay may forward on behalf of a third party.
+ * Anything else (Follow/Accept/Block/Flag…) must be signed by the actor itself:
+ * a relay is a courier, never an account.
+ */
+const RELAY_FORWARDED_TYPES = new Set(["create", "update", "delete", "announce"]);
+
+/**
+ * Whether an accepted relay may sign an activity authored by someone else.
+ * `activity-relay` (relay.toot.io) and Mastodon's relay mode deliver the
+ * original Create/Update/Delete of third parties signed with the relay's own
+ * key, so the signer legitimately differs from the author. Only content
+ * activities qualify, the author must be remote (a relay can never act for a
+ * local account) and the subscription must still be accepted.
+ */
+async function isAcceptedRelayForward(ctx: InboxContext, type: string, authorId: string): Promise<boolean> {
+  if (!ctx.signingActorId || !RELAY_FORWARDED_TYPES.has(type)) return false;
+  try {
+    if (new URL(authorId).hostname === new URL(ctx.baseUrl).hostname) return false;
+  } catch {
+    return false;
+  }
+  const relay = await relayForActor(ctx.db, { id: ctx.signingActorId });
+  return relay?.state === "accepted";
 }
 
 /** Whether an object's audience (to/cc/mentions) includes the given actor. */

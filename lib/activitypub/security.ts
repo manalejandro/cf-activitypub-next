@@ -313,7 +313,7 @@ async function verifyRsa(publicKeyPem: string, signatureB64: string, signingStri
 
 async function verifyRsaPss512(publicKeyPem: string, signatureB64: string, signingString: string): Promise<boolean> {
   try {
-    const key = await crypto.subtle.importKey("spki", pemToDer(publicKeyPem, "PUBLIC KEY"), { name: "RSA-PSS", hash: "SHA-512" }, false, ["verify"]);
+    const key = await crypto.subtle.importKey("spki", publicKeyDer(publicKeyPem), { name: "RSA-PSS", hash: "SHA-512" }, false, ["verify"]);
     const signatureBytes = Uint8Array.from(atob(signatureB64), (c) => c.charCodeAt(0));
     return await crypto.subtle.verify({ name: "RSA-PSS", saltLength: 64 }, key, signatureBytes, new TextEncoder().encode(signingString));
   } catch {
@@ -420,8 +420,55 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
 }
 
 async function importPublicKey(pem: string): Promise<CryptoKey> {
-  const der = pemToDer(pem, "PUBLIC KEY");
-  return crypto.subtle.importKey("spki", der, ALGORITHM, false, ["verify"]);
+  return crypto.subtle.importKey("spki", publicKeyDer(pem), ALGORITHM, false, ["verify"]);
+}
+
+/**
+ * DER bytes (SPKI) of an RSA public key PEM. Peers publish either the modern
+ * SPKI (`-----BEGIN PUBLIC KEY-----`) or the older PKCS#1
+ * (`-----BEGIN RSA PUBLIC KEY-----` — relay.toot.io's instance actor does).
+ * WebCrypto only accepts SPKI, so a PKCS#1 key is wrapped in the
+ * rsaEncryption SubjectPublicKeyInfo envelope first; without this every
+ * signature from such an actor failed verification ("invalid" in the inbox
+ * logs) because the PEM labels leaked into the base64.
+ */
+function publicKeyDer(pem: string): ArrayBuffer {
+  if (pem.includes("RSA PUBLIC KEY")) return pkcs1ToSpki(pemToDer(pem, "RSA PUBLIC KEY"));
+  return pemToDer(pem, "PUBLIC KEY");
+}
+
+/** `SubjectPublicKeyInfo = SEQUENCE { AlgorithmIdentifier, BIT STRING }`. */
+function pkcs1ToSpki(pkcs1: ArrayBuffer): ArrayBuffer {
+  // rsaEncryption (1.2.840.113549.1.1.1) with NULL parameters.
+  const algorithm = new Uint8Array([
+    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
+  ]);
+  const bitString = derElement(0x03, new Uint8Array([0x00]), new Uint8Array(pkcs1));
+  return derElement(0x30, algorithm, bitString).buffer as ArrayBuffer;
+}
+
+function derElement(tag: number, ...parts: Uint8Array[]): Uint8Array {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const lengthBytes: number[] = [];
+  if (length < 0x80) {
+    lengthBytes.push(length);
+  } else {
+    let value = length;
+    while (value > 0) {
+      lengthBytes.unshift(value & 0xff);
+      value >>= 8;
+    }
+    lengthBytes.unshift(0x80 | lengthBytes.length);
+  }
+  const out = new Uint8Array(1 + lengthBytes.length + length);
+  out[0] = tag;
+  out.set(lengthBytes, 1);
+  let offset = 1 + lengthBytes.length;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
 }
 
 function pemToDer(pem: string, label: string): ArrayBuffer {
