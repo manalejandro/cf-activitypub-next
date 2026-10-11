@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "Ablauf für inaktive Konten aktivieren",
   "admin_settings_expiration_months": "Monate der Inaktivität vor der Sperrung",
   "admin_settings_expiration_months_n": "{months} Monate",
-  "admin_settings_expiration_months_custom": "{months} Monate (benutzerdefiniert)"
+  "admin_settings_expiration_months_custom": "{months} Monate (benutzerdefiniert)",
+  "admin_suspended_since": "Gesperrt am",
+  "admin_purge_on": "gelöscht am"
 }

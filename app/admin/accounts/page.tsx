@@ -16,6 +16,7 @@ interface AdminAccount {
   created_at: string;
   email: string | null;
   last_active_at: string | null;
+  suspended_at: string | null;
   role: string;
   confirmed: boolean;
   suspended: boolean;
@@ -119,6 +120,13 @@ export default function AdminAccountsPage() {
     return new Date(dateStr).toLocaleString((i18next.language || "en"), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
+  /** Suspended accounts are purged one month after the suspension (expiration sweep). */
+  function purgeDate(dateStr: string): string {
+    const date = new Date(dateStr);
+    date.setMonth(date.getMonth() + 1);
+    return date.toISOString();
+  }
+
   return (
     <div>
       <h1 style={{ fontSize: "1.5rem", marginBottom: "1.5rem" }}>
@@ -205,7 +213,16 @@ export default function AdminAccountsPage() {
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem" }}>
                       {a.suspended ? (
-                        <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
+                        <>
+                          <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
+                          {a.suspended_at ? (
+                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem", whiteSpace: "nowrap" }}>
+                              {t.admin_suspended_since} {formatDate(a.suspended_at)}
+                              {" · "}
+                              {t.admin_purge_on} {formatDate(purgeDate(a.suspended_at))}
+                            </div>
+                          ) : null}
+                        </>
                       ) : a.memorial ? (
                         <span className="badge" style={{ background: "rgba(148,163,184,0.18)", color: "var(--text-secondary)" }}>{t.admin_status_memorial}</span>
                       ) : a.silenced ? (

@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "启用不活跃账号过期",
   "admin_settings_expiration_months": "停用前的非活跃月数",
   "admin_settings_expiration_months_n": "{months} 个月",
-  "admin_settings_expiration_months_custom": "{months} 个月（自定义）"
+  "admin_settings_expiration_months_custom": "{months} 个月（自定义）",
+  "admin_suspended_since": "停用于",
+  "admin_purge_on": "删除于"
 }

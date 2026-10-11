@@ -16,7 +16,7 @@
  */
 
 import type { D1Database, Queue, SendEmail } from "@cloudflare/workers-types";
-import { getInstanceSetting, getActorById } from "@/lib/db";
+import { getInstanceSetting, getActorById, deleteRemoteActorData } from "@/lib/db";
 import { deleteLocalAccount, type DeletionR2 } from "@/lib/account-deletion";
 import { sendAccountExpiryWarningEmail } from "@/lib/email";
 import { recordModeration } from "@/lib/moderation/log";
@@ -64,6 +64,8 @@ const CRON_COOLDOWN_SECONDS = 300;
 const WARN_BATCH = 10;
 const SUSPEND_BATCH = 20;
 const PURGE_BATCH = 10;
+/** Cached remote accounts carry whole timelines: purge them in smaller bites. */
+const REMOTE_PURGE_BATCH = 5;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
@@ -113,10 +115,11 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
   const warn7Before = new Date(new Date(suspendBefore).getTime() + EXPIRATION_WARNING_DAYS * DAY_MS).toISOString();
   const warn1Before = new Date(new Date(suspendBefore).getTime() + EXPIRATION_FINAL_WARNING_HOURS * HOUR_MS).toISOString();
 
-  // Administrators/moderators are never touched by the background sweep, and
-  // the reserved instance actor (Guardian) is not an account.
+  // Administrators/moderators are never touched by the background sweep, the
+  // reserved instance actor (Guardian) is not an account, and an account
+  // preserved in memoriam is never expired (that is the point of memorializing).
   const baseWhere =
-    "is_local = 1 AND suspended = 0 AND role = 'user' AND COALESCE(reserved, 0) = 0 AND last_active_at IS NOT NULL";
+    "is_local = 1 AND suspended = 0 AND role = 'user' AND COALESCE(reserved, 0) = 0 AND COALESCE(memorial, 0) = 0 AND last_active_at IS NOT NULL";
 
   // ── Warnings (7 days, then 24 hours before expiring) ──────────────────────
   // Both need the KV markers: without them the same account would be emailed on
@@ -200,11 +203,13 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
   }
 
   // ── Purge: suspended for a whole month (any suspension origin) ────────────
+  // Both branches walk their own ordered index scan (a single query without the
+  // `is_local` equality would lose `idx_actors_suspended_at`).
   const purgeBefore = monthsAgoIso(SUSPENDED_PURGE_MONTHS, now);
-  const purgeable = await env.DB
+  const purgeableLocal = await env.DB
     .prepare(
       `SELECT id, username FROM actors
-       WHERE is_local = 1 AND suspended = 1 AND COALESCE(reserved, 0) = 0
+       WHERE is_local = 1 AND suspended = 1 AND COALESCE(reserved, 0) = 0 AND COALESCE(memorial, 0) = 0
          AND role = 'user' AND suspended_at IS NOT NULL
          AND datetime(suspended_at) <= datetime(?)
        ORDER BY suspended_at ASC LIMIT ?`
@@ -212,7 +217,7 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
     .bind(purgeBefore, PURGE_BATCH)
     .all<{ id: string; username: string }>();
 
-  for (const row of purgeable.results) {
+  for (const row of purgeableLocal.results) {
     const actor = await getActorById(env.DB, row.id);
     if (!actor) continue;
     await deleteLocalAccount(
@@ -230,6 +235,39 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
       }
     );
     result.deleted += 1;
+  }
+
+  // Cached remote accounts are ours to drop: nothing is federated (we are the
+  // ones who suspended them) and the canonical remote purge also subtracts the
+  // follow counters and cleans the conversation pointers.
+  const purgeableRemote = await env.DB
+    .prepare(
+      `SELECT id, username, domain FROM actors
+       WHERE is_local = 0 AND suspended = 1 AND COALESCE(memorial, 0) = 0
+         AND suspended_at IS NOT NULL
+         AND datetime(suspended_at) <= datetime(?)
+       ORDER BY suspended_at ASC LIMIT ?`
+    )
+    .bind(purgeBefore, REMOTE_PURGE_BATCH)
+    .all<{ id: string; username: string; domain: string }>();
+
+  for (const row of purgeableRemote.results) {
+    await deleteRemoteActorData(env.DB, row.id);
+    result.deleted += 1;
+    await recordModeration(env, {
+      id: generateId(),
+      source: "heuristic",
+      targetType: "account",
+      targetId: row.id,
+      action: "deleted",
+      reason: `Cuenta remota suspendida eliminada de la caché tras ${SUSPENDED_PURGE_MONTHS} mes(es) de suspensión (caducidad de cuentas).`,
+      confidence: "high",
+      model: "expiration",
+      details: { username: row.username, domain: row.domain },
+      emailSent: false,
+      emailTo: null,
+      relatedId: null,
+    });
   }
 
   return result;

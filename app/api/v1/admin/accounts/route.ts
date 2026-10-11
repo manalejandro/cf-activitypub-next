@@ -83,6 +83,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       created_at: actor.createdAt,
       email: actor.email,
       last_active_at: r.last_active_at ? String(r.last_active_at) : null,
+      suspended_at: r.suspended_at ? String(r.suspended_at) : null,
       role: String(r.role ?? "user"),
       confirmed: actor.emailVerified,
       suspended: Boolean(r.suspended),

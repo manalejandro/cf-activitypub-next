@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "비활성 계정 만료 사용",
   "admin_settings_expiration_months": "정지 전 비활성 기간(개월)",
   "admin_settings_expiration_months_n": "{months}개월",
-  "admin_settings_expiration_months_custom": "{months}개월(사용자 지정)"
+  "admin_settings_expiration_months_custom": "{months}개월(사용자 지정)",
+  "admin_suspended_since": "정지일",
+  "admin_purge_on": "삭제 예정"
 }

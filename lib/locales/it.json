@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "Attiva la scadenza per gli account inattivi",
   "admin_settings_expiration_months": "Mesi di inattività prima della sospensione",
   "admin_settings_expiration_months_n": "{months} mesi",
-  "admin_settings_expiration_months_custom": "{months} mesi (personalizzato)"
+  "admin_settings_expiration_months_custom": "{months} mesi (personalizzato)",
+  "admin_suspended_since": "Sospeso il",
+  "admin_purge_on": "eliminato il"
 }

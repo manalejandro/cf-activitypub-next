@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "Activar la caducidad por inactividad",
   "admin_settings_expiration_months": "Meses de inactividad antes de la suspensión",
   "admin_settings_expiration_months_n": "{months} meses",
-  "admin_settings_expiration_months_custom": "{months} meses (personalizado)"
+  "admin_settings_expiration_months_custom": "{months} meses (personalizado)",
+  "admin_suspended_since": "Suspendida el",
+  "admin_purge_on": "se eliminará el"
 }

@@ -280,7 +280,7 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     .bind(actorId)
     .run();
   await env.DB
-    .prepare("UPDATE actors SET suspended = 1, suspended_at = ?, updated_at = datetime('now') WHERE id = ?")
+    .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?")
     .bind(new Date().toISOString(), actorId)
     .run();
 
@@ -496,8 +496,8 @@ export async function blockDomain(env: ModerationEnv, opts: ActionBase & { domai
 
   // Suspend cached remote accounts from the blocked domain so their content stops flowing.
   await env.DB
-    .prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE domain = ? AND is_local = 0")
-    .bind(normalized)
+    .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE domain = ? AND is_local = 0")
+    .bind(new Date().toISOString(), normalized)
     .run();
 
   const m = meta(opts, SYSTEM);

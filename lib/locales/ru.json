@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "Включить истечение срока для неактивных аккаунтов",
   "admin_settings_expiration_months": "Месяцев неактивности до блокировки",
   "admin_settings_expiration_months_n": "{months} мес.",
-  "admin_settings_expiration_months_custom": "{months} мес. (другое)"
+  "admin_settings_expiration_months_custom": "{months} мес. (другое)",
+  "admin_suspended_since": "Заблокирован",
+  "admin_purge_on": "будет удалён"
 }

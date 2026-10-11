@@ -1159,5 +1159,7 @@
   "admin_settings_expiration_enabled": "Enable expiration for inactive accounts",
   "admin_settings_expiration_months": "Months of inactivity before the suspension",
   "admin_settings_expiration_months_n": "{months} months",
-  "admin_settings_expiration_months_custom": "{months} months (custom)"
+  "admin_settings_expiration_months_custom": "{months} months (custom)",
+  "admin_suspended_since": "Suspended on",
+  "admin_purge_on": "deleted on"
 }

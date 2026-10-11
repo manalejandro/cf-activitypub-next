@@ -249,6 +249,45 @@ describe("account expiration sweep", () => {
     expect(fake.sent).toHaveLength(0);
     expect(result.suspended).toBe(1);
   });
+
+  it("purges cached remote accounts suspended for a month", async () => {
+    const id = "https://remote.example/users/spammer";
+    await db
+      .prepare(
+        `INSERT INTO actors (id, username, domain, public_key_pem, is_local, suspended, suspended_at)
+         VALUES (?, 'spammer', 'remote.example', 'pub', 0, 1, ?)`
+      )
+      .bind(id, monthsAgo(2))
+      .run();
+
+    const fake = fakeEnv();
+    const result = await sweepExpiredAccounts(fake.env);
+
+    expect(result.deleted).toBe(1);
+    expect(await db.prepare("SELECT id FROM actors WHERE id = ?").bind(id).first()).toBeNull();
+    // Nothing is federated for a cached account we suspended ourselves.
+    expect(fake.queued).toHaveLength(0);
+    const logged = await db
+      .prepare("SELECT action, reason FROM moderation_log WHERE target_id = ? ORDER BY created_at DESC LIMIT 1")
+      .bind(id)
+      .first<{ action: string; reason: string }>();
+    expect(logged?.action).toBe("deleted");
+    expect(logged?.reason).toContain("remota");
+  });
+
+  it("never expires an account preserved in memoriam", async () => {
+    const id = await seedLocalActor({ username: "gone-too-soon", lastActive: monthsAgo(24) });
+    await db.prepare("UPDATE actors SET memorial = 1 WHERE id = ?").bind(id).run();
+    const fake = fakeEnv();
+
+    const result = await sweepExpiredAccounts(fake.env);
+
+    expect(result).toEqual({ warned: 0, warnedFinal: 0, suspended: 0, deleted: 0 });
+    expect(fake.sent).toHaveLength(0);
+    expect(
+      (await db.prepare("SELECT suspended FROM actors WHERE id = ?").bind(id).first<{ suspended: number }>())?.suspended
+    ).toBe(0);
+  });
 });
 
 describe("signing in restarts the window", () => {
