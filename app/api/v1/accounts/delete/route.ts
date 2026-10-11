@@ -1,12 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor, clearAuthCookie } from "@/lib/auth";
-import { countUsableAdmins, getActorById } from "@/lib/db";
-import { buildDelete, generateId } from "@/lib/activitypub/utils";
-import { collectFollowerInboxes } from "@/lib/activitypub/federation";
-import { enqueueDeliveries } from "@/lib/activitypub/queue";
-import { recordModeration } from "@/lib/moderation/log";
-import type { APActor } from "@/lib/types";
+import { countUsableAdmins } from "@/lib/db";
+import { deleteLocalAccount } from "@/lib/account-deletion";
 import { env } from "cloudflare:workers";
 
 // POST /api/v1/accounts/delete — permanently delete the current account.
@@ -25,45 +21,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "The last administrator cannot delete their account" }, 422);
   }
 
-  // Federate a Delete(actor) tombstone before the actor row disappears.
-  if (env.DELIVERY_QUEUE) {
-    const deleteActivity = buildDelete(baseUrl, actor.id, actor.id, generateId());
-    const followers = await env.DB
-      .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-      .bind(actor.id)
-      .all<{ actor_id: string }>();
-    const fetchActor = async (id: string): Promise<APActor | null> => {
-      const cached = await getActorById(env.DB, id);
-      return cached as unknown as APActor | null;
-    };
-    const inboxes = await collectFollowerInboxes(followers.results.map((r) => r.actor_id), fetchActor);
-    if (inboxes.length > 0) {
-      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
-    }
-  }
-
-  // Sessions + audit trail reference the actor without an FK, so clear them
-  // explicitly before the cascading actor delete.
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM oauth_tokens WHERE actor_id = ?").bind(actor.id),
-    env.DB.prepare("DELETE FROM activities WHERE actor_id = ?").bind(actor.id),
-    env.DB.prepare("DELETE FROM moderation_log WHERE target_id = ?").bind(actor.id),
-    env.DB.prepare("DELETE FROM actors WHERE id = ?").bind(actor.id),
-  ]);
-
-  await recordModeration(env, {
-    id: generateId(),
-    source: "user",
-    targetType: "account",
-    targetId: actor.id,
-    action: "deleted",
+  await deleteLocalAccount(env, actor, {
+    baseUrl,
     reason: "Account deleted by its owner.",
-    confidence: null,
-    model: "user",
-    details: { username: actor.username, domain: actor.domain },
-    emailSent: false,
-    emailTo: actor.email,
-    relatedId: null,
+    source: "user",
   });
 
   return new Response(JSON.stringify({}), {

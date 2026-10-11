@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS actors (
   show_media         INTEGER NOT NULL DEFAULT 1,     -- profile display: Media tab (toot:showMedia)
   show_media_replies INTEGER NOT NULL DEFAULT 1,     -- profile display: include replies in Media (toot:showRepliesInMedia)
   attribution_domains TEXT NOT NULL DEFAULT '[]',    -- JSON array of domains whose links are attributed to this account
+  suspended_at       TEXT,                           -- when the account was suspended (inactivity purge after 1 month)
   UNIQUE (username, domain)
 );
 
@@ -65,6 +66,11 @@ CREATE INDEX IF NOT EXISTS idx_actors_local_domain_susp ON actors(is_local, doma
 -- Directory "active" ranking: actors are listed by last public post date, so
 -- the ordered scan stays index-only (no per-actor MAX() subquery over objects).
 CREATE INDEX IF NOT EXISTS idx_actors_discoverable_active ON actors(discoverable, suspended, last_status_at DESC);
+-- Account expiration (inactivity): warning/suspension candidates are local
+-- accounts ordered by last access, and the purge walks suspended accounts by
+-- their suspension date. Both stay ordered index scans with an early stop.
+CREATE INDEX IF NOT EXISTS idx_actors_expiry ON actors(is_local, last_active_at);
+CREATE INDEX IF NOT EXISTS idx_actors_suspended_at ON actors(is_local, suspended, suspended_at);
 -- Resetting avatar/header cache URLs back to the origin on eviction/purge.
 CREATE INDEX IF NOT EXISTS idx_actors_avatar_url ON actors(avatar_url);
 CREATE INDEX IF NOT EXISTS idx_actors_header_url ON actors(header_url);

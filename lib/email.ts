@@ -163,8 +163,65 @@ export async function sendReportOutcomeEmail(
  * moderation action on their account or content (warning, deletion, suspension).
  * Used only when the account has an email on file.
  */
-export type ModerationNoticeAction =
-  | "warned"
+/**
+ * Inactivity warning sent by the account-expiration sweep: `final` marks the
+ * 24-hour notice, the first one goes out seven days before the expiry.
+ */
+export async function sendAccountExpiryWarningEmail(
+  emailBinding: SendEmail,
+  opts: {
+    to: string;
+    from: string;
+    username: string;
+    instanceTitle: string;
+    instanceUrl: string;
+    /** ISO date the account expires (suspension date). */
+    expiresAt: string;
+    final: boolean;
+  }
+): Promise<void> {
+  const { to, from, username, instanceTitle, instanceUrl, expiresAt, final } = opts;
+  const date = expiresAt.slice(0, 10);
+  const loginUrl = instanceUrl ? `${instanceUrl}/login` : "";
+  const when = final ? "mañana / tomorrow" : `${date}`;
+
+  await emailBinding.send({
+    from,
+    to,
+    subject: final
+      ? `[${instanceTitle}] Último aviso: tu cuenta se suspende mañana / Last notice: your account is suspended tomorrow`
+      : `[${instanceTitle}] Tu cuenta caducará pronto / Your account will expire soon`,
+    text: [
+      `English:`,
+      ``,
+      `Hello @${username},`,
+      ``,
+      `Your account on ${instanceTitle} has not been used for a long time. It will be suspended on ${when}` +
+        ` and, one month later, deleted from the instance (together with its posts).`,
+      ``,
+      final
+        ? `This is the last notice before the suspension.`
+        : `You will get a final notice 24 hours before the suspension.`,
+      loginUrl ? `Sign in before then to keep your account: ${loginUrl}` : `Sign in before then to keep your account.`,
+      ``,
+      `Español:`,
+      ``,
+      `Hola @${username},`,
+      ``,
+      `Tu cuenta en ${instanceTitle} lleva mucho tiempo sin usarse. Se suspenderá el ${when}` +
+        ` y, un mes después, se eliminará de la instancia (junto con sus publicaciones).`,
+      ``,
+      final
+        ? `Este es el último aviso antes de la suspensión.`
+        : `Recibirás un aviso final 24 horas antes de la suspensión.`,
+      loginUrl ? `Inicia sesión antes de esa fecha para conservar tu cuenta: ${loginUrl}` : `Inicia sesión antes de esa fecha para conservar tu cuenta.`,
+      ``,
+      `— ${instanceTitle}`,
+    ].join("\n"),
+  });
+}
+
+export type ModerationNoticeAction =  | "warned"
   | "deleted"
   | "suspended"
   | "rejected"

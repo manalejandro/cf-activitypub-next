@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "Transformer en mémorial",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Conserver ce compte en mémorial ? Il ne pourra plus se connecter.",
-  "login_error_memorial": "Ce compte est en mémorial et ne peut plus se connecter."
+  "login_error_memorial": "Ce compte est en mémorial et ne peut plus se connecter.",
+  "admin_settings_expiration": "Expiration des comptes",
+  "admin_settings_expiration_desc": "Les comptes locaux inactifs reçoivent un e-mail 7 jours puis 24 heures avant l’expiration, sont suspendus automatiquement à l’échéance et supprimés un mois après la suspension (Delete fédéré envoyé, comme pour une auto-suppression). Les administrateurs et modérateurs sont exemptés.",
+  "admin_settings_expiration_enabled": "Activer l’expiration des comptes inactifs",
+  "admin_settings_expiration_months": "Mois d’inactivité avant la suspension",
+  "admin_settings_expiration_months_n": "{months} mois",
+  "admin_settings_expiration_months_custom": "{months} mois (personnalisé)"
 }

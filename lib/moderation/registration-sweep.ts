@@ -99,8 +99,8 @@ export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Prom
 
   for (const [id, info] of targets) {
     const updated = await env.DB
-      .prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ? AND suspended = 0")
-      .bind(id)
+      .prepare("UPDATE actors SET suspended = 1, suspended_at = ?, updated_at = datetime('now') WHERE id = ? AND suspended = 0")
+      .bind(new Date().toISOString(), id)
       .run();
     if (!updated.meta?.changes) continue;
     result.suspended += 1;

@@ -4,10 +4,19 @@ import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
+import {
+  DEFAULT_EXPIRATION_MONTHS,
+  EXPIRATION_ENABLED_KEY,
+  EXPIRATION_MONTHS_KEY,
+  MAX_EXPIRATION_MONTHS,
+  MIN_EXPIRATION_MONTHS,
+} from "@/lib/moderation/account-expiration";
 import { env } from "cloudflare:workers";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
 const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_required", "registrations_reason_required", "registrations_message", "registrations_min_age", "registrations_url"] as const;
+/** Account expiration (inactivity): on by default, 12 months. */
+const EXPIRATION_KEYS = ["account_expiration_enabled", "account_expiration_months"] as const;
 
 export async function GET(request: NextRequest): Promise<Response> {
   if (!(await requireAdmin(request, env))) {
@@ -15,7 +24,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const settings: Record<string, string | null> = {};
-  for (const key of [...KEYS, ...REGISTRATION_KEYS]) {
+  for (const key of [...KEYS, ...REGISTRATION_KEYS, ...EXPIRATION_KEYS]) {
     settings[key] = await getInstanceSetting(env.DB, key);
   }
 
@@ -26,6 +35,16 @@ export async function GET(request: NextRequest): Promise<Response> {
   try { languages = settings.languages ? JSON.parse(settings.languages) : []; } catch { /* ignore */ }
 
   const reg = (key: string, def: boolean): boolean => settings[key] === null ? def : settings[key] === "true";
+
+  // Account expiration: enabled by default, 12 months, clamped to the range the
+  // admin form offers (1..120).
+  const expirationMonths = Number(settings.account_expiration_months);
+  const expiration = {
+    enabled: reg("account_expiration_enabled", true),
+    months: Number.isFinite(expirationMonths) && expirationMonths >= MIN_EXPIRATION_MONTHS
+      ? Math.min(Math.round(expirationMonths), MAX_EXPIRATION_MONTHS)
+      : DEFAULT_EXPIRATION_MONTHS,
+  };
 
   return json({
     rules,
@@ -39,6 +58,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     registrations_message: settings.registrations_message ?? "",
     registrations_min_age: settings.registrations_min_age ?? "",
     registrations_url: settings.registrations_url ?? "",
+    account_expiration_enabled: expiration.enabled,
+    account_expiration_months: expiration.months,
   });
 }
 
@@ -79,6 +100,22 @@ export async function PUT(request: NextRequest): Promise<Response> {
     if (typeof body[key] === "string") {
       await setInstanceSetting(env.DB, key, body[key]);
     }
+  }
+
+  // Account expiration (inactivity). `months` is clamped to the supported range
+  // so a typo can never expire every account at once.
+  if (typeof body.account_expiration_enabled === "boolean") {
+    await setInstanceSetting(env.DB, EXPIRATION_ENABLED_KEY, String(body.account_expiration_enabled));
+  }
+  if (body.account_expiration_months !== undefined) {
+    const months = Number(body.account_expiration_months);
+    if (!Number.isFinite(months) || months < MIN_EXPIRATION_MONTHS || months > MAX_EXPIRATION_MONTHS) {
+      return json(
+        { error: `account_expiration_months must be between ${MIN_EXPIRATION_MONTHS} and ${MAX_EXPIRATION_MONTHS}` },
+        422
+      );
+    }
+    await setInstanceSetting(env.DB, EXPIRATION_MONTHS_KEY, String(Math.round(months)));
   }
 
   await recordModeration(env, {

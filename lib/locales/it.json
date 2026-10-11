@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "Trasforma in memoriale",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Conservare questo account in memoriam? Non potrà più accedere.",
-  "login_error_memorial": "Questo account è in memoriam e non può più accedere."
+  "login_error_memorial": "Questo account è in memoriam e non può più accedere.",
+  "admin_settings_expiration": "Scadenza degli account",
+  "admin_settings_expiration_desc": "Gli account locali inattivi ricevono un’email 7 giorni e poi 24 ore prima della scadenza, vengono sospesi automaticamente allo scadere e eliminati un mese dopo la sospensione (con Delete federato, come per l’autocancellazione). Amministratori e moderatori sono esclusi.",
+  "admin_settings_expiration_enabled": "Attiva la scadenza per gli account inattivi",
+  "admin_settings_expiration_months": "Mesi di inattività prima della sospensione",
+  "admin_settings_expiration_months_n": "{months} mesi",
+  "admin_settings_expiration_months_custom": "{months} mesi (personalizzato)"
 }

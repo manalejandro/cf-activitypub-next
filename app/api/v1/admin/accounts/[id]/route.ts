@@ -5,12 +5,10 @@ import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
+import { generateId } from "@/lib/activitypub/utils";
+import { deleteLocalAccount } from "@/lib/account-deletion";
 import { notifyAccountOwner } from "@/lib/moderation/actions";
-import { buildDelete, generateId } from "@/lib/activitypub/utils";
-import { collectFollowerInboxes } from "@/lib/activitypub/federation";
-import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { sendWelcomeEmail } from "@/lib/email";
-import type { APActor } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -146,33 +144,23 @@ export async function DELETE(
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
-  // Only local accounts have a private key to sign the federated Delete
-  // tombstone. Remote actors are just cached copies — nothing to federate.
-  if (actor.privateKeyPem) {
-    // Federate a Delete(actor) tombstone before the actor row disappears so
-    // remote servers can purge the profile and its posts (mirrors the
-    // self-delete flow in POST /api/v1/accounts/delete).
-    if (env.DELIVERY_QUEUE) {
-      const deleteActivity = buildDelete(baseUrl, actor.id, actor.id, generateId());
-      const followers = await env.DB
-        .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-        .bind(actor.id)
-        .all<{ actor_id: string }>();
-      const fetchActor = async (followId: string): Promise<APActor | null> => {
-        const cached = await getActorById(env.DB, followId);
-        return cached as unknown as APActor | null;
-      };
-      const inboxes = await collectFollowerInboxes(followers.results.map((r) => r.actor_id), fetchActor);
-      if (inboxes.length > 0) {
-        await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(deleteActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
-      }
-    }
-  }
-
   // Tell the owner before the actor row disappears (local accounts with an
   // email on file only — remote cached actors have nothing to notify).
   const emailSent = await notifyAccountOwner(env, actor, "removed", "Su cuenta ha sido eliminada por la administración.");
 
+  if (actor.isLocal) {
+    // Same deletion as the owner's self-delete: federated Delete{Actor} to the
+    // accepted followers, uploads removed from R2, actor row and cascades gone.
+    await deleteLocalAccount(env, actor, {
+      baseUrl,
+      reason: "Account deleted by an administrator.",
+      source: "user",
+      emailSent,
+    });
+    return json({ ok: true });
+  }
+
+  // Remote cached actor: nothing to federate, just drop the cached copy.
   await env.DB.batch([
     env.DB.prepare("DELETE FROM oauth_tokens WHERE actor_id = ?").bind(id),
     env.DB.prepare("DELETE FROM activities WHERE actor_id = ?").bind(id),

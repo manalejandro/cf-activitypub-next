@@ -91,6 +91,7 @@ function rowToActor(r: Row): LocalActor {
     emailVerified: Boolean(r.email_verified),
     role: r.role ?? undefined,
     suspended: r.suspended === undefined ? undefined : Boolean(r.suspended),
+    suspendedAt: (r.suspended_at as string | null) ?? null,
     silenced: r.silenced === undefined ? undefined : Boolean(r.silenced),
     reserved: r.reserved === undefined ? undefined : Boolean(r.reserved),
     approved: r.approved === undefined ? undefined : Boolean(r.approved),
@@ -564,8 +565,8 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
         public_key_pem, private_key_pem, is_local, is_bot,
         manually_approves_followers, discoverable,
         followers_count, following_count, statuses_count,
-        email, password_hash, email_verified, inbox, canonical_email_hash
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        email, password_hash, email_verified, inbox, canonical_email_hash, last_active_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .bind(
       actor.id,
@@ -588,7 +589,10 @@ export async function createActor(db: D1Database, actor: Omit<LocalActor, "creat
       actor.passwordHash ?? null,
       actor.emailVerified ? 1 : 0,
       inbox,
-      actor.canonicalEmailHash ?? null
+      actor.canonicalEmailHash ?? null,
+      // Account expiration counts from the last access: a brand-new account
+      // that never signs in expires from its registration date.
+      new Date().toISOString()
     )
     .run();
 }

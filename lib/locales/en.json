@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "Memorialize",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Preserve this account in memoriam? It will no longer be able to sign in.",
-  "login_error_memorial": "This account is in memoriam and can no longer sign in."
+  "login_error_memorial": "This account is in memoriam and can no longer sign in.",
+  "admin_settings_expiration": "Account expiration",
+  "admin_settings_expiration_desc": "Inactive local accounts are warned by email 7 days and again 24 hours before expiring, suspended automatically when the window passes and deleted one month after the suspension (a federated Delete is sent, like a self-delete). Administrators and moderators are exempt.",
+  "admin_settings_expiration_enabled": "Enable expiration for inactive accounts",
+  "admin_settings_expiration_months": "Months of inactivity before the suspension",
+  "admin_settings_expiration_months_n": "{months} months",
+  "admin_settings_expiration_months_custom": "{months} months (custom)"
 }

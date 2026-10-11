@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "추모 계정으로 전환",
   "admin_status_memorial": "추모",
   "admin_memorialize_confirm": "이 계정을 추모로 보존하시겠습니까? 더 이상 로그인할 수 없습니다.",
-  "login_error_memorial": "이 계정은 추모로 보존되어 더 이상 로그인할 수 없습니다."
+  "login_error_memorial": "이 계정은 추모로 보존되어 더 이상 로그인할 수 없습니다.",
+  "admin_settings_expiration": "계정 만료",
+  "admin_settings_expiration_desc": "비활성 로컬 계정은 만료 7일 전과 24시간 전에 이메일로 안내되며, 기간이 지나면 자동으로 정지되고 정지 후 한 달 뒤에 삭제됩니다(자체 삭제와 동일하게 Delete를 연합 전송). 관리자와 모더레이터는 제외됩니다.",
+  "admin_settings_expiration_enabled": "비활성 계정 만료 사용",
+  "admin_settings_expiration_months": "정지 전 비활성 기간(개월)",
+  "admin_settings_expiration_months_n": "{months}개월",
+  "admin_settings_expiration_months_custom": "{months}개월(사용자 지정)"
 }

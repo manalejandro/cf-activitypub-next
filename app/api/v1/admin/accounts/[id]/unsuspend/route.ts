@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (denied) return denied;
 
   await env.DB
-    .prepare("UPDATE actors SET suspended = 0, updated_at = datetime('now') WHERE id = ?")
+    .prepare("UPDATE actors SET suspended = 0, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(id)
     .run();
 

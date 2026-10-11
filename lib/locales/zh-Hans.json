@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "转为悼念账号",
   "admin_status_memorial": "悼念",
   "admin_memorialize_confirm": "将此账号转为悼念？之后将无法登录。",
-  "login_error_memorial": "此账号已被转为悼念，无法登录。"
+  "login_error_memorial": "此账号已被转为悼念，无法登录。",
+  "admin_settings_expiration": "账号过期",
+  "admin_settings_expiration_desc": "不活跃的本地账号会在到期前 7 天和 24 小时收到邮件提醒，到期后自动停用，并在停用一个月后删除（与自行删除一样发送联合 Delete）。管理员和版主不受影响。",
+  "admin_settings_expiration_enabled": "启用不活跃账号过期",
+  "admin_settings_expiration_months": "停用前的非活跃月数",
+  "admin_settings_expiration_months_n": "{months} 个月",
+  "admin_settings_expiration_months_custom": "{months} 个月（自定义）"
 }

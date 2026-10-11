@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "Convertir en memoria",
   "admin_status_memorial": "En memoria",
   "admin_memorialize_confirm": "¿Conservar esta cuenta en memoria? Ya no podrá iniciar sesión.",
-  "login_error_memorial": "Esta cuenta se conserva en memoria y ya no puede iniciar sesión."
+  "login_error_memorial": "Esta cuenta se conserva en memoria y ya no puede iniciar sesión.",
+  "admin_settings_expiration": "Caducidad de cuentas",
+  "admin_settings_expiration_desc": "Las cuentas locales inactivas reciben un aviso por email 7 días y otro 24 horas antes de caducar, se suspenden automáticamente al pasar el plazo y se eliminan un mes después de la suspensión (se envía el Delete federado, como al borrarse la cuenta). Administradores y moderadores están exentos.",
+  "admin_settings_expiration_enabled": "Activar la caducidad por inactividad",
+  "admin_settings_expiration_months": "Meses de inactividad antes de la suspensión",
+  "admin_settings_expiration_months_n": "{months} meses",
+  "admin_settings_expiration_months_custom": "{months} meses (personalizado)"
 }

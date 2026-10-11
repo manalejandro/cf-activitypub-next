@@ -17,6 +17,7 @@
 - **Notificaciones Web Push** — notificaciones nativas a móvil/escritorio vía VAPID + AES-128-GCM
 - **Potenciado por IA** — texto alternativo automático para imágenes vía Workers AI (LLaVA)
 - **Moderación con IA (Guardian)** — un moderador totalmente autónomo mantiene la instancia a salvo de spam y toxicidad, con un registro de auditoría completo
+- **Caducidad de cuentas** — las cuentas inactivas reciben un aviso por email y se eliminan automáticamente (ventana configurable, activada por defecto a los 12 meses)
 - **Código abierto** — licencia MIT
 
 ## Arquitectura

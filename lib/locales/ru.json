@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "Превратить в мемориал",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Сохранить этот аккаунт как мемориал? Вход будет невозможен.",
-  "login_error_memorial": "Этот аккаунт сохранён как мемориал, вход невозможен."
+  "login_error_memorial": "Этот аккаунт сохранён как мемориал, вход невозможен.",
+  "admin_settings_expiration": "Истечение срока аккаунтов",
+  "admin_settings_expiration_desc": "Неактивные локальные аккаунты получают письмо за 7 дней и ещё одно за 24 часа до истечения срока, затем автоматически блокируются, а через месяц после блокировки удаляются (с федеративным Delete, как при самостоятельном удалении). Администраторы и модераторы исключены.",
+  "admin_settings_expiration_enabled": "Включить истечение срока для неактивных аккаунтов",
+  "admin_settings_expiration_months": "Месяцев неактивности до блокировки",
+  "admin_settings_expiration_months_n": "{months} мес.",
+  "admin_settings_expiration_months_custom": "{months} мес. (другое)"
 }

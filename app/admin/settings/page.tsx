@@ -22,6 +22,8 @@ interface SettingsData {
   registrations_message: string;
   registrations_min_age: string;
   registrations_url: string;
+  account_expiration_enabled: boolean;
+  account_expiration_months: number;
 }
 
 export default function AdminSettingsPage() {
@@ -157,6 +159,42 @@ export default function AdminSettingsPage() {
           <input className="input" type="number" min={0} style={inputStyle} value={data.registrations_min_age} onChange={(e) => setData({ ...data, registrations_min_age: e.target.value })} placeholder={t.admin_settings_reg_min_age_ph} />
           <label style={{ ...labelStyle, marginTop: "0.75rem" }}>{t.admin_settings_reg_url}</label>
           <input className="input" style={inputStyle} value={data.registrations_url} onChange={(e) => setData({ ...data, registrations_url: e.target.value })} placeholder={t.admin_settings_reg_url_ph} />
+        </div>
+
+        {/* Account expiration (inactivity) */}
+        <div>
+          <label style={labelStyle}>{t.admin_settings_expiration}</label>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 0, marginBottom: "0.5rem", lineHeight: 1.5 }}>
+            {t.admin_settings_expiration_desc}
+          </p>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
+            <input
+              type="checkbox"
+              checked={data.account_expiration_enabled}
+              onChange={(e) => setData({ ...data, account_expiration_enabled: e.target.checked })}
+            />
+            {t.admin_settings_expiration_enabled}
+          </label>
+          <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem" }}>{t.admin_settings_expiration_months}</label>
+          <select
+            className="input"
+            style={{ ...inputStyle, maxWidth: 240 }}
+            value={data.account_expiration_months}
+            disabled={!data.account_expiration_enabled}
+            onChange={(e) => setData({ ...data, account_expiration_months: Number(e.target.value) })}
+          >
+            {/* A stored value outside the common list stays selectable. */}
+            {![3, 6, 12, 24, 36].includes(data.account_expiration_months) && (
+              <option value={data.account_expiration_months}>
+                {t.admin_settings_expiration_months_custom.replace("{months}", String(data.account_expiration_months))}
+              </option>
+            )}
+            <option value={3}>{t.admin_settings_expiration_months_n.replace("{months}", "3")}</option>
+            <option value={6}>{t.admin_settings_expiration_months_n.replace("{months}", "6")}</option>
+            <option value={12}>{t.admin_settings_expiration_months_n.replace("{months}", "12")}</option>
+            <option value={24}>{t.admin_settings_expiration_months_n.replace("{months}", "24")}</option>
+            <option value={36}>{t.admin_settings_expiration_months_n.replace("{months}", "36")}</option>
+          </select>
         </div>
 
         {/* Extended description */}

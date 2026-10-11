@@ -3,6 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { env } from "cloudflare:workers";
 import { getTokenByAccessToken, getActorById } from "@/lib/db";
 import type { LocalActor } from "@/lib/types";
 
@@ -52,12 +53,20 @@ export async function getAuthenticatedActor(
   try {
     const now = new Date().toISOString();
     const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    await db
+    const updated = await db
       .prepare(
         "UPDATE actors SET last_active_at = ? WHERE id = ? AND (last_active_at IS NULL OR last_active_at < ?)"
       )
       .bind(now, tokenRow.actorId, cutoff)
       .run();
+    // The account is back: drop the account-expiration warnings so a future
+    // inactivity window warns again from scratch (markers are keyed per actor).
+    if ((updated.meta?.changes ?? 0) > 0 && env.KV) {
+      await Promise.all([
+        env.KV.delete(`expiry:warn:7:${tokenRow.actorId}`).catch(() => {}),
+        env.KV.delete(`expiry:warn:1:${tokenRow.actorId}`).catch(() => {}),
+      ]);
+    }
   } catch { /* last_active_at column may be missing pre-migration */ }
 
   return actor;

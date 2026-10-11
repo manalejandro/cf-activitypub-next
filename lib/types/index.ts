@@ -206,6 +206,8 @@ export interface LocalActor {
   statusesCount: number;
   createdAt: string;
   updatedAt: string;
+  /** When the account was suspended (ISO); cleared on unsuspend. */
+  suspendedAt?: string | null;
   // auth
   email: string | null;
   /** sha256(canonical email) — one identity per mailbox (anti-abuse). */

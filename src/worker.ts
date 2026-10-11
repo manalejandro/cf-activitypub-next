@@ -46,6 +46,7 @@ import {
   refreshInstance,
 } from "../lib/activitypub/instances";
 import { runModerationCycle } from "../lib/moderation/cycle";
+import { runAccountExpiration } from "../lib/moderation/account-expiration";
 import type { APActor } from "../lib/types";
 
 interface Env {
@@ -1081,6 +1082,17 @@ async function executeScheduled(env: Env): Promise<void> {
     await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
   } catch (err) {
     console.error("[cron] runModerationCycle failed", err);
+  }
+
+  // Account expiration: warn inactive local accounts (7 days / 24 hours before
+  // the configured window), suspend them when it passes and purge accounts
+  // suspended for a month. Throttled internally; a failure never blocks the
+  // rest of the cron.
+  await setStage("expiration");
+  try {
+    await runAccountExpiration(env as unknown as Parameters<typeof runAccountExpiration>[0]);
+  } catch (err) {
+    console.error("[cron] account expiration failed", err);
   }
 
   // Federation engine: refresh NodeInfo metadata for due instances (a few per

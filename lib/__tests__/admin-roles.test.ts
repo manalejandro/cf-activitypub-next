@@ -103,6 +103,10 @@ describe("role promotion", () => {
 
 describe("account moderation by role", () => {
   async function deleteAccount(id = "https://local.example/users/spammer") {
+    // `getActorById` returns the row for the requested id: keep the mock's role
+    // but make the id realistic (the handler deletes the actor it loaded).
+    const configured = (await mocks.getActorById()) as LocalActor;
+    mocks.getActorById.mockResolvedValue({ ...configured, id });
     const mod = await import("@/app/api/v1/admin/accounts/[id]/route");
     const res = await mod.DELETE(
       new Request("https://local.example/api/v1/admin/accounts/x", { method: "DELETE" }) as never,

@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "追悼アカウントにする",
   "admin_status_memorial": "追悼",
   "admin_memorialize_confirm": "このアカウントを追悼として保存しますか？ログインできなくなります。",
-  "login_error_memorial": "このアカウントは追悼として保存されており、ログインできません。"
+  "login_error_memorial": "このアカウントは追悼として保存されており、ログインできません。",
+  "admin_settings_expiration": "アカウントの有効期限",
+  "admin_settings_expiration_desc": "非アクティブなローカルアカウントには期限の7日前と24時間前にメールで通知し、期限を過ぎると自動的に停止、停止から1か月後に削除します（本人による削除と同様にDeleteを連合送信）。管理者とモデレーターは対象外です。",
+  "admin_settings_expiration_enabled": "非アクティブアカウントの有効期限を有効にする",
+  "admin_settings_expiration_months": "停止までの非アクティブ期間（月）",
+  "admin_settings_expiration_months_n": "{months} か月",
+  "admin_settings_expiration_months_custom": "{months} か月（カスタム）"
 }

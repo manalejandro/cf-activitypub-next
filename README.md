@@ -17,6 +17,7 @@
 - **Web Push notifications** — native push to mobile/desktop via VAPID + AES-128-GCM
 - **AI-powered** — automatic image alt-text via Workers AI (LLaVA)
 - **AI moderation (Guardian)** — a fully autonomous moderator keeps the instance safe from spam and toxicity, with a complete audit trail
+- **Account expiration** — inactive accounts are warned by email and removed automatically (configurable window, on by default at 12 months)
 - **Fully open source** — MIT licensed
 
 ## Architecture

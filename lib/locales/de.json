@@ -1153,5 +1153,11 @@
   "admin_btn_memorialize": "In Memoriam umwandeln",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Dieses Konto in Memoriam erhalten? Es kann sich dann nicht mehr anmelden.",
-  "login_error_memorial": "Dieses Konto ist in memoriam und kann sich nicht mehr anmelden."
+  "login_error_memorial": "Dieses Konto ist in memoriam und kann sich nicht mehr anmelden.",
+  "admin_settings_expiration": "Kontolöschung bei Inaktivität",
+  "admin_settings_expiration_desc": "Inaktive lokale Konten erhalten 7 Tage und erneut 24 Stunden vor Ablauf eine E-Mail, werden nach Ablauf automatisch gesperrt und einen Monat nach der Sperrung gelöscht (mit föderiertem Delete wie bei einer Selbstlöschung). Administratoren und Moderatoren sind ausgenommen.",
+  "admin_settings_expiration_enabled": "Ablauf für inaktive Konten aktivieren",
+  "admin_settings_expiration_months": "Monate der Inaktivität vor der Sperrung",
+  "admin_settings_expiration_months_n": "{months} Monate",
+  "admin_settings_expiration_months_custom": "{months} Monate (benutzerdefiniert)"
 }

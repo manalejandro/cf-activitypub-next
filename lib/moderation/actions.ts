@@ -279,7 +279,10 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     .prepare("UPDATE objects SET content = NULL, sensitive = 1 WHERE actor_id = ? AND content IS NOT NULL")
     .bind(actorId)
     .run();
-  await env.DB.prepare("UPDATE actors SET suspended = 1, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
+  await env.DB
+    .prepare("UPDATE actors SET suspended = 1, suspended_at = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(new Date().toISOString(), actorId)
+    .run();
 
   const emailSent = await notifyAccountOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
   const m = meta(opts, SYSTEM);
@@ -322,7 +325,10 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
   if (!actor) return { action: "unsuspended", applied: false, emailSent: false };
   if (!actor.suspended) return { action: "unsuspended", applied: false, emailSent: false };
 
-  await env.DB.prepare("UPDATE actors SET suspended = 0, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
+  await env.DB
+    .prepare("UPDATE actors SET suspended = 0, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
+    .bind(actorId)
+    .run();
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
