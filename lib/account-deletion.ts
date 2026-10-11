@@ -14,8 +14,12 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
-import { enqueueDeliveries } from "@/lib/activitypub/queue";
-import { buildDelete, generateId } from "@/lib/activitypub/utils";
+import {
+  DELETED_ACTOR_KEY_PREFIX,
+  DELETED_ACTOR_KEY_TTL_SECONDS,
+  enqueueDeliveries,
+} from "@/lib/activitypub/queue";
+import { buildActorDelete, generateId } from "@/lib/activitypub/utils";
 import { recordModeration, type ModerationSource } from "@/lib/moderation/log";
 import { getActorById } from "@/lib/db";
 import type { APActor, LocalActor } from "@/lib/types";
@@ -26,11 +30,16 @@ export interface DeletionR2 {
   delete(key: string | string[]): Promise<void>;
 }
 
+export interface DeletionKV {
+  put?(key: string, value: string, options?: { expirationTtl?: number }): Promise<unknown>;
+  delete?(key: string): Promise<unknown>;
+}
+
 export interface AccountDeletionEnv {
   DB: D1Database;
   R2?: DeletionR2;
   DELIVERY_QUEUE?: Queue;
-  KV?: { delete(key: string): Promise<unknown> };
+  KV?: DeletionKV;
 }
 
 export interface AccountDeletionResult {
@@ -87,15 +96,15 @@ async function accountMediaKeys(env: AccountDeletionEnv, actor: LocalActor): Pro
 export async function deleteLocalAccount(
   env: AccountDeletionEnv,
   actor: LocalActor,
-  opts: { baseUrl: string; reason: string; source: ModerationSource; details?: Record<string, unknown>; emailSent?: boolean }
+  opts: { reason: string; source: ModerationSource; details?: Record<string, unknown>; emailSent?: boolean }
 ): Promise<AccountDeletionResult> {
   const result: AccountDeletionResult = { federated: 0, mediaDeleted: 0 };
 
   // Federate a Delete(actor) tombstone before the actor row disappears. Only
   // local accounts have a private key; the caller only passes local ones.
-  if (actor.privateKeyPem && env.DELIVERY_QUEUE && opts.baseUrl.startsWith("https://")) {
+  if (actor.privateKeyPem) {
     try {
-      const deleteActivity = buildDelete(opts.baseUrl, actor.id, actor.id, generateId());
+      const deleteActivity = buildActorDelete(actor.id);
       const followers = await env.DB
         .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
         .bind(actor.id)
@@ -104,6 +113,16 @@ export async function deleteLocalAccount(
         (await getActorById(env.DB, id)) as unknown as APActor | null;
       const inboxes = await collectFollowerInboxes(followers.results.map((r) => r.actor_id), fetchActor);
       if (inboxes.length > 0) {
+        // The queue signs at delivery time, when this actor row is already
+        // gone: park the key in KV for a day so the queued Delete{Actor} still
+        // resolves one (resolveDeliverySigningKey falls back to it).
+        await env.KV?.put?.(
+          `${DELETED_ACTOR_KEY_PREFIX}${actor.id}`,
+          JSON.stringify({ keyId: `${actor.id}#main-key`, privateKeyPem: actor.privateKeyPem }),
+          { expirationTtl: DELETED_ACTOR_KEY_TTL_SECONDS }
+        ).catch(() => {});
+        // All outbound delivery goes through the queue; enqueueDeliveries
+        // falls back to direct delivery when there is no binding.
         await enqueueDeliveries(
           env.DELIVERY_QUEUE,
           inboxes,
@@ -141,10 +160,8 @@ export async function deleteLocalAccount(
 
   // Expiration warning markers are keyed by actor id: without this a recycled
   // id would inherit a stale "already warned" state.
-  if (env.KV) {
-    await env.KV.delete(`expiry:warn:7:${actor.id}`).catch(() => {});
-    await env.KV.delete(`expiry:warn:1:${actor.id}`).catch(() => {});
-  }
+  await env.KV?.delete?.(`expiry:warn:7:${actor.id}`).catch(() => {});
+  await env.KV?.delete?.(`expiry:warn:1:${actor.id}`).catch(() => {});
 
   await recordModeration(env, {
     id: generateId(),

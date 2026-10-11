@@ -9,9 +9,6 @@ import { env } from "cloudflare:workers";
 // Removes the actor and all cascade-dependent data, federates a Delete
 // tombstone to followers, revokes every session token and clears the cookie.
 export async function POST(request: NextRequest): Promise<Response> {
-  const domain = new URL(request.url).hostname;
-  const baseUrl = `https://${domain}`;
-
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
@@ -22,7 +19,6 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   await deleteLocalAccount(env, actor, {
-    baseUrl,
     reason: "Account deleted by its owner.",
     source: "user",
   });

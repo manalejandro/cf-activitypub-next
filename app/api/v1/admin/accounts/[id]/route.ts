@@ -141,9 +141,6 @@ export async function DELETE(
   const denied = await accountActionGuard(request, env, actor, { removesAccess: true });
   if (denied) return denied;
 
-  const domain = new URL(request.url).hostname;
-  const baseUrl = `https://${domain}`;
-
   // Tell the owner before the actor row disappears (local accounts with an
   // email on file only — remote cached actors have nothing to notify).
   const emailSent = await notifyAccountOwner(env, actor, "removed", "Su cuenta ha sido eliminada por la administración.");
@@ -152,7 +149,6 @@ export async function DELETE(
     // Same deletion as the owner's self-delete: federated Delete{Actor} to the
     // accepted followers, uploads removed from R2, actor row and cascades gone.
     await deleteLocalAccount(env, actor, {
-      baseUrl,
       reason: "Account deleted by an administrator.",
       source: "user",
       emailSent,

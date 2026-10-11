@@ -538,6 +538,23 @@ export function buildUpdate(baseUrl: string, actorId: string, note: APNote, id: 
   };
 }
 
+/**
+ * Mastodon's DeleteActorSerializer: an account deletion sends the **bare actor
+ * URI** as `object` (not a Tombstone) with the deterministic id
+ * `<actor-uri>#delete`. Peers match `object` against the signer's URI
+ * (Mastodon's `ActivityPub::Activity::Delete#perform` → `delete_person`).
+ */
+export function buildActorDelete(actorId: string): APActivity {
+  return {
+    "@context": DEFAULT_CONTEXT,
+    id: `${actorId}#delete`,
+    type: "Delete",
+    actor: actorId,
+    object: actorId,
+    to: [PUBLIC_ADDRESS],
+  };
+}
+
 export function buildDelete(baseUrl: string, actorId: string, objectId: string, id: string): APActivity {
   // Mastodon's DeleteNoteSerializer: id/type/actor/to + a Tombstone object.
   return {

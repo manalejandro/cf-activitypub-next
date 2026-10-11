@@ -6,7 +6,7 @@
  * Cloudflare Queue consumer worker handle them with automatic retries.
  */
 
-import type { Queue } from "@cloudflare/workers-types";
+import type { D1Database, Queue } from "@cloudflare/workers-types";
 import type { APActivity } from "@/lib/types";
 import { deliverToInbox } from "./federation";
 
@@ -15,6 +15,51 @@ export interface APDeliveryMessage {
   inboxUrl: string;
   activityJson: string; // JSON.stringify(APActivity)
   actorId: string; // local actor whose private key is used to sign
+}
+
+/** KV entry holding a just-deleted actor's signing key (see deleteLocalAccount). */
+export const DELETED_ACTOR_KEY_PREFIX = "actor:key:";
+/** How long a deleted actor's queued deliveries can still be signed. */
+export const DELETED_ACTOR_KEY_TTL_SECONDS = 24 * 3600;
+
+export interface DeliveryKeyEnv {
+  DB: D1Database;
+  KV?: { get(key: string): Promise<string | null> };
+}
+
+/**
+ * Resolve the signing key for a queued delivery.
+ *
+ * The actor row is canonical, but an account deletion removes it immediately
+ * while its `Delete{Actor}` is still in the queue: without the KV grace entry
+ * the consumer would sign with nothing and ack the delivery undelivered
+ * (`Local actor or key not found`). The deletion flow parks the key there for a
+ * day; the row always wins, so a stale entry can never impersonate a live
+ * account.
+ */
+export async function resolveDeliverySigningKey(
+  env: DeliveryKeyEnv,
+  actorId: string
+): Promise<{ keyId: string; privateKeyPem: string } | null> {
+  const row = await env.DB.prepare(
+    "SELECT private_key_pem FROM actors WHERE id = ? AND is_local = 1"
+  )
+    .bind(actorId)
+    .first<{ private_key_pem: string }>();
+  if (row?.private_key_pem) {
+    return { keyId: `${actorId}#main-key`, privateKeyPem: row.private_key_pem };
+  }
+
+  if (!env.KV) return null;
+  try {
+    const raw = await env.KV.get(`${DELETED_ACTOR_KEY_PREFIX}${actorId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { keyId?: string; privateKeyPem?: string };
+    if (!parsed.privateKeyPem) return null;
+    return { keyId: parsed.keyId || `${actorId}#main-key`, privateKeyPem: parsed.privateKeyPem };
+  } catch {
+    return null;
+  }
 }
 
 // Cloudflare Queues limits: 100 messages and 256 KB per sendBatch call, 128 KB

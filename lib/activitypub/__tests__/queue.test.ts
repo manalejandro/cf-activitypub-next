@@ -6,7 +6,7 @@ const deliverToInbox = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, st
 
 vi.mock("@/lib/activitypub/federation", () => ({ deliverToInbox, signedGetHeaders: vi.fn().mockResolvedValue({}) }));
 
-import { enqueueDeliveries } from "@/lib/activitypub/queue";
+import { enqueueDeliveries, resolveDeliverySigningKey } from "@/lib/activitypub/queue";
 
 describe("enqueueDeliveries", () => {
   beforeEach(() => {
@@ -134,5 +134,61 @@ describe("enqueueDeliveries", () => {
     await enqueueDeliveries({ sendBatch } as never, [], "{}", "actor", "key", "pem");
     expect(sendBatch).not.toHaveBeenCalled();
     expect(deliverToInbox).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveDeliverySigningKey", () => {
+  const ACTOR = "https://local.example/users/alice";
+
+  /** Fake D1 + KV pair: the row is what the DB holds, `kv` what KV holds. */
+  function fakeEnv(row: { private_key_pem: string } | null, kv?: string | null) {
+    const get = vi.fn().mockResolvedValue(kv ?? null);
+    return {
+      get,
+      env: {
+        DB: {
+          prepare: () => ({ bind: () => ({ first: async () => row }) }),
+        },
+        ...(kv === undefined && !row ? {} : { KV: { get } }),
+      } as unknown as Parameters<typeof resolveDeliverySigningKey>[0],
+    };
+  }
+
+  it("prefers the live actor row", async () => {
+    const { env, get } = fakeEnv({ private_key_pem: "live-pem" }, JSON.stringify({ privateKeyPem: "stale-pem" }));
+    await expect(resolveDeliverySigningKey(env, ACTOR)).resolves.toEqual({
+      keyId: `${ACTOR}#main-key`,
+      privateKeyPem: "live-pem",
+    });
+    // The row is canonical: a stale grace entry is never even read.
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the KV grace entry for a just-deleted actor", async () => {
+    const { env } = fakeEnv(
+      null,
+      JSON.stringify({ keyId: `${ACTOR}#main-key`, privateKeyPem: "parked-pem" })
+    );
+    await expect(resolveDeliverySigningKey(env, ACTOR)).resolves.toEqual({
+      keyId: `${ACTOR}#main-key`,
+      privateKeyPem: "parked-pem",
+    });
+  });
+
+  it("returns null when neither the row nor a grace entry exists", async () => {
+    const { env } = fakeEnv(null, null);
+    await expect(resolveDeliverySigningKey(env, ACTOR)).resolves.toBeNull();
+  });
+
+  it("returns null for a malformed grace entry", async () => {
+    const { env } = fakeEnv(null, "not-json");
+    await expect(resolveDeliverySigningKey(env, ACTOR)).resolves.toBeNull();
+  });
+
+  it("returns null when there is no KV binding", async () => {
+    const env = {
+      DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
+    } as unknown as Parameters<typeof resolveDeliverySigningKey>[0];
+    await expect(resolveDeliverySigningKey(env, ACTOR)).resolves.toBeNull();
   });
 });

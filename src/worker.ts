@@ -19,7 +19,7 @@ import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
 import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
-import { enqueueDeliveries } from "../lib/activitypub/queue";
+import { enqueueDeliveries, resolveDeliverySigningKey } from "../lib/activitypub/queue";
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
@@ -398,24 +398,22 @@ async function deliverOne(
     return { ok: false, permanent: true, status: 0, error: validation.reason };
   }
 
-  // Look up the local actor's private key
-  const row = await env.DB.prepare(
-    "SELECT private_key_pem FROM actors WHERE id = ? AND is_local = 1"
-  )
-    .bind(actorId)
-    .first<{ private_key_pem: string }>();
-
-  if (!row?.private_key_pem) {
+  // Look up the local actor's signing key. The row is canonical; an account
+  // whose deletion is still draining from the queue resolves its key from the
+  // KV grace entry the deletion flow leaves behind (otherwise the delivery
+  // would be acked undelivered: the actor row is gone by now).
+  const signingKey = await resolveDeliverySigningKey(env, actorId);
+  if (!signingKey) {
     // Actor not found or not local — permanent failure, don't retry
     return { ok: false, permanent: true, status: 0, error: "Local actor or key not found" };
   }
 
-  const keyId = `${actorId}#main-key`;
+  const { keyId, privateKeyPem } = signingKey;
 
   try {
     // Signed POST (safeFetch re-validates redirect hops and bounds the
     // timeout): draft-cavage first, retrying with RFC 9421 on 400/401.
-    const res = await postToInboxSigned(inboxUrl, activityJson, keyId, row.private_key_pem, 15_000);
+    const res = await postToInboxSigned(inboxUrl, activityJson, keyId, privateKeyPem, 15_000);
     if (!res) {
       const domain = new URL(inboxUrl).hostname.toLowerCase();
       await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");

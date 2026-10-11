@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:workers";
 import { applyTestSchema, resetTestStorage } from "./helpers/db";
 import { sweepExpiredAccounts, expiryDate, DEFAULT_EXPIRATION_MONTHS } from "@/lib/moderation/account-expiration";
+import { resolveDeliverySigningKey } from "@/lib/activitypub/queue";
 import { setInstanceSetting } from "@/lib/db";
 
 beforeAll(async () => {
@@ -166,7 +167,14 @@ describe("account expiration sweep", () => {
     expect(fake.queued).toHaveLength(1);
     expect(fake.queued[0].body.inboxUrl).toBe("https://remote.example/users/fan/inbox");
     expect(fake.queued[0].body.activityJson).toContain('"type":"Delete"');
-    expect(fake.queued[0].body.activityJson).toContain(id);
+    // Mastodon's DeleteActorSerializer shape: the bare actor URI is the object.
+    expect(JSON.parse(fake.queued[0].body.activityJson).object).toBe(id);
+    // The queue consumer signs at delivery time, when the actor row is gone:
+    // the key must survive in KV for the queued Delete to be delivered at all.
+    await expect(resolveDeliverySigningKey(env, id)).resolves.toEqual({
+      keyId: `${id}#main-key`,
+      privateKeyPem: "priv",
+    });
 
     const logged = await db
       .prepare("SELECT action, reason FROM moderation_log WHERE target_id = ? ORDER BY created_at DESC LIMIT 1")

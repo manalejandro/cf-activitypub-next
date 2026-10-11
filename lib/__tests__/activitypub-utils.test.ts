@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActor, buildAnnounce, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, normalizeAttributionDomains } from "@/lib/activitypub/utils";
+import { buildActor, buildActorDelete, buildAnnounce, buildDelete, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, normalizeAttributionDomains } from "@/lib/activitypub/utils";
 
 const BASE = "https://local.example";
 const ACTOR = "https://local.example/users/me";
@@ -209,5 +209,28 @@ describe("normalizeAttributionDomains", () => {
     ).toEqual(["example.com", "miweb.org"]);
     expect(normalizeAttributionDomains(undefined)).toEqual([]);
     expect(normalizeAttributionDomains("example.com")).toEqual([]);
+  });
+});
+
+describe("buildActorDelete", () => {
+  it("matches Mastodon's DeleteActorSerializer: the bare actor URI is the object", () => {
+    const activity = buildActorDelete(ACTOR);
+    expect(activity.id).toBe(`${ACTOR}#delete`);
+    expect(activity.type).toBe("Delete");
+    expect(activity.actor).toBe(ACTOR);
+    // Not a Tombstone: peers match `object` against the signer's own URI.
+    expect(activity.object).toBe(ACTOR);
+    expect(activity.to).toEqual([PUBLIC]);
+  });
+});
+
+describe("buildDelete", () => {
+  it("wraps a status in a Tombstone addressed to the public collection", () => {
+    const activity = buildDelete(BASE, ACTOR, `${BASE}/objects/o1`, "a1");
+    expect(activity.id).toBe(`${BASE}/activities/a1`);
+    expect(activity.type).toBe("Delete");
+    expect(activity.actor).toBe(ACTOR);
+    expect(activity.object).toEqual({ id: `${BASE}/objects/o1`, type: "Tombstone" });
+    expect(activity.to).toEqual([PUBLIC]);
   });
 });

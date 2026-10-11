@@ -220,11 +220,10 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
         DB: env.DB,
         R2: env.R2,
         DELIVERY_QUEUE: env.DELIVERY_QUEUE,
-        KV: env.KV as { delete(key: string): Promise<unknown> } | undefined,
+        KV: env.KV,
       },
       actor,
       {
-        baseUrl: env.INSTANCE_URL ?? "",
         reason: `Cuenta suspendida eliminada tras ${SUSPENDED_PURGE_MONTHS} mes(es) de suspensión (caducidad de cuentas).`,
         source: "heuristic",
         details: { username: row.username, suspendedAt: actor.suspendedAt ?? null },
