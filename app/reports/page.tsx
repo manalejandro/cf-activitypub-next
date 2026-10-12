@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
-import { AvatarBubble, formatTime } from "@/components/StatusCard";
+import { AvatarBubble } from "@/components/StatusCard";
+import { RelativeTime } from "@/components/RelativeTime";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
@@ -144,7 +145,7 @@ export default function ReportsPage() {
                       </span>
                     )}
                     <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "auto" }}>
-                      {formatTime(report.created_at)}
+                      <RelativeTime iso={report.created_at} title={new Date(report.created_at).toLocaleString()} />
                     </span>
                   </div>
 

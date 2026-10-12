@@ -62,6 +62,17 @@ export default function PollPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [voting, setVoting] = useState(false);
 
+  // The countdown must keep ticking while the page is open: it was computed
+  // once when the poll loaded and stayed frozen (same bug as the status
+  // timestamps, which now use the shared <RelativeTime> ticker).
+  const expiresAt = poll?.expires_at ?? null;
+  const expired = poll?.expired ?? false;
+  useEffect(() => {
+    if (!expiresAt || expired) return;
+    const id = setInterval(() => setTimeLeft(formatTimeLeft(expiresAt, t)), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt, expired, t]);
+
   useEffect(() => {
     if (!pollId) return;
     Promise.resolve().then(() => setLoading(true));

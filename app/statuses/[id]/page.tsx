@@ -422,7 +422,7 @@ function ReplyBox({
           </div>
           {pollMode && (
             <div style={{ marginTop: "0.5rem", padding: "0.75rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--bg)" }}>
-              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.5rem" }}>Opciones de la encuesta</div>
+              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.5rem" }}>{t.composer_poll_options}</div>
               {pollOptions.map((opt, i) => (
                 <div key={i} style={{ display: "flex", gap: "0.4rem", marginBottom: "0.35rem" }}>
                   <input
@@ -440,15 +440,15 @@ function ReplyBox({
                 </div>
               ))}
               {pollOptions.length < limits.maxPollOptions && (
-                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>+ Agregar opción</button>
+                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }} onClick={() => setPollOptions((p) => [...p, ""])}>{t.composer_poll_add_option}</button>
               )}
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.25rem" }}>
                 <select value={pollExpiry} onChange={(e) => setPollExpiry(Number(e.target.value))} style={{ fontSize: "0.78rem", padding: "0.25rem 0.4rem", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--text)" }}>
-                  <option value={3600}>1 hora</option>
-                  <option value={21600}>6 horas</option>
-                  <option value={86400}>1 día</option>
-                  <option value={259200}>3 días</option>
-                  <option value={604800}>1 semana</option>
+                  <option value={3600}>{t.composer_poll_1h}</option>
+                  <option value={21600}>{t.composer_poll_6h}</option>
+                  <option value={86400}>{t.composer_poll_1d}</option>
+                  <option value={259200}>{t.composer_poll_3d}</option>
+                  <option value={604800}>{t.composer_poll_7d}</option>
                 </select>
                 <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.82rem", cursor: "pointer" }}>
                   <input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} />

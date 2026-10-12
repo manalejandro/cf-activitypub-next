@@ -28,9 +28,9 @@ interface Me {
 
 const CONTEXT_OPTIONS = ["home", "notifications", "public", "thread", "account"] as const;
 
-function formatExpires(expiresAt: string | null, t: Translations): string {
+function formatExpires(expiresAt: string | null, t: Translations, now: number): string {
   if (!expiresAt) return t.filters_never;
-  const diff = new Date(expiresAt).getTime() - Date.now();
+  const diff = new Date(expiresAt).getTime() - now;
   if (diff <= 0) return t.filters_expired;
   const mins = Math.round(diff / 60000);
   if (mins < 60) return `${mins}m`;
@@ -58,6 +58,12 @@ export default function FiltersPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [filters, setFilters] = useState<Filter[]>([]);
   const [loading, setLoading] = useState(true);
+  // Relative expiry labels ("30m") must not freeze while the page is open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [phrase, setPhrase] = useState("");
   const [context, setContext] = useState<string[]>(["home", "notifications"]);
@@ -303,7 +309,7 @@ export default function FiltersPage() {
                       {t.filters_action_label}<strong>{filter.irreversible ? t.filters_hide : t.filters_warn}</strong>
                     </span>
                     <span>
-                      {t.filters_expires_label}<strong>{formatExpires(filter.expires_at, t)}</strong>
+                      {t.filters_expires_label}<strong>{formatExpires(filter.expires_at, t, now)}</strong>
                     </span>
                   </div>
                 </div>

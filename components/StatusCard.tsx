@@ -20,6 +20,7 @@ import { Icon } from "./Icon";
 import { LicenseBadge } from "./LicenseBadge";
 import { useLicenseInfo } from "@/lib/license-client";
 import LocationPreview from "./LocationPreview";
+import { RelativeTime } from "./RelativeTime";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
@@ -130,15 +131,6 @@ export interface Me {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-export function formatTime(iso: string) {
-  const d = new Date(iso);
-  const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60) return `${Math.floor(diff)}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return d.toLocaleDateString();
-}
 
 // ─── AvatarBubble ─────────────────────────────────────────────────────────────
 
@@ -1030,12 +1022,10 @@ function StatusCardInner({
           </span>
           {permalink ? (
             <Link href={threadHref} title={new Date(status.created_at).toLocaleString()} aria-label={`${new Date(status.created_at).toLocaleString()}, ${t.action_reply}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)", textDecoration: "none" }}>
-              {formatTime(status.created_at)}
+              <RelativeTime iso={status.created_at} />
             </Link>
           ) : (
-            <span title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              {formatTime(status.created_at)}
-            </span>
+            <RelativeTime iso={status.created_at} title={new Date(status.created_at).toLocaleString()} style={{ fontSize: "0.78rem", color: "var(--text-muted)" }} />
           )}
         </div>
         <TypeBadge apType={status.ap_type} />
