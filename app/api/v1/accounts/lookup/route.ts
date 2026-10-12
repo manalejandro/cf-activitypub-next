@@ -3,6 +3,7 @@ import { json, notFound, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
+import { getMovedAccount } from "@/lib/mastodon/account-extras";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { env } from "cloudflare:workers";
 
@@ -37,5 +38,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   const fields = await getActorFields(env.DB, actor.id);
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
   const emojis = await getAllCustomEmojis(env.DB);
-  return json(serializeAccount(actor, domain, { fields, lastStatusAt, emojis }));
+  // The web profile reads the account from here: without `moved` it showed no
+  // "moved" notice and kept the follow button on a migrated account.
+  const movedAccount = await getMovedAccount(env.DB, actor, domain);
+  return json(serializeAccount(actor, domain, { fields, lastStatusAt, emojis, moved: movedAccount }));
 }

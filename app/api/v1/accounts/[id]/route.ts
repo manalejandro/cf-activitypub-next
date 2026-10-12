@@ -7,6 +7,7 @@ import { syncRemoteCollections } from "@/lib/activitypub/collections";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { env } from "cloudflare:workers";
+import { getMovedAccount } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/accounts/:id
 export async function GET(
@@ -74,15 +75,7 @@ export async function GET(
   const fields = await getActorFields(env.DB, actor.id);
   const lastStatusAt = await getLastStatusAt(env.DB, actor.id);
 
-  // Populate `moved` (the account this one migrated to) when set.
-  let movedAccount: ReturnType<typeof serializeAccount> | null = null;
-  if (actor.movedTo) {
-    const moved = await getActorById(env.DB, actor.movedTo);
-    if (moved) {
-      const movedFields = await getActorFields(env.DB, moved.id);
-      movedAccount = serializeAccount(moved, domain, { fields: movedFields });
-    }
-  }
+  const movedAccount = await getMovedAccount(env.DB, actor, domain);
 
   return json(serializeAccount(actor, domain, { fields, supportsCalls, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB) }));
 }

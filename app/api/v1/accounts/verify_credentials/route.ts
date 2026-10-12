@@ -11,6 +11,7 @@ import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import { putMediaObject } from "@/lib/media/r2-put";
 import { profileImageDecision } from "@/lib/media/profile-image";
 import { env } from "cloudflare:workers";
+import { getMovedAccount } from "@/lib/mastodon/account-extras";
 
 // GET /api/v1/accounts/verify_credentials
 export async function GET(request: NextRequest): Promise<Response> {
@@ -38,15 +39,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     if (row?.role) role = row.role;
   } catch {} // column may not exist until migration runs
 
-  // Emit `moved` (the account this one migrated to) when set.
-  let movedAccount: ReturnType<typeof serializeAccount> | null = null;
-  if (actor.movedTo) {
-    const moved = await getActorById(env.DB, actor.movedTo);
-    if (moved) {
-      const movedFields = await getActorFields(env.DB, moved.id);
-      movedAccount = serializeAccount(moved, domain, { fields: movedFields });
-    }
-  }
+  const movedAccount = await getMovedAccount(env.DB, actor, domain);
 
   return json(serializeAccount(actor, domain, { isCurrentUser: true, fields, role, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), quotePolicy, language: postingLanguage, privacy: postingVisibility, sensitive: postingSensitive, followRequestsCount, hideCollections }));
 }

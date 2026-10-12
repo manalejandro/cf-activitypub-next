@@ -9,11 +9,30 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { getActorById, getActorFields, getDomainCallsSupport } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import type { MastodonAccount } from "@/lib/types";
+import type { LocalActor, MastodonAccount } from "@/lib/types";
 
 export interface StatusAuthorExtras {
   supportsCalls?: boolean;
   moved: MastodonAccount | null;
+}
+
+/**
+ * The account an actor migrated to, serialized for Mastodon's `moved` field.
+ *
+ * Every route that returns an account the client renders as a profile must fill
+ * it: the web profile fetches `/api/v1/accounts/lookup`, which used to omit it,
+ * so a moved account kept its follow button and showed no "moved" notice.
+ */
+export async function getMovedAccount(
+  db: D1Database,
+  actor: Pick<LocalActor, "movedTo">,
+  localDomain: string
+): Promise<MastodonAccount | null> {
+  if (!actor.movedTo) return null;
+  const moved = await getActorById(db, actor.movedTo);
+  if (!moved) return null;
+  const fields = await getActorFields(db, moved.id);
+  return serializeAccount(moved, localDomain, { fields });
 }
 
 export async function getStatusAuthorExtras(

@@ -3,6 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema, resetTestStorage } from "./helpers/db";
 import { getActorById } from "@/lib/db";
 import { performMove } from "@/lib/activitypub/migration";
+import { GET as LOOKUP } from "@/app/api/v1/accounts/lookup/route";
+import { NextRequest } from "next/server";
 
 const db = env.DB;
 const BASE = "https://local.example.test";
@@ -49,6 +51,27 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetTestStorage();
+});
+
+describe("GET /api/v1/accounts/lookup", () => {
+  it("exposes `moved` for a migrated account (the web profile reads it from here)", async () => {
+    await seedActor(ME, { local: true });
+    await seedActor(TARGET, { local: false, inbox: "https://fedisocial.example/inbox" });
+    await db.prepare("UPDATE actors SET moved_to = ? WHERE id = ?").bind(TARGET, ME).run();
+
+    const res = await LOOKUP(new NextRequest(`${BASE}/api/v1/accounts/lookup?acct=me`));
+    expect(res.status).toBe(200);
+    const account = (await res.json()) as { moved?: { id: string; acct: string } | null };
+    expect(account.moved?.id).toBe(TARGET);
+    expect(account.moved?.acct).toBe("me@fedisocial.example");
+  });
+
+  it("leaves `moved` null for an account that has not moved", async () => {
+    await seedActor(ME, { local: true });
+    const res = await LOOKUP(new NextRequest(`${BASE}/api/v1/accounts/lookup?acct=me`));
+    const account = (await res.json()) as { moved?: unknown };
+    expect(account.moved ?? null).toBeNull();
+  });
 });
 
 describe("performMove", () => {
