@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
 import {
   getActorByEmail,
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       body = await request.json();
     } else {
       const form = await request.formData();
-      body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+      body = formDataToBody(form) as Record<string, string>;
     }
   } catch {
     return json({ error: "Invalid request body" }, 400);

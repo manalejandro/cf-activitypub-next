@@ -3,6 +3,7 @@
 // PUT /api/v1/filters/:id — update phrase / whole_word
 // DELETE /api/v1/filters/:id — delete the keyword (not the parent group)
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterKeyword } from "@/lib/db";
@@ -52,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
       body = await request.json() as Record<string, unknown>;
     } else {
       const form = await request.formData();
-      body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+      body = formDataToBody(form);
     }
   } catch {
     return badRequest("Invalid request body");

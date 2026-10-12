@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { createCollection, addAccountToCollection, getCollectionById } from "@/lib/db";
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     body = await request.json() as Record<string, unknown>;
   } else {
     const form = await request.formData();
-    body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+    body = formDataToBody(form);
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";

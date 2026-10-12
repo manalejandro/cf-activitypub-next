@@ -2,6 +2,7 @@
 // GET /api/v1/filters — list all keywords across the user's filter groups
 // POST /api/v1/filters — create a filter group with a single keyword
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, badRequest, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAllFiltersForAccount, getFilterKeywords, insertFilter, insertFilterKeyword } from "@/lib/db";
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       body = await request.json() as Record<string, unknown>;
     } else {
       const form = await request.formData();
-      body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+      body = formDataToBody(form);
     }
   } catch {
     return badRequest("Invalid request body");

@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, checkRateLimit } from "@/lib/cf";
 import { createOAuthApp } from "@/lib/db";
 import { env } from "cloudflare:workers";
@@ -13,21 +14,22 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Too many requests. Please try again later." }, 429);
   }
 
-  let body: Record<string, string>;
+  let body: Record<string, unknown>;
   const contentType = request.headers.get("Content-Type") ?? "";
 
   if (contentType.includes("application/json")) {
     body = await request.json();
   } else {
     const form = await request.formData();
-    body = Object.fromEntries(
-      [...form.entries()].map(([k, v]) => [k, String(v)])
-    );
+    body = formDataToBody(form);
   }
 
-  const { client_name, redirect_uris, scopes = "read", website } = body;
+  const clientName = String(body.client_name ?? "").trim();
+  const redirectUris = String(body.redirect_uris ?? "").trim();
+  const scopes = String(body.scopes ?? "read");
+  const website = body.website === undefined || body.website === null || body.website === "" ? null : String(body.website);
 
-  if (!client_name || !redirect_uris) {
+  if (!clientName || !redirectUris) {
     return json({ error: "client_name and redirect_uris are required" }, 422);
   }
 
@@ -37,9 +39,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   await createOAuthApp(env.DB, {
     id,
-    name: client_name,
-    website: website ?? null,
-    redirectUri: redirect_uris,
+    name: clientName,
+    website,
+    redirectUri: redirectUris,
     scopes,
     clientId,
     clientSecret,
@@ -48,9 +50,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   return json({
     id,
-    name: client_name,
-    website: website ?? null,
-    redirect_uri: redirect_uris,
+    name: clientName,
+    website,
+    redirect_uri: redirectUris,
     client_id: clientId,
     client_secret: clientSecret,
     vapid_key: env.VAPID_PUBLIC_KEY ?? "",

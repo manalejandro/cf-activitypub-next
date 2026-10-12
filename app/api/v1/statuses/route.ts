@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, unauthorized, checkRateLimit } from "@/lib/cf";
 import {
   getActorById,
@@ -158,6 +159,13 @@ async function remoteQuoteAllowed(
   return false;
 }
 
+/** `media_ids` as an array: `media_ids[]`, a JSON array, or a single id. */
+export function normalizeMediaIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (value === undefined || value === null || value === "") return [];
+  return [String(value)].filter(Boolean);
+}
+
 // POST /api/v1/statuses — Publish a new status
 export async function POST(request: NextRequest): Promise<Response> {
   const domain = new URL(request.url).hostname;
@@ -200,7 +208,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     body = await request.json();
   } else {
     const form = await request.formData();
-    body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+    body = formDataToBody(form);
   }
 
   let content = (body.status as string | undefined)?.trim();
@@ -234,7 +242,8 @@ export async function POST(request: NextRequest): Promise<Response> {
   let sensitive = body.sensitive === true || body.sensitive === "true";
   let spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = body.language as string | undefined;
-  const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+  // `media_ids[]` (form-encoded clients), a JSON array, or a single id.
+  const mediaIds = normalizeMediaIds(body.media_ids);
   // Rich-text authoring (glitch-soc / GoToSocial / Akkoma convention): the web
   // composer and compatible clients send `content_type: text/markdown`.
   const requestContentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
@@ -327,7 +336,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         return json({ error: "Too many scheduled statuses (max 100)" }, 422);
       }
       const schedId = generateId();
-      const mediaIds = (body.media_ids as string[] | undefined) ?? [];
+      const mediaIds = normalizeMediaIds(body.media_ids);
       const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
       await createScheduledStatus(env.DB, schedId, actor.id, normalizedScheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
       // The upload TTL is 1h, but the status may be scheduled days ahead — keep

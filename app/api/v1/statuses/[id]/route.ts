@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, notFound, unauthorized } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
@@ -43,6 +44,13 @@ function toAPAttachment(att: LocalAttachment): APAttachment {
 }
 
 // GET /api/v1/statuses/:id
+/** `media_ids` as an array: `media_ids[]`, a JSON array, or a single id. */
+export function normalizeMediaIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (value === undefined || value === null || value === "") return [];
+  return [String(value)].filter(Boolean);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -154,7 +162,7 @@ export async function PUT(
     body = await request.json();
   } else {
     const form = await request.formData();
-    body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+    body = formDataToBody(form);
   }
 
   const content = (body.status as string | undefined)?.trim();
@@ -169,7 +177,8 @@ export async function PUT(
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
-  const mediaIds = Array.isArray(body.media_ids) ? (body.media_ids as string[]).slice(0, limits.maxMediaAttachments) : undefined;
+  const requestedMediaIds = normalizeMediaIds(body.media_ids);
+  const mediaIds = requestedMediaIds.length > 0 ? requestedMediaIds.slice(0, limits.maxMediaAttachments) : undefined;
   const locationJson = normalizeLocationInput(body.location);
   if (body.location !== undefined && locationJson === undefined) {
     return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);

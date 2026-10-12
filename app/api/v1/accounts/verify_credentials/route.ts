@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { broadcastActorUpdate } from "@/lib/activitypub/actor-update";
@@ -167,7 +168,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
         body = await request.json();
       } else {
         const form = await request.formData();
-        body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+        body = formDataToBody(form);
       }
     } catch { /* empty */ }
 

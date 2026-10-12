@@ -3,6 +3,7 @@
 // DELETE /api/v2/filters/:id — delete a filter group
 import { MAX_FILTER_TITLE_CHARS } from "@/lib/constants";
 import { type NextRequest } from "next/server";
+import { formDataToBody } from "@/lib/request-body";
 import { json, badRequest, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import {
@@ -54,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
       body = await request.json() as Record<string, unknown>;
     } else {
       const form = await request.formData();
-      body = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+      body = formDataToBody(form);
     }
   } catch {
     return badRequest("Invalid request body");
