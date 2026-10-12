@@ -3243,6 +3243,13 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "resolve",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [],
