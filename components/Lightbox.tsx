@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 import { MediaPlayer } from "@/components/MediaPlayer";
+import { mediaDownloadName } from "@/lib/media/filename";
 import { youTubeEmbedUrl, youTubeEmbedUrlFromUrl } from "@/lib/youtube";
 
 /**
@@ -169,6 +170,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
               src={item.url}
               poster={item.preview_url}
               description={item.description}
+              downloadName={mediaDownloadName(item)}
               kind={item.type === "gifv" ? "gifv" : "video"}
               variant="lightbox"
               autoPlay
@@ -183,6 +185,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
               variant="lightbox"
               autoPlay
               description={item.description}
+              downloadName={mediaDownloadName(item)}
             />
           </div>
         ) : (

@@ -100,4 +100,22 @@ describe("MediaPlayer", () => {
     expect(screen.queryByRole("slider", { name: "Seek" })).toBeNull();
     expect(container.querySelector("video")).not.toBeNull();
   });
+
+  it("saves downloads under the resource name, not the bucket key", () => {
+    const { container } = render(
+      <MediaPlayer
+        src="https://cf-ap.com/api/media/cache/media/0e99cfb7a8390698012f9394b69d8043d575fe89daac9eb3d1386d069ae25529.jpg"
+        kind="video"
+        downloadName="Un gato durmiendo.jpg"
+      />
+    );
+    expect(container.querySelector("a[download]")).toHaveAttribute("download", "Un gato durmiendo.jpg");
+  });
+
+  it("leaves the download name to the browser when the resource has none", () => {
+    const { container } = render(
+      <MediaPlayer src="https://cf-ap.com/api/media/cache/media/0e99cfb7a8390698012f9394b69d8043d575fe89daac9eb3d1386d069ae25529.jpg" kind="video" />
+    );
+    expect(container.querySelector("a[download]")).toHaveAttribute("download", "");
+  });
 });

@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { MediaPlayer } from "@/components/MediaPlayer";
+import { mediaDownloadName } from "@/lib/media/filename";
 import { Lightbox, embeddableUrl } from "@/components/Lightbox";
 import { locationPath } from "@/lib/location";
 
@@ -385,11 +386,11 @@ export function APTypeBlock({
         )}
         {src && apType === "Video" && (
           <div style={{ borderRadius: "var(--radius)", overflow: "hidden", maxHeight: 420 }}>
-            <MediaPlayer src={src} kind="video" variant="inline" poster={meta?.imageUrl ?? undefined} description={meta?.name} />
+            <MediaPlayer src={src} kind="video" variant="inline" poster={meta?.imageUrl ?? undefined} description={meta?.name} downloadName={mediaDownloadName({ url: src, description: meta?.name })} />
           </div>
         )}
         {src && apType === "Audio" && (
-          <MediaPlayer src={src} kind="audio" variant="inline" description={meta?.name} />
+          <MediaPlayer src={src} kind="audio" variant="inline" description={meta?.name} downloadName={mediaDownloadName({ url: src, description: meta?.name })} />
         )}
         {/* PeerTube/Vimeo-style objects expose only an embed player (and often
             an HLS playlist no browser can play natively): frame it. */}

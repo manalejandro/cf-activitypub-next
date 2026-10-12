@@ -24,6 +24,11 @@ export interface MediaPlayerProps {
   poster?: string | null;
   /** Alt text / caption shown under audio players. */
   description?: string | null;
+  /**
+   * File name the download link saves as. Without it the browser uses the last
+   * segment of `src`, which for cached media is the R2 key.
+   */
+  downloadName?: string | null;
   kind?: MediaPlayerKind;
   /** `inline` fits a timeline card; `lightbox` is the enlarged viewer. */
   variant?: "inline" | "lightbox";
@@ -303,6 +308,7 @@ export function MediaPlayer({
   src,
   poster,
   description,
+  downloadName,
   kind = "video",
   variant = "inline",
   autoPlay = false,
@@ -671,7 +677,7 @@ export function MediaPlayer({
           )}
           <a
             href={src}
-            download
+            download={downloadName || ""}
             aria-label={t.media_download}
             title={t.media_download}
             style={{ ...controlButtonStyle, color: mutedColor }}
@@ -821,7 +827,7 @@ export function MediaPlayer({
           >
             <Icon name={isFullscreen ? "compress" : "expand"} color="#fff" />
           </button>
-          <a href={src} download aria-label={t.media_download} title={t.media_download} style={controlButtonStyle}>
+          <a href={src} download={downloadName || ""} aria-label={t.media_download} title={t.media_download} style={controlButtonStyle}>
             <Icon name="download" color="#fff" />
           </a>
         </div>

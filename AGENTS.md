@@ -211,6 +211,7 @@ import { json, notFound, unauthorized, badRequest } from "@/lib/cf";
 - **Fonts**: Wix Madefor Text for UI/body and JetBrains Mono for code, both self-hosted via `next/font/google` (`app/layout.tsx`) with `subsets: ["latin", "latin-ext", "cyrillic"]` — the `ru` locale must not fall back to system-ui. Reference them through the `--font-sans` / `--font-mono` CSS variables (next/font hashes the family names at build time); never hardcode a family in components.
 - **Remote content**: render via `renderRemoteContent`/helpers in `lib/activitypub/content.ts`; never inject raw remote HTML.
 - **Objects**: set `updated_at = published` explicitly on insert (the column DEFAULT uses a different format and would mark new posts as edited).
+- **Media downloads are named after the resource, never the bucket**: cached media is served from `/api/media/<r2-key>`, so a bare `download` link saved `cache/media/<sha256>.jpg`. `mediaDownloadName` (`lib/media/filename.ts`) resolves the attachment's **description** (what the user wrote when publishing) with the served extension, then the file name their own upload kept in the key (`media/<user>/<uuid>-<name>`), then the R2 key basename; `MediaPlayer`'s download link and the lightbox/AP players pass it as the `download` attribute. The media cache, its R2 keys and the served URLs are untouched.
 - **Style**: no comments unless they explain *why*; TypeScript strict; `setX`/`handleX`/`fetchX` naming; admin pages keep the emoji prefix in nav/titles.
 
 ## Testing

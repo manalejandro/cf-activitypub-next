@@ -21,6 +21,7 @@ import { LicenseBadge } from "./LicenseBadge";
 import { useLicenseInfo } from "@/lib/license-client";
 import LocationPreview from "./LocationPreview";
 import { RelativeTime } from "./RelativeTime";
+import { mediaDownloadName } from "@/lib/media/filename";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 
@@ -330,6 +331,7 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
                     src={att.url}
                     poster={att.preview_url ?? att.url}
                     description={att.description}
+                    downloadName={mediaDownloadName(att)}
                     kind={isGifv ? "gifv" : "video"}
                     variant="inline"
                     autoPlay={isGifv}
@@ -373,7 +375,7 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
                   filter: blurred ? "blur(12px)" : undefined,
                 }}
               >
-                <MediaPlayer src={att.url} kind="audio" variant="inline" description={att.description} />
+                <MediaPlayer src={att.url} kind="audio" variant="inline" description={att.description} downloadName={mediaDownloadName(att)} />
               </div>
             );
           }
