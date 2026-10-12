@@ -150,7 +150,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
     const rows = await env.DB
       .prepare(
-        `SELECT * FROM actors WHERE (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND is_local = 1 AND suspended = 0 AND silenced = 0 LIMIT ? OFFSET ?`
+        `SELECT * FROM actors WHERE (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND is_local = 1 AND suspended = 0 AND silenced = 0 AND moved_to IS NULL LIMIT ? OFFSET ?`
       )
       .bind(like, like, limit, offset)
       .all<Record<string, unknown>>();

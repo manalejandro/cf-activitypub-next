@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "해당 계정을 찾을 수 없습니다.",
   "alias_error_self": "본인 계정입니다.",
   "alias_error_exists": "이미 존재하는 별칭입니다.",
-  "account_moved_to": "이 계정은 다음으로 이전했습니다:"
+  "account_moved_to": "이 계정은 다음으로 이전했습니다:",
+  "settings_migration_note": "이전되는 것은 팔로워뿐입니다(새 계정을 가리키는 안내 포함). 게시물과 팔로우한 계정은 이전되지 않으므로 팔로잉 목록을 내보내 새 계정에서 가져오세요."
 }

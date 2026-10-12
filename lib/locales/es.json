@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "No se encontró esa cuenta.",
   "alias_error_self": "Esa es tu propia cuenta.",
   "alias_error_exists": "Ese alias ya existe.",
-  "account_moved_to": "Esta cuenta se ha trasladado a"
+  "account_moved_to": "Esta cuenta se ha trasladado a",
+  "settings_migration_note": "Solo se trasladan tus seguidores (y el aviso que apunta a la cuenta nueva): tus publicaciones y las cuentas que sigues no se transfieren, así que exporta tu lista de seguidos e impórtala en la cuenta nueva."
 }

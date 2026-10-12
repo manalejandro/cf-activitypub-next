@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "找不到该账号。",
   "alias_error_self": "这是你自己的账号。",
   "alias_error_exists": "该别名已存在。",
-  "account_moved_to": "该账号已迁移至"
+  "account_moved_to": "该账号已迁移至",
+  "settings_migration_note": "只有关注者会迁移（以及指向新账号的提示）：你的帖子和关注的账号不会被转移，请先导出关注列表，再在新账号中导入。"
 }

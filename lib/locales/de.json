@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "Dieses Konto wurde nicht gefunden.",
   "alias_error_self": "Das ist dein eigenes Konto.",
   "alias_error_exists": "Dieser Alias existiert bereits.",
-  "account_moved_to": "Dieses Konto ist umgezogen nach"
+  "account_moved_to": "Dieses Konto ist umgezogen nach",
+  "settings_migration_note": "Nur deine Follower ziehen um (und der Hinweis auf das neue Konto): Beiträge und gefolgte Konten werden nicht übertragen — exportiere deine Folgen-Liste und importiere sie im neuen Konto."
 }

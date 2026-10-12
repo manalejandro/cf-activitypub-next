@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "Ce compte est introuvable.",
   "alias_error_self": "C'est ton propre compte.",
   "alias_error_exists": "Cet alias existe déjà.",
-  "account_moved_to": "Ce compte a déménagé vers"
+  "account_moved_to": "Ce compte a déménagé vers",
+  "settings_migration_note": "Seul·es tes abonné·es déménagent (et l'avis pointant vers le nouveau compte) : tes publications et les comptes que tu suis ne sont pas transférés — exporte ta liste d'abonnements et importe-la sur le nouveau compte."
 }

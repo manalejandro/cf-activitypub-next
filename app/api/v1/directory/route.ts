@@ -33,7 +33,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const legacyActiveOrder = `(SELECT MAX(published) FROM objects o WHERE o.actor_id = actors.id AND visibility IN ('public', 'unlisted') AND type IN (${PUBLIC_STATUS_TYPE_SQL})) DESC`;
   const orderClause = order === "new" ? "created_at DESC" : "last_status_at DESC";
 
-  let query = "SELECT id FROM actors WHERE discoverable = 1 AND suspended = 0";
+  let query = "SELECT id FROM actors WHERE discoverable = 1 AND suspended = 0 AND moved_to IS NULL";
   if (localOnly) query += " AND is_local = 1";
   query += ` ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
 
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   } catch (e) {
     // Pre-migration (actors.last_status_at missing): old correlated subquery.
     if (order !== "active") throw e;
-    const fallback = `SELECT id FROM actors WHERE discoverable = 1 AND suspended = 0${localOnly ? " AND is_local = 1" : ""} ORDER BY ${legacyActiveOrder} LIMIT ? OFFSET ?`;
+    const fallback = `SELECT id FROM actors WHERE discoverable = 1 AND suspended = 0 AND moved_to IS NULL${localOnly ? " AND is_local = 1" : ""} ORDER BY ${legacyActiveOrder} LIMIT ? OFFSET ?`;
     rows = (await env.DB.prepare(fallback).bind(limit, offset).all<{ id: string }>()).results ?? [];
   }
 

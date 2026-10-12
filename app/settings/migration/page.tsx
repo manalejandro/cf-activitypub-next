@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
@@ -160,6 +161,14 @@ export default function MigrationPage() {
             )}
           </>
         )}
+
+        {/* What moves and what does not (Mastodon's `migrations.other_data`). */}
+        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.6, margin: 0 }}>
+          {t.settings_migration_note}{" "}
+          <Link href="/settings/import-export" style={{ color: "var(--accent)" }}>
+            {t.settings_tab_import}
+          </Link>
+        </p>
 
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <h2 style={{ fontSize: "1rem", margin: 0 }}>{t.settings_aliases_title}</h2>

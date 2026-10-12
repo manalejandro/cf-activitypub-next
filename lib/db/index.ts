@@ -1222,7 +1222,7 @@ export async function getAccountSuggestions(
          JOIN actors a ON a.id = f2.target_id
          WHERE f1.actor_id = ? AND f1.state = 'accepted'
            AND f2.target_id != ?
-           AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
+           AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
            AND NOT EXISTS (SELECT 1 FROM instance_domain_blocks idb WHERE idb.domain = a.domain AND idb.severity = 'suspend')
            AND NOT EXISTS (SELECT 1 FROM follows mf WHERE mf.actor_id = ? AND mf.target_id = f2.target_id)
            AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.actor_id = ? AND b.target_id = f2.target_id)
@@ -1266,7 +1266,7 @@ export async function getAccountSuggestions(
       `SELECT a.id,
               (SELECT COUNT(*) FROM follows f WHERE f.target_id = a.id AND f.state = 'accepted') AS local_follows
        FROM actors a
-       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
          AND COALESCE(a.reserved, 0) = 0
          ${excludedSql}
        ORDER BY local_follows DESC, a.id
@@ -1291,7 +1291,7 @@ export async function getAccountSuggestions(
       `SELECT a.id, COUNT(*) AS local_follows
        FROM actors a
        JOIN follows f ON f.target_id = a.id AND f.state = 'accepted'
-       WHERE a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
+       WHERE a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
          AND COALESCE(a.reserved, 0) = 0
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
@@ -1315,7 +1315,7 @@ export async function getAccountSuggestions(
   const activeLocal = await db
     .prepare(
       `SELECT a.id FROM actors a
-       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
+       WHERE a.is_local = 1 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
          AND COALESCE(a.reserved, 0) = 0
          AND a.last_status_at IS NOT NULL
          ${excludedSql}
@@ -1352,7 +1352,7 @@ export async function getAccountSuggestions(
          JOIN actors lf ON lf.id = f.actor_id AND lf.is_local = 1
          WHERE f.state = 'accepted'
        ) followed_domain ON followed_domain.domain = a.domain
-       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0
+       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
          AND a.last_status_at IS NOT NULL
          AND COALESCE(a.followers_count, 0) > 0
          AND followed_domain.domain IS NULL

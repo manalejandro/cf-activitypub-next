@@ -1175,5 +1175,6 @@
   "alias_error_not_found": "That account could not be found.",
   "alias_error_self": "That is your own account.",
   "alias_error_exists": "That alias already exists.",
-  "account_moved_to": "This account has moved to"
+  "account_moved_to": "This account has moved to",
+  "settings_migration_note": "Only your followers move (and the notice pointing to the new account): your posts and the accounts you follow are not transferred, so export your following list and import it on the new account."
 }
