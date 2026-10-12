@@ -1155,6 +1155,19 @@ const SUGGESTION_POOL_LIMIT = 200;
 const SUGGESTION_ROTATE_WINDOW = 5;
 
 /**
+ * The fediverse-wide pool: accounts with at least this many advertised
+ * followers, active in the last `SUGGESTION_GLOBAL_ACTIVE_DAYS` days. Mastodon
+ * ships a precomputed, localized list for this (`FollowRecommendation` /
+ * `AccountSuggestions::GlobalSource`); we derive it on the fly. It is what
+ * fills the list on instances whose local graph is small — a user who follows
+ * many remote accounts has exhausted the local pools and cannot have
+ * friends-of-friends computed (we only store the outgoing follows of local
+ * accounts, not those of the accounts they follow).
+ */
+const SUGGESTION_GLOBAL_MIN_FOLLOWERS = 1000;
+const SUGGESTION_GLOBAL_ACTIVE_DAYS = 30;
+
+/**
  * One slot in `SUGGESTION_FRESH_EVERY` comes from the "new instances" pool.
  * Friends-of-friends and popular-on-this-instance alone fill every slot, so
  * accounts from servers nobody here follows would never surface at all.
@@ -1308,6 +1321,34 @@ export async function getAccountSuggestions(
     rank
   );
   for (const row of popularOrdered) {
+    if (!picked.has(row.id)) picked.set(row.id, "global");
+  }
+
+  // Popular in the fediverse: the accounts with the most followers they
+  // advertise, as long as we have seen them post recently. Mastodon's Global
+  // source (a precomputed, localized list) is the equivalent; this keeps the
+  // list useful when the local pools above are exhausted.
+  const global = await db
+    .prepare(
+      `SELECT a.id, COALESCE(a.followers_count, 0) AS remote_followers
+       FROM actors a
+       WHERE a.is_local = 0 AND a.discoverable = 1 AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
+         AND a.last_status_at IS NOT NULL
+         AND date(a.last_status_at) >= date('now', ?)
+         AND COALESCE(a.followers_count, 0) >= ?
+         ${excludedSql}
+       ORDER BY a.last_status_at DESC, a.id
+       LIMIT ?`
+    )
+    .bind(`-${SUGGESTION_GLOBAL_ACTIVE_DAYS} days`, SUGGESTION_GLOBAL_MIN_FOLLOWERS, ...binds, SUGGESTION_POOL_LIMIT)
+    .all<{ id: string; remote_followers: number }>();
+  const globalOrdered = rotateSuggestionWindows(
+    [...(global.results ?? [])].sort((a, b) => b.remote_followers - a.remote_followers || rank(a.id) - rank(b.id)),
+    SUGGESTION_ROTATE_WINDOW,
+    (row) => row.id,
+    rank
+  );
+  for (const row of globalOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
   }
 
