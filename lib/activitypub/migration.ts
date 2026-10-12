@@ -93,13 +93,23 @@ export async function verifyMoveTarget(
   return { ok: true, target };
 }
 
+/** Inbox host, for counting the servers a delivery reached. */
+function inboxDomain(inbox: string): string {
+  try {
+    return new URL(inbox).hostname.toLowerCase();
+  } catch {
+    return inbox;
+  }
+}
+
 /** Perform the move: record it, migrate local followers, deliver Move to remote followers. */
 export async function performMove(
   db: D1Database,
   baseUrl: string,
   source: LocalActor,
   target: LocalActor,
-  queue?: Queue<APDeliveryMessage> | null
+  queue?: Queue<APDeliveryMessage> | null,
+  kv?: { delete(key: string): Promise<unknown> } | null
 ): Promise<{ migratedLocal: number; delivered: number }> {
   const sourceId = source.id;
   const targetId = target.id;
@@ -159,34 +169,36 @@ export async function performMove(
   }
 
   // 3. Deliver the Move to the remote followers (through the queue, shared
-  // inboxes preferred). `delivered` counts servers, which is what the UI says.
+  // inboxes preferred) AND to the destination instance: setting up the alias
+  // made it fetch and cache the old account, so without the Move it keeps
+  // showing a followable profile with no "moved" notice until it happens to
+  // refetch (Mastodon only tells the followers — `ProcessAccountService` reads
+  // `movedTo`, but only on a re-resolve). `delivered` counts servers, i.e.
+  // distinct inbox domains, which is what the UI reports.
   let delivered = 0;
   if (source.privateKeyPem) {
     const remoteIds = allFollowers.filter((f) => !f.isLocal).map((f) => f.id);
     const fetchActor = async (id: string): Promise<APActor | null> =>
       (await getActorById(db, id)) as unknown as APActor | null;
-    const inboxes = await collectFollowerInboxes(remoteIds, fetchActor);
-    if (inboxes.length > 0) {
+    const followerInboxes = await collectFollowerInboxes(remoteIds, fetchActor);
+    const targets = [...new Set([...followerInboxes, ...(target.inbox ? [target.inbox] : [])])];
+    if (targets.length > 0) {
       const moveActivity = buildMove(baseUrl, sourceId, targetId, generateId());
       await enqueueDeliveries(
         queue,
-        inboxes,
+        targets,
         JSON.stringify(moveActivity),
         sourceId,
         `${sourceId}#main-key`,
         source.privateKeyPem
       );
-      delivered = new Set(
-        inboxes.map((inbox) => {
-          try {
-            return new URL(inbox).hostname.toLowerCase();
-          } catch {
-            return inbox;
-          }
-        })
-      ).size;
+      delivered = new Set(targets.map(inboxDomain)).size;
     }
   }
+
+  // Drop the cached actor document (5-minute KV entry): a peer that refetches
+  // right now must not get the pre-move copy.
+  await kv?.delete(`ap:actor:${source.username.toLowerCase()}`).catch(() => {});
 
   return { migratedLocal, delivered };
 }

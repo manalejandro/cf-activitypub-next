@@ -69,7 +69,8 @@ describe("performMove", () => {
 
     const result = await performMove(db, BASE, source, target, fake.queue);
 
-    expect(result).toEqual({ migratedLocal: 1, delivered: 1 });
+    // Two servers got the Move: the followers' instance and the destination.
+    expect(result).toEqual({ migratedLocal: 1, delivered: 2 });
 
     // The move is recorded on the source.
     const moved = await db
@@ -91,30 +92,56 @@ describe("performMove", () => {
     expect(followActivity?.body.inboxUrl).toBe("https://fedisocial.example/inbox");
     expect(followActivity?.body.actorId).toBe(FAN);
 
-    // The Move goes to the remote followers, one message per inbox.
+    // The Move goes to the remote followers, one message per inbox…
     const moveMessages = fake.sent.filter((m) => m.body.activityJson.includes('"type":"Move"'));
-    expect(moveMessages).toHaveLength(2);
+    expect(moveMessages).toHaveLength(3); // 2 remote followers + the destination instance
     const payload = JSON.parse(moveMessages[0].body.activityJson) as { object: string; target: string };
     expect(payload.object).toBe(ME);
     expect(payload.target).toBe(TARGET);
     expect(moveMessages[0].body.actorId).toBe(ME);
+    // …and to the destination instance, which cached the old account when the
+    // alias was set up and would otherwise keep showing a followable profile.
+    expect(moveMessages.some((m) => m.body.inboxUrl === "https://fedisocial.example/inbox")).toBe(true);
   });
 
-  it("reports one server even with several followers on the same domain", async () => {
+  it("tells the destination instance and drops the cached actor document", async () => {
     await seedActor(ME, { local: true });
     await seedActor(TARGET, { local: false, inbox: "https://fedisocial.example/inbox" });
+    const deleted: string[] = [];
+    const kv = {
+      delete: async (key: string) => {
+        deleted.push(key);
+      },
+    };
+
+    const source = (await getActorById(db, ME))!;
+    const target = (await getActorById(db, TARGET))!;
+    const fake = fakeQueue();
+
+    await performMove(db, BASE, source, target, fake.queue, kv);
+
+    const toTarget = fake.sent.filter((m) => m.body.inboxUrl === "https://fedisocial.example/inbox");
+    expect(toTarget.some((m) => m.body.activityJson.includes('"type":"Move"'))).toBe(true);
+    expect(deleted).toEqual(["ap:actor:me"]);
+  });
+
+  it("counts one server even with several followers on the same domain", async () => {
+    await seedActor(ME, { local: true });
+    // The destination lives on the same domain as the two followers.
+    await seedActor("https://remote.example/users/new", { local: false, inbox: "https://remote.example/users/new/inbox" });
     await seedActor(REMOTE_FAN_A, { local: false, inbox: "https://remote.example/users/a/inbox" });
     await seedActor(REMOTE_FAN_B, { local: false, inbox: "https://remote.example/users/b/inbox" });
     await seedFollow(REMOTE_FAN_A, ME);
     await seedFollow(REMOTE_FAN_B, ME);
 
     const source = (await getActorById(db, ME))!;
-    const target = (await getActorById(db, TARGET))!;
+    const target = (await getActorById(db, "https://remote.example/users/new"))!;
     const fake = fakeQueue();
 
     const result = await performMove(db, BASE, source, target, fake.queue);
 
     expect(result.delivered).toBe(1);
+    expect(fake.sent).toHaveLength(3);
   });
 
   it("delivers nothing when there are no remote followers", async () => {
@@ -127,7 +154,9 @@ describe("performMove", () => {
 
     const result = await performMove(db, BASE, source, target, fake.queue);
 
-    expect(result).toEqual({ migratedLocal: 0, delivered: 0 });
-    expect(fake.sent).toHaveLength(0);
+    // No followers, but the destination instance is told (one server).
+    expect(result).toEqual({ migratedLocal: 0, delivered: 1 });
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0].body.inboxUrl).toBe("https://fedisocial.example/inbox");
   });
 });
