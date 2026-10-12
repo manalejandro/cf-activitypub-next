@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} meses",
   "admin_settings_expiration_months_custom": "{months} meses (personalizado)",
   "admin_suspended_since": "Suspenso em",
-  "admin_purge_on": "excluído em"
+  "admin_purge_on": "excluído em",
+  "settings_aliases_title": "Migrar de outra conta",
+  "settings_aliases_hint": "Se quiser migrar de outra conta para esta, crie antes um alias: o servidor da conta antiga verifica-o antes de mover os seguidores para aqui. Esta ação é inofensiva e reversível, e a migração é iniciada na conta antiga.",
+  "settings_aliases_placeholder": "@usuário@servidor",
+  "settings_aliases_add": "Criar alias",
+  "settings_aliases_empty": "Não tem aliases.",
+  "settings_aliases_remove": "Desvincular alias",
+  "settings_aliases_created": "Alias {acct} criado. Já pode iniciar a migração a partir dessa conta.",
+  "settings_aliases_deleted": "Alias removido. Já não é possível migrar a partir dessa conta.",
+  "settings_aliases_failed": "Não foi possível concluir a operação.",
+  "alias_error_invalid": "Escreva um identificador no formato usuário@servidor.",
+  "alias_error_not_found": "Não foi possível encontrar essa conta.",
+  "alias_error_self": "É a sua própria conta.",
+  "alias_error_exists": "Esse alias já existe."
 }

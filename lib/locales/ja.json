@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} か月",
   "admin_settings_expiration_months_custom": "{months} か月（カスタム）",
   "admin_suspended_since": "停止日",
-  "admin_purge_on": "削除予定"
+  "admin_purge_on": "削除予定",
+  "settings_aliases_title": "別のアカウントからの移行",
+  "settings_aliases_hint": "別のアカウントからこのアカウントへ移行する場合は、先にエイリアスを作成してください。移行元のサーバーがこれを確認してからフォロワーが移動します。この操作自体は無害で取り消せます。移行は移行元のアカウントから開始します。",
+  "settings_aliases_placeholder": "@ユーザー@サーバー",
+  "settings_aliases_add": "エイリアスを作成",
+  "settings_aliases_empty": "エイリアスはありません。",
+  "settings_aliases_remove": "エイリアスを解除",
+  "settings_aliases_created": "エイリアス {acct} を作成しました。そのアカウントから移行を開始できます。",
+  "settings_aliases_deleted": "エイリアスを削除しました。そのアカウントからの移行はできなくなりました。",
+  "settings_aliases_failed": "操作を完了できませんでした。",
+  "alias_error_invalid": "ユーザー@サーバーの形式で入力してください。",
+  "alias_error_not_found": "そのアカウントが見つかりません。",
+  "alias_error_self": "それはあなた自身のアカウントです。",
+  "alias_error_exists": "そのエイリアスはすでに存在します。"
 }

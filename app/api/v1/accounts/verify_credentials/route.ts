@@ -1,14 +1,12 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, badRequest } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference, getPreferredLicenseUrl } from "@/lib/db";
+import { broadcastActorUpdate } from "@/lib/activitypub/actor-update";
+import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { buildActor, buildUpdateActor, generateId, normalizeAttributionDomains } from "@/lib/activitypub/utils";
-import { collectFollowerInboxes } from "@/lib/activitypub/federation";
-import { enqueueDeliveries } from "@/lib/activitypub/queue";
-import type { APActor } from "@/lib/types";
+import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import { putMediaObject } from "@/lib/media/r2-put";
 import { profileImageDecision } from "@/lib/media/profile-image";
 import { env } from "cloudflare:workers";
@@ -316,42 +314,11 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   const updated = await getActorById(env.DB, actor.id);
   if (!updated) return unauthorized();
 
+  // Federate the profile update to every remote follower (shared with the
+  // migration-alias endpoints, which change `alsoKnownAs` the same way).
+  await broadcastActorUpdate(env, updated, baseUrl);
+
   const fields = await getActorFields(env.DB, actor.id);
-
-  // Federate profile update to all remote followers
-  if (updated.privateKeyPem) {
-    const apActor = buildActor(baseUrl, updated.username, {
-      displayName: updated.displayName ?? undefined,
-      summary: updated.summary ?? undefined,
-      avatarUrl: updated.avatarUrl,
-      headerUrl: updated.headerUrl,
-      publicKeyPem: updated.publicKeyPem,
-      manuallyApprovesFollowers: updated.manuallyApprovesFollowers,
-      discoverable: updated.discoverable,
-      isBot: updated.isBot,
-      followersCount: updated.followersCount,
-      followingCount: updated.followingCount,
-      statusesCount: updated.statusesCount,
-      published: updated.createdAt,
-      fields: fields.map((f) => ({ name: f.name, value: f.value })),
-      alsoKnownAs: updated.alsoKnownAs ?? undefined,
-      movedTo: updated.movedTo ?? undefined,
-      preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, updated.id)) ?? undefined,
-    });
-    const updateActivity = buildUpdateActor(baseUrl, apActor, generateId());
-    const followerRows = await env.DB
-      .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-      .bind(updated.id)
-      .all<{ actor_id: string }>();
-    const followerIds = followerRows.results.map((r) => r.actor_id);
-    const fetchActor = async (fid: string): Promise<APActor | null> =>
-      (await getActorById(env.DB, fid)) as unknown as APActor | null;
-    const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    if (inboxes.length > 0) {
-      await enqueueDeliveries(env.DELIVERY_QUEUE, inboxes, JSON.stringify(updateActivity), updated.id, `${updated.id}#main-key`, updated.privateKeyPem);
-    }
-  }
-
   const hideCollectionsAfter = sourceHideCollections !== undefined
     ? sourceHideCollections
     : (await getActorPreference(env.DB, updated.id, "profile:hide_collections")) === "true";

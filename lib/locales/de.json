@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} Monate",
   "admin_settings_expiration_months_custom": "{months} Monate (benutzerdefiniert)",
   "admin_suspended_since": "Gesperrt am",
-  "admin_purge_on": "gelöscht am"
+  "admin_purge_on": "gelöscht am",
+  "settings_aliases_title": "Von einem anderen Konto umziehen",
+  "settings_aliases_hint": "Wenn du von einem anderen Konto hierher umziehen möchtest, erstelle zuerst einen Alias: der Server des alten Kontos prüft ihn, bevor er deine Follower hierher verschiebt. Diese Aktion ist harmlos und umkehrbar, den Umzug startest du im alten Konto.",
+  "settings_aliases_placeholder": "@nutzer@server",
+  "settings_aliases_add": "Alias erstellen",
+  "settings_aliases_empty": "Du hast keine Aliase.",
+  "settings_aliases_remove": "Alias entfernen",
+  "settings_aliases_created": "Alias {acct} erstellt. Du kannst den Umzug jetzt dort starten.",
+  "settings_aliases_deleted": "Alias entfernt. Ein Umzug von dort ist nicht mehr möglich.",
+  "settings_aliases_failed": "Der Vorgang konnte nicht abgeschlossen werden.",
+  "alias_error_invalid": "Gib einen Namen im Format nutzer@server ein.",
+  "alias_error_not_found": "Dieses Konto wurde nicht gefunden.",
+  "alias_error_self": "Das ist dein eigenes Konto.",
+  "alias_error_exists": "Dieser Alias existiert bereits."
 }

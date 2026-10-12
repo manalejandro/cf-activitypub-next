@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} мес.",
   "admin_settings_expiration_months_custom": "{months} мес. (другое)",
   "admin_suspended_since": "Заблокирован",
-  "admin_purge_on": "будет удалён"
+  "admin_purge_on": "будет удалён",
+  "settings_aliases_title": "Переезд с другого аккаунта",
+  "settings_aliases_hint": "Если вы переезжаете с другого аккаунта на этот, сначала создайте псевдоним: сервер старого аккаунта проверит его, прежде чем переносить подписчиков сюда. Действие безопасно и обратимо, а сам переезд запускается со старого аккаунта.",
+  "settings_aliases_placeholder": "@пользователь@сервер",
+  "settings_aliases_add": "Создать псевдоним",
+  "settings_aliases_empty": "У вас нет псевдонимов.",
+  "settings_aliases_remove": "Отвязать псевдоним",
+  "settings_aliases_created": "Псевдоним {acct} создан. Теперь можно запустить переезд с того аккаунта.",
+  "settings_aliases_deleted": "Псевдоним удалён. Переезд с того аккаунта больше невозможен.",
+  "settings_aliases_failed": "Не удалось выполнить операцию.",
+  "alias_error_invalid": "Укажите идентификатор в формате пользователь@сервер.",
+  "alias_error_not_found": "Не удалось найти этот аккаунт.",
+  "alias_error_self": "Это ваш собственный аккаунт.",
+  "alias_error_exists": "Этот псевдоним уже существует."
 }

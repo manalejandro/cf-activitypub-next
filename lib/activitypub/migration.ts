@@ -66,8 +66,22 @@ export async function verifyMoveTarget(
     return { ok: false, error: "Target account has already moved elsewhere" };
   }
 
-  // Mastodon requires the target to list the source in its alsoKnownAs.
-  const aliases = target.alsoKnownAs ?? [];
+  // Mastodon requires the target to list the source in its alsoKnownAs. A
+  // cached copy may predate the alias (Mastodon pushes an Update{Actor} when it
+  // is created, and some instances only refresh on the next fetch), so refresh
+  // the actor once before refusing — that is the "wait up to 24 hours" the
+  // Mastodon docs warn about.
+  let aliases = target.alsoKnownAs ?? [];
+  if (!aliases.includes(sourceId)) {
+    const refreshed = await fetchAndCacheRemoteActor(db, resolvedUrl);
+    if (refreshed) {
+      const refetched = await getActorById(db, target.id);
+      if (refetched) {
+        target = refetched;
+        aliases = refetched.alsoKnownAs ?? [];
+      }
+    }
+  }
   if (!aliases.includes(sourceId)) {
     return {
       ok: false,

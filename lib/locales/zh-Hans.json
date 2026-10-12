@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} 个月",
   "admin_settings_expiration_months_custom": "{months} 个月（自定义）",
   "admin_suspended_since": "停用于",
-  "admin_purge_on": "删除于"
+  "admin_purge_on": "删除于",
+  "settings_aliases_title": "从其他账号迁移",
+  "settings_aliases_hint": "如果你想从其他账号迁移到本账号，请先创建一个别名：旧账号的服务器会先验证它，然后才会把关注者迁移过来。此操作无害且可撤销，迁移本身由旧账号发起。",
+  "settings_aliases_placeholder": "@用户@服务器",
+  "settings_aliases_add": "创建别名",
+  "settings_aliases_empty": "你没有别名。",
+  "settings_aliases_remove": "解除别名",
+  "settings_aliases_created": "别名 {acct} 已创建。现在可以从该账号发起迁移。",
+  "settings_aliases_deleted": "别名已删除，无法再从该账号迁移。",
+  "settings_aliases_failed": "无法完成操作。",
+  "alias_error_invalid": "请输入 user@server 格式的标识。",
+  "alias_error_not_found": "找不到该账号。",
+  "alias_error_self": "这是你自己的账号。",
+  "alias_error_exists": "该别名已存在。"
 }

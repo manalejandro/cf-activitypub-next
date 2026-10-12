@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} months",
   "admin_settings_expiration_months_custom": "{months} months (custom)",
   "admin_suspended_since": "Suspended on",
-  "admin_purge_on": "deleted on"
+  "admin_purge_on": "deleted on",
+  "settings_aliases_title": "Move from another account",
+  "settings_aliases_hint": "If you want to move from another account to this one, create an alias first: the old account's server checks it before moving your followers here. This action is harmless and reversible, and the move itself is initiated from the old account.",
+  "settings_aliases_placeholder": "@user@server",
+  "settings_aliases_add": "Create alias",
+  "settings_aliases_empty": "You have no aliases.",
+  "settings_aliases_remove": "Unlink alias",
+  "settings_aliases_created": "Alias {acct} created. You can now start the move from that account.",
+  "settings_aliases_deleted": "Alias removed. A move from that account is no longer possible.",
+  "settings_aliases_failed": "Could not complete the operation.",
+  "alias_error_invalid": "Enter a handle in the user@server format.",
+  "alias_error_not_found": "That account could not be found.",
+  "alias_error_self": "That is your own account.",
+  "alias_error_exists": "That alias already exists."
 }

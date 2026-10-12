@@ -1161,5 +1161,18 @@
   "admin_settings_expiration_months_n": "{months} mois",
   "admin_settings_expiration_months_custom": "{months} mois (personnalisé)",
   "admin_suspended_since": "Suspendu le",
-  "admin_purge_on": "supprimé le"
+  "admin_purge_on": "supprimé le",
+  "settings_aliases_title": "Migrer depuis un autre compte",
+  "settings_aliases_hint": "Si tu veux migrer depuis un autre compte vers celui-ci, crée d'abord un alias : le serveur de l'ancien compte le vérifie avant de déplacer tes abonné·es ici. Cette action est sans danger et réversible, et la migration est lancée depuis l'ancien compte.",
+  "settings_aliases_placeholder": "@utilisateur@serveur",
+  "settings_aliases_add": "Créer un alias",
+  "settings_aliases_empty": "Tu n'as aucun alias.",
+  "settings_aliases_remove": "Dissocier l'alias",
+  "settings_aliases_created": "Alias {acct} créé. Tu peux maintenant lancer la migration depuis ce compte.",
+  "settings_aliases_deleted": "Alias supprimé. Une migration depuis ce compte n'est plus possible.",
+  "settings_aliases_failed": "Impossible de terminer l'opération.",
+  "alias_error_invalid": "Saisis un identifiant au format utilisateur@serveur.",
+  "alias_error_not_found": "Ce compte est introuvable.",
+  "alias_error_self": "C'est ton propre compte.",
+  "alias_error_exists": "Cet alias existe déjà."
 }
