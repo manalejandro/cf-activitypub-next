@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
+import { avatarInitial } from "@/lib/avatar";
 
 interface Me {
   id: string;
@@ -212,7 +213,7 @@ export default function CollectionDetailPage({ params }: { params: Promise<{ id:
                       <Image src={account.avatar} alt="" width={40} height={40} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
                     ) : (
                       <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "var(--accent)" }}>
-                        {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
+                        {avatarInitial(account.display_name, account.username)}
                       </div>
                     )}
                   </Link>

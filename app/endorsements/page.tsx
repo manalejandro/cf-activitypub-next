@@ -11,6 +11,7 @@ import { useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
+import { avatarInitial } from "@/lib/avatar";
 
 interface Account {
   id: string;
@@ -128,7 +129,7 @@ export default function EndorsementsPage() {
                         fontWeight: 700, color: "var(--accent)", fontSize: "1.1rem",
                       }}
                     >
-                      {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
+                      {avatarInitial(account.display_name, account.username)}
                     </div>
                   )}
                 </Link>

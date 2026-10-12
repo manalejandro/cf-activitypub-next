@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { avatarInitial } from "@/lib/avatar";
 
 /**
  * Account avatar: renders the image when available, otherwise falls back to
- * the first letter of the display name.
+ * the first letter or number of the display name (lib/avatar.ts).
  */
 export function Avatar({
   avatar,
@@ -19,7 +20,7 @@ export function Avatar({
   radius?: string;
 }) {
   const [err, setErr] = useState(false);
-  const fallback = (name?.[0] ?? "?").toUpperCase();
+  const fallback = avatarInitial(name, null);
 
   if (avatar && !err) {
     return (

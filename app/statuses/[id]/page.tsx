@@ -29,6 +29,7 @@ import { useLimits } from "@/lib/limits-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { Loading } from "@/components/Loading";
+import { avatarInitial } from "@/lib/avatar";
 
 interface PollOption { title: string; votes_count: number | null }
 interface Poll {
@@ -366,7 +367,7 @@ function ReplyBox({
           <div style={{ width: 36, height: 36, position: "relative", flexShrink: 0, borderRadius: "50%", overflow: "hidden", background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "var(--accent)", fontSize: "0.9rem" }}>
             {me.avatar
               ? <Image src={me.avatar} alt="" fill sizes="36px" style={{ objectFit: "cover" }} />
-              : (me.display_name?.[0] ?? me.username?.[0] ?? "?").toUpperCase()}
+              : avatarInitial(me.display_name, me.username)}
           </div>
         )}
         <form onSubmit={handleSubmit} style={{ flex: 1 }}>

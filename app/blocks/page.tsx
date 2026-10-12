@@ -11,6 +11,7 @@ import { useLocale } from "@/lib/i18n";
 import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
+import { avatarInitial } from "@/lib/avatar";
 
 interface Account {
   id: string;
@@ -228,7 +229,7 @@ export default function BlocksPage() {
                             fontWeight: 700, color: "var(--accent)", fontSize: "1rem",
                           }}
                         >
-                          {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
+                          {avatarInitial(account.display_name, account.username)}
                         </div>
                       )}
                     </Link>

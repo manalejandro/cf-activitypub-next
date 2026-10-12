@@ -8,6 +8,7 @@ import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Pagination } from "@/components/Pagination";
+import { avatarInitial } from "@/lib/avatar";
 
 interface SuspendedAccount {
   id: string;
@@ -138,7 +139,7 @@ export default function AdminSuspendedPage() {
                         {a.account.avatar && !a.account.avatar.includes("/avatars/original/missing.png") ? (
                           <Image src={a.account.avatar} alt="" width={34} height={34} style={{ objectFit: "cover", width: "100%", height: "100%" }} />
                         ) : (
-                          (a.account.display_name?.[0] ?? a.username[0]).toUpperCase()
+                          avatarInitial(a.account.display_name, a.username)
                         )}
                       </div>
                       <div>

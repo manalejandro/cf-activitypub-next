@@ -24,6 +24,7 @@ import { RelativeTime } from "./RelativeTime";
 import { mediaDownloadName } from "@/lib/media/filename";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
+import { avatarInitial } from "@/lib/avatar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,7 +138,7 @@ export interface Me {
 
 export function AvatarBubble({ account, size = 42 }: { account: Account; size?: number }) {
   const [err, setErr] = useState(false);
-  const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
+  const fallback = avatarInitial(account.display_name, account.username);
   if (!err && account.avatar) {
     return (
       <Image

@@ -10,6 +10,7 @@ import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
+import { avatarInitial } from "@/lib/avatar";
 
 interface DirectoryEntry {
   id: string;
@@ -194,7 +195,7 @@ export default function DirectoryPage() {
                           fontWeight: 700, color: "var(--accent)", fontSize: "1.25rem",
                         }}
                       >
-                        {(entry.display_name?.[0] ?? entry.username?.[0] ?? "?").toUpperCase()}
+                        {avatarInitial(entry.display_name, entry.username)}
                       </div>
                     )}
                     <div style={{ minWidth: 0 }}>

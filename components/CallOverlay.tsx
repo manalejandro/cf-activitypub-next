@@ -18,6 +18,7 @@ import { useCall } from "@/lib/webrtc/use-call";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
+import { avatarInitial } from "@/lib/avatar";
 
 interface CallOverlayProps {
   /** Mastodon OAuth access token for the authenticated user. */
@@ -119,7 +120,7 @@ export function CallOverlay({ accessToken }: CallOverlayProps) {
             />
           ) : (
             <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-3xl">
-              {event.callerDisplayName.charAt(0).toUpperCase()}
+              {avatarInitial(event.callerDisplayName, null)}
             </div>
           )}
           <div className="text-center">

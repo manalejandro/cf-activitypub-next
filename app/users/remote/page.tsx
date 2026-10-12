@@ -24,6 +24,7 @@ import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
+import { avatarInitial } from "@/lib/avatar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ type ActiveTab = "posts" | "replies" | "pinned" | "media" | "following" | "follo
 
 function AvatarImg({ account, size = 42 }: { account: Account; size?: number }) {
   const [err, setErr] = useState(false);
-  const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
+  const fallback = avatarInitial(account.display_name, account.username);
   if (!err && account.avatar) {
     return (
       <Image src={account.avatar} alt={account.display_name} width={size} height={size}
@@ -600,7 +601,7 @@ function RemoteProfileInner() {
                 style={{ objectFit: "cover" }}
               />
             ) : (
-              (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()
+              avatarInitial(account.display_name, account.username)
             )}
           </button>
 

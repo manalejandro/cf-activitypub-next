@@ -28,6 +28,7 @@ import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Loading } from "@/components/Loading";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
+import { avatarInitial } from "@/lib/avatar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ interface Collection {
 
 function AvatarBubble({ account, size = 42 }: { account: { display_name: string; username: string; avatar: string }; size?: number }) {
   const [imgError, setImgError] = useState(false);
-  const fallback = (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase();
+  const fallback = avatarInitial(account.display_name, account.username);
 
   if (!imgError && account.avatar) {
     return (
@@ -880,7 +881,7 @@ export default function ProfilePage() {
                     style={{ objectFit: "cover" }}
                   />
                 ) : (
-                  (account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()
+                  avatarInitial(account.display_name, account.username)
                 )}
               </button>
 
@@ -1563,7 +1564,7 @@ export default function ProfilePage() {
                     />
                   ) : (
                     <span style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--accent)" }}>
-                      {(account.display_name?.[0] ?? account.username?.[0] ?? "?").toUpperCase()}
+                      {avatarInitial(account.display_name, account.username)}
                     </span>
                   )}
                   <input
