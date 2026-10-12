@@ -47,6 +47,7 @@ import {
 } from "../lib/activitypub/instances";
 import { runModerationCycle } from "../lib/moderation/cycle";
 import { runAccountExpiration } from "../lib/moderation/account-expiration";
+import { refreshFollowRecommendations, RECOMMENDATIONS_REFRESH_HOURS } from "../lib/follow-recommendations";
 import type { APActor } from "../lib/types";
 
 interface Env {
@@ -1091,6 +1092,22 @@ async function executeScheduled(env: Env): Promise<void> {
     await runAccountExpiration(env as unknown as Parameters<typeof runAccountExpiration>[0]);
   } catch (err) {
     console.error("[cron] account expiration failed", err);
+  }
+
+  // Follow recommendations (Mastodon's `FollowRecommendation`): a daily ranking
+  // of what the recently active locals follow and engage with, served as a
+  // suggestion pool so a small instance — or a viewer who already follows
+  // everyone the live pools know — still gets a full list.
+  await setStage("suggestions");
+  try {
+    const lastRun = await env.KV.get("cron:suggestions:last").catch(() => null);
+    if (!lastRun || Date.now() - Number(lastRun) > RECOMMENDATIONS_REFRESH_HOURS * 3_600_000) {
+      const count = await refreshFollowRecommendations(env);
+      await env.KV.put("cron:suggestions:last", String(Date.now()), { expirationTtl: 2 * 86_400 }).catch(() => {});
+      console.log(`[cron] follow recommendations refreshed (${count})`);
+    }
+  } catch (err) {
+    console.error("[cron] follow recommendations failed", err);
   }
 
   // Federation engine: refresh NodeInfo metadata for due instances (a few per

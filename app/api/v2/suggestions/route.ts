@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAccountSuggestions, getAllCustomEmojis } from "@/lib/db";
+import { readFollowRecommendations } from "@/lib/follow-recommendations";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
@@ -21,10 +22,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   );
   const offset = Math.max(parseInt(request.nextUrl.searchParams.get("offset") ?? "0"), 0);
 
-  const [suggestions, emojis] = await Promise.all([
-    getAccountSuggestions(env.DB, me?.id ?? null, { limit, offset }),
+  const [recommendedIds, emojis] = await Promise.all([
+    // Mastodon's `FollowRecommendation`: a daily ranking of what the active
+    // locals follow and engage with (cron-refreshed, KV-stored).
+    readFollowRecommendations(env),
     getAllCustomEmojis(env.DB),
   ]);
+  const suggestions = await getAccountSuggestions(env.DB, me?.id ?? null, { limit, offset, recommendedIds });
 
   return json(
     suggestions.map(({ actor, source }) => ({

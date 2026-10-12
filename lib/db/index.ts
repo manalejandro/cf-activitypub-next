@@ -1214,7 +1214,7 @@ function rotateSuggestionWindows<T>(
 export async function getAccountSuggestions(
   db: D1Database,
   viewerId: string | null,
-  opts: { limit?: number; offset?: number; rotationSeed?: number } = {}
+  opts: { limit?: number; offset?: number; rotationSeed?: number; recommendedIds?: string[] } = {}
 ): Promise<AccountSuggestion[]> {
   const { limit = 20, offset = 0 } = opts;
   const wanted = Math.min(limit + offset, 100);
@@ -1322,6 +1322,28 @@ export async function getAccountSuggestions(
   );
   for (const row of popularOrdered) {
     if (!picked.has(row.id)) picked.set(row.id, "global");
+  }
+
+  // Precomputed instance recommendations (Mastodon's `FollowRecommendation`):
+  // who the recently active locals follow and whose recent posts they engage
+  // with. They survive the viewer following everyone the live pools know, so
+  // they come before the fediverse-wide fallback below.
+  if (opts.recommendedIds && opts.recommendedIds.length > 0) {
+    const candidates = opts.recommendedIds.slice(0, 300);
+    const allowed = await db
+      .prepare(
+        `SELECT a.id FROM actors a
+         WHERE a.id IN (SELECT value FROM json_each(?))
+           AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
+           ${excludedSql}`
+      )
+      .bind(JSON.stringify(candidates), ...binds)
+      .all<{ id: string }>();
+    const ok = new Set((allowed.results ?? []).map((row) => row.id));
+    // The ranking order is the input order, not the query's.
+    for (const id of candidates) {
+      if (ok.has(id) && !picked.has(id)) picked.set(id, "global");
+    }
   }
 
   // Popular in the fediverse: the accounts with the most followers they
