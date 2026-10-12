@@ -34,7 +34,7 @@ import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { getPollsByObjectIds, getPollVotesByObjectIds } from "@/lib/db";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
-import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
+import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent, type MentionsMap } from "@/lib/activitypub/content";
 import { parseLocationJson } from "@/lib/activitypub/utils";
 import { safeLocationUrl } from "@/lib/location";
 import {
@@ -299,16 +299,67 @@ export function serializeCollection(
 function renderRemoteContent(
   content: string | null | undefined,
   localDomain: string,
-  emojis?: StatusEmoji[]
+  emojis?: StatusEmoji[],
+  mentions?: MentionsMap | null
 ): string {
   const raw = content ?? "";
   if (!raw) return "";
   const isHtml = /<[a-z][\s>]/i.test(raw);
   if (isHtml) {
     const sanitized = sanitizeFediverseHtml(raw) ?? "";
-    return linkifyHtmlText(sanitized, `https://${localDomain}`, emojis);
+    return linkifyHtmlText(sanitized, `https://${localDomain}`, emojis, mentions);
   }
-  return processStatusContent(localSummaryToPlain(raw), `https://${localDomain}`, emojis).html;
+  return processStatusContent(localSummaryToPlain(raw), `https://${localDomain}`, emojis, { mentions }).html;
+}
+
+/**
+ * Mentions declared by a stored object.
+ *
+ * The AP `tag` array is the authority: a local status only carries the mentions
+ * its text resolved to at publish time, and a remote one only what its own
+ * server declared — so a bare `@word` that is not a mention (a nickname, an
+ * account that does not exist) is never turned into a link, and a remote
+ * `@word` is never linked to our own local profile.
+ */
+function mentionLinksFromRaw(raw: string | null | undefined, localDomain: string): MentionsMap {
+  const links: MentionsMap = new Map();
+  if (!raw) return links;
+  let tags: APTag[] = [];
+  try {
+    const parsed = JSON.parse(raw) as APObject;
+    tags = Array.isArray(parsed.tag) ? (parsed.tag as APTag[]) : [];
+  } catch {
+    return links;
+  }
+  const localHost = localDomain.toLowerCase();
+  for (const tag of tags) {
+    if (tag.type !== "Mention" || typeof tag.href !== "string" || !tag.href) continue;
+    const href = tag.href.startsWith("/") ? `https://${localDomain}${tag.href}` : tag.href;
+    const name = typeof tag.name === "string" ? tag.name.replace(/^@/, "").toLowerCase() : "";
+    const parts = name.includes("@") ? name.split("@") : null;
+    let user = (parts ? parts[0] : name).toLowerCase();
+    let host = parts?.[1] ?? "";
+    if (!host) {
+      try {
+        host = new URL(href).hostname.toLowerCase();
+      } catch {
+        host = "";
+      }
+    }
+    if (!user) {
+      const fromHref = /\/(?:users\/|@)([^/?#]+)\/?$/.exec(href);
+      user = fromHref ? fromHref[1].toLowerCase() : "";
+    }
+    if (!user || !host) continue;
+    if (host === localHost) {
+      links.set(user, { href });
+      // The full local handle (`@user@ourdomain`) is the same account.
+      links.set(`${user}@${localHost}`, { href });
+    } else {
+      links.set(`${user}@${host}`, { href });
+    }
+  }
+  return links;
 }
 
 /**
@@ -391,7 +442,11 @@ export function serializeStatus(
     favourites_count: obj.favouritesCount,
     edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIso(obj.updatedAt) : null,
     license_url: obj.licenseUrl ?? null,
-    content: rewriteProfileLinks(renderRemoteContent(obj.content, localDomain, emojis), obj.raw, localDomain),
+    content: rewriteProfileLinks(
+      renderRemoteContent(obj.content, localDomain, emojis, mentionLinksFromRaw(obj.raw, localDomain)),
+      obj.raw,
+      localDomain
+    ),
     reblog: opts.reblogOf ?? null,
     application: obj.local ? { name: getInstanceTitle(), website: `https://${localDomain}` } : null,
     account: serializeAccount(author, localDomain, {

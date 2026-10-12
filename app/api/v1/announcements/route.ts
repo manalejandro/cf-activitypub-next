@@ -5,6 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getAdminRole } from "@/lib/admin-auth";
 import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
 import { linkifyHtmlText, localSummaryToPlain, processStatusContent } from "@/lib/activitypub/content";
+import { resolveMentionLinks } from "@/lib/activitypub/mentions";
 import { env } from "cloudflare:workers";
 
 // Announcements are stored as the plain text an admin types in the composer.
@@ -12,16 +13,19 @@ import { env } from "cloudflare:workers";
 // #hashtags, :emoji:) so the banner and /announcements render links instead of
 // raw text. HTML pasted by the admin is sanitized first, mirroring remote
 // content handling (serializers.renderRemoteContent).
-function renderAnnouncementContent(content: string, domain: string): string {
+async function renderAnnouncementContent(content: string, domain: string): Promise<string> {
   const raw = content ?? "";
   if (!raw) return "";
   const baseUrl = `https://${domain}`;
+  // Only handles that resolve to a real account become links (`@algo` stays
+  // plain text), same as statuses.
+  const mentions = await resolveMentionLinks(env.DB, localSummaryToPlain(raw), baseUrl, env.KV);
   const isHtml = /<[a-z][\s>]/i.test(raw);
   if (isHtml) {
     const sanitized = sanitizeFediverseHtml(raw) ?? "";
-    return linkifyHtmlText(sanitized, baseUrl);
+    return linkifyHtmlText(sanitized, baseUrl, undefined, mentions);
   }
-  return processStatusContent(localSummaryToPlain(raw), baseUrl).html;
+  return processStatusContent(localSummaryToPlain(raw), baseUrl, undefined, { mentions }).html;
 }
 
 // GET /api/v1/announcements — List announcements, with `read` status for the
@@ -49,16 +53,20 @@ export async function GET(request: NextRequest): Promise<Response> {
     is_read: number;
   }>();
 
-  return json(rows.results.map((r) => ({
-    id: r.id,
-    content: renderAnnouncementContent(r.content, domain),
-    starts_at: r.starts_at,
-    ends_at: r.ends_at,
-    all_day: Boolean(r.all_day),
-    published_at: r.published_at,
-    updated_at: r.updated_at,
-    read: Boolean(r.is_read),
-  })));
+  const announcements = await Promise.all(
+    rows.results.map(async (r) => ({
+      id: r.id,
+      content: await renderAnnouncementContent(r.content, domain),
+      starts_at: r.starts_at,
+      ends_at: r.ends_at,
+      all_day: Boolean(r.all_day),
+      published_at: r.published_at,
+      updated_at: r.updated_at,
+      read: Boolean(r.is_read),
+    }))
+  );
+
+  return json(announcements);
 }
 
 // POST /api/v1/announcements — Create a new announcement (admin/moderator only).
@@ -93,7 +101,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   return json({
     id,
-    content: renderAnnouncementContent(content, domain),
+    content: await renderAnnouncementContent(content, domain),
     starts_at: null,
     ends_at: null,
     all_day: false,

@@ -23,6 +23,40 @@ interface Replacement {
   tag?: APTag;
 }
 
+/** A mention that resolved to a real account. */
+export interface ResolvedMention {
+  /** Canonical actor IRI. */
+  href: string;
+}
+
+/**
+ * Mentions the renderer is allowed to linkify, keyed by handle: `user` for a
+ * local mention and `user@domain` for a remote one (both lowercased). With a
+ * map, an `@word` that is not in it stays plain text — a link to a profile that
+ * does not exist (or, for a remote `@word`, to our own local profile) is worse
+ * than no link at all.
+ */
+export type MentionsMap = Map<string, ResolvedMention>;
+
+const REMOTE_MENTION_RE = /@([a-zA-Z0-9_.-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+const LOCAL_MENTION_RE = /(?<![a-zA-Z0-9_.-])@([a-zA-Z0-9_]+)(?![@a-zA-Z0-9_.-])/g;
+
+/** Handles a text mentions, split into local (`@user`) and remote (`@user@domain`). */
+export function extractMentionHandles(text: string): {
+  local: string[];
+  remote: { user: string; domain: string }[];
+} {
+  const remote: { user: string; domain: string }[] = [];
+  for (const m of text.matchAll(REMOTE_MENTION_RE)) {
+    remote.push({ user: m[1], domain: m[2] });
+  }
+  const local: string[] = [];
+  for (const m of text.matchAll(LOCAL_MENTION_RE)) {
+    local.push(m[1]);
+  }
+  return { local, remote };
+}
+
 /**
  * Builds the ordered list of link replacements for plain-text content
  * (custom emoji, URLs, remote/local mentions, hashtags). Shared by
@@ -31,7 +65,8 @@ interface Replacement {
 function buildReplacements(
   text: string,
   baseUrl?: string,
-  customEmojis?: EmojiLike[]
+  customEmojis?: EmojiLike[],
+  mentions?: MentionsMap | null
 ): Replacement[] {
   const replacements: Replacement[] = [];
   const usedRanges: [number, number][] = [];
@@ -90,11 +125,13 @@ function buildReplacements(
 
   // 2. Remote mentions: @user@domain.
   // Display only the username (@user), keeping the full handle as the link
-  // target and as an accessible hover title.
-  const remotePattern = /@([a-zA-Z0-9_.-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-  for (const m of text.matchAll(remotePattern)) {
+  // target and as an accessible hover title. A handle that resolved to no
+  // account stays plain text when a resolution map is provided.
+  for (const m of text.matchAll(REMOTE_MENTION_RE)) {
     const [full, user, domain] = m;
-    const href = `https://${domain}/@${user}`;
+    const resolved = mentions?.get(`${user}@${domain}`.toLowerCase());
+    if (mentions && !resolved) continue;
+    const href = resolved?.href ?? `https://${domain}/@${user}`;
     add(
       m.index!,
       m.index! + full.length,
@@ -105,10 +142,11 @@ function buildReplacements(
 
   // 3. Local mentions: @user (not followed by @domain)
   const localDomain = baseUrl ? new URL(baseUrl).hostname : undefined;
-  const localPattern = /(?<![a-zA-Z0-9_.-])@([a-zA-Z0-9_]+)(?![@a-zA-Z0-9_.-])/g;
-  for (const m of text.matchAll(localPattern)) {
+  for (const m of text.matchAll(LOCAL_MENTION_RE)) {
     const [full, user] = m;
-    const href = baseUrl ? `${baseUrl}/users/${user}` : `/users/${user}`;
+    const resolved = mentions?.get(user.toLowerCase());
+    if (mentions && !resolved) continue;
+    const href = resolved?.href ?? (baseUrl ? `${baseUrl}/users/${user}` : `/users/${user}`);
     const name = localDomain ? `@${user}@${localDomain}` : `@${user}`;
     add(
       m.index!,
@@ -238,9 +276,9 @@ export function linkifyInline(
   text: string,
   baseUrl?: string,
   customEmojis?: EmojiLike[],
-  options: { convertNewlines?: boolean } = {}
+  options: { convertNewlines?: boolean; mentions?: MentionsMap | null } = {}
 ): string {
-  return buildHtml(text, buildReplacements(text, baseUrl, customEmojis), options);
+  return buildHtml(text, buildReplacements(text, baseUrl, customEmojis, options.mentions), options);
 }
 
 const HTML_WALK_RE = /<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
@@ -259,7 +297,8 @@ const HTML_WALK_RE = /<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
 export function linkifyHtmlText(
   html: string,
   baseUrl?: string,
-  customEmojis?: EmojiLike[]
+  customEmojis?: EmojiLike[],
+  mentions?: MentionsMap | null
 ): string {
   let out = "";
   let skip = 0; // depth of protected elements (a, pre, code)
@@ -271,7 +310,7 @@ export function linkifyHtmlText(
       if (skip === 0) {
         // Real HTML text nodes: keep newlines as whitespace (browsers collapse
         // them) instead of turning them into line breaks.
-        out += linkifyInline(decodeHtmlEscapes(text), baseUrl, customEmojis, { convertNewlines: false });
+        out += linkifyInline(decodeHtmlEscapes(text), baseUrl, customEmojis, { convertNewlines: false, mentions });
       } else {
         out += text;
       }
@@ -330,6 +369,13 @@ export interface ProcessStatusContentOptions {
    * the subset Mastodon can display.
    */
   markdown?: boolean;
+  /**
+   * Mentions allowed to become links (see `MentionsMap`). Callers with DB
+   * access resolve them first (`resolveMentionLinks`); when omitted every
+   * `@word` is linkified, which is only right for text that was never meant to
+   * mention anyone (settings pages, announcements).
+   */
+  mentions?: MentionsMap | null;
 }
 
 export function processStatusContent(
@@ -338,17 +384,17 @@ export function processStatusContent(
   customEmojis?: EmojiLike[],
   options: ProcessStatusContentOptions = {}
 ): { html: string; tags: APTag[] } {
-  const replacements = buildReplacements(text, baseUrl, customEmojis);
+  const replacements = buildReplacements(text, baseUrl, customEmojis, options.mentions);
 
   if (options.markdown) {
     // Tags come from the text OUTSIDE code samples: `@options` or `#quote`
     // inside a fenced block is source code, never a mention or hashtag.
-    const tags = buildReplacements(maskMarkdownCode(text), baseUrl, customEmojis)
+    const tags = buildReplacements(maskMarkdownCode(text), baseUrl, customEmojis, options.mentions)
       .filter((r) => r.tag)
       .map((r) => r.tag!);
     return {
       html: renderMarkdown(text, {
-        inline: (segment) => linkifyInline(segment, baseUrl, customEmojis),
+        inline: (segment) => linkifyInline(segment, baseUrl, customEmojis, { mentions: options.mentions }),
         escape: escapeHtml,
       }),
       tags,

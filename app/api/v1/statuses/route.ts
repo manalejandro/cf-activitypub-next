@@ -43,7 +43,8 @@ import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
-import { canonicalizeMentionTags } from "@/lib/activitypub/mentions";
+import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
+import type { MentionsMap } from "@/lib/activitypub/content";
 import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists, actorExclusion, eligibleLocalRecipients } from "@/lib/streaming/broadcast";
@@ -364,6 +365,12 @@ export async function POST(request: NextRequest): Promise<Response> {
       ? await fetchReplyParent(actor, inReplyToId)
       : null;
 
+  // Only the handles that resolve to a real account may become links and
+  // Mention tags: `@algo` typed by mistake must not render as a local profile
+  // that does not exist. Resolved from the final text (a reply expands its bare
+  // handles against the conversation participants first).
+  let mentionLinks: MentionsMap | null = null;
+
   let replyMentionTags: APTag[] = [];
   if (inReplyToId && parentNode) {
     // Resolve bare @username mentions against the conversation participants so
@@ -372,9 +379,23 @@ export async function POST(request: NextRequest): Promise<Response> {
     const participants = await collectThreadParticipants(env.DB, parentNode, baseUrl);
     const localDomain = new URL(baseUrl).hostname;
     content = expandBareMentions(content ?? "", participants, localDomain, { markdown: markdownContent });
+    mentionLinks = await resolveMentionLinks(env.DB, content ?? "", baseUrl, env.KV);
+    // Conversation participants are known accounts: their handles resolve even
+    // when the remote fetch would fail right now.
+    for (const participant of participants) {
+      if (!participant.username || !participant.domain) continue;
+      const user = participant.username.toLowerCase();
+      const domain = participant.domain.toLowerCase();
+      if (domain === localDomain.toLowerCase()) {
+        mentionLinks.set(user, { href: participant.iri });
+        mentionLinks.set(`${user}@${domain}`, { href: participant.iri });
+      } else {
+        mentionLinks.set(`${user}@${domain}`, { href: participant.iri });
+      }
+    }
 
     // Which actors are already mentioned in the user's own text (avoid dupes)
-    const { tags: userMentionTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent });
+    const { tags: userMentionTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent, mentions: mentionLinks });
     const alreadyMentioned = new Set<string>();
     for (const tag of userMentionTags) {
       const key = mentionKey(tag);
@@ -384,7 +405,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     replyMentionTags = mentions.tags;
   }
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent });
+  mentionLinks ??= await resolveMentionLinks(env.DB, content ?? "", baseUrl, env.KV);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, localEmojis, { markdown: markdownContent, mentions: mentionLinks });
 
   // Merge tag-only mention additions and de-duplicate Mention tags by actor
   const seenMentionKeys = new Set<string>();

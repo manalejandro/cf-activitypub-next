@@ -181,11 +181,22 @@ describe("serializeStatus type passthrough", () => {
 
 describe("serializeStatus content linkification", () => {
   it("linkifies plain-text remote content (URLs, mentions, hashtags)", () => {
-    const obj = makeObject("Note", { content: "Mira https://example.com/x y @alice@remote.example #viaje" });
+    const obj = makeObject("Note", {
+      content: "Mira https://example.com/x y @alice@remote.example #viaje",
+      // A mention is only rendered as a link when the object declares it.
+      tag: [{ type: "Mention", href: "https://remote.example/users/alice", name: "@alice@remote.example" }],
+    });
     const status = serializeStatus(obj, author, "local.example");
     expect(status.content).toContain('<a href="https://example.com/x"');
     expect(status.content).toContain('class="u-url mention"');
     expect(status.content).toContain('#viaje');
+  });
+
+  it("leaves an @word the object does not declare as a mention plain", () => {
+    const obj = makeObject("Note", { content: "Mira @algo" });
+    const status = serializeStatus(obj, author, "local.example");
+    expect(status.content).not.toContain("mention");
+    expect(status.content).toContain("@algo");
   });
 
   it("keeps federated HTML content untouched by the sanitizer", () => {
@@ -199,6 +210,7 @@ describe("serializeStatus content linkification", () => {
   it("linkifies unlinked text wrapped in <p> tags (PeerTube/WordPress-style)", () => {
     const obj = makeObject("Note", {
       content: "<p>Mira @alice@remote.example https://example.com/x #viaje</p>",
+      tag: [{ type: "Mention", href: "https://remote.example/users/alice", name: "@alice@remote.example" }],
     });
     const status = serializeStatus(obj, author, "local.example");
     expect(status.content).toContain('class="u-url mention"');

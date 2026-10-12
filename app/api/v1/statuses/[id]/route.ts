@@ -17,7 +17,7 @@ import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
 import { refreshRemotePoll, applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
-import { canonicalizeMentionTags } from "@/lib/activitypub/mentions";
+import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
 import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
@@ -175,7 +175,10 @@ export async function PUT(
     return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);
   }
 
-  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, undefined, { markdown: markdownContent });
+  // Only handles that resolve to a real account become links and Mention tags
+  // (see the create route): `@algo` typed by mistake stays plain text.
+  const mentionLinks = await resolveMentionLinks(env.DB, content ?? "", baseUrl, env.KV);
+  const { html: htmlContent, tags: contentTags } = processStatusContent(content ?? "", baseUrl, undefined, { markdown: markdownContent, mentions: mentionLinks });
   const updatedAt = new Date().toISOString();
 
   // Preserve the original mentions and cc (reply participants) so edits don't
@@ -189,7 +192,19 @@ export async function PUT(
     if (Array.isArray(raw.to)) originalTo = raw.to as string[];
     if (Array.isArray(raw.cc)) originalCc = raw.cc as string[];
   } catch { /* ignore */ }
-  const tags = [...originalMentions, ...(contentTags ?? []).filter((t) => t.type !== "Mention")];
+  // Mentions resolved from the new text join the preserved ones: an edit that
+  // adds a mention must not leave the link without its Mention tag.
+  const mergedTags: APTag[] = [];
+  const seenTagKeys = new Set<string>();
+  for (const tag of [...originalMentions, ...(contentTags ?? [])]) {
+    const key = tag.type === "Mention" && tag.href ? `m:${tag.href}` : tag.type === "Hashtag" && tag.name ? `h:${tag.name}` : "";
+    if (key) {
+      if (seenTagKeys.has(key)) continue;
+      seenTagKeys.add(key);
+    }
+    mergedTags.push(tag);
+  }
+  const tags = mergedTags;
   // Legacy objects may carry `/@user` mention hrefs (text-parsed before the
   // canonicalization existed): rewrite them — and the preserved to/cc — so an
   // edit heals the addressing instead of carrying it forward.
