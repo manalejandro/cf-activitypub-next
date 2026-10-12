@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "请输入 user@server 格式的标识。",
   "alias_error_not_found": "找不到该账号。",
   "alias_error_self": "这是你自己的账号。",
-  "alias_error_exists": "该别名已存在。"
+  "alias_error_exists": "该别名已存在。",
+  "account_moved_to": "该账号已迁移至"
 }

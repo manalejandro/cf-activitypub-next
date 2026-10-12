@@ -12,12 +12,13 @@
  */
 
 import type { D1Database, Queue } from "@cloudflare/workers-types";
-import type { LocalActor } from "@/lib/types";
+import type { APActor, LocalActor } from "@/lib/types";
 import { getActorById, getFollowers, createFollow, deleteFollow, updateActor } from "@/lib/db";
+import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { resolveWebFinger } from "@/lib/activitypub/federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "@/lib/activitypub/queue";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
-import { buildMove, generateId } from "@/lib/activitypub/utils";
+import { buildFollow, buildMove, generateId } from "@/lib/activitypub/utils";
 
 export interface MoveVerification {
   ok: boolean;
@@ -110,9 +111,13 @@ export async function performMove(
     movedTo: targetId,
   });
 
-  // 2. Migrate local followers in place.
+  // 2. Migrate local followers in place and re-follow the target for each one.
+  // The target's instance only learns about a follower from a Follow signed by
+  // that follower (Mastodon's MoveWorker does the same), otherwise the account
+  // arrives at the new instance with no followers.
   const allFollowers = await getFollowers(db, sourceId, 10000, 0);
   let migratedLocal = 0;
+  let acceptedMoved = 0;
   for (const follower of allFollowers) {
     if (!follower.isLocal) continue;
     const alreadyTargets = await db
@@ -121,25 +126,46 @@ export async function performMove(
       .first();
     await deleteFollow(db, follower.id, sourceId);
     if (!alreadyTargets) {
+      const state = target.manuallyApprovesFollowers ? "pending" : "accepted";
       await createFollow(db, {
         id: generateId(),
         actorId: follower.id,
         targetId,
-        state: target.manuallyApprovesFollowers ? "pending" : "accepted",
+        state,
         activityId: null,
         createdAt: new Date().toISOString(),
       });
+      if (state === "accepted") acceptedMoved++;
+      if (target.inbox && follower.privateKeyPem) {
+        const followActivity = buildFollow(baseUrl, follower.id, targetId, generateId());
+        await enqueueDeliveries(
+          queue,
+          [target.inbox],
+          JSON.stringify(followActivity),
+          follower.id,
+          `${follower.id}#main-key`,
+          follower.privateKeyPem
+        ).catch(() => {});
+      }
     }
     migratedLocal++;
   }
+  // The source loses the followers that moved (the target counts its own).
+  if (acceptedMoved > 0) {
+    await db
+      .prepare("UPDATE actors SET followers_count = MAX(COALESCE(followers_count, 0) - ?, 0) WHERE id = ?")
+      .bind(acceptedMoved, sourceId)
+      .run();
+  }
 
-  // 3. Deliver Move to remote followers' inboxes (through the delivery queue).
+  // 3. Deliver the Move to the remote followers (through the queue, shared
+  // inboxes preferred). `delivered` counts servers, which is what the UI says.
   let delivered = 0;
   if (source.privateKeyPem) {
-    const remoteInboxes = allFollowers
-      .filter((f) => !f.isLocal && f.inbox)
-      .map((f) => f.inbox!);
-    const inboxes = [...new Set(remoteInboxes)];
+    const remoteIds = allFollowers.filter((f) => !f.isLocal).map((f) => f.id);
+    const fetchActor = async (id: string): Promise<APActor | null> =>
+      (await getActorById(db, id)) as unknown as APActor | null;
+    const inboxes = await collectFollowerInboxes(remoteIds, fetchActor);
     if (inboxes.length > 0) {
       const moveActivity = buildMove(baseUrl, sourceId, targetId, generateId());
       await enqueueDeliveries(
@@ -150,7 +176,15 @@ export async function performMove(
         `${sourceId}#main-key`,
         source.privateKeyPem
       );
-      delivered = inboxes.length;
+      delivered = new Set(
+        inboxes.map((inbox) => {
+          try {
+            return new URL(inbox).hostname.toLowerCase();
+          } catch {
+            return inbox;
+          }
+        })
+      ).size;
     }
   }
 

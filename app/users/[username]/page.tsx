@@ -57,6 +57,8 @@ interface Account {
   fields: MastodonField[];
   roles?: { id: string; name: string; color: string }[];
   supports_calls?: boolean;
+  /** The account this one migrated to (Mastodon's `moved`). */
+  moved?: { id: string; username: string; acct: string; display_name?: string } | null;
   /** Mastodon profile settings. */
   memorial?: boolean;
   show_featured?: boolean;
@@ -901,6 +903,7 @@ export default function ProfilePage() {
                         <Icon name="ban" size="0.8rem" color="var(--danger)" /> {t.graph_blocked_by}
                       </span>
                     )}
+                    {!(account.moved && !relationship?.following) && (
                     <button
                       className={relationship?.following || relationship?.requested ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"}
                       onClick={() => void toggleFollow()}
@@ -914,6 +917,7 @@ export default function ProfilePage() {
                         ? t.account_requested
                         : t.account_follow}
                     </button>
+                    )}
                     <button
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)", color: relationship?.blocking ? "var(--danger)" : "var(--text-muted)" }}
@@ -1141,6 +1145,24 @@ export default function ProfilePage() {
                   }}
                 >
                   {t.account_in_memoriam}
+                </div>
+              )}
+
+              {account.moved && (
+                <div
+                  style={{
+                    marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                    background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)",
+                    fontSize: "0.85rem", color: "var(--text-secondary)",
+                  }}
+                >
+                  {t.account_moved_to}{" "}
+                  <Link
+                    href={account.moved.acct.includes("@") ? `/users/remote?url=${encodeURIComponent(account.moved.id)}` : `/users/${account.moved.username}`}
+                    style={{ color: "var(--accent)", fontWeight: 600 }}
+                  >
+                    @{account.moved.acct}
+                  </Link>
                 </div>
               )}
 

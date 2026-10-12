@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "Enter a handle in the user@server format.",
   "alias_error_not_found": "That account could not be found.",
   "alias_error_self": "That is your own account.",
-  "alias_error_exists": "That alias already exists."
+  "alias_error_exists": "That alias already exists.",
+  "account_moved_to": "This account has moved to"
 }

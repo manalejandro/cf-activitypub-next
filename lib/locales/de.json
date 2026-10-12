@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "Gib einen Namen im Format nutzer@server ein.",
   "alias_error_not_found": "Dieses Konto wurde nicht gefunden.",
   "alias_error_self": "Das ist dein eigenes Konto.",
-  "alias_error_exists": "Dieser Alias existiert bereits."
+  "alias_error_exists": "Dieser Alias existiert bereits.",
+  "account_moved_to": "Dieses Konto ist umgezogen nach"
 }

@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "사용자@서버 형식으로 입력하세요.",
   "alias_error_not_found": "해당 계정을 찾을 수 없습니다.",
   "alias_error_self": "본인 계정입니다.",
-  "alias_error_exists": "이미 존재하는 별칭입니다."
+  "alias_error_exists": "이미 존재하는 별칭입니다.",
+  "account_moved_to": "이 계정은 다음으로 이전했습니다:"
 }

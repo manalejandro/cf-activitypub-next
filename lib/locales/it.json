@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "Inserisci un identificatore nel formato utente@server.",
   "alias_error_not_found": "Impossibile trovare quell'account.",
   "alias_error_self": "È il tuo account.",
-  "alias_error_exists": "Questo alias esiste già."
+  "alias_error_exists": "Questo alias esiste già.",
+  "account_moved_to": "Questo account si è spostato su"
 }

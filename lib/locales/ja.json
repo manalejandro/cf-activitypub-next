@@ -1174,5 +1174,6 @@
   "alias_error_invalid": "ユーザー@サーバーの形式で入力してください。",
   "alias_error_not_found": "そのアカウントが見つかりません。",
   "alias_error_self": "それはあなた自身のアカウントです。",
-  "alias_error_exists": "そのエイリアスはすでに存在します。"
+  "alias_error_exists": "そのエイリアスはすでに存在します。",
+  "account_moved_to": "このアカウントは移行しました:"
 }
