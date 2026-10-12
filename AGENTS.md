@@ -225,6 +225,8 @@ import { json, notFound, unauthorized, badRequest } from "@/lib/cf";
 
 ## Gotchas that have bitten before
 
+- `wrangler.toml`'s `assets.directory` is the **build output** (`dist/client`) — the `.open-next/assets` of the OpenNext era no longer exists (the directory is absent, and only the Cloudflare Vite plugin's generated config masked it). `vite build` emits `dist/client` (static) + `dist/server` (the worker built from `src/worker.ts`) and writes `dist/server/wrangler.json` — the config `vinext-cloudflare deploy` actually ships — so keep the two in sync (`not_found_handling = "none"` keeps the worker answering every route instead of a static 404 page).
+
 - `proxy.ts` (Next.js 16's renamed middleware convention; vinext accepts `proxy` or `default` exports) only imports `next/server` — it runs inside the same Worker as the app. No matcher means it covers every dynamic route (static assets are served by the Workers Assets layer before the Worker), and matcher patterns must survive vinext's safety parser: regexes with lookaheads are rejected.
 - `src/worker.ts` is wrangler's `main`: wraps the vinext handler (`vinext/server/fetch-handler`), exports the DO classes, and adds the queue consumer (incl. DLQ), WebSocket upgrades for `/api/v1/streaming` and `/api/v1/calls/:id/ws`, and cron. Intercept those **before** `handler.fetch`.
 - **Never reference DOM globals in Workers code** (`status`, `name`, `origin`, `top`, `event`…): with `lib.dom` in tsconfig TypeScript resolves them and `tsc` stays green, but at runtime in a Worker they throw (`ReferenceError`) — a surrounding `try/catch` can swallow it silently (a `status` typo made `broadcastObjectDelete` skip every list channel for months). Either fix, and prefer `obj.visibility`, never bare `status`.

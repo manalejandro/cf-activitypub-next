@@ -2,7 +2,12 @@ name = "cf-activitypub"
 main = "src/worker.ts"
 compatibility_date = "2026-10-03"
 compatibility_flags = ["nodejs_compat"]
-assets = { directory = ".open-next/assets", binding = "ASSETS" }
+# vinext + @cloudflare/vite-plugin: `vite build` emits the static client into
+# dist/client (and the worker into dist/server); the plugin generates the deploy
+# config from this one, so the directory must be the build output, not the old
+# OpenNext one. `not_found_handling = "none"` keeps the worker on the hook for
+# every route (the app, not a static 404 page, answers).
+assets = { directory = "dist/client", not_found_handling = "none", binding = "ASSETS" }
 
 [vars]
 # Anti-abuse (registration hygiene). Comma-separated extra disposable-mail
@@ -170,11 +175,7 @@ class_name = "CallSignalingDO"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["TimelineStreamDO"]
-
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["CallSignalingDO"]
+new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO"]
 
 [triggers]
 crons = ["* * * * *"]
