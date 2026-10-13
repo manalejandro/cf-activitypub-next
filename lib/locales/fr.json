@@ -17,6 +17,8 @@
   "notif_follow_requests_title": "Suivre les demandes",
   "notif_empty": "Pas encore de notification",
   "notif_empty_sub": "Quand quelqu'un suit ou interagit avec vous, il apparaîtra ici.",
+  "notif_tab_all": "Toutes",
+  "notif_tab_mentions": "Mentions",
   "notif_followed_you": "vous a suivie",
   "notif_follow_request": "demandé de vous suivre",
   "notif_mentioned": "vous avez mentionné",

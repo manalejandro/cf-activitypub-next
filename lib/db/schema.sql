@@ -473,6 +473,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notif_target   ON notifications(target_account_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_created  ON notifications(created_at DESC);
+-- Notifications are read newest-first per account, optionally filtered by type
+-- (the Mentions tab). Without this index the planner walks idx_notif_target and
+-- sorts every notification of the account; `type` trails so the filter is
+-- evaluated from the index entry and only matching rows are read.
+CREATE INDEX IF NOT EXISTS idx_notif_target_created ON notifications(target_account_id, created_at DESC, type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup ON notifications(type, account_id, target_account_id, object_id);
 -- Status deletion cleans notifications by object_id (without this each
 -- deleted status full-scanned the notifications table).

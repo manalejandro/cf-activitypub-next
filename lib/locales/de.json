@@ -17,6 +17,8 @@
   "notif_follow_requests_title": "Folgeanträge",
   "notif_empty": "Noch keine Meldungen",
   "notif_empty_sub": "Wenn jemand dir folgt oder mit dir interagiert, wird es hier erscheinen.",
+  "notif_tab_all": "Alle",
+  "notif_tab_mentions": "Erwähnungen",
   "notif_followed_you": "folgte dir",
   "notif_follow_request": "aufgefordert, ihnen zu folgen",
   "notif_mentioned": "erwähnten sie",

@@ -17,6 +17,8 @@
   "notif_follow_requests_title": "遵循请求",
   "notif_empty": "没有通知",
   "notif_empty_sub": "当有人跟随或与你互动时,它就会出现在这里.",
+  "notif_tab_all": "全部",
+  "notif_tab_mentions": "提及",
   "notif_followed_you": "跟着你",
   "notif_follow_request": "请求跟随您",
   "notif_mentioned": "提到你",

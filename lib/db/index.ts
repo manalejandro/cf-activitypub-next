@@ -3435,29 +3435,43 @@ export async function createNotification(db: D1Database, notif: LocalNotificatio
     .run();
 }
 
+/**
+ * Newest-first notifications of one account, optionally filtered by type
+ * (`types` = include, `exclude` = exclude, Mastodon's `types[]` /
+ * `exclude_types[]`). The filter runs in SQL on purpose: filtering the fetched
+ * page in the route returned short pages — a Mentions tab held only the
+ * mentions that happened to fall inside the first page — and stopped
+ * pagination early. The values are parameterized; only the count is bounded
+ * (the D1 bind limit).
+ */
 export async function getNotifications(
   db: D1Database,
   actorId: string,
   limit = 20,
-  maxId?: string
+  maxId?: string,
+  typeFilter: { include?: string[]; exclude?: string[] } = {}
 ): Promise<LocalNotification[]> {
+  const conditions = ["target_account_id = ?"];
+  const binds: unknown[] = [actorId];
+  const include = (typeFilter.include ?? []).slice(0, 20);
+  const exclude = (typeFilter.exclude ?? []).slice(0, 20);
+  if (include.length > 0) {
+    conditions.push(`type IN (${include.map(() => "?").join(", ")})`);
+    binds.push(...include);
+  }
+  if (exclude.length > 0) {
+    conditions.push(`type NOT IN (${exclude.map(() => "?").join(", ")})`);
+    binds.push(...exclude);
+  }
   if (maxId) {
-    const rows = await db
-      .prepare(
-        `SELECT * FROM notifications
-         WHERE target_account_id = ?
-           AND created_at < (SELECT created_at FROM notifications WHERE id = ?)
-         ORDER BY created_at DESC LIMIT ?`
-      )
-      .bind(actorId, maxId, limit)
-      .all<Row>();
-    return rows.results.map(rowToNotification);
+    conditions.push("created_at < (SELECT created_at FROM notifications WHERE id = ?)");
+    binds.push(maxId);
   }
   const rows = await db
     .prepare(
-      "SELECT * FROM notifications WHERE target_account_id = ? ORDER BY created_at DESC LIMIT ?"
+      `SELECT * FROM notifications WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT ?`
     )
-    .bind(actorId, limit)
+    .bind(...binds, limit)
     .all<Row>();
   return rows.results.map(rowToNotification);
 }

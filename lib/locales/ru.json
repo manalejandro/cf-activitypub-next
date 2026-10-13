@@ -17,6 +17,8 @@
   "notif_follow_requests_title": "Следуйте инструкциям",
   "notif_empty": "Пока нет уведомлений",
   "notif_empty_sub": "Когда кто-то следит за вами или взаимодействует с вами, он появится здесь.",
+  "notif_tab_all": "Все",
+  "notif_tab_mentions": "Упоминания",
   "notif_followed_you": "следуй за тобой",
   "notif_follow_request": "просить следовать за вами",
   "notif_mentioned": "вы упомянули",

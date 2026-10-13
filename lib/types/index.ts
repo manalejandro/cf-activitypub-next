@@ -423,9 +423,27 @@ export interface LocalPollOption {
   position: number;
 }
 
+/** Every notification type a `notifications` row can carry. */
+export const NOTIFICATION_TYPES = [
+  "mention",
+  "status",
+  "reblog",
+  "follow",
+  "follow_request",
+  "favourite",
+  "poll",
+  "update",
+  "direct",
+  "encrypted",
+  "quote",
+  "moderation",
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
 export interface LocalNotification {
   id: string;
-  type: "mention" | "status" | "reblog" | "follow" | "follow_request" | "favourite" | "poll" | "update" | "direct" | "encrypted" | "quote" | "moderation";
+  type: NotificationType;
   accountId: string; // who triggered it
   targetAccountId: string; // who receives it
   objectId: string | null;

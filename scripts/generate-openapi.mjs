@@ -206,11 +206,18 @@ function isProtected(src, method, path) {
 }
 
 function queryParams(src) {
-  const names = new Set();
-  const re = /(?:searchParams|nextUrl\.searchParams)\.get(?:All)?\(['"]([A-Za-z0-9_]+)['"]\)/g;
+  // Names may carry Rails-style `[]` (types[], exclude_types[], id[]): keep
+  // them verbatim, and remember which ones are read with getAll — an array
+  // parameter is documented as such.
+  const params = new Map();
+  const re = /(?:searchParams|nextUrl\.searchParams)\.get(All)?\(['"]([A-Za-z0-9_\[\]]+)['"]\)/g;
   let m;
-  while ((m = re.exec(src))) names.add(m[1]);
-  return [...names];
+  while ((m = re.exec(src))) {
+    const name = m[2];
+    const array = Boolean(m[1]);
+    if (array || !params.has(name)) params.set(name, array);
+  }
+  return [...params].map(([name, array]) => ({ name, array }));
 }
 
 function hasBody(src) {
@@ -755,9 +762,11 @@ function buildDoc() {
       }
       for (const q of autoQuery) {
         parameters.push({
-          name: q,
+          name: q.name,
           in: "query",
-          schema: { type: INTEGER_QUERY.has(q) ? "integer" : "string" },
+          schema: q.array
+            ? { type: "array", items: { type: "string" } }
+            : { type: INTEGER_QUERY.has(q.name) ? "integer" : "string" },
         });
       }
 

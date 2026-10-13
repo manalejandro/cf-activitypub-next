@@ -17,6 +17,8 @@
   "notif_follow_requests_title": "자주 묻는 질문",
   "notif_empty": "알림 없음",
   "notif_empty_sub": "누군가가 너와 상호 작용할 때, 여기에 나타납니다.",
+  "notif_tab_all": "전체",
+  "notif_tab_mentions": "멘션",
   "notif_followed_you": "견적 요청",
   "notif_follow_request": "자주 묻는 질문",
   "notif_mentioned": "견적 요청",

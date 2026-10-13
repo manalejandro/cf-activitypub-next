@@ -23,7 +23,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const excludeTypes = searchParams.getAll("exclude_types[]");
   const includeTypes = searchParams.getAll("types[]");
 
-  const notifications = await getNotifications(env.DB, actor.id, limit, maxId);
+  const notifications = await getNotifications(env.DB, actor.id, limit, maxId, {
+    include: includeTypes,
+    exclude: excludeTypes,
+  });
 
   const notifObjects = (await Promise.all(
     notifications.map((n) => (n.objectId ? getObjectById(env.DB, n.objectId) : Promise.resolve(null)))
@@ -37,8 +40,6 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const serialized = await Promise.all(
     notifications
-      .filter((n) => !excludeTypes.includes(n.type))
-      .filter((n) => includeTypes.length === 0 || includeTypes.includes(n.type))
       .map(async (notif) => {
         const fromActor = await getActorById(env.DB, notif.accountId);
         const object = notif.objectId ? await getObjectById(env.DB, notif.objectId) : null;

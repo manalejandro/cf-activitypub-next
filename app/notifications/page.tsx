@@ -15,6 +15,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+import { notificationsQuery, type NotificationsTab } from "@/lib/notifications-query";
 
 interface Account {
   id: string;
@@ -53,23 +54,33 @@ const NOTIF_LABELS: Record<string, { icon: IconName; key: string }> = {
 };
 
 export default function NotificationsPage() {
+  const [tab, setTab] = useState<NotificationsTab>("all");
   const [pendingRequests, setPendingRequests] = useState<Account[]>([]);
   const [me, setMe] = useState<Account | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const limits = useLimits();
+  const tabRef = useRef(tab);
+
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
 
   const fetchPage = useCallback(async (maxId?: string) => {
-    const base = `/api/v1/notifications?limit=${limits.pageSize}`;
-    const url = maxId ? `${base}&max_id=${encodeURIComponent(maxId)}` : base;
-    const res = await fetch(url, { credentials: "include", cache: "no-store" });
+    const res = await fetch(notificationsQuery(tab, limits.pageSize, maxId), { credentials: "include", cache: "no-store" });
     if (!res.ok) return { items: [], hasMore: true };
     const items = await res.json() as Notification[];
     return { items, hasMore: items.length >= limits.pageSize };
-  }, [limits.pageSize]);
+  }, [limits.pageSize, tab]);
 
-  const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>("notifications", fetchPage, { refetchOnMount: true });
+  // One cache entry per tab: a tab switch restores that tab's feed and scroll
+  // position and refetches it in the background.
+  const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>(
+    tab === "mentions" ? "notifications:mentions" : "notifications",
+    fetchPage,
+    { refetchOnMount: true }
+  );
 
   async function fetchFollowRequests() {
     const res = await fetch(`/api/v1/follow_requests?limit=${limits.pageSize}`, { credentials: "include" });
@@ -124,15 +135,19 @@ export default function NotificationsPage() {
   }, []);
 
   // Real-time: prepend new notifications as they arrive via streaming.
-  // Payload is currently "{}" so we refetch the latest notification instead.
+  // Payload is currently "{}" so we refetch the latest notification instead —
+  // with the active tab's filter, so the mentions tab only takes mentions.
   useTimelineStream("user:notification", (event) => {
     if (event !== "notification") return;
-    // Fetch just the latest notification and prepend it if not already seen
-    fetch("/api/v1/notifications?limit=1", { credentials: "include", cache: "no-store" })
+    const requestedTab = tabRef.current;
+    fetch(notificationsQuery(requestedTab, 1), { credentials: "include", cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) return;
         const data = await res.json() as Notification[];
         if (data.length === 0) return;
+        // The tab switched while the request was in flight: the notification
+        // belongs to the feed we already left.
+        if (requestedTab !== tabRef.current) return;
         setNotifications((prev) => {
           if (prev.some((n) => n.id === data[0].id)) return prev;
           return [data[0], ...prev];
@@ -167,6 +182,35 @@ export default function NotificationsPage() {
           <h1 style={{ fontWeight: 700, fontSize: "1.2rem" }}>{t.nav_notifications}</h1>
         </div>
 
+        {/* Tabs */}
+        <div role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+          {(["all", "mentions"] as const).map((tabKey) => (
+            <button
+              key={tabKey}
+              type="button"
+              role="tab"
+              aria-selected={tab === tabKey}
+              onClick={() => setTab(tabKey)}
+              style={{
+                flex: 1,
+                padding: "0.75rem",
+                fontWeight: tab === tabKey ? 700 : 400,
+                color: tab === tabKey ? "var(--accent)" : "var(--text-muted)",
+                background: "none",
+                border: "none",
+                // After `border: none`, or the shorthand resets the indicator.
+                borderBottomStyle: "solid",
+                borderBottomWidth: 2,
+                borderBottomColor: tab === tabKey ? "var(--accent)" : "transparent",
+                cursor: "pointer",
+                fontSize: "0.95rem",
+              }}
+            >
+              {tabKey === "all" ? t.notif_tab_all : t.notif_tab_mentions}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="flex flex-col gap-0">
             {[1, 2, 3].map((i) => (
@@ -182,7 +226,7 @@ export default function NotificationsPage() {
         ) : (
           <>
             {/* ── Pending follow requests (direct from follows table) ── */}
-            {pendingRequests.length > 0 && (
+            {tab === "all" && pendingRequests.length > 0 && (
               <div>
                 <div style={{ padding: "0.6rem 1rem", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)", fontWeight: 600, fontSize: "0.85rem", color: "var(--text-muted)" }}>
                   {t.notif_follow_requests_title}
@@ -232,7 +276,7 @@ export default function NotificationsPage() {
             )}
 
             {/* ── Regular notifications ── */}
-            {notifications.length === 0 && pendingRequests.length === 0 ? (
+            {notifications.length === 0 && (tab !== "all" || pendingRequests.length === 0) ? (
           <div
             className="flex flex-col items-center justify-center"
             style={{ padding: "4rem 2rem", color: "var(--text-muted)", textAlign: "center" }}
