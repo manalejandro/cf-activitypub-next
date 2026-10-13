@@ -15,6 +15,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 import { notificationsQuery, type NotificationsTab } from "@/lib/notifications-query";
 
 interface Account {
@@ -183,33 +184,14 @@ export default function NotificationsPage() {
         </div>
 
         {/* Tabs */}
-        <div role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
-          {(["all", "mentions"] as const).map((tabKey) => (
-            <button
-              key={tabKey}
-              type="button"
-              role="tab"
-              aria-selected={tab === tabKey}
-              onClick={() => setTab(tabKey)}
-              style={{
-                flex: 1,
-                padding: "0.75rem",
-                fontWeight: tab === tabKey ? 700 : 400,
-                color: tab === tabKey ? "var(--accent)" : "var(--text-muted)",
-                background: "none",
-                border: "none",
-                // After `border: none`, or the shorthand resets the indicator.
-                borderBottomStyle: "solid",
-                borderBottomWidth: 2,
-                borderBottomColor: tab === tabKey ? "var(--accent)" : "transparent",
-                cursor: "pointer",
-                fontSize: "0.95rem",
-              }}
-            >
-              {tabKey === "all" ? t.notif_tab_all : t.notif_tab_mentions}
-            </button>
-          ))}
-        </div>
+        <Tabs<NotificationsTab>
+          tabs={[
+            { key: "all", label: t.notif_tab_all },
+            { key: "mentions", label: t.notif_tab_mentions },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
 
         {loading ? (
           <div className="flex flex-col gap-0">

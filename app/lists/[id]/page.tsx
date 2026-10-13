@@ -16,6 +16,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 
 // Stable no-op for the props StatusCard requires but this feed never uses.
 const NOOP = () => {};
@@ -190,28 +191,14 @@ export default function ListDetailPage() {
           <NewStatusesPill count={pendingCount} onClick={reveal} anchor="header" />
         </div>
 
-        <div className="flex" role="tablist" style={{ borderBottom: "1px solid var(--border)" }}>
-          {(["members", "timeline"] as ActiveTab[]).map((tab) => (
-            <button
-              key={tab}
-              className="btn btn-ghost"
-              role="tab"
-              aria-selected={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1,
-                borderRadius: 0,
-                padding: "0.75rem 1rem",
-                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
-                color: activeTab === tab ? "var(--accent)" : "var(--text-muted)",
-                fontWeight: activeTab === tab ? 600 : 400,
-                fontSize: "0.875rem",
-              }}
-            >
-              {tab === "members" ? t.lists_members : t.lists_timeline}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          tabs={(["members", "timeline"] as ActiveTab[]).map((tab) => ({
+            key: tab,
+            label: tab === "members" ? t.lists_members : t.lists_timeline,
+          }))}
+          active={activeTab}
+          onChange={setActiveTab}
+        />
 
         {activeTab === "members" && (
           <>

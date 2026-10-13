@@ -823,6 +823,8 @@
   "timeline_end": "より多くの投稿",
   "status_history_empty": "編集履歴はありません.",
   "status_history_edit": "{date} の編集",
+  "status_thread": "スレッド",
+  "status_history_title": "編集履歴",
   "settings_theme_colors": "インターフェイス色",
   "settings_theme_default": "インスタンスのデフォルト",
   "settings_theme_custom": "カスタムパレット",

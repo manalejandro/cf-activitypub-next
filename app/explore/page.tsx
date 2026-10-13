@@ -13,6 +13,7 @@ import { getToken } from "@/lib/client-api";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
 import { StatusCard, Status, Me, AvatarBubble } from "@/components/StatusCard";
+import { Tabs } from "@/components/Tabs";
 import { purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
@@ -295,19 +296,15 @@ export default function ExplorePage() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
-          {TABS.map((t) => (
-            <button key={t.id} className="btn btn-ghost" onClick={() => setTab(t.id)}
-              style={{ flex: 1, borderRadius: 0, padding: "0.75rem", borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent", color: tab === t.id ? "var(--accent)" : "var(--text-muted)", fontWeight: tab === t.id ? 600 : 400 }}>
-              {t.label}
-              {(t.count ?? 0) > 0 && (
-                <span style={{ marginLeft: "0.4rem", background: "var(--accent-bg)", color: "var(--accent)", borderRadius: "var(--radius-full)", fontSize: "0.72rem", padding: "0.05rem 0.45rem" }}>
-                  {t.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          tabs={TABS.map((item) => ({
+            key: item.id,
+            label: item.label,
+            count: item.count && item.count > 0 ? item.count : undefined,
+          }))}
+          active={tab}
+          onChange={setTab}
+        />
 
         {/* Trending tab */}
         {tab === "trending" && (

@@ -823,6 +823,8 @@
   "timeline_end": "Больше никаких постов",
   "status_history_empty": "Нет истории редактирования.",
   "status_history_edit": "Редактирование {date}",
+  "status_thread": "Ветка",
+  "status_history_title": "История редактирования",
   "settings_theme_colors": "Цвета интерфейса",
   "settings_theme_default": "По умолчанию",
   "settings_theme_custom": "Пользовательская палитра",

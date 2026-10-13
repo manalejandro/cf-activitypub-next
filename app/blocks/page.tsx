@@ -11,6 +11,7 @@ import { useLocale } from "@/lib/i18n";
 import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 import { avatarInitial } from "@/lib/avatar";
 
 interface Account {
@@ -157,33 +158,14 @@ export default function BlocksPage() {
         </div>
 
         {/* Tabs */}
-        <div role="tablist" style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
-          {(["users", "instances"] as const).map((tabKey) => (
-            <button
-              key={tabKey}
-              type="button"
-              role="tab"
-              aria-selected={tab === tabKey}
-              onClick={() => setTab(tabKey)}
-              style={{
-                flex: 1,
-                padding: "0.75rem",
-                fontWeight: tab === tabKey ? 700 : 400,
-                color: tab === tabKey ? "var(--accent)" : "var(--text-muted)",
-                borderBottom: tab === tabKey ? "2px solid var(--accent)" : "2px solid transparent",
-                background: "none",
-                border: "none",
-                borderBottomStyle: "solid",
-                borderBottomWidth: 2,
-                borderBottomColor: tab === tabKey ? "var(--accent)" : "transparent",
-                cursor: "pointer",
-                fontSize: "0.95rem",
-              }}
-            >
-              {tabKey === "users" ? t.blocks_tab_users : t.blocks_tab_instances}
-            </button>
-          ))}
-        </div>
+        <Tabs<"users" | "instances">
+          tabs={[
+            { key: "users", label: t.blocks_tab_users },
+            { key: "instances", label: t.blocks_tab_instances },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
 
         {/* Users tab */}
         {tab === "users" && (

@@ -823,6 +823,8 @@
   "timeline_end": "No more posts",
   "status_history_empty": "No edit history.",
   "status_history_edit": "Edit of {date}",
+  "status_thread": "Thread",
+  "status_history_title": "Edit history",
   "settings_theme_colors": "Interface colors",
   "settings_theme_default": "Instance default",
   "settings_theme_custom": "Custom palette",

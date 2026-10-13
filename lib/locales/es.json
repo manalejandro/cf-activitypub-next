@@ -823,6 +823,8 @@
   "timeline_end": "No hay más estados",
   "status_history_empty": "No hay historial de ediciones.",
   "status_history_edit": "Edición del {date}",
+  "status_thread": "Hilo",
+  "status_history_title": "Historial de edición",
   "settings_theme_colors": "Colores de la interfaz",
   "settings_theme_default": "Predeterminado de la instancia",
   "settings_theme_custom": "Paleta personalizada",

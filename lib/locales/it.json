@@ -823,6 +823,8 @@
   "timeline_end": "Nessun post",
   "status_history_empty": "Nessuna cronologia delle modifiche.",
   "status_history_edit": "Modifica di {date}",
+  "status_thread": "Conversazione",
+  "status_history_title": "Cronologia delle modifiche",
   "settings_theme_colors": "Colori di interfaccia",
   "settings_theme_default": "Predefinito",
   "settings_theme_custom": "Tavolozza personalizzata",

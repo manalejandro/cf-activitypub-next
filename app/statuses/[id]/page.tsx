@@ -29,6 +29,7 @@ import { useLimits } from "@/lib/limits-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 import { avatarInitial } from "@/lib/avatar";
 
 interface PollOption { title: string; votes_count: number | null }
@@ -799,36 +800,23 @@ export default function ThreadPage() {
             </button>
             <span style={{ fontWeight: 600 }}>{t.compose_post}</span>
           </div>
-          <div className="flex" style={{ borderTop: "1px solid var(--border)" }}>
-            <button
-              className="btn btn-ghost"
-              onClick={() => setHistoryTab(false)}
-              style={{
-                flex: 1, borderRadius: 0, padding: "0.625rem 1rem",
-                borderBottom: !historyTab ? "2px solid var(--accent)" : "2px solid transparent",
-                color: !historyTab ? "var(--accent)" : "var(--text-muted)",
-                fontWeight: !historyTab ? 600 : 400,
-                fontSize: "0.875rem",
-              }}
-            >
-              Hilo
-            </button>
-            {focal?.edited_at && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => { setHistoryTab(true); void loadHistory(); }}
-                style={{
-                  flex: 1, borderRadius: 0, padding: "0.625rem 1rem",
-                  borderBottom: historyTab ? "2px solid var(--accent)" : "2px solid transparent",
-                  color: historyTab ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: historyTab ? 600 : 400,
-                  fontSize: "0.875rem",
-                }}
-              >
-                Historial de edición
-              </button>
-            )}
-          </div>
+          <Tabs<"thread" | "history">
+            tabs={[
+              { key: "thread", label: t.status_thread },
+              ...(focal?.edited_at ? [{ key: "history" as const, label: t.status_history_title }] : []),
+            ]}
+            active={historyTab ? "history" : "thread"}
+            onChange={(key) => {
+              if (key === "history") {
+                setHistoryTab(true);
+                void loadHistory();
+              } else {
+                setHistoryTab(false);
+              }
+            }}
+            // The sticky header draws the border the indicator sits on.
+            style={{ borderTop: "1px solid var(--border)", borderBottom: "none" }}
+          />
         </div>
 
         {historyTab ? (

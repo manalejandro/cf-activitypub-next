@@ -165,6 +165,20 @@ a:hover { color: var(--accent); }
 .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
 .btn-lg { padding: 0.75rem 1.5rem; font-size: 1rem; }
 
+/* Tab bars (explore, timelines, notifications, lists, profiles, status
+   detail): one size and font everywhere. The selected state is driven by
+   aria-selected so callers only pass `active` to <Tabs>. */
+.tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.75rem 1rem; background: none; border: none;
+  border-bottom: 2px solid transparent; color: var(--text-muted);
+  font-size: 0.9rem; font-weight: 400; line-height: 1.4; cursor: pointer;
+  white-space: nowrap; transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.tab:hover { background: var(--accent-bg); color: var(--accent-light); }
+.tab[aria-selected="true"] { color: var(--accent); font-weight: 600; border-bottom-color: var(--accent); }
+.tab-count { font-size: 0.8rem; opacity: 0.75; }
+
 /* Hide `.btn` elements below md (Tailwind's `hidden` loses to the unlayered
    `.btn { display: inline-flex }` rule). Used for actions that move into the
    status ⋯ menu on mobile. */

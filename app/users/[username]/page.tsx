@@ -27,6 +27,7 @@ import { purgeStatusFromCache, applyStatusInFeed } from "@/lib/streaming/timelin
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { invalidateBlockedAccounts } from "@/lib/streaming/blocked-accounts";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 import { collectionHref, isExternalCollection } from "@/lib/collection-link";
 import { avatarInitial } from "@/lib/avatar";
 
@@ -1210,8 +1211,8 @@ export default function ProfilePage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex tab-scroll" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto" }}>
-              {([
+            <Tabs
+              tabs={[
                 { key: "posts" as ActiveTab, label: t.profile_posts, count: account.statuses_count },
                 { key: "boosts" as ActiveTab, label: t.profile_boosts },
                 { key: "replies" as ActiveTab, label: t.profile_replies },
@@ -1226,29 +1227,11 @@ export default function ProfilePage() {
                 { key: "following" as ActiveTab, label: t.profile_following, count: account.following_count },
                 { key: "followers" as ActiveTab, label: t.profile_followers, count: account.followers_count },
                 { key: "collections" as ActiveTab, label: t.profile_collections },
-              ]).map((tab) => (
-                <button
-                  key={tab.key}
-                  className="btn btn-ghost"
-                  onClick={() => handleTabChange(tab.key)}
-                  style={{
-                    flex: "0 0 auto",
-                    borderRadius: 0,
-                    padding: "0.875rem 1rem",
-                    borderBottom: activeTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
-                    color: activeTab === tab.key ? "var(--accent)" : "var(--text-muted)",
-                    fontWeight: activeTab === tab.key ? 600 : 400,
-                    whiteSpace: "nowrap",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  {tab.label}
-                  {tab.count !== undefined && (
-                    <span style={{ marginLeft: "0.35rem", fontSize: "0.78rem", opacity: 0.7 }}>{tab.count.toLocaleString()}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+              ]}
+              active={activeTab}
+              onChange={handleTabChange}
+              scroll
+            />
 
             {/* Tab content */}
             {activeTab === "posts" && (

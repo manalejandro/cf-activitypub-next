@@ -823,6 +823,8 @@
   "timeline_end": "Plus de postes",
   "status_history_empty": "Pas d'historique de modification.",
   "status_history_edit": "Édition de {date}",
+  "status_thread": "Fil",
+  "status_history_title": "Historique des modifications",
   "settings_theme_colors": "Couleurs de l'interface",
   "settings_theme_default": "Par défaut",
   "settings_theme_custom": "Palette personnalisée",

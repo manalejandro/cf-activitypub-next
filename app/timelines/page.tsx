@@ -17,6 +17,7 @@ import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+import { Tabs } from "@/components/Tabs";
 
 type TimelineView = "local" | "federated";
 
@@ -165,26 +166,16 @@ export default function TimelinesPage() {
           <h1 style={{ fontWeight: 700, fontSize: "1.2rem", marginBottom: "0.75rem" }}>
             {t.nav_timelines}
           </h1>
-          <div style={{ display: "flex" }}>
-            {(token ? (["local", "federated"] as TimelineView[]) : (["federated"] as TimelineView[])).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => switchView(v)}
-                className="btn btn-ghost"
-                style={{
-                  flex: 1,
-                  borderRadius: 0,
-                  padding: "0.6rem 1rem",
-                  borderBottom: view === v ? "2px solid var(--accent)" : "2px solid transparent",
-                  color: view === v ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: view === v ? 600 : 400,
-                }}
-              >
-                {v === "local" ? <><Icon name="home" /> {t.timeline_local}</> : <><Icon name="globe" /> {t.timeline_federated}</>}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            tabs={(token ? (["local", "federated"] as TimelineView[]) : (["federated"] as TimelineView[])).map((v) => ({
+              key: v,
+              label: v === "local" ? <><Icon name="home" /> {t.timeline_local}</> : <><Icon name="globe" /> {t.timeline_federated}</>,
+            }))}
+            active={view}
+            onChange={switchView}
+            // The sticky header draws the border the indicator sits on.
+            style={{ borderBottom: "none" }}
+          />
           <NewStatusesPill count={pendingCount} onClick={reveal} anchor="header" />
         </div>
 
