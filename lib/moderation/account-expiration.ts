@@ -19,6 +19,7 @@ import type { D1Database, Queue, SendEmail } from "@cloudflare/workers-types";
 import { getInstanceSetting, getActorById, deleteRemoteActorData } from "@/lib/db";
 import { deleteLocalAccount, type DeletionR2 } from "@/lib/account-deletion";
 import { sendAccountExpiryWarningEmail } from "@/lib/email";
+import { SUSPENDED_PURGE_MONTHS } from "@/lib/purge-date";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import type { ModerationKV } from "./util";
@@ -57,8 +58,7 @@ export const MAX_EXPIRATION_MONTHS = 120;
 export const EXPIRATION_WARNING_DAYS = 7;
 /** Final warning: this many hours before the expiry. */
 export const EXPIRATION_FINAL_WARNING_HOURS = 24;
-/** Suspended accounts are purged this long after the suspension. */
-export const SUSPENDED_PURGE_MONTHS = 1;
+export { SUSPENDED_PURGE_MONTHS } from "@/lib/purge-date";
 
 const CRON_COOLDOWN_SECONDS = 300;
 const WARN_BATCH = 10;
@@ -86,6 +86,13 @@ export async function resolveExpirationSettings(db: D1Database): Promise<Expirat
   } catch {
     return { enabled: true, months: DEFAULT_EXPIRATION_MONTHS };
   }
+}
+
+/** When an account suspended at `suspendedAt` (ISO) is purged, as ISO. */
+export function suspendedPurgeDate(suspendedAt: string): string {
+  const date = new Date(suspendedAt);
+  date.setMonth(date.getMonth() + SUSPENDED_PURGE_MONTHS);
+  return date.toISOString();
 }
 
 /** The expiry of an account last active at `lastActive` (ISO), as ISO. */

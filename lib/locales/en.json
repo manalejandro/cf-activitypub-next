@@ -1178,5 +1178,7 @@
   "account_moved_to": "This account has moved to",
   "settings_migration_note": "Only your followers move (and the notice pointing to the new account): your posts and the accounts you follow are not transferred, so export your following list and import it on the new account.",
   "admin_media_cache_config_cold_days": "Cold recycling after (days)",
-  "admin_media_cache_config_cold_max_hits": "…with at most this many serves"
+  "admin_media_cache_config_cold_max_hits": "…with at most this many serves",
+  "admin_col_suspended_at": "Suspended",
+  "admin_col_deletion": "Deletion"
 }

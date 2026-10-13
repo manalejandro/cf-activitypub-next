@@ -1178,5 +1178,7 @@
   "account_moved_to": "Dieses Konto ist umgezogen nach",
   "settings_migration_note": "Nur deine Follower ziehen um (und der Hinweis auf das neue Konto): Beiträge und gefolgte Konten werden nicht übertragen — exportiere deine Folgen-Liste und importiere sie im neuen Konto.",
   "admin_media_cache_config_cold_days": "Kalt-Recycling nach (Tagen)",
-  "admin_media_cache_config_cold_max_hits": "…mit höchstens so vielen Zugriffen"
+  "admin_media_cache_config_cold_max_hits": "…mit höchstens so vielen Zugriffen",
+  "admin_col_suspended_at": "Gesperrt",
+  "admin_col_deletion": "Löschung"
 }

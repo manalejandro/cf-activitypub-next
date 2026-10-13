@@ -1178,5 +1178,7 @@
   "account_moved_to": "このアカウントは移行しました:",
   "settings_migration_note": "移動するのはフォロワーだけです（新しいアカウントへの案内も表示されます）。投稿とフォロー中のアカウントは引き継がれないため、フォローリストをエクスポートして新しいアカウントでインポートしてください。",
   "admin_media_cache_config_cold_days": "コールド再利用まで（日）",
-  "admin_media_cache_config_cold_max_hits": "…最大この回数のアクセスで"
+  "admin_media_cache_config_cold_max_hits": "…最大この回数のアクセスで",
+  "admin_col_suspended_at": "停止日",
+  "admin_col_deletion": "削除"
 }

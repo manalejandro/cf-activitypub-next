@@ -1178,5 +1178,7 @@
   "account_moved_to": "Ce compte a déménagé vers",
   "settings_migration_note": "Seul·es tes abonné·es déménagent (et l'avis pointant vers le nouveau compte) : tes publications et les comptes que tu suis ne sont pas transférés — exporte ta liste d'abonnements et importe-la sur le nouveau compte.",
   "admin_media_cache_config_cold_days": "Recyclage à froid après (jours)",
-  "admin_media_cache_config_cold_max_hits": "…avec au plus ce nombre d'accès"
+  "admin_media_cache_config_cold_max_hits": "…avec au plus ce nombre d'accès",
+  "admin_col_suspended_at": "Suspendu",
+  "admin_col_deletion": "Suppression"
 }

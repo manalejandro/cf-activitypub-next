@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Pagination } from "@/components/Pagination";
 import { avatarInitial } from "@/lib/avatar";
+import { purgeDateFrom } from "@/lib/purge-date";
 
 interface SuspendedAccount {
   id: string;
@@ -16,6 +17,7 @@ interface SuspendedAccount {
   domain: string;
   created_at: string;
   suspended: boolean;
+  suspended_at: string | null;
   account: {
     id: string;
     username: string;
@@ -120,7 +122,8 @@ export default function AdminSuspendedPage() {
               <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_account}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_status}</th>
-                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_status_suspended}</th>
+                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_suspended_at}</th>
+                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_deletion}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_actions}</th>
               </tr>
             </thead>
@@ -152,7 +155,10 @@ export default function AdminSuspendedPage() {
                     <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
                   </td>
                   <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-                    {formatDate(a.created_at)}
+                    {a.suspended_at ? formatDate(a.suspended_at) : "—"}
+                  </td>
+                  <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                    {a.suspended_at ? formatDate(purgeDateFrom(a.suspended_at)) : "—"}
                   </td>
                   <td style={{ padding: "0.625rem 0.75rem", textAlign: "right" }}>
                     <button

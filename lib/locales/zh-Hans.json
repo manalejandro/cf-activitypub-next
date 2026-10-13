@@ -1178,5 +1178,7 @@
   "account_moved_to": "该账号已迁移至",
   "settings_migration_note": "只有关注者会迁移（以及指向新账号的提示）：你的帖子和关注的账号不会被转移，请先导出关注列表，再在新账号中导入。",
   "admin_media_cache_config_cold_days": "冷回收时间（天）",
-  "admin_media_cache_config_cold_max_hits": "…且访问次数不超过"
+  "admin_media_cache_config_cold_max_hits": "…且访问次数不超过",
+  "admin_col_suspended_at": "停用时间",
+  "admin_col_deletion": "删除时间"
 }

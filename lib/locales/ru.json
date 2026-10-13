@@ -1178,5 +1178,7 @@
   "account_moved_to": "Этот аккаунт переехал на",
   "settings_migration_note": "Переезжают только подписчики (и пометка, указывающая на новый аккаунт): публикации и подписки не переносятся — выгрузите список подписок и загрузите его в новом аккаунте.",
   "admin_media_cache_config_cold_days": "Холодная переработка через (дней)",
-  "admin_media_cache_config_cold_max_hits": "…не более стольких обращений"
+  "admin_media_cache_config_cold_max_hits": "…не более стольких обращений",
+  "admin_col_suspended_at": "Заблокирован",
+  "admin_col_deletion": "Удаление"
 }

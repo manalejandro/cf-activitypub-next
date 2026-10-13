@@ -1178,5 +1178,7 @@
   "account_moved_to": "Esta conta mudou-se para",
   "settings_migration_note": "Só os teus seguidores se mudam (e o aviso que aponta para a conta nova): as publicações e as contas que segues não são transferidas, por isso exporta a tua lista de seguidos e importa-a na conta nova.",
   "admin_media_cache_config_cold_days": "Reciclagem a frio após (dias)",
-  "admin_media_cache_config_cold_max_hits": "…com no máximo estas visitas"
+  "admin_media_cache_config_cold_max_hits": "…com no máximo estas visitas",
+  "admin_col_suspended_at": "Suspenso",
+  "admin_col_deletion": "Eliminação"
 }

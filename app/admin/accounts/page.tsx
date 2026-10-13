@@ -2,12 +2,14 @@
 
 import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { Pagination } from "@/components/Pagination";
+import { purgeDateFrom } from "@/lib/purge-date";
 
 interface AdminAccount {
   id: string;
@@ -120,13 +122,6 @@ export default function AdminAccountsPage() {
     return new Date(dateStr).toLocaleString((i18next.language || "en"), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
-  /** Suspended accounts are purged one month after the suspension (expiration sweep). */
-  function purgeDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    date.setMonth(date.getMonth() + 1);
-    return date.toISOString();
-  }
-
   return (
     <div>
       <h1 style={{ fontSize: "1.5rem", marginBottom: "1.5rem" }}>
@@ -169,8 +164,11 @@ export default function AdminAccountsPage() {
           <option value="pending">{t.admin_status_pending}</option>
           <option value="approval_pending">{t.admin_status_approval_pending}</option>
           <option value="silenced">{t.admin_status_silenced}</option>
-          <option value="suspended">{t.admin_status_suspended}</option>
         </select>
+        {/* Suspended accounts live in their own table. */}
+        <Link href="/admin/suspended" className="btn btn-ghost btn-sm" style={{ border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+          <Icon name="ban" size="0.8rem" /> {t.admin_suspended}
+        </Link>
       </div>
 
       {loading ? (
@@ -185,7 +183,6 @@ export default function AdminAccountsPage() {
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_account}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_role}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_status}</th>
-                <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_email}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_last_active}</th>
                 <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_created}</th>
                 <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", fontWeight: 600 }}>{t.admin_col_actions}</th>
@@ -202,9 +199,14 @@ export default function AdminAccountsPage() {
                     <td style={{ padding: "0.625rem 0.75rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                         <Avatar avatar={a.account.avatar} name={a.account.display_name || a.username} size={34} />
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
                           <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
+                          {/* The email sits under the handle: as a column of its
+                              own it squeezed every other one. */}
+                          {a.email && (
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", overflowWrap: "anywhere" }}>{a.email}</div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -219,7 +221,12 @@ export default function AdminAccountsPage() {
                             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem", whiteSpace: "nowrap" }}>
                               {t.admin_suspended_since} {formatDate(a.suspended_at)}
                               {" · "}
-                              {t.admin_purge_on} {formatDate(purgeDate(a.suspended_at))}
+                              {t.admin_purge_on} {formatDate(purgeDateFrom(a.suspended_at))}
+                            </div>
+                          ) : null}
+                          {a.registration_reason ? (
+                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                              {t.admin_registration_reason}: {a.registration_reason}
                             </div>
                           ) : null}
                         </>
@@ -234,14 +241,6 @@ export default function AdminAccountsPage() {
                       ) : (
                         <span className="badge badge-success">{t.admin_status_active}</span>
                       )}
-                    </td>
-                    <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", maxWidth: 200, overflowWrap: "anywhere" }}>
-                      {a.email || <span style={{ color: "var(--text-muted)" }}>—</span>}
-                      {a.registration_reason ? (
-                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                          {t.admin_registration_reason}: {a.registration_reason}
-                        </div>
-                      ) : null}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                       {formatLastActive(a.last_active_at)}

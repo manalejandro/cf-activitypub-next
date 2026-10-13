@@ -1178,5 +1178,7 @@
   "account_moved_to": "Questo account si è spostato su",
   "settings_migration_note": "Si spostano solo i tuoi follower (e l'avviso che punta al nuovo account): i post e gli account che segui non vengono trasferiti, quindi esporta la tua lista di following e importala nel nuovo account.",
   "admin_media_cache_config_cold_days": "Riciclo a freddo dopo (giorni)",
-  "admin_media_cache_config_cold_max_hits": "…con al massimo queste visite"
+  "admin_media_cache_config_cold_max_hits": "…con al massimo queste visite",
+  "admin_col_suspended_at": "Sospeso",
+  "admin_col_deletion": "Eliminazione"
 }

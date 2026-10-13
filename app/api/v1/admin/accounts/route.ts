@@ -33,15 +33,19 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   if (status === "active") {
-    sql += " AND email_verified = 1 AND approved = 1";
+    sql += " AND email_verified = 1 AND approved = 1 AND suspended = 0";
   } else if (status === "pending") {
-    sql += " AND email_verified = 0";
+    sql += " AND email_verified = 0 AND suspended = 0";
   } else if (status === "approval_pending") {
-    sql += " AND approved = 0";
+    sql += " AND approved = 0 AND suspended = 0";
   } else if (status === "suspended") {
     sql += " AND suspended = 1";
   } else if (status === "silenced") {
-    sql += " AND silenced = 1";
+    sql += " AND silenced = 1 AND suspended = 0";
+  } else {
+    // Suspended accounts have their own table (/admin/suspended): keeping them
+    // out of the main one leaves room for the accounts an admin works with.
+    sql += " AND suspended = 0";
   }
 
   if (role !== "all") {
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const totalRow = await env.DB.prepare(
       "SELECT COUNT(*) as count FROM actors WHERE 1=1" +
       (local === "true" ? " AND is_local = 1" : remote === "true" ? " AND is_local = 0" : "") +
-      (status !== "all" ? (status === "active" ? " AND email_verified = 1 AND approved = 1" : status === "pending" ? " AND email_verified = 0" : status === "approval_pending" ? " AND approved = 0" : status === "suspended" ? " AND suspended = 1" : " AND silenced = 1") : "") +
+      (status === "active" ? " AND email_verified = 1 AND approved = 1 AND suspended = 0" : status === "pending" ? " AND email_verified = 0 AND suspended = 0" : status === "approval_pending" ? " AND approved = 0 AND suspended = 0" : status === "suspended" ? " AND suspended = 1" : status === "silenced" ? " AND silenced = 1 AND suspended = 0" : " AND suspended = 0") +
       (role !== "all" ? " AND role = ?" : "") +
       (q ? " AND (username LIKE ? OR display_name LIKE ?)" : "")
     ).bind(...(role !== "all" ? [role] : []), ...(q ? [`%${q}%`, `%${q}%`] : [])).first<{ count: number }>();
