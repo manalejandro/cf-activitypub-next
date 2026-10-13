@@ -40,6 +40,47 @@ describe("useTimelineCache", () => {
     expect(cached?.hasMore).toBe(false);
   });
 
+  it("defers statuses a background refetch brings in while the reader is scrolled away", async () => {
+    const first = renderHook(() =>
+      useTimelineCache("home", async () => ({ items: items(3), hasMore: true }), { refetchOnMount: true })
+    );
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    // Scrolled down: the user is reading a status detail, not the top.
+    Object.defineProperty(window, "scrollY", { value: 800, writable: true, configurable: true });
+    const deferred: S[][] = [];
+    const newer = { id: "new1", created_at: "2026-02-01T00:00:00.000Z" };
+    const restored = renderHook(() =>
+      useTimelineCache("home", async () => ({ items: [newer, ...items(3)], hasMore: true }), {
+        refetchOnMount: true,
+        onDeferredItems: (batch) => deferred.push(batch),
+      })
+    );
+
+    await waitFor(() => expect(deferred).toHaveLength(1));
+    // Only the status newer than the feed head is deferred…
+    expect(deferred[0].map((s) => s.id)).toEqual(["new1"]);
+    // …and it stays out of the feed and out of the cache until revealed.
+    expect(restored.result.current.statuses.map((s) => s.id)).toEqual(["s0", "s1", "s2"]);
+    expect(getTimelineCache<S>("home")?.items.map((s) => s.id)).not.toContain("new1");
+  });
+
+  it("merges new statuses straight in when the refetch happens at the top", async () => {
+    Object.defineProperty(window, "scrollY", { value: 0, writable: true, configurable: true });
+    const deferred: S[][] = [];
+    const newer = { id: "new1", created_at: "2026-02-01T00:00:00.000Z" };
+    const { result } = renderHook(() =>
+      useTimelineCache("home", async () => ({ items: [newer, ...items(2)], hasMore: true }), {
+        onDeferredItems: (batch) => deferred.push(batch),
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(deferred).toHaveLength(0);
+    expect(result.current.statuses.map((s) => s.id)).toEqual(["new1", "s0", "s1"]);
+  });
+
   it("restores the capped feed and paginates from its tail", async () => {
     const first = renderHook(() => useTimelineCache("home", async () => ({ items: items(5), hasMore: true })));
     await waitFor(() => expect(first.result.current.loading).toBe(false));

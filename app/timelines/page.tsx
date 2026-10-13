@@ -48,8 +48,18 @@ export default function TimelinesPage() {
     return { items, hasMore: items.length >= limit };
   }, [view, limits.defaultTimelinePage, limits.pageSize]);
 
-  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache(view, fetchPage, { resetScrollOnEntry: true, refetchOnMount: true });
-  const { pendingCount, reveal, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  // Filled right after the buffer exists (the hook's background refetch
+  // defers statuses into it when the reader is scrolled away).
+  const bufferRef = useRef<{ queueItems: (items: Status[]) => void } | null>(null);
+  const { statuses, setStatuses, loading, loadingMore, hasMore, seenIdsRef, loadMore, refresh, catchUp } = useTimelineCache(view, fetchPage, {
+    resetScrollOnEntry: true,
+    refetchOnMount: true,
+    onDeferredItems: (items) => bufferRef.current?.queueItems(items),
+  });
+  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  useEffect(() => {
+    bufferRef.current = { queueItems };
+  }, [queueItems]);
 
   // Streaming: subscribe to the correct channel whenever the view changes
   const streamName = view === "local" ? "public:local" : "public";

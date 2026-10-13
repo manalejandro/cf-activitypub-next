@@ -12,11 +12,16 @@ import { fetchBlockedAccounts, statusTouchesBlocked, type BlockedAccounts, type 
 /** Distance from the top that still counts as "at the top" (px). */
 export const NEW_STATUSES_TOP_OFFSET = 120;
 
-export interface NewStatusesBuffer {
-  /** How many streamed statuses wait behind the pill. */
+export interface NewStatusesBuffer<T = TimelineItem> {
+  /** How many statuses wait behind the pill (streamed or caught up). */
   pendingCount: number;
   /** Merge the buffered statuses into the feed and jump to the top. */
   reveal: () => void;
+  /**
+   * Queue statuses the feed did not show yet — used by the timeline cache for
+   * what a background refetch brought in while the reader was scrolled away.
+   */
+  queueItems: (items: T[]) => void;
   /** Feed one streaming event; true when this module handled it. */
   handleStreamEvent: (event: string, payload: string) => boolean;
 }
@@ -31,7 +36,7 @@ export interface NewStatusesBuffer {
 export function useNewStatusesBuffer<T extends TimelineItem>(
   setItems: Dispatch<SetStateAction<T[]>>,
   seenIdsRef: MutableRefObject<Set<string>>
-): NewStatusesBuffer {
+): NewStatusesBuffer<T> {
   const [pendingCount, setPendingCount] = useState(0);
   const pendingRef = useRef<T[]>([]);
   const atTopRef = useRef(true);
@@ -117,5 +122,5 @@ export function useNewStatusesBuffer<T extends TimelineItem>(
     [setItems, seenIdsRef, queue]
   );
 
-  return { pendingCount, reveal, handleStreamEvent };
+  return { pendingCount, reveal, queueItems: queue, handleStreamEvent };
 }

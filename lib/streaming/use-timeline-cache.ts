@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useLimits } from "@/lib/limits-client";
+import { NEW_STATUSES_TOP_OFFSET } from "./use-new-statuses";
 import {
   getTimelineCache,
   isTimelineCacheFresh,
@@ -19,7 +20,7 @@ export interface FetchPageResult<T> {
   hasMore: boolean;
 }
 
-export interface UseTimelineCacheOptions {
+export interface UseTimelineCacheOptions<T = unknown> {
   /**
    * When true, entering this feed (a fresh mount, not a tab switch) always
    * starts at the top: the remembered scroll offset is discarded and any
@@ -32,6 +33,13 @@ export interface UseTimelineCacheOptions {
    * fixes feeds (like home) that have no tab-switch to trigger a refresh.
    */
   refetchOnMount?: boolean;
+  /**
+   * Called with the statuses a background refetch brought in while the reader
+   * was scrolled away from the top. They stay out of the feed **and** out of the
+   * cache — the caller queues them behind the "new statuses" pill — so coming
+   * back to a timeline (from a status detail) never shifts it under the reader.
+   */
+  onDeferredItems?: (items: T[]) => void;
   /**
    * Utility feeds (bookmarks/favourites) whose membership changes elsewhere:
    * a background refetch replaces the first page instead of merging it, so
@@ -126,10 +134,10 @@ function resetScrollToTop() {
   forceScroll(0);
 }
 
-export function useTimelineCache<T extends { id: string }>(
+export function useTimelineCache<T extends { id: string; created_at?: string }>(
   key: string,
   fetchPage: (maxId?: string) => Promise<FetchPageResult<T>>,
-  options: UseTimelineCacheOptions = {}
+  options: UseTimelineCacheOptions<T> = {}
 ): {
   statuses: T[];
   setStatuses: Dispatch<SetStateAction<T[]>>;
@@ -292,6 +300,25 @@ export function useTimelineCache<T extends { id: string }>(
         try {
           const result = await fetchPageRef.current();
           if (cancelled) return;
+          // Scrolled away from the top, a background refetch must not push new
+          // statuses into the visible feed: hand them to the caller (the pill)
+          // instead, so returning from a status detail keeps the exact position.
+          const onDeferred = optionsRef.current.onDeferredItems;
+          const scrolledAway = typeof window !== "undefined" && (window.scrollY ?? 0) > NEW_STATUSES_TOP_OFFSET;
+          let incoming = result.items;
+          if (onDeferred && scrolledAway) {
+            const prevItems = statusesRef.current;
+            const known = new Set(prevItems.map((s) => s.id));
+            const head = prevItems[0]?.created_at ?? "";
+            const deferred = result.items.filter(
+              (item) => !known.has(item.id) && (!head || !item.created_at || item.created_at > head)
+            );
+            if (deferred.length > 0) {
+              const deferredIds = new Set(deferred.map((item) => item.id));
+              incoming = result.items.filter((item) => !deferredIds.has(item.id));
+              onDeferred(deferred);
+            }
+          }
           setStatuses((prev) => {
             // Merge with the canonical newest-first order and never let an
             // empty result wipe a cached feed (a transient failure returns an
@@ -305,7 +332,7 @@ export function useTimelineCache<T extends { id: string }>(
               // forever (auto-deleted posts stayed in the timeline). Only the
               // re-fetched window is reconciled; later pages and streamed
               // items newer than the window are preserved.
-              : mergeTimelineItems(result.items, pruneMissingFromWindow(result.items, prev));
+              : mergeTimelineItems(incoming, pruneMissingFromWindow(incoming, prev));
             setTimelineCache(key, {
               items: merged,
               hasMore: result.hasMore,

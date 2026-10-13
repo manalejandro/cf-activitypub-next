@@ -16,7 +16,7 @@ interface Item {
   created_at: string;
 }
 
-let buffer: ReturnType<typeof useNewStatusesBuffer> | null = null;
+let buffer: ReturnType<typeof useNewStatusesBuffer<Item>> | null = null;
 
 function Harness() {
   const [items, setItems] = useState<Item[]>([]);
@@ -82,6 +82,24 @@ describe("useNewStatusesBuffer", () => {
     expect(screen.getByText("s2")).toBeTruthy();
     expect(screen.getByTestId("count").textContent).toBe("0");
     // Newest first, like every other merge.
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["s2", "s1"]);
+  });
+
+  it("queues statuses handed over by a background refetch (returning from a detail)", () => {
+    render(<Harness />);
+    setScroll(600);
+
+    act(() => {
+      buffer!.queueItems([
+        { id: "s1", created_at: "2026-09-30T10:00:00Z" },
+        { id: "s2", created_at: "2026-09-30T10:01:00Z" },
+      ]);
+    });
+
+    expect(screen.queryByText("s1")).toBeNull();
+    expect(screen.getByTestId("count").textContent).toBe("2");
+
+    setScroll(10);
     expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["s2", "s1"]);
   });
 

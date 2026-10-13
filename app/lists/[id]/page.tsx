@@ -71,8 +71,16 @@ export default function ListDetailPage() {
     return { items, hasMore: items.length >= limits.defaultTimelinePage };
   }, [token, listId, limits.defaultTimelinePage]);
 
-  const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, seenIdsRef, loadMore, catchUp } = useTimelineCache(`list:${listId}`, fetchPage);
-  const { pendingCount, reveal, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  // Filled right after the buffer exists (the hook's background refetch
+  // defers statuses into it when the reader is scrolled away).
+  const bufferRef = useRef<{ queueItems: (items: Status[]) => void } | null>(null);
+  const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, seenIdsRef, loadMore, catchUp } = useTimelineCache(`list:${listId}`, fetchPage, {
+    onDeferredItems: (items) => bufferRef.current?.queueItems(items),
+  });
+  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  useEffect(() => {
+    bufferRef.current = { queueItems };
+  }, [queueItems]);
 
   // Live updates on list feeds: new statuses, deletions and counter/content
   // refreshes (edits, favs, reblogs, replies).
