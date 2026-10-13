@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "Sì",
   "admin_media_cache_config_no": "No",
   "admin_media_cache_top": "Più serviti",
-  "admin_media_cache_top_desc": "La politica di espulsione protegge questi file; il contatore scade dopo 30 giorni senza servizi. Aprire un link conta come servizio e scarica la copia.",
+  "admin_media_cache_top_desc": "La politica di espulsione protegge questi file: finché c'è spazio restano fino alla scadenza, e quando la cache ha bisogno di spazio vengono riciclate per prime le voci con poche visite e senza accessi recenti ({days} giorni, al massimo {hits} visite). Il contatore riparte quando il file viene servito di nuovo dopo {days} giorni. Aprire un link conta come visita e scarica la copia.",
   "admin_media_cache_col_resource": "Risorsa",
   "admin_media_cache_col_type": "Tipo",
   "admin_media_cache_col_size": "Dimensione",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "È il tuo account.",
   "alias_error_exists": "Questo alias esiste già.",
   "account_moved_to": "Questo account si è spostato su",
-  "settings_migration_note": "Si spostano solo i tuoi follower (e l'avviso che punta al nuovo account): i post e gli account che segui non vengono trasferiti, quindi esporta la tua lista di following e importala nel nuovo account."
+  "settings_migration_note": "Si spostano solo i tuoi follower (e l'avviso che punta al nuovo account): i post e gli account che segui non vengono trasferiti, quindi esporta la tua lista di following e importala nel nuovo account.",
+  "admin_media_cache_config_cold_days": "Riciclo a freddo dopo (giorni)",
+  "admin_media_cache_config_cold_max_hits": "…con al massimo queste visite"
 }

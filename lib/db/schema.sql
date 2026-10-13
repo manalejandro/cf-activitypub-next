@@ -376,6 +376,10 @@ CREATE INDEX IF NOT EXISTS idx_media_cache_expiry ON media_cache(status, fetched
 CREATE INDEX IF NOT EXISTS idx_media_cache_target ON media_cache(target_type, target_id);
 -- Eviction order: least served first, then oldest.
 CREATE INDEX IF NOT EXISTS idx_media_cache_evict  ON media_cache(status, hits, fetched_at);
+-- Cold-and-quiet recycling: the eviction prefers entries not served for a few
+-- days with few serves, so fresh media is not outlived by files that were
+-- popular long ago (their lifetime hit count only ages out on a serve).
+CREATE INDEX IF NOT EXISTS idx_media_cache_cold   ON media_cache(status, last_hit_at);
 -- Dangling-reference repair (is the cached URL still backed by an entry?).
 CREATE INDEX IF NOT EXISTS idx_media_cache_cached_url ON media_cache(cached_url);
 

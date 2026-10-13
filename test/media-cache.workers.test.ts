@@ -933,6 +933,90 @@ describe("remote media cache", () => {
     expect(left.results.map((r) => r.id)).toEqual(["hot"]);
   });
 
+  it("recycles cold, barely served entries so fresh media gets a chance", async () => {
+    const insert = (id: string, hits: number, lastHitAt: string | null, fetchedAt: string) =>
+      db
+        .prepare(
+          `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, cached_url, size, hits, hits_at, last_hit_at, fetched_at)
+           VALUES (?, ?, 'attachment', 'ready', ?, ?, 400, ?, '2026-09-01T00:00:00Z', ?, ?)`
+        )
+        .bind(
+          id,
+          `https://remote.example/${id}.png`,
+          `cache/media/${id}.png`,
+          `https://local.example/api/media/cache/media/${id}.png`,
+          hits,
+          lastHitAt,
+          fetchedAt
+        )
+        .run();
+
+    // Barely used and untouched for days: the LFU order alone would keep it
+    // (2 hits) and evict the fresh entry (0 hits) instead.
+    await insert("stale-quiet", 2, "2026-09-01T00:00:00Z", "2026-08-01T00:00:00Z");
+    // Just cached, not served yet.
+    await insert("fresh", 0, null, new Date().toISOString());
+    // In active use.
+    await insert("active", 5, new Date(Date.now() - 3_600_000).toISOString(), new Date(Date.now() - 86_400_000).toISOString());
+
+    const result = await maintainMediaCache(bindings, {
+      ...LIMITS,
+      maxBytes: 900,
+      days: 3650,
+      profileDays: 3650,
+    });
+
+    expect(result.evicted).toBe(1);
+    const left = await db.prepare("SELECT id FROM media_cache WHERE status = 'ready'").bind().all<{ id: string }>();
+    expect(left.results.map((r) => r.id).sort()).toEqual(["active", "fresh"]);
+  });
+
+  it("restarts the counter for an entry served again after the cold window", async () => {
+    await db
+      .prepare(
+        `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, size, hits, hits_at, fetched_at)
+         VALUES ('m1', 'https://remote.example/x.png', 'attachment', 'ready', 'cache/media/x.png', 10, 40, datetime('now', '-10 days'), datetime('now'))`
+      )
+      .bind()
+      .run();
+
+    __resetMediaHits();
+    recordMediaHit("cache/media/x.png");
+    // The aging window is the media cache's cold window, not a fixed 30 days.
+    await flushMediaHits(db, true, 3);
+
+    const row = await db.prepare("SELECT hits FROM media_cache WHERE id = 'm1'").bind().first<{ hits: number }>();
+    expect(row?.hits).toBe(1);
+  });
+
+  it("keeps cold, barely served entries while the cache is under budget", async () => {
+    const insert = (id: string, hits: number, lastHitAt: string | null) =>
+      db
+        .prepare(
+          `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, cached_url, size, hits, hits_at, last_hit_at, fetched_at)
+           VALUES (?, ?, 'attachment', 'ready', ?, ?, 400, ?, '2026-09-01T00:00:00Z', ?, '2026-08-01T00:00:00Z')`
+        )
+        .bind(id, `https://remote.example/${id}.png`, `cache/media/${id}.png`, `https://local.example/api/media/cache/media/${id}.png`, hits, lastHitAt)
+        .run();
+
+    // Cold and barely served, but there is room: the retention window is what
+    // removes entries by default — the recycling only reclaims space when the
+    // cache needs it.
+    await insert("stale-quiet", 2, "2026-09-01T00:00:00Z");
+    await insert("active", 10, new Date().toISOString());
+
+    const result = await maintainMediaCache(bindings, {
+      ...LIMITS,
+      maxBytes: 100_000,
+      days: 3650,
+      profileDays: 3650,
+    });
+
+    expect(result.evicted).toBe(0);
+    const left = await db.prepare("SELECT id FROM media_cache WHERE status = 'ready'").bind().all<{ id: string }>();
+    expect(left.results.map((r) => r.id).sort()).toEqual(["active", "stale-quiet"]);
+  });
+
   it("counts serves in batches and ages the counter after 30 days", async () => {
     await db
       .prepare(

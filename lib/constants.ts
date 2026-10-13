@@ -113,6 +113,16 @@ export const MEDIA_CACHE_FETCH_BATCH = 50;
 // Maintenance never takes the cache below this many entries: reaching a limit
 // replaces the least served entries (LFU with aging), it never wipes the cache.
 export const MEDIA_CACHE_MIN_ENTRIES = 20;
+/**
+ * Eviction preference: an entry whose last serve is older than
+ * `MEDIA_CACHE_COLD_DAYS` and that was served at most `MEDIA_CACHE_COLD_MAX_HITS`
+ * times is recycled before the rest, so barely used files that nobody asked for
+ * in a while free the space for fresh media. Files with many serves keep their
+ * place (the LFU order protects them, and the retention window still expires
+ * them once they go cold for good).
+ */
+export const MEDIA_CACHE_COLD_DAYS = 3;
+export const MEDIA_CACHE_COLD_MAX_HITS = 5;
 // Strip EXIF/XMP/IPTC/ID3/metadata from every object stored in R2 (cached
 // federated media and local uploads), like Mastodon's media processing.
 export const MEDIA_CACHE_STRIP_METADATA = true;
@@ -209,6 +219,9 @@ export interface InstanceLimits {
   mediaCacheMaxImageBytes: number;
   mediaCacheFetchBatch: number;
   mediaCacheMinEntries: number;
+  /** Entries not served for this many days with at most `mediaCacheColdMaxHits` serves are recycled first. */
+  mediaCacheColdDays: number;
+  mediaCacheColdMaxHits: number;
   /** Strip EXIF/metadata from cached objects (Mastodon parity). */
   mediaCacheStripMetadata: boolean;
   mediaCacheUserAgents: string[];
@@ -272,6 +285,8 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheMaxImageBytes: MEDIA_CACHE_MAX_IMAGE_BYTES,
   mediaCacheFetchBatch: MEDIA_CACHE_FETCH_BATCH,
   mediaCacheMinEntries: MEDIA_CACHE_MIN_ENTRIES,
+  mediaCacheColdDays: MEDIA_CACHE_COLD_DAYS,
+  mediaCacheColdMaxHits: MEDIA_CACHE_COLD_MAX_HITS,
   mediaCacheStripMetadata: MEDIA_CACHE_STRIP_METADATA,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
   mediaCacheMaxHoldMinutes: 30,
@@ -371,6 +386,8 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     mediaCacheMaxImageBytes: num(env, "MEDIA_CACHE_MAX_IMAGE_BYTES", DEFAULT_LIMITS.mediaCacheMaxImageBytes),
     mediaCacheFetchBatch: num(env, "MEDIA_CACHE_FETCH_BATCH", DEFAULT_LIMITS.mediaCacheFetchBatch),
     mediaCacheMinEntries: nonNegativeNum(env, "MEDIA_CACHE_MIN_ENTRIES", DEFAULT_LIMITS.mediaCacheMinEntries),
+    mediaCacheColdDays: num(env, "MEDIA_CACHE_COLD_DAYS", DEFAULT_LIMITS.mediaCacheColdDays),
+    mediaCacheColdMaxHits: num(env, "MEDIA_CACHE_COLD_MAX_HITS", DEFAULT_LIMITS.mediaCacheColdMaxHits),
     mediaCacheStripMetadata: bool(env, "MEDIA_CACHE_STRIP_METADATA", DEFAULT_LIMITS.mediaCacheStripMetadata),
     mediaCacheUserAgents: list(env, "MEDIA_CACHE_USER_AGENTS", defaultMediaCacheUserAgents(env)),
     mediaCacheMaxHoldMinutes: nonNegativeNum(env, "MEDIA_CACHE_MAX_HOLD_MINUTES", DEFAULT_LIMITS.mediaCacheMaxHoldMinutes),

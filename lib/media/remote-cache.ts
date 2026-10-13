@@ -84,6 +84,9 @@ export interface NormalizedMediaCacheLimits {
   maxImageBytes: number;
   fetchBatch: number;
   minEntries: number;
+  /** Cold-and-quiet recycling: last serve older than this, at most `coldMaxHits` serves. */
+  coldDays: number;
+  coldMaxHits: number;
   /** Strip EXIF/metadata from the stored copy (Mastodon parity). */
   stripMetadata: boolean;
   userAgents: string[];
@@ -99,6 +102,11 @@ export interface MediaCacheLimits {
   fetchBatch?: number;
   /** Maintenance never shrinks the cache below this many entries. */
   minEntries?: number;
+  /** Eviction preference for entries not served for `coldDays` with at most `coldMaxHits` serves. */
+  coldDays?: number;
+  coldMaxHits?: number;
+  mediaCacheColdDays?: number;
+  mediaCacheColdMaxHits?: number;
   stripMetadata?: boolean;
   userAgents?: string[];
   mediaCacheEnabled?: boolean;
@@ -135,6 +143,8 @@ export function mediaCacheLimitsFrom(limits: InstanceLimits): MediaCacheLimits {
     maxImageBytes: limits.mediaCacheMaxImageBytes,
     fetchBatch: limits.mediaCacheFetchBatch,
     minEntries: limits.mediaCacheMinEntries,
+    coldDays: limits.mediaCacheColdDays,
+    coldMaxHits: limits.mediaCacheColdMaxHits,
     stripMetadata: limits.mediaCacheStripMetadata,
     userAgents: limits.mediaCacheUserAgents,
   };
@@ -155,6 +165,8 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
   const maxImageBytes = Number(pick(limits.maxImageBytes, limits.mediaCacheMaxImageBytes));
   const fetchBatch = Number(pick(limits.fetchBatch, limits.mediaCacheFetchBatch));
   const minEntries = Number(pick(limits.minEntries, limits.mediaCacheMinEntries));
+  const coldDays = Number(pick(limits.coldDays, limits.mediaCacheColdDays));
+  const coldMaxHits = Number(pick(limits.coldMaxHits, limits.mediaCacheColdMaxHits));
   const stripMetadata = pick(limits.stripMetadata, limits.mediaCacheStripMetadata);
   const userAgents = pick(limits.userAgents, limits.mediaCacheUserAgents);
   const enabled = pick(limits.enabled, limits.mediaCacheEnabled);
@@ -168,6 +180,8 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
     fetchBatch: fetchBatch > 0 ? fetchBatch : 10,
     // 0 is a valid floor (used by tests); anything invalid falls back to 20.
     minEntries: Number.isFinite(minEntries) && minEntries >= 0 ? Math.floor(minEntries) : 20,
+    coldDays: Number.isFinite(coldDays) && coldDays > 0 ? coldDays : 3,
+    coldMaxHits: Number.isFinite(coldMaxHits) && coldMaxHits >= 0 ? Math.floor(coldMaxHits) : 5,
     stripMetadata: stripMetadata !== false,
     userAgents: Array.isArray(userAgents) && userAgents.length > 0
       ? userAgents
@@ -566,12 +580,16 @@ export async function maintainMediaCache(
   await deleteEntries(bindings, expirable);
   remaining -= expirable.length;
 
-  // 2) Byte-budget eviction: least served first (LFU with a 30-day aging
-  // window), then the oldest, up to EVICT_BYTES_PER_TICK so a large overage (or
-  // a lowered MEDIA_CACHE_MAX_BYTES) is actually drained instead of being
-  // outpaced by new fetches. Content clients keep asking for stays cached — it
-  // is not re-downloaded — while cold entries free the space. The floor still
-  // guarantees the cache is never wiped.
+  // 2) Byte-budget eviction — only when the cache needs the space: under budget
+  // the retention window above is the only thing that removes entries. Up to
+  // EVICT_BYTES_PER_TICK so a large overage (or a lowered
+  // MEDIA_CACHE_MAX_BYTES) is actually drained instead of being outpaced by new
+  // fetches. Cold-and-quiet entries are reclaimed first (`coldDays` without a
+  // serve and at most `coldMaxHits` serves): a barely used file nobody asked for
+  // in a while must not outlive the fresh media it competes with. The rest is
+  // least served first, then oldest (LFU with the cold-window aging), so content
+  // clients keep asking for stays cached. The floor still guarantees the cache is
+  // never wiped.
   const expiredBytes = expirable.reduce((sum, e) => sum + Number(e.size ?? 0), 0);
   const bytesBefore = stats.bytes;
   let bytes = Math.max(0, stats.bytes - expiredBytes);
@@ -580,7 +598,11 @@ export async function maintainMediaCache(
   const budget = Math.max(1, limits.maxBytes);
   const deadline = Date.now() + MAINTENANCE_DEADLINE_MS;
   while (bytes > budget && remaining > floor && evictedBytes < EVICT_BYTES_PER_TICK && Date.now() < deadline) {
-    const oldest = await listEvictableMediaCache(bindings.DB, Math.max(1, Math.min(EVICT_BATCH, remaining - floor)));
+    const oldest = await listEvictableMediaCache(
+      bindings.DB,
+      Math.max(1, Math.min(EVICT_BATCH, remaining - floor)),
+      { days: limits.coldDays, maxHits: limits.coldMaxHits }
+    );
     if (oldest.length === 0) break;
     const doomed: typeof oldest = [];
     for (const entry of oldest) {

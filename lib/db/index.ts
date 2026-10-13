@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
+import { MEDIA_CACHE_COLD_DAYS, MEDIA_CACHE_COLD_MAX_HITS } from "@/lib/constants";
 import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import type {
   LocalActor,
@@ -5239,24 +5240,48 @@ export async function listExpiredMediaCache(
 }
 
 /**
- * Entries to evict when the cache is over budget: least served first, then the
- * oldest. `hits` ages out after 30 days (see `lib/media/hits.ts`), so content
- * that is actually requested stays in R2 instead of being re-downloaded, while
- * cold entries — popular long ago, or never used — make room for new ones.
- * Indexed by `idx_media_cache_evict(status, hits, fetched_at)`.
+ * Entries to evict when the cache is over budget.
+ *
+ * Cold-and-quiet entries go first: something whose last serve is older than
+ * `coldDays` and that was served at most `coldMaxHits` times is recycled to make
+ * room for fresh media. A once-popular file keeps its high lifetime `hits` — the
+ * counter only ages out when the entry is served again, so an untouched entry
+ * never resets — and would otherwise outlive the new arrivals it competes with.
+ * The rest is least served first, then oldest (LFU with a 30-day aging window).
+ * Indexed by `idx_media_cache_cold(status, last_hit_at)` and
+ * `idx_media_cache_evict(status, hits, fetched_at)`.
  */
 export async function listEvictableMediaCache(
   db: D1Database,
-  limit = 50
+  limit = 50,
+  cold: { days: number; maxHits: number } = { days: MEDIA_CACHE_COLD_DAYS, maxHits: MEDIA_CACHE_COLD_MAX_HITS }
 ): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
-  const rows = await db
+  const coldRows = await db
+    .prepare(
+      `SELECT id, r2_key, size, source_url FROM media_cache
+       WHERE status = 'ready' AND fetched_at IS NOT NULL
+         AND last_hit_at IS NOT NULL AND last_hit_at <= datetime('now', ?) AND hits <= ?
+       ORDER BY last_hit_at ASC, hits ASC, rowid ASC LIMIT ?`
+    )
+    .bind(`-${Math.max(1, Math.floor(cold.days))} days`, Math.max(0, Math.floor(cold.maxHits)), limit)
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+
+  const out = coldRows.results ?? [];
+  if (out.length >= limit) return out;
+
+  const seen = new Set(out.map((row) => row.id));
+  const rest = await db
     .prepare(
       `SELECT id, r2_key, size, source_url FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
        ORDER BY hits ASC, fetched_at ASC, rowid ASC LIMIT ?`
     )
     .bind(limit)
     .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
-  return rows.results ?? [];
+  for (const row of rest.results ?? []) {
+    if (out.length >= limit) break;
+    if (!seen.has(row.id)) out.push(row);
+  }
+  return out;
 }
 
 /**

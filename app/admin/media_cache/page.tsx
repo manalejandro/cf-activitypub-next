@@ -32,6 +32,8 @@ interface MediaCacheMetrics {
     max_bytes: number;
     max_object_bytes: number;
     fetch_batch: number;
+    cold_days: number;
+    cold_max_hits: number;
     user_agents: string[];
   };
 }
@@ -196,13 +198,17 @@ export default function AdminMediaCachePage() {
               <ConfigRow label={t.admin_media_cache_config_max_bytes} value={formatSize(config.max_bytes)} />
               <ConfigRow label={t.admin_media_cache_config_max_object} value={formatSize(config.max_object_bytes)} />
               <ConfigRow label={t.admin_media_cache_config_fetch_batch} value={String(config.fetch_batch)} />
+              <ConfigRow label={t.admin_media_cache_config_cold_days} value={String(config.cold_days)} />
+              <ConfigRow label={t.admin_media_cache_config_cold_max_hits} value={String(config.cold_max_hits)} />
             </div>
           </div>
 
           <div className="card" style={{ padding: "1.25rem" }}>
             <h2 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>{t.admin_media_cache_top}</h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>
-              {t.admin_media_cache_top_desc}
+              {t.admin_media_cache_top_desc
+                .replace("{days}", String(config.cold_days))
+                .replace("{hits}", String(config.cold_max_hits))}
             </p>
             {metrics.top_served.length === 0 ? (
               <div style={{ color: "var(--text-muted)", padding: "1rem 0", fontSize: "0.875rem" }}>

@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "Ja",
   "admin_media_cache_config_no": "Nein",
   "admin_media_cache_top": "Meist ausgeliefert",
-  "admin_media_cache_top_desc": "Die Verdrängungsstrategie schützt diese Dateien; der Zähler verfällt nach 30 Tagen ohne Auslieferung. Ein Link öffnet die zwischengespeicherte Kopie – das zählt als Auslieferung und lädt sie herunter.",
+  "admin_media_cache_top_desc": "Die Verdrängungsrichtlinie schützt diese Dateien: solange Platz ist, bleiben sie bis zum Ablauf erhalten; braucht der Cache Platz, werden zuerst Einträge mit wenigen Zugriffen und ohne kürzlichen Abruf ({days} Tage, höchstens {hits} Zugriffe) recycelt. Der Zähler beginnt neu, wenn die Datei nach {days} Tagen erneut ausgeliefert wird. Ein Link zu öffnen zählt als Zugriff und lädt die Kopie herunter.",
   "admin_media_cache_col_resource": "Ressource",
   "admin_media_cache_col_type": "Typ",
   "admin_media_cache_col_size": "Größe",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "Das ist dein eigenes Konto.",
   "alias_error_exists": "Dieser Alias existiert bereits.",
   "account_moved_to": "Dieses Konto ist umgezogen nach",
-  "settings_migration_note": "Nur deine Follower ziehen um (und der Hinweis auf das neue Konto): Beiträge und gefolgte Konten werden nicht übertragen — exportiere deine Folgen-Liste und importiere sie im neuen Konto."
+  "settings_migration_note": "Nur deine Follower ziehen um (und der Hinweis auf das neue Konto): Beiträge und gefolgte Konten werden nicht übertragen — exportiere deine Folgen-Liste und importiere sie im neuen Konto.",
+  "admin_media_cache_config_cold_days": "Kalt-Recycling nach (Tagen)",
+  "admin_media_cache_config_cold_max_hits": "…mit höchstens so vielen Zugriffen"
 }

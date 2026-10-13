@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "Oui",
   "admin_media_cache_config_no": "Non",
   "admin_media_cache_top": "Les plus servis",
-  "admin_media_cache_top_desc": "La politique d'éviction protège ces fichiers ; le compteur expire après 30 jours sans service. Ouvrir un lien compte comme un service et télécharge la copie.",
+  "admin_media_cache_top_desc": "La politique d'éviction protège ces fichiers : tant qu'il y a de la place, ils sont conservés jusqu'à leur expiration, et quand le cache a besoin d'espace, les entrées peu servies et sans accès récent ({days} jours, au plus {hits} accès) sont recyclées en premier. Le compteur repart lorsque le fichier est resservi après {days} jours. Ouvrir un lien compte comme un accès et télécharge la copie.",
   "admin_media_cache_col_resource": "Ressource",
   "admin_media_cache_col_type": "Type",
   "admin_media_cache_col_size": "Taille",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "C'est ton propre compte.",
   "alias_error_exists": "Cet alias existe déjà.",
   "account_moved_to": "Ce compte a déménagé vers",
-  "settings_migration_note": "Seul·es tes abonné·es déménagent (et l'avis pointant vers le nouveau compte) : tes publications et les comptes que tu suis ne sont pas transférés — exporte ta liste d'abonnements et importe-la sur le nouveau compte."
+  "settings_migration_note": "Seul·es tes abonné·es déménagent (et l'avis pointant vers le nouveau compte) : tes publications et les comptes que tu suis ne sont pas transférés — exporte ta liste d'abonnements et importe-la sur le nouveau compte.",
+  "admin_media_cache_config_cold_days": "Recyclage à froid après (jours)",
+  "admin_media_cache_config_cold_max_hits": "…avec au plus ce nombre d'accès"
 }

@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "はい",
   "admin_media_cache_config_no": "いいえ",
   "admin_media_cache_top": "最も配信された項目",
-  "admin_media_cache_top_desc": "削除ポリシーはこれらのファイルを保護します。カウンターは 30 日間配信されないと失効します。リンクを開くと配信として記録され、コピーがダウンロードされます。",
+  "admin_media_cache_top_desc": "削除ポリシーはこれらのファイルを保護します。空きがある間は有効期限まで保持され、キャッシュに空きが必要になると、アクセスが少なく最近使われていないエントリ（{days}日、最大{hits}回）から先に再利用されます。カウンタは{days}日後に再び配信されたときにリセットされます。リンクを開くとアクセスとして数えられ、コピーがダウンロードされます。",
   "admin_media_cache_col_resource": "リソース",
   "admin_media_cache_col_type": "種類",
   "admin_media_cache_col_size": "サイズ",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "それはあなた自身のアカウントです。",
   "alias_error_exists": "そのエイリアスはすでに存在します。",
   "account_moved_to": "このアカウントは移行しました:",
-  "settings_migration_note": "移動するのはフォロワーだけです（新しいアカウントへの案内も表示されます）。投稿とフォロー中のアカウントは引き継がれないため、フォローリストをエクスポートして新しいアカウントでインポートしてください。"
+  "settings_migration_note": "移動するのはフォロワーだけです（新しいアカウントへの案内も表示されます）。投稿とフォロー中のアカウントは引き継がれないため、フォローリストをエクスポートして新しいアカウントでインポートしてください。",
+  "admin_media_cache_config_cold_days": "コールド再利用まで（日）",
+  "admin_media_cache_config_cold_max_hits": "…最大この回数のアクセスで"
 }

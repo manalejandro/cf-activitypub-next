@@ -16235,6 +16235,13 @@
           "mediaCacheMinEntries": {
             "type": "number"
           },
+          "mediaCacheColdDays": {
+            "type": "number",
+            "description": "Entries not served for this many days with at most `mediaCacheColdMaxHits` serves are recycled first."
+          },
+          "mediaCacheColdMaxHits": {
+            "type": "number"
+          },
           "mediaCacheStripMetadata": {
             "type": "boolean",
             "description": "Strip EXIF/metadata from cached objects (Mastodon parity)."

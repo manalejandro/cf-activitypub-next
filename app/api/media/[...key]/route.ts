@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { serveMediaObject } from "@/lib/media/serve";
-import { recordMediaHit, flushMediaHits } from "@/lib/media/hits";
+import { recordMediaHit, flushMediaHits, mediaHitWindowDays } from "@/lib/media/hits";
 import { env } from "cloudflare:workers";
 
 // GET /api/media/[...key] — Serve a file from R2.
@@ -19,7 +19,7 @@ export async function GET(
   // Popularity for the eviction policy (batched in memory, no hot-path I/O).
   if (request.method === "GET" && (response.status === 200 || response.status === 206)) {
     recordMediaHit(key.join("/"));
-    void flushMediaHits(env.DB);
+    void flushMediaHits(env.DB, false, mediaHitWindowDays(env as unknown as Record<string, unknown>));
   }
   return response;
 }

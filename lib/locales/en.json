@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "Yes",
   "admin_media_cache_config_no": "No",
   "admin_media_cache_top": "Most served",
-  "admin_media_cache_top_desc": "The eviction policy protects these files; the counter ages out after 30 days without serves. Opening a link counts as a serve and downloads the cached copy.",
+  "admin_media_cache_top_desc": "The eviction policy protects these files: while there is room they are kept until they expire, and when the cache needs space the entries with few serves and no recent access ({days} days, at most {hits} serves) are recycled first. The serve counter restarts when the file is served again after {days} days. Opening a link counts as a serve and downloads the copy.",
   "admin_media_cache_col_resource": "Resource",
   "admin_media_cache_col_type": "Type",
   "admin_media_cache_col_size": "Size",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "That is your own account.",
   "alias_error_exists": "That alias already exists.",
   "account_moved_to": "This account has moved to",
-  "settings_migration_note": "Only your followers move (and the notice pointing to the new account): your posts and the accounts you follow are not transferred, so export your following list and import it on the new account."
+  "settings_migration_note": "Only your followers move (and the notice pointing to the new account): your posts and the accounts you follow are not transferred, so export your following list and import it on the new account.",
+  "admin_media_cache_config_cold_days": "Cold recycling after (days)",
+  "admin_media_cache_config_cold_max_hits": "…with at most this many serves"
 }

@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "예",
   "admin_media_cache_config_no": "아니요",
   "admin_media_cache_top": "가장 많이 서비스됨",
-  "admin_media_cache_top_desc": "제거 정책이 이 파일들을 보호합니다. 카운터는 30일 동안 서비스되지 않으면 만료됩니다. 링크를 열면 서비스로 집계되고 사본이 다운로드됩니다.",
+  "admin_media_cache_top_desc": "제거 정책은 이 파일들을 보호합니다. 공간이 있는 동안에는 만료될 때까지 유지되고, 캐시에 공간이 필요해지면 접근이 적고 최근 사용이 없는 항목({days}일, 최대 {hits}회)이 먼저 재활용됩니다. 카운터는 {days}일 후 다시 제공될 때 초기화됩니다. 링크를 열면 접근으로 집계되고 사본이 다운로드됩니다.",
   "admin_media_cache_col_resource": "리소스",
   "admin_media_cache_col_type": "유형",
   "admin_media_cache_col_size": "크기",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "본인 계정입니다.",
   "alias_error_exists": "이미 존재하는 별칭입니다.",
   "account_moved_to": "이 계정은 다음으로 이전했습니다:",
-  "settings_migration_note": "이전되는 것은 팔로워뿐입니다(새 계정을 가리키는 안내 포함). 게시물과 팔로우한 계정은 이전되지 않으므로 팔로잉 목록을 내보내 새 계정에서 가져오세요."
+  "settings_migration_note": "이전되는 것은 팔로워뿐입니다(새 계정을 가리키는 안내 포함). 게시물과 팔로우한 계정은 이전되지 않으므로 팔로잉 목록을 내보내 새 계정에서 가져오세요.",
+  "admin_media_cache_config_cold_days": "콜드 재활용 기준(일)",
+  "admin_media_cache_config_cold_max_hits": "…최대 이 횟수 이하의 접근"
 }

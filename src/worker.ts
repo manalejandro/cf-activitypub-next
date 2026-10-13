@@ -31,7 +31,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { serveMediaObject } from "../lib/media/serve";
-import { recordMediaHit, flushMediaHits } from "../lib/media/hits";
+import { recordMediaHit, flushMediaHits, mediaHitWindowDays } from "../lib/media/hits";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
@@ -1465,7 +1465,7 @@ const worker = {
         // for instead of dropping it on age alone.
         if (request.method === "GET" && (response.status === 200 || response.status === 206)) {
           recordMediaHit(key);
-          ctx.waitUntil(flushMediaHits(env.DB).catch(() => {}));
+          ctx.waitUntil(flushMediaHits(env.DB, false, mediaHitWindowDays(env)).catch(() => {}));
         }
         return response;
       } catch {

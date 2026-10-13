@@ -16,7 +16,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const stats = await getMediaCacheStats(env.DB);
   // Most served entries: the eviction policy keeps these cached, so an operator
-  // can see what the budget is actually protecting (30-day aging window).
+  // can see what the budget is actually protecting. The counter ages out after
+  // the media cache's cold window (MEDIA_CACHE_COLD_DAYS) without a serve.
   const top = await env.DB
     .prepare(
       `SELECT r2_key, target_type, size, hits, hits_at, last_hit_at FROM media_cache
@@ -36,6 +37,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       max_bytes: limits.mediaCacheMaxBytes,
       max_object_bytes: limits.mediaCacheMaxObjectBytes,
       fetch_batch: limits.mediaCacheFetchBatch,
+      cold_days: limits.mediaCacheColdDays,
+      cold_max_hits: limits.mediaCacheColdMaxHits,
       user_agents: limits.mediaCacheUserAgents,
     },
   });

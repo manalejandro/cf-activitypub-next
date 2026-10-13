@@ -995,7 +995,7 @@
   "admin_media_cache_config_yes": "Sí",
   "admin_media_cache_config_no": "No",
   "admin_media_cache_top": "Más servidos",
-  "admin_media_cache_top_desc": "La política de expulsión protege estos archivos; el contador se reinicia tras 30 días sin servirse. Abrir un enlace cuenta como visita y descarga la copia.",
+  "admin_media_cache_top_desc": "La política de expulsión protege estos archivos: mientras hay espacio se mantienen hasta su caducidad, y cuando la caché necesita espacio se reciclan primero las entradas con pocas visitas y sin accesos recientes ({days} días, como máximo {hits} visitas). El contador de visitas se reinicia cuando el archivo vuelve a servirse tras {days} días. Abrir un enlace cuenta como visita y descarga la copia.",
   "admin_media_cache_col_resource": "Recurso",
   "admin_media_cache_col_type": "Tipo",
   "admin_media_cache_col_size": "Tamaño",
@@ -1176,5 +1176,7 @@
   "alias_error_self": "Esa es tu propia cuenta.",
   "alias_error_exists": "Ese alias ya existe.",
   "account_moved_to": "Esta cuenta se ha trasladado a",
-  "settings_migration_note": "Solo se trasladan tus seguidores (y el aviso que apunta a la cuenta nueva): tus publicaciones y las cuentas que sigues no se transfieren, así que exporta tu lista de seguidos e impórtala en la cuenta nueva."
+  "settings_migration_note": "Solo se trasladan tus seguidores (y el aviso que apunta a la cuenta nueva): tus publicaciones y las cuentas que sigues no se transfieren, así que exporta tu lista de seguidos e impórtala en la cuenta nueva.",
+  "admin_media_cache_config_cold_days": "Reciclado en frío tras (días)",
+  "admin_media_cache_config_cold_max_hits": "…con como máximo estas visitas"
 }

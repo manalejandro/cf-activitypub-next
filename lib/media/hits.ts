@@ -8,6 +8,8 @@
  * only decides the eviction order.
  */
 
+import { resolveLimits } from "@/lib/constants";
+
 type HitsDb = {
   prepare(sql: string): { bind(...args: unknown[]): { run(): Promise<unknown> } };
   batch?(statements: { run(): Promise<unknown> }[]): Promise<unknown>;
@@ -26,27 +28,46 @@ export function recordMediaHit(r2Key: string): void {
   pending.set(r2Key, (pending.get(r2Key) ?? 0) + 1);
 }
 
+/** The aging window: `MEDIA_CACHE_COLD_DAYS`, resolved once (the serve path is hot). */
+let hitWindowDays: number | null = null;
+
+export function mediaHitWindowDays(env: Record<string, unknown>): number {
+  if (hitWindowDays === null) {
+    hitWindowDays = resolveLimits(env).mediaCacheColdDays;
+  }
+  return hitWindowDays;
+}
+
+/** Test helper: forget the cached aging window. */
+export function __resetMediaHitWindow(): void {
+  hitWindowDays = null;
+}
+
 /**
- * Flush the pending counts when due (`force` for teardown paths). The window
- * resets after 30 days of no use, so a formerly popular entry ages out and can
- * be evicted again.
+ * Flush the pending counts when due (`force` for teardown paths).
+ *
+ * An entry not served for `windowDays` (the media cache's cold window) restarts
+ * its counter on the next serve, so a file that went cold and came back is
+ * judged by its recent use instead of a lifetime total — the same window the
+ * cold-and-quiet recycling uses.
  */
-export async function flushMediaHits(db: HitsDb, force = false): Promise<void> {
+export async function flushMediaHits(db: HitsDb, force = false, windowDays = 30): Promise<void> {
   if (pending.size === 0) return;
   if (!force && pending.size < FLUSH_AT_KEYS && Date.now() - lastFlush < FLUSH_INTERVAL_MS) return;
   const entries = [...pending.entries()].slice(0, FLUSH_MAX_STATEMENTS);
   for (const [key] of entries) pending.delete(key);
   lastFlush = Date.now();
+  const window = `-${Math.max(1, Math.floor(windowDays))} days`;
   const statements = entries.map(([key, count]) =>
     db
       .prepare(
         `UPDATE media_cache
-            SET hits = CASE WHEN hits_at IS NULL OR hits_at < datetime('now', '-30 days') THEN ? ELSE hits + ? END,
-                hits_at = CASE WHEN hits_at IS NULL OR hits_at < datetime('now', '-30 days') THEN datetime('now') ELSE hits_at END,
+            SET hits = CASE WHEN hits_at IS NULL OR hits_at < datetime('now', ?) THEN ? ELSE hits + ? END,
+                hits_at = CASE WHEN hits_at IS NULL OR hits_at < datetime('now', ?) THEN datetime('now') ELSE hits_at END,
                 last_hit_at = datetime('now')
           WHERE r2_key = ?`
       )
-      .bind(count, count, key)
+      .bind(window, count, count, window, key)
   );
   try {
     if (typeof db.batch === "function") await db.batch(statements);
