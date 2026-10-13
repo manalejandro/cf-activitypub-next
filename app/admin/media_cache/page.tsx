@@ -207,8 +207,9 @@ export default function AdminMediaCachePage() {
             <h2 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>{t.admin_media_cache_top}</h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>
               {t.admin_media_cache_top_desc
-                .replace("{days}", String(config.cold_days))
-                .replace("{hits}", String(config.cold_max_hits))}
+                .replace("{coldDays}", String(config.cold_days))
+                .replace("{hits}", String(config.cold_max_hits))
+                .replace("{retention}", String(config.days))}
             </p>
             {metrics.top_served.length === 0 ? (
               <div style={{ color: "var(--text-muted)", padding: "1rem 0", fontSize: "0.875rem" }}>

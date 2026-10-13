@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "Yes",
   "admin_media_cache_config_no": "No",
   "admin_media_cache_top": "Most served",
-  "admin_media_cache_top_desc": "The eviction policy protects these files: while there is room they are kept until they expire, and when the cache needs space the entries with few serves and no recent access ({days} days, at most {hits} serves) are recycled first. The serve counter restarts when the file is served again after {days} days. Opening a link counts as a serve and downloads the copy.",
+  "admin_media_cache_top_desc": "The eviction policy protects these files: while there is room they are kept until they expire, and when the cache needs space the entries with few serves and no recent access ({coldDays} days, at most {hits} serves) are recycled first. The serve counter restarts when the file is served again after {retention} days. Opening a link counts as a serve and downloads the copy.",
   "admin_media_cache_col_resource": "Resource",
   "admin_media_cache_col_type": "Type",
   "admin_media_cache_col_size": "Size",

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const stats = await getMediaCacheStats(env.DB);
   // Most served entries: the eviction policy keeps these cached, so an operator
   // can see what the budget is actually protecting. The counter ages out after
-  // the media cache's cold window (MEDIA_CACHE_COLD_DAYS) without a serve.
+  // the attachment retention (MEDIA_CACHE_DAYS) without a serve.
   const top = await env.DB
     .prepare(
       `SELECT r2_key, target_type, size, hits, hits_at, last_hit_at FROM media_cache

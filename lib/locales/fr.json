@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "Oui",
   "admin_media_cache_config_no": "Non",
   "admin_media_cache_top": "Les plus servis",
-  "admin_media_cache_top_desc": "La politique d'éviction protège ces fichiers : tant qu'il y a de la place, ils sont conservés jusqu'à leur expiration, et quand le cache a besoin d'espace, les entrées peu servies et sans accès récent ({days} jours, au plus {hits} accès) sont recyclées en premier. Le compteur repart lorsque le fichier est resservi après {days} jours. Ouvrir un lien compte comme un accès et télécharge la copie.",
+  "admin_media_cache_top_desc": "La politique d'éviction protège ces fichiers : tant qu'il y a de la place, ils sont conservés jusqu'à leur expiration, et quand le cache a besoin d'espace, les entrées peu servies et sans accès récent ({coldDays} jours, au plus {hits} accès) sont recyclées en premier. Le compteur repart lorsque le fichier est resservi après {retention} jours. Ouvrir un lien compte comme un accès et télécharge la copie.",
   "admin_media_cache_col_resource": "Ressource",
   "admin_media_cache_col_type": "Type",
   "admin_media_cache_col_size": "Taille",

@@ -5261,7 +5261,8 @@ export async function listExpiredMediaCache(
  * room for fresh media. A once-popular file keeps its high lifetime `hits` — the
  * counter only ages out when the entry is served again, so an untouched entry
  * never resets — and would otherwise outlive the new arrivals it competes with.
- * The rest is least served first, then oldest (LFU with a 30-day aging window).
+ * The rest is least served first, then oldest (LFU aged by the attachment
+ * retention).
  * Indexed by `idx_media_cache_cold(status, last_hit_at)` and
  * `idx_media_cache_evict(status, hits, fetched_at)`.
  */

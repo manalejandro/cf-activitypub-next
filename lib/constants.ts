@@ -99,6 +99,9 @@ export const TIMELINE_CACHE_MAX_ITEMS = 1000;
 // INSTANCE_VERSION / INSTANCE_URL so it always identifies this deployment;
 // MEDIA_CACHE_USER_AGENTS overrides the whole list when set.
 export const MEDIA_CACHE_ENABLED = true;
+// Attachment retention. Also the window after which a serve counter (`hits`)
+// restarts: a file quiet for longer than its own lifetime is judged by its
+// recent use, not a lifetime total.
 export const MEDIA_CACHE_DAYS = 7;
 export const MEDIA_CACHE_PROFILE_DAYS = 30;
 export const MEDIA_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB

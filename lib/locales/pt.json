@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "Sim",
   "admin_media_cache_config_no": "Não",
   "admin_media_cache_top": "Mais servidos",
-  "admin_media_cache_top_desc": "A política de expulsão protege estes ficheiros: enquanto há espaço são mantidos até expirarem, e quando a cache precisa de espaço são recicladas primeiro as entradas com poucas visitas e sem acessos recentes ({days} dias, no máximo {hits} visitas). O contador reinicia quando o ficheiro volta a ser servido após {days} dias. Abrir um link conta como visita e descarrega a cópia.",
+  "admin_media_cache_top_desc": "A política de expulsão protege estes ficheiros: enquanto há espaço são mantidos até expirarem, e quando a cache precisa de espaço são recicladas primeiro as entradas com poucas visitas e sem acessos recentes ({coldDays} dias, no máximo {hits} visitas). O contador reinicia quando o ficheiro volta a ser servido após {retention} dias. Abrir um link conta como visita e descarrega a cópia.",
   "admin_media_cache_col_resource": "Recurso",
   "admin_media_cache_col_type": "Tipo",
   "admin_media_cache_col_size": "Tamanho",

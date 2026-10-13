@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "是",
   "admin_media_cache_config_no": "否",
   "admin_media_cache_top": "访问最多",
-  "admin_media_cache_top_desc": "淘汰策略会保护这些文件：只要有空间，它们会保留到过期；当缓存需要空间时，访问次数少且近期无访问的条目（{days} 天、最多 {hits} 次）会优先被回收。计数器只有在 {days} 天后文件再次被提供时才会重置。打开链接即计为一次访问并下载副本。",
+  "admin_media_cache_top_desc": "淘汰策略会保护这些文件：只要有空间，它们会保留到过期；当缓存需要空间时，访问次数少且近期无访问的条目（{coldDays} 天、最多 {hits} 次）会优先被回收。计数器只有在 {retention} 天后文件再次被提供时才会重置。打开链接即计为一次访问并下载副本。",
   "admin_media_cache_col_resource": "资源",
   "admin_media_cache_col_type": "类型",
   "admin_media_cache_col_size": "大小",

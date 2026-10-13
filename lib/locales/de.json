@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "Ja",
   "admin_media_cache_config_no": "Nein",
   "admin_media_cache_top": "Meist ausgeliefert",
-  "admin_media_cache_top_desc": "Die Verdrängungsrichtlinie schützt diese Dateien: solange Platz ist, bleiben sie bis zum Ablauf erhalten; braucht der Cache Platz, werden zuerst Einträge mit wenigen Zugriffen und ohne kürzlichen Abruf ({days} Tage, höchstens {hits} Zugriffe) recycelt. Der Zähler beginnt neu, wenn die Datei nach {days} Tagen erneut ausgeliefert wird. Ein Link zu öffnen zählt als Zugriff und lädt die Kopie herunter.",
+  "admin_media_cache_top_desc": "Die Verdrängungsrichtlinie schützt diese Dateien: solange Platz ist, bleiben sie bis zum Ablauf erhalten; braucht der Cache Platz, werden zuerst Einträge mit wenigen Zugriffen und ohne kürzlichen Abruf ({coldDays} Tage, höchstens {hits} Zugriffe) recycelt. Der Zähler beginnt neu, wenn die Datei nach {retention} Tagen erneut ausgeliefert wird. Ein Link zu öffnen zählt als Zugriff und lädt die Kopie herunter.",
   "admin_media_cache_col_resource": "Ressource",
   "admin_media_cache_col_type": "Typ",
   "admin_media_cache_col_size": "Größe",

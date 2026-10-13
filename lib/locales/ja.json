@@ -999,7 +999,7 @@
   "admin_media_cache_config_yes": "はい",
   "admin_media_cache_config_no": "いいえ",
   "admin_media_cache_top": "最も配信された項目",
-  "admin_media_cache_top_desc": "削除ポリシーはこれらのファイルを保護します。空きがある間は有効期限まで保持され、キャッシュに空きが必要になると、アクセスが少なく最近使われていないエントリ（{days}日、最大{hits}回）から先に再利用されます。カウンタは{days}日後に再び配信されたときにリセットされます。リンクを開くとアクセスとして数えられ、コピーがダウンロードされます。",
+  "admin_media_cache_top_desc": "削除ポリシーはこれらのファイルを保護します。空きがある間は有効期限まで保持され、キャッシュに空きが必要になると、アクセスが少なく最近使われていないエントリ（{coldDays}日、最大{hits}回）から先に再利用されます。カウンタは{retention}日後に再び配信されたときにリセットされます。リンクを開くとアクセスとして数えられ、コピーがダウンロードされます。",
   "admin_media_cache_col_resource": "リソース",
   "admin_media_cache_col_type": "種類",
   "admin_media_cache_col_size": "サイズ",

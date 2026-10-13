@@ -26,7 +26,7 @@ import {
 } from "@/lib/media/remote-cache";
 import { enqueueMediaCache, getMediaCacheStats, repairMediaCacheReferences, cachedMediaUrl, listOrphanMediaCache, listMediaCacheQueue, upsertRemoteActor } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
-import { recordMediaHit, flushMediaHits, __resetMediaHits } from "@/lib/media/hits";
+import { recordMediaHit, flushMediaHits, mediaHitWindowDays, __resetMediaHits, __resetMediaHitWindow } from "@/lib/media/hits";
 
 
 const LIMITS: MediaCacheLimits = {
@@ -971,22 +971,33 @@ describe("remote media cache", () => {
     expect(left.results.map((r) => r.id).sort()).toEqual(["active", "fresh"]);
   });
 
-  it("restarts the counter for an entry served again after the cold window", async () => {
-    await db
-      .prepare(
-        `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, size, hits, hits_at, fetched_at)
-         VALUES ('m1', 'https://remote.example/x.png', 'attachment', 'ready', 'cache/media/x.png', 10, 40, datetime('now', '-10 days'), datetime('now'))`
-      )
-      .bind()
-      .run();
+  it("restarts the counter for an entry served again after the retention window", async () => {
+    const insert = (id: string, hitsAt: string) =>
+      db
+        .prepare(
+          `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, size, hits, hits_at, fetched_at)
+           VALUES (?, ?, 'attachment', 'ready', ?, 10, 40, datetime('now', ?), datetime('now'))`
+        )
+        .bind(id, `https://remote.example/${id}.png`, `cache/media/${id}.png`, hitsAt)
+        .run();
+
+    // Quiet for longer than the attachment retention: judged by recent use.
+    await insert("stale", "-10 days");
+    // Quiet, but within the retention: the count keeps accumulating.
+    await insert("recent", "-2 days");
 
     __resetMediaHits();
-    recordMediaHit("cache/media/x.png");
-    // The aging window is the media cache's cold window, not a fixed 30 days.
-    await flushMediaHits(db, true, 3);
+    recordMediaHit("cache/media/stale.png");
+    recordMediaHit("cache/media/recent.png");
+    // The aging window is the attachment retention (MEDIA_CACHE_DAYS) — not the
+    // cold window and not a fixed 30 days.
+    __resetMediaHitWindow();
+    await flushMediaHits(db, true, mediaHitWindowDays({ MEDIA_CACHE_DAYS: "7" }));
 
-    const row = await db.prepare("SELECT hits FROM media_cache WHERE id = 'm1'").bind().first<{ hits: number }>();
-    expect(row?.hits).toBe(1);
+    const stale = await db.prepare("SELECT hits FROM media_cache WHERE id = 'stale'").bind().first<{ hits: number }>();
+    expect(stale?.hits).toBe(1);
+    const recent = await db.prepare("SELECT hits FROM media_cache WHERE id = 'recent'").bind().first<{ hits: number }>();
+    expect(recent?.hits).toBe(41);
   });
 
   it("keeps cold, barely served entries while the cache is under budget", async () => {

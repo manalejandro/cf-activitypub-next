@@ -587,7 +587,7 @@ export async function maintainMediaCache(
   // fetches. Cold-and-quiet entries are reclaimed first (`coldDays` without a
   // serve and at most `coldMaxHits` serves): a barely used file nobody asked for
   // in a while must not outlive the fresh media it competes with. The rest is
-  // least served first, then oldest (LFU with the cold-window aging), so content
+  // least served first, then oldest (LFU with the retention-window aging), so content
   // clients keep asking for stays cached. The floor still guarantees the cache is
   // never wiped.
   const expiredBytes = expirable.reduce((sum, e) => sum + Number(e.size ?? 0), 0);

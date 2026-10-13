@@ -28,12 +28,16 @@ export function recordMediaHit(r2Key: string): void {
   pending.set(r2Key, (pending.get(r2Key) ?? 0) + 1);
 }
 
-/** The aging window: `MEDIA_CACHE_COLD_DAYS`, resolved once (the serve path is hot). */
+/**
+ * The aging window: the attachment retention (`MEDIA_CACHE_DAYS`), resolved
+ * once (the serve path is hot). A file that stayed quiet for longer than its
+ * own lifetime restarts its counter on the next serve.
+ */
 let hitWindowDays: number | null = null;
 
 export function mediaHitWindowDays(env: Record<string, unknown>): number {
   if (hitWindowDays === null) {
-    hitWindowDays = resolveLimits(env).mediaCacheColdDays;
+    hitWindowDays = resolveLimits(env).mediaCacheDays;
   }
   return hitWindowDays;
 }
@@ -46,10 +50,9 @@ export function __resetMediaHitWindow(): void {
 /**
  * Flush the pending counts when due (`force` for teardown paths).
  *
- * An entry not served for `windowDays` (the media cache's cold window) restarts
- * its counter on the next serve, so a file that went cold and came back is
- * judged by its recent use instead of a lifetime total — the same window the
- * cold-and-quiet recycling uses.
+ * An entry not served for `windowDays` (the attachment retention) restarts its
+ * counter on the next serve, so a file that went cold and came back is judged
+ * by its recent use instead of a lifetime total.
  */
 export async function flushMediaHits(db: HitsDb, force = false, windowDays = 30): Promise<void> {
   if (pending.size === 0) return;
