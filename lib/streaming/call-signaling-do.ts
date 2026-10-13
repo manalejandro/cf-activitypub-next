@@ -19,6 +19,9 @@ export class CallSignalingDO extends CFDurableObject {
   constructor(state: DurableObjectState, env: never) {
     super(state, env);
     this.state = state;
+    // Same as the timeline stream: answer a keep-alive without waking the
+    // object (see TimelineStreamDO).
+    state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -69,11 +72,21 @@ export class CallSignalingDO extends CFDurableObject {
   }
 
   webSocketClose(ws: WebSocket): void {
+    this.notifyPeerDisconnected(ws);
+  }
+
+  webSocketError(ws: WebSocket, error: unknown): void {
+    console.error("[CallSignalingDO] WebSocket error:", error);
+    this.notifyPeerDisconnected(ws);
+  }
+
+  /** Tell the remaining peer the call is over and release the socket. */
+  private notifyPeerDisconnected(ws: WebSocket): void {
     const hangup = JSON.stringify({ type: "hangup", reason: "peer_disconnected" });
     for (const other of this.state.getWebSockets("peer")) {
       if (other === ws) continue;
       try { other.send(hangup); } catch { /* ignore */ }
     }
-    ws.close();
+    try { ws.close(); } catch { /* already closed */ }
   }
 }

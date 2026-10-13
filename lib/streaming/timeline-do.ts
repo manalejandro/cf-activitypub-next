@@ -82,6 +82,12 @@ export class TimelineStreamDO extends CFDurableObject {
   constructor(state: DurableObjectState, env: never) {
     super(state, env);
     this.state = state;
+    // Keep-alives must not defeat hibernation: the browser WebSocket API cannot
+    // send protocol-level ping frames (the runtime answers those for free), so
+    // the client sends a text "ping" every 25s. The auto-response answers it
+    // without waking the object — waking on every keep-alive would bill the DO
+    // for staying alive, which is exactly what hibernation avoids.
+    state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
   async fetch(request: Request): Promise<Response> {
