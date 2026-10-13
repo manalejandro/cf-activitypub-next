@@ -152,20 +152,21 @@ export default function TimelinesPage() {
   return (
     <>
     <PageLayout sidebar={<Sidebar me={me} currentPath="/timelines" />}>
-        {/* Sticky header with tabs */}
+        {/* Sticky header with tabs: the title row draws the line above the tabs,
+            the tab row the one the indicator sits on (like Notifications). */}
         <div
           style={{
-            padding: "0.875rem 1rem 0",
-            borderBottom: "1px solid var(--border)",
             position: "sticky",
             top: 0,
             background: "var(--bg)",
             zIndex: 10,
           }}
         >
-          <h1 style={{ fontWeight: 700, fontSize: "1.2rem", marginBottom: "0.75rem" }}>
-            {t.nav_timelines}
-          </h1>
+          <div style={{ padding: "0.875rem 1rem", borderBottom: "1px solid var(--border)" }}>
+            <h1 style={{ fontWeight: 700, fontSize: "1.2rem" }}>
+              {t.nav_timelines}
+            </h1>
+          </div>
           <Tabs
             tabs={(token ? (["local", "federated"] as TimelineView[]) : (["federated"] as TimelineView[])).map((v) => ({
               key: v,
@@ -173,8 +174,6 @@ export default function TimelinesPage() {
             }))}
             active={view}
             onChange={switchView}
-            // The sticky header draws the border the indicator sits on.
-            style={{ borderBottom: "none" }}
           />
           <NewStatusesPill count={pendingCount} onClick={reveal} anchor="header" />
         </div>
