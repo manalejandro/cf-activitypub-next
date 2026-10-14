@@ -206,6 +206,10 @@
     {
       "name": "Misc",
       "description": "Misc endpoints."
+    },
+    {
+      "name": "Feeds",
+      "description": "Profile feeds (RSS 2.0 and Atom 1.0) of a local account's public posts."
     }
   ],
   "paths": {
@@ -13918,6 +13922,45 @@
         }
       }
     },
+    "/users/{username}/atom": {
+      "get": {
+        "summary": "Get /users/{username}/atom",
+        "operationId": "get_users_Byusername_atom",
+        "tags": [
+          "Feeds"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "max_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/users/{username}/collections/{id}": {
       "get": {
         "summary": "Get /users/{username}/collections/{id}",
@@ -14207,6 +14250,45 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/users/{username}/rss": {
+      "get": {
+        "summary": "Get /users/{username}/rss",
+        "operationId": "get_users_Byusername_rss",
+        "tags": [
+          "Feeds"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "max_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
           }
         }
       }

@@ -68,6 +68,7 @@ const TAG_DESCRIPTIONS = {
   OAuth: "OAuth 2.0 token issuance and revocation.",
   Streaming: "Real-time WebSocket streaming of timeline updates and notifications.",
   Instance: "Public instance metadata (name, description, limits, rules, peers).",
+  Feeds: "Profile feeds (RSS 2.0 and Atom 1.0) of a local account's public posts.",
   Calls: "WebRTC audio/video calls between accounts.",
 };
 
@@ -231,6 +232,8 @@ function titleCase(segment) {
 /** Tag derived from the API path: /api/v1/accounts/{id}/x → "Accounts". */
 function tagFor(path) {
   const parts = path.split("/").filter(Boolean);
+  // Profile feeds are public documents, not the ActivityPub surface.
+  if (/\/(rss|atom)$/.test(path)) return "Feeds";
   if (parts[0] === "api" && /^v\d+$/.test(parts[1] ?? "")) {
     const seg = parts[2] ?? "misc";
     if (seg === "admin") return "Admin";

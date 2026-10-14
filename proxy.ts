@@ -99,6 +99,17 @@ export function proxy(request: NextRequest) {
     return rewriteResponse;
   }
 
+  // Profile feeds, Mastodon's /@username.rss and /@username.atom (its RSS
+  // route serves `.rss`; `.atom` is the same feed in Atom 1.0).
+  const feedMatch = pathname.match(/^\/@([^@/.]+)\.(rss|atom)$/);
+  if (feedMatch && method === "GET") {
+    const url = request.nextUrl.clone();
+    url.pathname = `/users/${feedMatch[1]}/${feedMatch[2]}`;
+    const rewriteResponse = NextResponse.rewrite(url);
+    Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+    return rewriteResponse;
+  }
+
   // Rewrite /@username (Mastodon profile URL convention) → /users/username
   // Next.js App Router reserves @ for parallel routes so we can't create app/@[username].
   const atMatch = pathname.match(/^\/@([^/]+)(\/.*)?$/);

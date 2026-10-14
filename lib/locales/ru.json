@@ -20,6 +20,7 @@
   "notif_tab_all": "Все",
   "notif_tab_mentions": "Упоминания",
   "notif_tab_filtered": "Отфильтрованные",
+  "rss_feed_description": "Публичные записи @{acct}",
   "notif_filtered_explainer": "Уведомления от ограниченных модерацией аккаунтов: хранятся здесь, чтобы не отвлекать.",
   "notif_followed_you": "следуй за тобой",
   "notif_follow_request": "просить следовать за вами",

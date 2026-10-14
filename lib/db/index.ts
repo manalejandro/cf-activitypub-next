@@ -2804,6 +2804,34 @@ export async function getActorStatuses(
 }
 
 /**
+ * Public statuses for a profile feed (RSS/Atom), mirroring Mastodon's
+ * `AccountsController#show` RSS branch: distributable visibility (public and
+ * unlisted), **no replies and no boosts**, newest first, cursor-paginated.
+ */
+export async function getActorFeedStatuses(
+  db: D1Database,
+  actorId: string,
+  limit = 20,
+  maxId?: string
+): Promise<LocalObject[]> {
+  const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
+  if (maxId && !cursor) return [];
+  const rows = await db
+    .prepare(
+      `SELECT o.* FROM objects o
+       WHERE o.actor_id = ? AND o.media_pending = 0
+         AND o.visibility IN ('public', 'unlisted')
+         AND o.in_reply_to_id IS NULL
+         AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+         ${maxId ? "AND o.published < ?" : ""}
+       ORDER BY o.published DESC LIMIT ?`
+    )
+    .bind(...(maxId ? [actorId, cursor, limit] : [actorId, limit]))
+    .all<Row>();
+  return (rows.results ?? []).map(rowToObject);
+}
+
+/**
  * The profile's "Boosts" tab: only the account's announces, ordered by boost
  * time. The boosted object follows the same visibility rules as the profile
  * timeline.

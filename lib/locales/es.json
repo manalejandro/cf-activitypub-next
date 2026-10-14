@@ -20,6 +20,7 @@
   "notif_tab_all": "Todas",
   "notif_tab_mentions": "Menciones",
   "notif_tab_filtered": "Filtradas",
+  "rss_feed_description": "Publicaciones públicas de @{acct}",
   "notif_filtered_explainer": "Notificaciones de cuentas limitadas por la moderación: se guardan aquí en vez de interrumpirte.",
   "notif_followed_you": "te siguió",
   "notif_follow_request": "solicitó seguirte",

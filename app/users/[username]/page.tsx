@@ -824,6 +824,15 @@ export default function ProfilePage() {
           </div>
         ) : (
           <>
+            {/* Feed discovery: readers and podcast apps find the profile feeds
+                in the page head. Only local profiles have them. */}
+            {!account.acct.includes("@") && (
+              <>
+                <link rel="alternate" type="application/rss+xml" title={`${account.display_name || account.username} — RSS`} href={`/users/${encodeURIComponent(account.username)}/rss`} />
+                <link rel="alternate" type="application/atom+xml" title={`${account.display_name || account.username} — Atom`} href={`/users/${encodeURIComponent(account.username)}/atom`} />
+              </>
+            )}
+
             {/* Header banner */}
             <div
               style={{

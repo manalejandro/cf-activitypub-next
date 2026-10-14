@@ -20,6 +20,7 @@
   "notif_tab_all": "전체",
   "notif_tab_mentions": "멘션",
   "notif_tab_filtered": "필터됨",
+  "rss_feed_description": "@{acct} 님의 공개 게시물",
   "notif_filtered_explainer": "관리자가 제한한 계정의 알림입니다. 알림을 방해하지 않고 여기에 보관됩니다.",
   "notif_followed_you": "견적 요청",
   "notif_follow_request": "자주 묻는 질문",

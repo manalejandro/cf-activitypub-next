@@ -20,6 +20,7 @@
   "notif_tab_all": "Alle",
   "notif_tab_mentions": "Erwähnungen",
   "notif_tab_filtered": "Gefiltert",
+  "rss_feed_description": "Öffentliche Beiträge von @{acct}",
   "notif_filtered_explainer": "Benachrichtigungen von durch die Moderation eingeschränkten Konten: Sie landen hier, statt dich zu unterbrechen.",
   "notif_followed_you": "folgte dir",
   "notif_follow_request": "aufgefordert, ihnen zu folgen",

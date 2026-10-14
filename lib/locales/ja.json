@@ -20,6 +20,7 @@
   "notif_tab_all": "すべて",
   "notif_tab_mentions": "メンション",
   "notif_tab_filtered": "フィルター済み",
+  "rss_feed_description": "@{acct} の公開投稿",
   "notif_filtered_explainer": "モデレーションで制限されたアカウントからの通知です。ここに保存され、通知はされません。",
   "notif_followed_you": "フォロー",
   "notif_follow_request": "お問い合わせ",
