@@ -20,7 +20,7 @@ assets = { directory = "dist/client", not_found_handling = "none", binding = "AS
 # MAX_HEADER_SIZE = "5242880"
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.4.9"
+INSTANCE_VERSION = "1.5.0"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""
@@ -32,7 +32,7 @@ FROM_EMAIL = "noreply@cf-ap.example.com"
 # LibreTranslate instance URL (set to empty to disable translation)
 LIBRETRANSLATE_URL = ""
 # Global daily AI budget for the Guardian (abstract units/day; 0 = unlimited).
-# Charge per call: guard screen = 1, vision alt-text = 5, 70B reason = 25.
+# Charge per call: clef-flash screen = 1, vision alt-text = 5, clef reason = 25.
 # Cloudflare free ~10k neurons/day — tune this to your plan's allowance.
 AI_DAILY_BUDGET = "1000"
 # Max instances shown on the /graph federation graph
@@ -45,7 +45,8 @@ SHARED_INBOX_BATCH = "5"
 # media and profile avatars/headers are served from R2 so clients don't hit the
 # origin server. Entries expire after MEDIA_CACHE_DAYS (attachments) or
 # MEDIA_CACHE_PROFILE_DAYS (profiles), and the cache is trimmed to
-# MEDIA_CACHE_MAX_BYTES (oldest first). MEDIA_CACHE_USER_AGENTS overrides
+# MEDIA_CACHE_MAX_BYTES (oldest first). MEDIA_CACHE_DAYS is also the window
+# after which a serve counter restarts. MEDIA_CACHE_USER_AGENTS overrides
 # the whole UA list; unset, it is built as
 # "CFActivityPub/$INSTANCE_VERSION (+$INSTANCE_URL; federated media cache)"
 # followed by browser fallbacks.
