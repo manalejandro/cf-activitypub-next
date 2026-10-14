@@ -51,6 +51,11 @@ export async function POST(
 
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
 
+  // Mastodon's `FollowService`: a limited (silenced) account's follow is
+  // converted into a follow request, even when the target does not require
+  // approval — the target decides whether to accept it.
+  const needsApproval = target.manuallyApprovesFollowers || actor.silenced === true;
+
   const followId = generateId();
   const followActivity = buildFollow(baseUrl, actor.id, target.id, followId);
 
@@ -60,7 +65,7 @@ export async function POST(
     await env.DB
       .prepare("UPDATE follows SET state = ?, activity_id = ?, created_at = ? WHERE id = ?")
       .bind(
-        target.manuallyApprovesFollowers ? "pending" : "accepted",
+        needsApproval ? "pending" : "accepted",
         followActivity.id,
         new Date().toISOString(),
         existing.id
@@ -71,15 +76,16 @@ export async function POST(
       id: followId,
       actorId: actor.id,
       targetId: target.id,
-      state: target.manuallyApprovesFollowers ? "pending" : "accepted",
+      state: needsApproval ? "pending" : "accepted",
       activityId: followActivity.id,
       createdAt: new Date().toISOString(),
     });
   }
 
   if (target.isLocal) {
-    // Local follow — auto-accept if not locked
-    if (!target.manuallyApprovesFollowers) {
+    // Local follow — auto-accept unless the target is locked or the follower is
+    // limited (its follow becomes a request either way).
+    if (!needsApproval) {
       await env.DB.prepare("UPDATE actors SET following_count = COALESCE(following_count, 0) + 1 WHERE id = ?").bind(actor.id).run();
       await env.DB.prepare("UPDATE actors SET followers_count = COALESCE(followers_count, 0) + 1 WHERE id = ?").bind(target.id).run();
       await notify(env, {
@@ -110,8 +116,9 @@ export async function POST(
     } catch {
       // Delivery failure is non-fatal — follow is saved, will be retried or handled later
     }
-    // Optimistically increment the local actor's following count (for non-locked remote accounts)
-    if (!target.manuallyApprovesFollowers) {
+    // Optimistically increment the local actor's following count (accepted
+    // follows only; a request stays pending until the remote accepts).
+    if (!needsApproval) {
       await env.DB.prepare("UPDATE actors SET following_count = COALESCE(following_count, 0) + 1 WHERE id = ?").bind(actor.id).run();
     }
   }

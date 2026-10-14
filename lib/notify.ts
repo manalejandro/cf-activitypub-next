@@ -41,7 +41,9 @@ async function serializeFullNotification(
 }
 
 export async function notify(env: NotifyEnv, notif: LocalNotification): Promise<void> {
-  await createNotification(env.DB, notif);
+  // A filtered notification (limited-account policy) is stored but must not
+  // reach the recipient's stream or devices.
+  if (!(await createNotification(env.DB, notif))) return;
   if (env.TIMELINE_STREAM) {
     let domain = "localhost";
     try {

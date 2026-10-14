@@ -19,6 +19,8 @@
   "notif_empty_sub": "当有人跟随或与你互动时,它就会出现在这里.",
   "notif_tab_all": "全部",
   "notif_tab_mentions": "提及",
+  "notif_tab_filtered": "已过滤",
+  "notif_filtered_explainer": "被版主限制的账号的通知：保存在这里，不会打扰你。",
   "notif_followed_you": "跟着你",
   "notif_follow_request": "请求跟随您",
   "notif_mentioned": "提到你",

@@ -65,7 +65,7 @@ describe("notifications tabs", () => {
     expect(notificationCalls().at(-1)).toBe("/api/v1/notifications?limit=20");
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["All", "Mentions"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["All", "Mentions", "Filtered"]);
     fireEvent.click(tabs[1]);
 
     // Its own cache entry, and the fetch carries the tab's filter.
@@ -75,6 +75,11 @@ describe("notifications tabs", () => {
       "/api/v1/notifications?limit=20&types%5B%5D=mention&types%5B%5D=direct&types%5B%5D=encrypted"
     );
     expect(screen.getAllByRole("tab")[1].getAttribute("aria-selected")).toBe("true");
+
+    // The Filtered tab asks the API for the limited-account policy's entries.
+    fireEvent.click(screen.getAllByRole("tab")[2]);
+    await state.fetchPage!();
+    expect(notificationCalls().at(-1)).toBe("/api/v1/notifications?limit=20&filtered=true");
   });
 
   it("marks the active tab and starts on the unfiltered feed", () => {

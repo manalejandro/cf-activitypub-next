@@ -19,6 +19,8 @@
   "notif_empty_sub": "誰かがフォローしたり、あなたとやり取りするときは、ここに表示されます.",
   "notif_tab_all": "すべて",
   "notif_tab_mentions": "メンション",
+  "notif_tab_filtered": "フィルター済み",
+  "notif_filtered_explainer": "モデレーションで制限されたアカウントからの通知です。ここに保存され、通知はされません。",
   "notif_followed_you": "フォロー",
   "notif_follow_request": "お問い合わせ",
   "notif_mentioned": "お問い合わせ",

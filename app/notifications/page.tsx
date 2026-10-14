@@ -78,7 +78,7 @@ export default function NotificationsPage() {
   // One cache entry per tab: a tab switch restores that tab's feed and scroll
   // position and refetches it in the background.
   const { statuses: notifications, setStatuses: setNotifications, loading, loadingMore, hasMore, loadMore, catchUp } = useTimelineCache<Notification>(
-    tab === "mentions" ? "notifications:mentions" : "notifications",
+    tab === "all" ? "notifications" : `notifications:${tab}`,
     fetchPage,
     { refetchOnMount: true }
   );
@@ -188,6 +188,7 @@ export default function NotificationsPage() {
           tabs={[
             { key: "all", label: t.notif_tab_all },
             { key: "mentions", label: t.notif_tab_mentions },
+            { key: "filtered", label: t.notif_tab_filtered },
           ]}
           active={tab}
           onChange={setTab}
@@ -258,6 +259,11 @@ export default function NotificationsPage() {
             )}
 
             {/* ── Regular notifications ── */}
+            {tab === "filtered" && (
+              <div style={{ padding: "0.6rem 1rem", background: "var(--bg-elevated)", borderBottom: "1px solid var(--border)", fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                {t.notif_filtered_explainer}
+              </div>
+            )}
             {notifications.length === 0 && (tab !== "all" || pendingRequests.length === 0) ? (
           <div
             className="flex flex-col items-center justify-center"

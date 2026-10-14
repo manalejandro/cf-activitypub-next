@@ -59,7 +59,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       // through to the remote fetch, which repairs content-empty copies.
       if (row && row.content) {
         const actor = await getActorById(env.DB, row.actor_id as string);
-        if (actor && !actor.suspended && !actor.silenced) {
+        if (actor && !actor.suspended) {
           const obj = { id: row.id as string, type: row.type as string, actorId: row.actor_id as string, content: row.content as string, contentWarning: row.content_warning as string | null, sensitive: Boolean(row.sensitive), visibility: row.visibility as "public" | "unlisted" | "private" | "direct", inReplyToId: row.in_reply_to_id as string | null, quoteId: (row.quote_id as string | null) ?? null, language: row.language as string | null, url: row.url as string, repliesCount: Number(row.replies_count ?? 0), reblogsCount: Number(row.reblogs_count ?? 0), favouritesCount: Number(row.favourites_count ?? 0), published: row.published as string, updatedAt: row.updated_at as string, local: Boolean(row.local), raw: row.raw as string };
           const attachments = await getAttachmentsByObjectIds(env.DB, [obj.id]);
           const filtered = me ? (await getFilterResultsForStatuses(env.DB, me.id, [obj])).get(obj.id) ?? [] : [];
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const localActor = await env.DB.prepare("SELECT id FROM actors WHERE id = ?").bind(q).first<{ id: string }>();
     if (localActor) {
       const actor = await getActorById(env.DB, localActor.id);
-      if (actor && !actor.suspended && !actor.silenced) {
+      if (actor && !actor.suspended) {
         results.accounts.push(serializeAccount(actor, domain));
       }
       return json(results);
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const like = `%${q.replace(/[%_]/g, "\\$&")}%`;
     const rows = await env.DB
       .prepare(
-        `SELECT * FROM actors WHERE (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND is_local = 1 AND suspended = 0 AND silenced = 0 AND moved_to IS NULL LIMIT ? OFFSET ?`
+        `SELECT * FROM actors WHERE (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\') AND is_local = 1 AND suspended = 0 AND moved_to IS NULL LIMIT ? OFFSET ?`
       )
       .bind(like, like, limit, offset)
       .all<Record<string, unknown>>();

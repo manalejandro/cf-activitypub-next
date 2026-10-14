@@ -81,6 +81,41 @@ async function count(id: string): Promise<number> {
   return row?.following_count ?? -1;
 }
 
+describe("inbound Follow from a limited account", () => {
+  beforeEach(async () => {
+    await freshDb();
+    // The target does not require approval: only the sender's limited state can
+    // turn the follow into a request.
+    await db.prepare("UPDATE actors SET manually_approves_followers = 0 WHERE id = ?").bind(LOCAL).run();
+    await db.prepare("UPDATE actors SET silenced = 1 WHERE id = ?").bind(REMOTE).run();
+  });
+
+  it("becomes a follow request instead of an accepted follow", async () => {
+    await processInboxActivity(
+      {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: "https://remote.example/activities/follow-1",
+        type: "Follow",
+        actor: REMOTE,
+        object: LOCAL,
+      } as never,
+      { db, baseUrl: BASE, timelineStream: fakeStream() } as never
+    );
+
+    expect((await getFollow(db, REMOTE, LOCAL))?.state).toBe("pending");
+    const target = await db.prepare("SELECT followers_count FROM actors WHERE id = ?").bind(LOCAL).first<{ followers_count: number }>();
+    expect(target?.followers_count).toBe(0);
+
+    const notif = await db
+      .prepare("SELECT type, filtered FROM notifications WHERE target_account_id = ?")
+      .bind(LOCAL)
+      .first<{ type: string; filtered: number }>();
+    expect(notif?.type).toBe("follow_request");
+    // Limited sender, recipient does not follow it: filtered by the policy.
+    expect(notif?.filtered).toBe(1);
+  });
+});
+
 describe("inbound Reject/Accept for outgoing follows", () => {
   beforeEach(async () => {
     await freshDb();

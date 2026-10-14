@@ -259,6 +259,7 @@ function rowToNotification(r: Row): LocalNotification {
     targetAccountId: r.target_account_id,
     objectId: r.object_id ?? null,
     read: Boolean(r.is_read),
+    filtered: Boolean(r.filtered),
     createdAt: r.created_at,
   };
 }
@@ -3423,17 +3424,61 @@ export async function getLocalInteractedActorIds(db: D1Database, objectId: strin
   return [...ids];
 }
 
-export async function createNotification(db: D1Database, notif: LocalNotification): Promise<void> {
+/**
+ * Notification types Mastodon's policy can filter (`Notification::PROPERTIES`
+ * marks mention/reblog/follow/follow_request/favourite/quote as filterable;
+ * polls, edits and moderation notices are not).
+ */
+const FILTERABLE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "mention",
+  "reblog",
+  "follow",
+  "follow_request",
+  "favourite",
+  "quote",
+  "direct",
+  "encrypted",
+]);
+
+/**
+ * Mastodon's default notification policy (`NotificationPolicy#for_limited_accounts`
+ * = `filter`): a notification from a limited (silenced) account is filtered —
+ * stored, but hidden from the list and never pushed — unless the recipient
+ * follows the sender. One query: the sender's flag plus whether the recipient
+ * follows it.
+ */
+async function isFilteredNotification(db: D1Database, notif: LocalNotification): Promise<boolean> {
+  if (!FILTERABLE_NOTIFICATION_TYPES.has(notif.type)) return false;
+  const row = await db
+    .prepare(
+      `SELECT a.silenced AS silenced,
+              EXISTS(SELECT 1 FROM follows f
+                     WHERE f.actor_id = ? AND f.target_id = a.id AND f.state = 'accepted') AS following
+       FROM actors a WHERE a.id = ?`
+    )
+    .bind(notif.targetAccountId, notif.accountId)
+    .first<{ silenced: number | null; following: number }>();
+  return Boolean(row?.silenced) && !row?.following;
+}
+
+/**
+ * Store a notification. Returns whether the caller should deliver it (stream +
+ * push): a filtered notification is stored for the "Filtered" tab but must not
+ * interrupt the recipient.
+ */
+export async function createNotification(db: D1Database, notif: LocalNotification): Promise<boolean> {
   // Blocked accounts (and accounts from domain-blocked instances) cannot
   // interact with the recipient: drop their notifications entirely.
-  if (await isActorBlockedBy(db, notif.targetAccountId, notif.accountId)) return;
+  if (await isActorBlockedBy(db, notif.targetAccountId, notif.accountId)) return false;
+  const filtered = notif.filtered ?? (await isFilteredNotification(db, notif));
   await db
     .prepare(
-      `INSERT OR IGNORE INTO notifications (id, type, account_id, target_account_id, object_id, is_read)
-       VALUES (?,?,?,?,?,?)`
+      `INSERT OR IGNORE INTO notifications (id, type, account_id, target_account_id, object_id, is_read, filtered)
+       VALUES (?,?,?,?,?,?,?)`
     )
-    .bind(notif.id, notif.type, notif.accountId, notif.targetAccountId, notif.objectId ?? null, 0)
+    .bind(notif.id, notif.type, notif.accountId, notif.targetAccountId, notif.objectId ?? null, 0, filtered ? 1 : 0)
     .run();
+  return !filtered;
 }
 
 /**
@@ -3450,9 +3495,12 @@ export async function getNotifications(
   actorId: string,
   limit = 20,
   maxId?: string,
-  typeFilter: { include?: string[]; exclude?: string[] } = {}
+  typeFilter: { include?: string[]; exclude?: string[]; filtered?: boolean } = {}
 ): Promise<LocalNotification[]> {
   const conditions = ["target_account_id = ?"];
+  // Limited-account policy: filtered notifications are hidden by default and
+  // live in their own tab (`filtered=true`).
+  conditions.push(typeFilter.filtered ? "filtered = 1" : "filtered = 0");
   const binds: unknown[] = [actorId];
   const include = (typeFilter.include ?? []).slice(0, 20);
   const exclude = (typeFilter.exclude ?? []).slice(0, 20);
@@ -3479,7 +3527,7 @@ export async function getNotifications(
 
 export async function getUnreadNotificationCount(db: D1Database, actorId: string): Promise<number> {
   const row = await db
-    .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE target_account_id = ? AND is_read = 0")
+    .prepare("SELECT COUNT(*) as cnt FROM notifications WHERE target_account_id = ? AND is_read = 0 AND filtered = 0")
     .bind(actorId)
     .first<{ cnt: number }>();
   return row?.cnt ?? 0;

@@ -9884,6 +9884,13 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "name": "filtered",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "security": [
@@ -15122,6 +15129,11 @@
               }
             ],
             "nullable": true
+          },
+          "filtered": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Only returned when the limited-account policy filtered it."
           }
         }
       },

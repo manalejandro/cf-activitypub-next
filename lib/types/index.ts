@@ -448,6 +448,8 @@ export interface LocalNotification {
   targetAccountId: string; // who receives it
   objectId: string | null;
   read: boolean;
+  /** Limited-account policy: stored but hidden from the list and not pushed. */
+  filtered?: boolean;
   createdAt: string;
 }
 
@@ -906,6 +908,8 @@ export interface MastodonNotification {
   created_at: string;
   account: MastodonAccount;
   status?: MastodonStatus;
+  /** Only returned when the limited-account policy filtered it. */
+  filtered?: boolean;
 }
 
 export interface MastodonInstance {

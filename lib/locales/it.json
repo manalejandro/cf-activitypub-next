@@ -19,6 +19,8 @@
   "notif_empty_sub": "Quando qualcuno segue o interagisce con voi, apparirà qui.",
   "notif_tab_all": "Tutte",
   "notif_tab_mentions": "Menzioni",
+  "notif_tab_filtered": "Filtrate",
+  "notif_filtered_explainer": "Notifiche da account limitati dalla moderazione: restano qui invece di interromperti.",
   "notif_followed_you": "tu hai seguito",
   "notif_follow_request": "richiesto di seguirti",
   "notif_mentioned": "ha detto che",

@@ -34,7 +34,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const push = async (actorId: string): Promise<void> => {
     if (seen.has(actorId)) return;
     const actor = await getActorById(env.DB, actorId);
-    if (!actor || actor.suspended || actor.silenced) return;
+    // Limited (silenced) accounts stay resolvable: Mastodon's `Account.searchable`
+    // only excludes suspended and moved accounts — a limited account can still
+    // be found, mentioned and followed.
+    if (!actor || actor.suspended) return;
     if (!actor.isLocal && !me) return;
     seen.add(actorId);
     results.push(

@@ -468,6 +468,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   target_account_id TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
   object_id         TEXT,
   is_read           INTEGER NOT NULL DEFAULT 0,
+  -- Mastodon's notification policy: a notification from a limited (silenced)
+  -- account is stored but flagged, hidden from the list and never pushed,
+  -- unless the recipient follows the sender.
+  filtered          INTEGER NOT NULL DEFAULT 0,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

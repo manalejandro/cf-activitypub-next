@@ -22,10 +22,14 @@ export async function GET(request: NextRequest): Promise<Response> {
   const maxId = searchParams.get("max_id") ?? undefined;
   const excludeTypes = searchParams.getAll("exclude_types[]");
   const includeTypes = searchParams.getAll("types[]");
+  // Limited-account policy: filtered notifications are hidden by default and
+  // live in their own tab (`filtered=true`).
+  const filteredOnly = searchParams.get("filtered") === "true";
 
   const notifications = await getNotifications(env.DB, actor.id, limit, maxId, {
     include: includeTypes,
     exclude: excludeTypes,
+    filtered: filteredOnly,
   });
 
   const notifObjects = (await Promise.all(

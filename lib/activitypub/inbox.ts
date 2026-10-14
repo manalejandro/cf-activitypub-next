@@ -559,8 +559,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       read: false,
       createdAt: new Date().toISOString(),
     };
-    await createNotification(ctx.db, notif);
-    await broadcastAndPush(ctx, notif);
+    if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
   }
 
   // ── Federated poll ingestion ──────────────────────────────────────────────
@@ -632,8 +631,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
             read: false,
             createdAt: new Date().toISOString(),
           };
-          await createNotification(ctx.db, notif);
-          await broadcastAndPush(ctx, notif);
+          if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
         }
       }
       // Cache federated custom emoji (silence-level blocks strip media).
@@ -683,8 +681,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
             read: false,
             createdAt: new Date().toISOString(),
           };
-          await createNotification(ctx.db, notif);
-          await broadcastAndPush(ctx, notif);
+          if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
         }
       }
     }
@@ -706,8 +703,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
           read: false,
           createdAt: new Date().toISOString(),
         };
-        await createNotification(ctx.db, notif);
-        await broadcastAndPush(ctx, notif);
+        if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
       }
     }
   }
@@ -806,6 +802,10 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   const followerActor = await ensureActorCached(ctx.db, actorId);
   if (!followerActor) return;
 
+  // A follow from a limited (silenced) account becomes a request, like a
+  // locked target (Mastodon's `ActivityPub::Activity::Follow`).
+  const needsApproval = recipient.manuallyApprovesFollowers || followerActor.silenced === true;
+
   const existing = await getFollow(ctx.db, actorId, targetId);
   // A previously rejected request is not a permanent block: a fresh Follow
   // re-opens it (Mastodon deletes the rejected follow; we keep the row so the
@@ -814,14 +814,14 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   if (reopened && existing) {
     await ctx.db
       .prepare("UPDATE follows SET state = ?, activity_id = ? WHERE id = ?")
-      .bind(recipient.manuallyApprovesFollowers ? "pending" : "accepted", activity.id, existing.id)
+      .bind(needsApproval ? "pending" : "accepted", activity.id, existing.id)
       .run();
   } else if (!existing) {
     await createFollow(ctx.db, {
       id: generateId(),
       actorId,
       targetId,
-      state: recipient.manuallyApprovesFollowers ? "pending" : "accepted",
+      state: needsApproval ? "pending" : "accepted",
       activityId: activity.id,
       createdAt: new Date().toISOString(),
     });
@@ -830,7 +830,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   // like a brand-new follow for counters and notifications.
   const isNew = !existing || reopened;
 
-  if (!recipient.manuallyApprovesFollowers) {
+  if (!needsApproval) {
     // Auto-accept: send Accept activity back to the remote server.
     // This is safe to resend even for an already-existing follow (idempotent on remote side).
     const acceptId = generateId();
@@ -852,8 +852,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
         read: false,
         createdAt: new Date().toISOString(),
       };
-      await createNotification(ctx.db, notif);
-      await broadcastAndPush(ctx, notif);
+      if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     }
 
     // Deliver Accept to requester
@@ -881,8 +880,7 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
       read: false,
       createdAt: new Date().toISOString(),
     };
-    await createNotification(ctx.db, notif);
-    await broadcastAndPush(ctx, notif);
+    if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
   }
 }
 
@@ -1370,8 +1368,7 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
         read: false,
         createdAt: new Date().toISOString(),
       };
-      await createNotification(ctx.db, notif);
-      await broadcastAndPush(ctx, notif);
+      if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
   }
@@ -1642,8 +1639,7 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
         read: false,
         createdAt: new Date().toISOString(),
       };
-      await createNotification(ctx.db, notif);
-      await broadcastAndPush(ctx, notif);
+      if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
     await broadcastNewBoostToFollowers(ctx.db, ctx.timelineStream, announcerActor, resolvedObj, announceId, announceCreatedAt, new URL(ctx.baseUrl).hostname);
@@ -2034,8 +2030,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
         read: false,
         createdAt: new Date().toISOString(),
       };
-      await createNotification(ctx.db, notif);
-      await broadcastAndPush(ctx, notif);
+      if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     }
     // Push the new content to connected clients (Mastodon status.update).
     await broadcastRemoteStatusRefresh(ctx, note.id);
@@ -2186,8 +2181,7 @@ async function routeMlsToRecipients(
         read: false,
         createdAt: new Date().toISOString(),
       };
-      await createNotification(ctx.db, notif);
-      await broadcastAndPush(ctx, notif);
+      if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     } catch {
       /* duplicate / FK race — ignore */
     }

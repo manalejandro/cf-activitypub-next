@@ -900,6 +900,8 @@ export function serializeNotification(
     created_at: toIso(notif.createdAt) ?? new Date().toISOString(),
     account: serializeAccount(account, localDomain),
   };
+  // Mastodon exposes `filtered` only when the notification is filtered.
+  if (notif.filtered) result.filtered = true;
   if (status && statusAuthor) {
     result.status = serializeStatus(status, statusAuthor, localDomain, {
       filtered: filtered ?? [],
