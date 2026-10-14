@@ -1000,6 +1000,63 @@ describe("remote media cache", () => {
     expect(recent?.hits).toBe(41);
   });
 
+  it("clears a stale avatar when the origin URL changed after caching", async () => {
+    // The account replaced its avatar while the old copy was cached: the row's
+    // origin no longer matches the entry, so an origin-only reset missed it and
+    // the profile kept pointing at the deleted copy (hcv13@fedisocial.com).
+    await db
+      .prepare(
+        `UPDATE actors SET avatar_url = 'https://remote.example/avatars/new.png',
+           avatar_cache_url = 'https://local.example/api/media/cache/media/old.png'
+         WHERE id = 'https://remote.example/users/fan'`
+      )
+      .bind()
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, cached_url, size, hits, fetched_at)
+         VALUES ('old', 'https://remote.example/avatars/old.png', 'avatar', 'ready', 'cache/media/old.png', 'https://local.example/api/media/cache/media/old.png', 400, 0, datetime('now', '-40 days'))`
+      )
+      .bind()
+      .run();
+
+    await maintainMediaCache(bindings, { ...LIMITS, days: 7, profileDays: 7 });
+
+    const row = await db
+      .prepare("SELECT avatar_cache_url FROM actors WHERE id = 'https://remote.example/users/fan'")
+      .bind()
+      .first<{ avatar_cache_url: string | null }>();
+    expect(row?.avatar_cache_url).toBeNull();
+  });
+
+  it("resets an attachment that points at the deleted copy, whatever its origin", async () => {
+    // Only the cached URL links the attachment to the entry: the status was
+    // re-ingested with a new remote URL after the copy was applied.
+    await db
+      .prepare(
+        `UPDATE attachments SET url = 'https://local.example/api/media/cache/media/att.png',
+           remote_url = 'https://remote.example/media/att-new.jpeg'
+         WHERE id = 'att-1'`
+      )
+      .bind()
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO media_cache (id, source_url, target_type, status, r2_key, cached_url, size, hits, fetched_at)
+         VALUES ('att', 'https://remote.example/media/att-old.jpeg', 'attachment', 'ready', 'cache/media/att.png', 'https://local.example/api/media/cache/media/att.png', 400, 0, datetime('now', '-40 days'))`
+      )
+      .bind()
+      .run();
+
+    await maintainMediaCache(bindings, { ...LIMITS, days: 7, profileDays: 7 });
+
+    const row = await db
+      .prepare("SELECT url FROM attachments WHERE id = 'att-1'")
+      .bind()
+      .first<{ url: string }>();
+    expect(row?.url).toBe("https://remote.example/media/att-new.jpeg");
+  });
+
   it("keeps cold, barely served entries while the cache is under budget", async () => {
     const insert = (id: string, hits: number, lastHitAt: string | null) =>
       db

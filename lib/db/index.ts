@@ -4922,43 +4922,43 @@ export async function applyMediaCacheToPreviewCardsByUrl(
 export async function listOrphanMediaCache(
   db: D1Database,
   limit = 50
-): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }[]> {
   // Every probe hits a single indexed column (target_type drives the branch):
   // an `OR` over two columns without matching indexes used to full-scan
   // `attachments` per media-cache row and blew D1's CPU budget.
   const rows = await db
     .prepare(
-      `SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+      `SELECT mc.id, mc.r2_key, mc.size, mc.source_url, mc.cached_url FROM media_cache mc
        WHERE mc.target_type = 'attachment'
          AND mc.created_at < datetime('now', '-5 minutes')
          AND NOT EXISTS (SELECT 1 FROM attachments a WHERE a.remote_url = mc.source_url)
          AND NOT EXISTS (SELECT 1 FROM attachments a WHERE a.url = mc.source_url)
        UNION ALL
-       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url, mc.cached_url FROM media_cache mc
        WHERE mc.target_type = 'avatar'
          AND mc.created_at < datetime('now', '-5 minutes')
          AND NOT EXISTS (SELECT 1 FROM actors ac WHERE ac.avatar_url = mc.source_url)
        UNION ALL
-       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url, mc.cached_url FROM media_cache mc
        WHERE mc.target_type = 'header'
          AND mc.created_at < datetime('now', '-5 minutes')
          AND NOT EXISTS (SELECT 1 FROM actors ac WHERE ac.header_url = mc.source_url)
        UNION ALL
-       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url, mc.cached_url FROM media_cache mc
        WHERE mc.target_type = 'card'
          AND mc.created_at < datetime('now', '-1 hour')
          AND NOT EXISTS (
            SELECT 1 FROM preview_cards pc JOIN objects o ON o.card_id = pc.id
            WHERE pc.image_url = mc.source_url)
        UNION ALL
-       SELECT mc.id, mc.r2_key, mc.size, mc.source_url FROM media_cache mc
+       SELECT mc.id, mc.r2_key, mc.size, mc.source_url, mc.cached_url FROM media_cache mc
        WHERE mc.target_type = 'license'
          AND mc.created_at < datetime('now', '-1 hour')
          AND NOT EXISTS (SELECT 1 FROM licenses l WHERE l.icon = mc.source_url)
        LIMIT ?`
     )
     .bind(limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
   return rows.results ?? [];
 }
 
@@ -5229,23 +5229,23 @@ export async function listExpiredMediaCache(
   attachmentDays: number,
   profileDays: number,
   limit = 50
-): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }[]> {
   const attachmentCutoff = `-${Math.max(1, Math.floor(attachmentDays))} days`;
   const attachments = await db
     .prepare(
-      `SELECT id, r2_key, size, source_url FROM media_cache
+      `SELECT id, r2_key, size, source_url, cached_url FROM media_cache
        WHERE status = 'ready' AND target_type = 'attachment'
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
          AND (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))
        LIMIT ?`
     )
     .bind(attachmentCutoff, attachmentCutoff, limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
 
   const profileCutoff = `-${Math.max(1, Math.floor(profileDays))} days`;
   const profiles = await db
     .prepare(
-      `SELECT id, r2_key, size, source_url FROM media_cache
+      `SELECT id, r2_key, size, source_url, cached_url FROM media_cache
        WHERE status = 'ready' AND target_type IN ('avatar', 'header')
          AND fetched_at IS NOT NULL AND fetched_at < datetime('now', ?)
          AND (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))
@@ -5257,7 +5257,7 @@ export async function listExpiredMediaCache(
        LIMIT ?`
     )
     .bind(profileCutoff, profileCutoff, limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
 
   return [...(attachments.results ?? []), ...(profiles.results ?? [])].slice(0, limit);
 }
@@ -5279,16 +5279,16 @@ export async function listEvictableMediaCache(
   db: D1Database,
   limit = 50,
   cold: { days: number; maxHits: number } = { days: MEDIA_CACHE_COLD_DAYS, maxHits: MEDIA_CACHE_COLD_MAX_HITS }
-): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }[]> {
   const coldRows = await db
     .prepare(
-      `SELECT id, r2_key, size, source_url FROM media_cache
+      `SELECT id, r2_key, size, source_url, cached_url FROM media_cache
        WHERE status = 'ready' AND fetched_at IS NOT NULL
          AND last_hit_at IS NOT NULL AND last_hit_at <= datetime('now', ?) AND hits <= ?
        ORDER BY last_hit_at ASC, hits ASC, rowid ASC LIMIT ?`
     )
     .bind(`-${Math.max(1, Math.floor(cold.days))} days`, Math.max(0, Math.floor(cold.maxHits)), limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
 
   const out = coldRows.results ?? [];
   if (out.length >= limit) return out;
@@ -5296,11 +5296,11 @@ export async function listEvictableMediaCache(
   const seen = new Set(out.map((row) => row.id));
   const rest = await db
     .prepare(
-      `SELECT id, r2_key, size, source_url FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
+      `SELECT id, r2_key, size, source_url, cached_url FROM media_cache WHERE status = 'ready' AND fetched_at IS NOT NULL
        ORDER BY hits ASC, fetched_at ASC, rowid ASC LIMIT ?`
     )
     .bind(limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
   for (const row of rest.results ?? []) {
     if (out.length >= limit) break;
     if (!seen.has(row.id)) out.push(row);
@@ -5424,14 +5424,27 @@ export async function deleteMediaCacheRows(db: D1Database, ids: string[]): Promi
  * an entry is deleted (expiry, byte-budget eviction, purge): keeping the dead
  * `/api/media/...` URL after the R2 object is gone left avatars, attachments
  * and preview cards as broken images.
+ *
+ * References are matched **by the cached URL as well as by the origin URL**.
+ * A remote account that replaced its avatar keeps serving the old cached copy
+ * until the new one is fetched (`upsertRemoteActor` preserves `avatar_cache_url`),
+ * so the row's origin URL no longer equals the entry's `source_url` and an
+ * origin-only reset missed it — the reference survived and pointed at the
+ * deleted copy (`hcv13@fedisocial.com`, cf-ap, Oct 2026).
  */
 export async function resetMediaCacheReferences(
   db: D1Database,
-  sourceUrls: (string | null | undefined)[]
+  sourceUrls: (string | null | undefined)[],
+  cachedUrls: (string | null | undefined)[] = []
 ): Promise<void> {
-  const unique = [...new Set(sourceUrls.filter((url): url is string => Boolean(url)))];
-  for (let i = 0; i < unique.length; i += 100) {
-    const json = JSON.stringify(unique.slice(i, i + 100));
+  const unique = (urls: (string | null | undefined)[]): string[] =>
+    [...new Set(urls.filter((url): url is string => Boolean(url)))];
+  const sources = unique(sourceUrls);
+  const cached = unique(cachedUrls);
+  const chunks = Math.max(Math.ceil(sources.length / 100), Math.ceil(cached.length / 100));
+  for (let i = 0; i < chunks; i++) {
+    const json = JSON.stringify(sources.slice(i * 100, i * 100 + 100));
+    const cachedJson = JSON.stringify(cached.slice(i * 100, i * 100 + 100));
     await db.batch([
       // When another attachment of the same object already serves the origin
       // URL, resetting this row would violate the unique (object_id, url)
@@ -5480,6 +5493,53 @@ export async function resetMediaCacheReferences(
            WHERE image_url IN (SELECT value FROM json_each(?)) AND image_cache_url IS NOT NULL`
         )
         .bind(json),
+      // Same resets, but for whatever still points at the copy being deleted
+      // (the origin URL may have changed since it was applied).
+      db
+        .prepare(
+          `DELETE FROM attachments
+           WHERE url IN (SELECT value FROM json_each(?)) AND remote_url IS NOT NULL AND url <> remote_url
+             AND EXISTS (SELECT 1 FROM attachments b
+                         WHERE b.object_id = attachments.object_id AND b.url = attachments.remote_url)`
+        )
+        .bind(cachedJson),
+      db
+        .prepare(
+          `UPDATE OR IGNORE attachments SET url = remote_url
+           WHERE url IN (SELECT value FROM json_each(?)) AND remote_url IS NOT NULL AND url <> remote_url`
+        )
+        .bind(cachedJson),
+      db
+        .prepare(
+          `UPDATE actors SET avatar_cache_url = NULL
+           WHERE avatar_cache_url IN (SELECT value FROM json_each(?))`
+        )
+        .bind(cachedJson),
+      db
+        .prepare(
+          `UPDATE actors SET header_cache_url = NULL
+           WHERE header_cache_url IN (SELECT value FROM json_each(?))`
+        )
+        .bind(cachedJson),
+      // Before `preview_cards.image_cache_url` is cleared, so the join still
+      // finds the row the snapshot was built from.
+      db
+        .prepare(
+          `UPDATE objects SET card_json = json_set(card_json, '$.image',
+             (SELECT pc.image_url FROM preview_cards pc WHERE pc.id = objects.card_id))
+           WHERE card_json IS NOT NULL AND rowid IN (
+             SELECT o.rowid FROM objects o
+             JOIN preview_cards pc ON pc.id = o.card_id
+             WHERE pc.image_cache_url IN (SELECT value FROM json_each(?))
+             LIMIT 100)`
+        )
+        .bind(cachedJson),
+      db
+        .prepare(
+          `UPDATE preview_cards SET image_cache_url = NULL
+           WHERE image_cache_url IN (SELECT value FROM json_each(?))`
+        )
+        .bind(cachedJson),
     ]);
   }
 }
@@ -5599,11 +5659,11 @@ export async function deletePendingMediaCache(db: D1Database): Promise<number> {
 export async function listMediaCacheKeys(
   db: D1Database,
   limit = 100
-): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null }[]> {
+): Promise<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }[]> {
   const rows = await db
-    .prepare("SELECT id, r2_key, size, source_url FROM media_cache WHERE r2_key IS NOT NULL LIMIT ?")
+    .prepare("SELECT id, r2_key, size, source_url, cached_url FROM media_cache WHERE r2_key IS NOT NULL LIMIT ?")
     .bind(limit)
-    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null }>();
+    .all<{ id: string; r2_key: string | null; size: number; source_url: string | null; cached_url: string | null }>();
   return rows.results ?? [];
 }
 
