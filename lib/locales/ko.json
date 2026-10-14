@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "소유한 도메인(쉼표로 구분). 해당 도메인의 링크는 rel=\"me\" 없이도 계정에 귀속됩니다.",
   "settings_attribution_domains_invalid": "귀속 도메인은 유효한 도메인 이름이어야 합니다.",
   "account_in_memoriam": "추모. 이 계정은 보존되며 로그인하거나 상호작용할 수 없습니다.",
+  "account_suspended_title": "정지된 계정",
+  "account_suspended_desc": "콘텐츠가 숨겨지고 팔로우할 수 없습니다.",
   "admin_btn_memorialize": "추모 계정으로 전환",
   "admin_status_memorial": "추모",
   "admin_memorialize_confirm": "이 계정을 추모로 보존하시겠습니까? 더 이상 로그인할 수 없습니다.",

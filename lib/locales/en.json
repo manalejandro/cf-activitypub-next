@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "Domains you own (comma separated). Links from them are attributed to your account without a rel=\"me\" backlink.",
   "settings_attribution_domains_invalid": "Attribution domains must be valid domain names.",
   "account_in_memoriam": "In memoriam. This account is preserved and cannot sign in or interact.",
+  "account_suspended_title": "Account suspended",
+  "account_suspended_desc": "Its content is hidden and it cannot be followed.",
   "admin_btn_memorialize": "Memorialize",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Preserve this account in memoriam? It will no longer be able to sign in.",

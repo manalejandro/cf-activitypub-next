@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "Dominios que te pertenecen (separados por comas). Los enlaces de esos dominios se atribuyen a tu cuenta sin necesidad de un enlace rel=\"me\".",
   "settings_attribution_domains_invalid": "Los dominios de atribución deben ser nombres de dominio válidos.",
   "account_in_memoriam": "En memoria. Esta cuenta se conserva y ya no puede iniciar sesión ni interactuar.",
+  "account_suspended_title": "Cuenta suspendida",
+  "account_suspended_desc": "Su contenido está oculto y no se puede seguir.",
   "admin_btn_memorialize": "Convertir en memoria",
   "admin_status_memorial": "En memoria",
   "admin_memorialize_confirm": "¿Conservar esta cuenta en memoria? Ya no podrá iniciar sesión.",

@@ -10,6 +10,7 @@
  */
 
 import type { D1Database, Queue } from "@cloudflare/workers-types";
+import { getBaseUrl } from "@/lib/cf";
 import { buildActor, buildUpdateActor, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -19,6 +20,7 @@ import type { APActor, LocalActor } from "@/lib/types";
 export interface ActorUpdateEnv {
   DB: D1Database;
   DELIVERY_QUEUE?: Queue;
+  INSTANCE_URL?: string;
 }
 
 /** Deliver an `Update{Actor}` to every accepted follower; returns the inboxes queued. */
@@ -47,6 +49,11 @@ export async function broadcastActorUpdate(
     alsoKnownAs: actor.alsoKnownAs ?? undefined,
     movedTo: actor.movedTo ?? undefined,
     preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, actor.id)) ?? undefined,
+    // The pushed document must match what the actor route serves: without these
+    // a broadcast from a suspended (or memorialized) account told peers it was
+    // active again.
+    suspended: actor.suspended === true,
+    memorial: actor.memorial === true,
   });
 
   const updateActivity = buildUpdateActor(baseUrl, apActor, generateId());
@@ -68,4 +75,18 @@ export async function broadcastActorUpdate(
     actor.privateKeyPem
   );
   return inboxes.length;
+}
+
+/**
+ * Push the actor's current document to its followers after a suspension (or an
+ * unsuspension). Peers cache the document and only re-read it on a refetch, and
+ * a suspended account never posts again to trigger one — Mastodon does the same
+ * in `SuspendAccountService#distribute_update_actor`, which is what actually
+ * disconnects the account from the fediverse: every follower marks it suspended
+ * and drops its content.
+ */
+export async function broadcastActorState(env: ActorUpdateEnv, actorId: string): Promise<number> {
+  const actor = await getActorById(env.DB, actorId);
+  if (!actor?.isLocal) return 0;
+  return broadcastActorUpdate(env, actor, getBaseUrl(env as unknown as Parameters<typeof getBaseUrl>[0]));
 }

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
+import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?")
     .bind(new Date().toISOString(), id)
     .run();
+
+  // Federate the change: peers only re-read the actor document on a refetch
+  // (Mastodon's `SuspendAccountService#distribute_update_actor`).
+  await broadcastActorState(env, id).catch(() => {});
 
   await recordModeration(env, {
     id: generateId(),

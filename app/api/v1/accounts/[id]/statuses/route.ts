@@ -32,6 +32,10 @@ export async function GET(
   const actor = await getActorById(env.DB, decodeURIComponent(id));
   if (!actor) return notFound("Account not found");
 
+  // Suspension removes the account's content publicly (Mastodon's suspension is
+  // "effectively deleted"): the profile shows the notice instead of the posts.
+  if (actor.suspended) return json([]);
+
   const me = await getAuthenticatedActor(request, env.DB);
   // Remote profiles (and their on-demand outbox fetch) are authenticated-only.
   if (!actor.isLocal && !me) return unauthorized();

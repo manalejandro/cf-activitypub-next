@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "Домены, которыми вы владеете (через запятую). Ссылки с них приписываются вашему аккаунту без обратной ссылки rel=\"me\".",
   "settings_attribution_domains_invalid": "Домены атрибуции должны быть корректными доменными именами.",
   "account_in_memoriam": "In memoriam. Аккаунт сохранён и больше не может входить или взаимодействовать.",
+  "account_suspended_title": "Аккаунт заблокирован",
+  "account_suspended_desc": "Его содержимое скрыто, подписаться нельзя.",
   "admin_btn_memorialize": "Превратить в мемориал",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Сохранить этот аккаунт как мемориал? Вход будет невозможен.",

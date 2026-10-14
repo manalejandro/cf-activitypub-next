@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "Domini che possiedi (separati da virgole). I link da quei domini vengono attribuiti al tuo account senza un link rel=\"me\".",
   "settings_attribution_domains_invalid": "I domini di attribuzione devono essere nomi di dominio validi.",
   "account_in_memoriam": "In memoriam. Questo account è conservato e non può più accedere né interagire.",
+  "account_suspended_title": "Account sospeso",
+  "account_suspended_desc": "I suoi contenuti sono nascosti e non è possibile seguirlo.",
   "admin_btn_memorialize": "Trasforma in memoriale",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Conservare questo account in memoriam? Non potrà più accedere.",

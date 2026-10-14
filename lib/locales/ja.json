@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "あなたが所有するドメイン（カンマ区切り）。そこからのリンクは rel=\"me\" がなくてもあなたのアカウントに帰属されます。",
   "settings_attribution_domains_invalid": "帰属ドメインは有効なドメイン名である必要があります。",
   "account_in_memoriam": "追悼。このアカウントは保存されており、ログインや操作はできません。",
+  "account_suspended_title": "アカウント停止中",
+  "account_suspended_desc": "コンテンツは非表示で、フォローできません。",
   "admin_btn_memorialize": "追悼アカウントにする",
   "admin_status_memorial": "追悼",
   "admin_memorialize_confirm": "このアカウントを追悼として保存しますか？ログインできなくなります。",

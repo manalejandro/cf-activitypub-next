@@ -1154,6 +1154,8 @@
   "settings_attribution_domains_hint": "Domains, die dir gehören (durch Kommas getrennt). Links von ihnen werden deinem Konto auch ohne rel=\"me\"-Rückverweis zugeordnet.",
   "settings_attribution_domains_invalid": "Attributions-Domains müssen gültige Domainnamen sein.",
   "account_in_memoriam": "In memoriam. Dieses Konto bleibt erhalten und kann sich nicht mehr anmelden oder interagieren.",
+  "account_suspended_title": "Konto gesperrt",
+  "account_suspended_desc": "Seine Inhalte sind ausgeblendet und es kann nicht gefolgt werden.",
   "admin_btn_memorialize": "In Memoriam umwandeln",
   "admin_status_memorial": "In memoriam",
   "admin_memorialize_confirm": "Dieses Konto in Memoriam erhalten? Es kann sich dann nicht mehr anmelden.",

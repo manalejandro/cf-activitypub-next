@@ -7,6 +7,7 @@
  */
 
 import { generateId, actorIRI } from "@/lib/activitypub/utils";
+import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { createActor, getActorById, getActorByUsername, getObjectById } from "@/lib/db";
 import { sendModerationNoticeEmail, type ModerationNoticeAction } from "@/lib/email";
@@ -19,6 +20,7 @@ import { stripHtml } from "./heuristics";
 
 export interface ModerationEnv {
   DB: D1Database;
+  DELIVERY_QUEUE?: Queue;
   AI?: Ai;
   EMAIL?: SendEmail;
   KV?: ModerationKV;
@@ -283,6 +285,10 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?")
     .bind(new Date().toISOString(), actorId)
     .run();
+  // Disconnect it from the fediverse: every follower marks the account
+  // suspended on the next `Update{Actor}` (best effort — moderation must not
+  // fail because a delivery could not be queued).
+  await broadcastActorState(env, actorId).catch(() => {});
 
   const emailSent = await notifyAccountOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
   const m = meta(opts, SYSTEM);
@@ -329,6 +335,8 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
     .prepare("UPDATE actors SET suspended = 0, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(actorId)
     .run();
+  // Tell the followers the account is back, or they keep treating it as gone.
+  await broadcastActorState(env, actorId).catch(() => {});
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
