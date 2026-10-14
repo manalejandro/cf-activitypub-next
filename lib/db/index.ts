@@ -1,3 +1,4 @@
+import { ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 import { MEDIA_CACHE_COLD_DAYS, MEDIA_CACHE_COLD_MAX_HITS } from "@/lib/constants";
@@ -3998,6 +3999,14 @@ export async function isInstanceDomainBlocked(db: D1Database, domain: string): P
 // ─────────────────────────────────────────
 // Instance settings (configurable instance content)
 // ─────────────────────────────────────────
+
+/**
+ * The `anonymous_timelines` instance setting (default: the public timeline
+ * only). See `lib/anonymous-timelines.ts` for the rule.
+ */
+export async function getAnonymousTimelineAccess(db: D1Database): Promise<AnonymousTimelineAccess> {
+  return normalizeAnonymousTimelineAccess(await getInstanceSetting(db, ANONYMOUS_TIMELINES_KEY));
+}
 
 export async function getInstanceSetting(db: D1Database, key: string): Promise<string | null> {
   const row = await db

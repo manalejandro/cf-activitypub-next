@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
-import { getPublicTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getAnonymousTimelineAccess, getPublicTimeline, getActorById, getActorsByIds, getAttachmentsByObjectIds, getLikedObjectIds, getAnnouncedObjectIds, getAllCustomEmojis, getReplyToAccountIdMap, getObjectQuotesCounts, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { getQuotesByIds } from "@/lib/mastodon/quote";
@@ -10,6 +10,7 @@ import type { LocalActor } from "@/lib/types";
 import { resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { anonymousTimelineAllowed } from "@/lib/anonymous-timelines";
 import { env } from "cloudflare:workers";
 
 /**
@@ -64,9 +65,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   const minId = minIdRaw ? decodeStatusId(minIdRaw, domain) : undefined;
 
   const authActor = await getAuthenticatedActor(request, env.DB);
-  // The local timeline is restricted to authenticated users; the federated
-  // timeline stays public.
-  if (local && !authActor) return unauthorized();
+  // Anonymous visitors: the `anonymous_timelines` instance setting decides what
+  // they may read (default: the public/federated timeline only; the local view
+  // needs `public_local`, `none` closes both). The rejection is deliberately
+  // conditional — a bare identity guard would make the OpenAPI generator
+  // document the whole endpoint as locked.
+  const anonymousDenied = !authActor && !anonymousTimelineAllowed(await getAnonymousTimelineAccess(env.DB), local);
+  if (anonymousDenied) return unauthorized();
   const objects = await getPublicTimeline(env.DB, limit, maxId, local, sinceId, remote, onlyMedia, minId, authActor?.id ?? undefined);
 
   const [attachmentMap, pollMap, likedIds, announcedIds, allEmojis, replyToMap, quotesCountMap, quotesById, filteredMap, lastStatusAtMap, bookmarkedIds, mutedIds, authorMap] = await Promise.all([

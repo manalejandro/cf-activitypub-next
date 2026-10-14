@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { DEFAULT_LIMITS, type InstanceLimits } from "@/lib/constants";
+import { normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 
 let cached: InstanceLimits = DEFAULT_LIMITS;
+let cachedAnonymousTimelines: AnonymousTimelineAccess = "public";
 let promise: Promise<InstanceLimits> | null = null;
 
 /**
@@ -18,12 +20,31 @@ function fetchLimits(): Promise<InstanceLimits> {
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null)
       .then((data) => {
-        const limits = (data as { limits?: InstanceLimits } | null)?.limits;
-        cached = limits ?? DEFAULT_LIMITS;
+        const payload = data as { limits?: InstanceLimits; anonymous_timelines?: string } | null;
+        cached = payload?.limits ?? DEFAULT_LIMITS;
+        cachedAnonymousTimelines = normalizeAnonymousTimelineAccess(payload?.anonymous_timelines);
         return cached;
       });
   }
   return promise;
+}
+
+/**
+ * What anonymous visitors may see of the public timelines (instance setting,
+ * default `public`). Shares the cached `/api/v1/instance` fetch with useLimits.
+ */
+export function useAnonymousTimelineAccess(): AnonymousTimelineAccess {
+  const [access, setAccess] = useState<AnonymousTimelineAccess>(cachedAnonymousTimelines);
+  useEffect(() => {
+    let alive = true;
+    fetchLimits().then(() => {
+      if (alive) setAccess(cachedAnonymousTimelines);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return access;
 }
 
 export function useLimits(): InstanceLimits {

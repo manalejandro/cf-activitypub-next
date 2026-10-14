@@ -32,6 +32,8 @@ import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { serveMediaObject } from "../lib/media/serve";
 import { recordMediaHit, flushMediaHits, mediaHitWindowDays } from "../lib/media/hits";
+import { getAnonymousTimelineAccess } from "../lib/db";
+import { anonymousTimelineAllowed } from "../lib/anonymous-timelines";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
 import { refreshRemotePoll } from "../lib/activitypub/polls";
@@ -368,6 +370,17 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
   if (token) {
     const row = await resolveToken(env, token);
     authed = Boolean(row);
+  }
+  // Anonymous timeline access (instance setting): without it an anonymous
+  // client could still stream what the REST routes refuse to serve.
+  if (!authed && channel.startsWith("public")) {
+    const access = await getAnonymousTimelineAccess(env.DB);
+    if (!anonymousTimelineAllowed(access, channel !== "public")) {
+      return new Response(JSON.stringify({ error: "The access token is invalid" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
   return forwardToTimelineDO(env, request, channel, authed);
 }

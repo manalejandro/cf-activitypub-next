@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
+import { getAnonymousTimelineAccess, getInstanceContactActor, getInstanceSetting, getInstanceStats, getRegistrationSettings } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { SUPPORTED_MEDIA_MIME_TYPES, MASTODON_COMPAT_VERSION, INSTANCE_LANGUAGES, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
@@ -17,12 +17,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     return new Response(cached, { headers: { "Content-Type": "application/json; charset=utf-8" } });
   }
 
-  const [contactActor, rulesRaw, languagesRaw, stats, regs] = await Promise.all([
+  const [contactActor, rulesRaw, languagesRaw, stats, regs, anonymousTimelines] = await Promise.all([
     getInstanceContactActor(env.DB),
     getInstanceSetting(env.DB, "rules"),
     getInstanceSetting(env.DB, "languages"),
     getInstanceStats(env.DB, env.KV),
     getRegistrationSettings(env.DB),
+    getAnonymousTimelineAccess(env.DB),
   ]);
 
   const userCount = stats.userCount;
@@ -89,6 +90,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       calls: { enabled: true },
     },
     limits,
+    // What anonymous visitors may see of the public timelines (the UI reads it
+    // to decide which tabs to offer).
+    anonymous_timelines: anonymousTimelines,
   };
 
   const body = JSON.stringify(payload);

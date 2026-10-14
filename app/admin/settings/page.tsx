@@ -9,6 +9,7 @@ import { EmojiInput } from "@/components/EmojiInput";
 import { EmojiTextarea } from "@/components/EmojiTextarea";
 import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
+import { type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 
 interface SettingsData {
   rules: { id: string; text: string }[];
@@ -24,6 +25,7 @@ interface SettingsData {
   registrations_url: string;
   account_expiration_enabled: boolean;
   account_expiration_months: number;
+  anonymous_timelines: AnonymousTimelineAccess;
 }
 
 export default function AdminSettingsPage() {
@@ -194,6 +196,24 @@ export default function AdminSettingsPage() {
             <option value={12}>{t.admin_settings_expiration_months_n.replace("{months}", "12")}</option>
             <option value={24}>{t.admin_settings_expiration_months_n.replace("{months}", "24")}</option>
             <option value={36}>{t.admin_settings_expiration_months_n.replace("{months}", "36")}</option>
+          </select>
+        </div>
+
+        {/* Anonymous timeline access */}
+        <div>
+          <label style={labelStyle}>{t.admin_settings_anon_timelines}</label>
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: 0, marginBottom: "0.5rem", lineHeight: 1.5 }}>
+            {t.admin_settings_anon_timelines_desc}
+          </p>
+          <select
+            className="input"
+            style={{ ...inputStyle, maxWidth: 320 }}
+            value={data.anonymous_timelines}
+            onChange={(e) => setData({ ...data, anonymous_timelines: e.target.value as AnonymousTimelineAccess })}
+          >
+            <option value="public">{t.admin_settings_anon_timelines_public}</option>
+            <option value="public_local">{t.admin_settings_anon_timelines_public_local}</option>
+            <option value="none">{t.admin_settings_anon_timelines_none}</option>
           </select>
         </div>
 

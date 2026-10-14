@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
@@ -15,7 +16,7 @@ import { StatusCard, Status, Me } from "@/components/StatusCard";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon } from "@/components/Icon";
 import { EditStatusModal } from "@/components/EditStatusModal";
-import { useLimits } from "@/lib/limits-client";
+import { useAnonymousTimelineAccess, useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 import { Tabs } from "@/components/Tabs";
 
@@ -34,11 +35,22 @@ export default function TimelinesPage() {
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const { t } = useLocale();
   const limits = useLimits();
+  // Anonymous visitors: the instance setting decides which timelines exist for
+  // them (default: the public/federated one only).
+  const anonymousAccess = useAnonymousTimelineAccess();
+  const timelinesHidden = !token && anonymousAccess === "none";
+  const views: TimelineView[] = token || anonymousAccess === "public_local"
+    ? ["local", "federated"]
+    : timelinesHidden
+    ? []
+    : ["federated"];
 
   const router = useRouter();
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPage = useCallback(async (maxId?: string) => {
+    // The instance closed the public timelines to anonymous visitors.
+    if (timelinesHidden) return { items: [], hasMore: false };
     const local = view === "local";
     const limit = maxId ? limits.defaultTimelinePage : limits.pageSize;
     const url = `/api/v1/timelines/public?limit=${limit}${local ? "&local=true" : ""}${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ""}`;
@@ -47,7 +59,7 @@ export default function TimelinesPage() {
     if (!res.ok) throw new Error(`public timeline failed: ${res.status}`);
     const items = await res.json() as Status[];
     return { items, hasMore: items.length >= limit };
-  }, [view, limits.defaultTimelinePage, limits.pageSize]);
+  }, [view, limits.defaultTimelinePage, limits.pageSize, timelinesHidden]);
 
   // Filled right after the buffer exists (the hook's background refetch
   // defers statuses into it when the reader is scrolled away).
@@ -66,7 +78,7 @@ export default function TimelinesPage() {
   const streamName = view === "local" ? "public:local" : "public";
   useTimelineStream(streamName, (event, payload) => {
     handleStreamEvent(event, payload);
-  }, { onReconnect: () => { void catchUp(); } });
+  }, { enabled: !timelinesHidden, onReconnect: () => { void catchUp(); } });
 
   async function fetchMe() {
     if (!token) return;
@@ -149,6 +161,23 @@ export default function TimelinesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statuses, loadingMore, hasMore]);
 
+  // The instance closed the public timelines to anonymous visitors: offer the
+  // sign-in instead of an empty feed.
+  if (timelinesHidden) {
+    return (
+      <>
+      <PageLayout sidebar={<Sidebar me={me} currentPath="/timelines" />}>
+        <div style={{ padding: "4rem 2rem", textAlign: "center", color: "var(--text-muted)" }}>
+          <span style={{ fontSize: "3rem", display: "block", marginBottom: "1rem" }}><Icon name="lock" size="3rem" /></span>
+          <p style={{ fontWeight: 600 }}>{t.timelines_anonymous_disabled}</p>
+          <Link href="/login" className="btn btn-primary btn-sm" style={{ marginTop: "1rem" }}>{t.login_submit}</Link>
+        </div>
+      </PageLayout>
+      <BackToTop />
+      </>
+    );
+  }
+
   return (
     <>
     <PageLayout sidebar={<Sidebar me={me} currentPath="/timelines" />}>
@@ -168,7 +197,7 @@ export default function TimelinesPage() {
             </h1>
           </div>
           <Tabs
-            tabs={(token ? (["local", "federated"] as TimelineView[]) : (["federated"] as TimelineView[])).map((v) => ({
+            tabs={views.map((v) => ({
               key: v,
               label: v === "local" ? <><Icon name="home" /> {t.timeline_local}</> : <><Icon name="globe" /> {t.timeline_federated}</>,
             }))}

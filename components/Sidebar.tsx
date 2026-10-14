@@ -7,6 +7,7 @@ import Image from "next/image";
 import { clearToken, getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
 import { useInstanceTitle, useInstanceVersion } from "@/lib/instance-context";
+import { useAnonymousTimelineAccess } from "@/lib/limits-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { Icon } from "@/components/Icon";
 import { DisplayName } from "@/components/DisplayName";
@@ -36,6 +37,9 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
   const me = propMe ?? localMe;
   const isStaff = me?.roles?.some((r) => r.name.toLowerCase() === "admin" || r.name.toLowerCase() === "moderator") ?? false;
+  // The instance can close the public timelines to anonymous visitors.
+  const anonymousTimelines = useAnonymousTimelineAccess();
+  const timelinesHidden = !me && anonymousTimelines === "none";
   const [menuOpen, setMenuOpen] = useState(false);
   const topBarRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -179,7 +183,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const navItems = [
     { label: t.nav_home, icon: "home", href: "/home", badge: 0 },
     { label: t.nav_explore, icon: "search", href: "/explore", badge: 0 },
-    { label: t.nav_timelines, icon: "globe", href: "/timelines", badge: 0 },
+    ...(timelinesHidden ? [] : [{ label: t.nav_timelines, icon: "globe", href: "/timelines", badge: 0 }]),
     { label: t.nav_notifications, icon: "bell", href: "/notifications", badge: unreadCount, onClick: () => setUnreadCount(0) },
     { label: t.nav_messages, icon: "comment", href: "/messages", badge: 0 },
     { label: t.nav_e2ee, icon: "lock", href: "/e2ee", badge: 0 },

@@ -11,12 +11,15 @@ import {
   MAX_EXPIRATION_MONTHS,
   MIN_EXPIRATION_MONTHS,
 } from "@/lib/moderation/account-expiration";
+import { ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 import { env } from "cloudflare:workers";
 
 const KEYS = ["rules", "privacy_policy", "terms_of_service", "extended_description", "languages"] as const;
 const REGISTRATION_KEYS = ["registrations_enabled", "registrations_approval_required", "registrations_reason_required", "registrations_message", "registrations_min_age", "registrations_url"] as const;
 /** Account expiration (inactivity): on by default, 12 months. */
 const EXPIRATION_KEYS = ["account_expiration_enabled", "account_expiration_months"] as const;
+/** Anonymous timeline access (public / public+local / none). */
+const TIMELINE_KEYS = [ANONYMOUS_TIMELINES_KEY] as const;
 
 export async function GET(request: NextRequest): Promise<Response> {
   if (!(await requireAdmin(request, env))) {
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   const settings: Record<string, string | null> = {};
-  for (const key of [...KEYS, ...REGISTRATION_KEYS, ...EXPIRATION_KEYS]) {
+  for (const key of [...KEYS, ...REGISTRATION_KEYS, ...EXPIRATION_KEYS, ...TIMELINE_KEYS]) {
     settings[key] = await getInstanceSetting(env.DB, key);
   }
 
@@ -60,6 +63,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     registrations_url: settings.registrations_url ?? "",
     account_expiration_enabled: expiration.enabled,
     account_expiration_months: expiration.months,
+    anonymous_timelines: normalizeAnonymousTimelineAccess(settings.anonymous_timelines),
   });
 }
 
@@ -116,6 +120,11 @@ export async function PUT(request: NextRequest): Promise<Response> {
       );
     }
     await setInstanceSetting(env.DB, EXPIRATION_MONTHS_KEY, String(Math.round(months)));
+  }
+
+  // Anonymous timeline access: normalize so a typo can never widen access.
+  if (body.anonymous_timelines !== undefined) {
+    await setInstanceSetting(env.DB, ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess(String(body.anonymous_timelines)));
   }
 
   await recordModeration(env, {
