@@ -2399,8 +2399,6 @@ export async function getPublicTimeline(
   let localFilter = local ? "AND o.is_local = 1" : "";
   if (remote) localFilter = "AND o.is_local = 0";
   const mediaFilter = onlyMedia ? "AND EXISTS (SELECT 1 FROM attachments a WHERE a.object_id = o.id)" : "";
-  // Held until their remote media is cached (clients never hit origins).
-  const pendingFilter = "AND o.media_pending = 0";
   // Silenced (limited) and suspended accounts never appear on public timelines.
   const stateFilter = "AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND (a.silenced = 1 OR a.suspended = 1))";
   // Blocked accounts and accounts from a domain-blocked instance are hidden for
@@ -2421,7 +2419,7 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
            AND o.published > ?
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -2433,7 +2431,7 @@ export async function getPublicTimeline(
     const rows = await db
       .prepare(
         `SELECT o.* FROM objects o
-         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
+         WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
            AND o.published < (SELECT published FROM objects WHERE id = ?)
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -2444,7 +2442,7 @@ export async function getPublicTimeline(
   const rows = await db
     .prepare(
       `SELECT o.* FROM objects o
-       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${pendingFilter} ${stateFilter} ${blockFilter}
+       WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
        ORDER BY o.published DESC LIMIT ?`
     )
     .bind(...blockBinds, limit)
@@ -2507,7 +2505,6 @@ export async function getHomeTimeline(
       FROM objects o
       WHERE ${actorClause}
         AND ${visibilityClause}
-        AND o.media_pending = 0
         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
         AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
         AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
@@ -2541,7 +2538,6 @@ export async function getHomeTimeline(
       AND (a.actor_id = ? OR a.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted'))
       AND (o.visibility IN ('public', 'unlisted')
            OR (o.visibility = 'private' AND o.actor_id IN (SELECT target_id FROM follows WHERE actor_id = ? AND state = 'accepted')))
-      AND o.media_pending = 0
       AND NOT EXISTS (SELECT 1 FROM actors oa WHERE oa.id = o.actor_id AND oa.suspended = 1)
       AND NOT EXISTS (SELECT 1 FROM actors ba2 WHERE ba2.id = a.actor_id AND (ba2.suspended = 1 OR ba2.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?)))
       AND a.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
@@ -2639,7 +2635,6 @@ export async function getListTimeline(
   const branch = (visibility: string) => `
     SELECT o.* FROM objects o INDEXED BY idx_objects_vis_published
     WHERE o.visibility = '${visibility}'
-      AND o.media_pending = 0
       AND o.actor_id IN (SELECT value FROM json_each(?))
       AND ${REPLY_TO_BLOCKED_SQL}
       ${publishedClause}
@@ -2698,7 +2693,6 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
          WHERE t.tag = ?
            AND o.visibility IN ('public', 'unlisted')
-           AND o.media_pending = 0
            AND t.published >= ?
            AND t.published > ?
            ${stateFilter} ${blockFilter}
@@ -2714,7 +2708,6 @@ export async function getHashtagTimeline(
         `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
          WHERE t.tag = ?
            AND o.visibility IN ('public', 'unlisted')
-           AND o.media_pending = 0
            AND t.published >= ?
            AND t.published < (SELECT published FROM objects WHERE id = ?)
            ${stateFilter} ${blockFilter}
@@ -2729,7 +2722,6 @@ export async function getHashtagTimeline(
       `SELECT o.* FROM object_tags t JOIN objects o ON o.id = t.object_id
        WHERE t.tag = ?
          AND o.visibility IN ('public', 'unlisted')
-         AND o.media_pending = 0
          AND t.published >= ?
          ${stateFilter} ${blockFilter}
        ORDER BY t.published DESC LIMIT ?`
@@ -2772,7 +2764,7 @@ export async function getActorStatuses(
 
   const objectSql = `SELECT o.*, NULL AS boost_id, NULL AS boost_actor_id, NULL AS boost_created_at, o.published AS sort_at
     FROM objects o
-    WHERE o.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+    WHERE o.actor_id = ? AND o.visibility IN (${visibilities})
       ${maxId ? "AND o.published < ?" : ""}
     ORDER BY o.published DESC LIMIT ?`;
   const objectBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
@@ -2786,7 +2778,7 @@ export async function getActorStatuses(
   // "Show boosts" default), ordered by the boost time.
   const boostSql = `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
     FROM announces a JOIN objects o ON o.id = a.object_id
-    WHERE a.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+    WHERE a.actor_id = ? AND o.visibility IN (${visibilities})
       ${maxId ? "AND a.created_at < ?" : ""}
     ORDER BY a.created_at DESC LIMIT ?`;
   const boostBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
@@ -2819,7 +2811,7 @@ export async function getActorFeedStatuses(
   const rows = await db
     .prepare(
       `SELECT o.* FROM objects o
-       WHERE o.actor_id = ? AND o.media_pending = 0
+       WHERE o.actor_id = ?
          AND o.visibility IN ('public', 'unlisted')
          AND o.in_reply_to_id IS NULL
          AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
@@ -2858,7 +2850,7 @@ export async function getActorBoosts(
     .prepare(
       `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
        FROM announces a JOIN objects o ON o.id = a.object_id
-       WHERE a.actor_id = ? AND o.media_pending = 0 AND o.visibility IN (${visibilities})
+       WHERE a.actor_id = ? AND o.visibility IN (${visibilities})
          ${maxId ? "AND a.created_at < ?" : ""}
        ORDER BY a.created_at DESC LIMIT ?`
     )
@@ -3880,7 +3872,7 @@ export async function getActorStatuses_withReplies(
   // The replies tab has no boosts: Mastodon excludes reblogs from "Posts and
   // replies" (the posts tab includes them by default).
   const query = (withPublished: boolean) => {
-    const where = `WHERE actor_id = ? AND media_pending = 0 AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
+    const where = `WHERE actor_id = ? AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
     if (withPublished) {
       return `SELECT * FROM objects ${where}
               AND published < ?
@@ -5387,8 +5379,9 @@ export async function listEvictableMediaCache(
 /**
  * Hold a freshly ingested remote status out of feeds while its remote media
  * (attachments or the author's avatar) is still being cached in R2: clients
- * must never be sent origin URLs when the media cache is active. Returns true
- * when the status was actually held (so callers can skip live streaming too).
+ * is cached: the status is served with the **origin** URLs until then, and the
+ * cron's release (`releaseMediaPendingObjects` → `status.update` broadcast)
+ * swaps in the cached copies. Returns true when the status was actually held.
  */
 export async function markObjectMediaPending(db: D1Database, objectId: string): Promise<boolean> {
   const result = await db

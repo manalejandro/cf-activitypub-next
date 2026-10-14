@@ -33,7 +33,7 @@ export async function broadcastNewBoostToFollowers(
   createdAt: string,
   localDomain: string
 ): Promise<void> {
-  if (!ns || obj.mediaPending) return;
+  if (!ns) return;
   if (obj.visibility !== "public" && obj.visibility !== "unlisted") return;
   try {
     const author = await getActorById(db, obj.actorId);

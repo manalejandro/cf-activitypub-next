@@ -146,10 +146,6 @@ async function broadcastRemoteStatusRefresh(ctx: InboxContext, objectId: string)
   try {
     const obj = await getObjectById(ctx.db, objectId);
     if (!obj) return;
-    // A held status is not in any client's feed yet (the cron announces it
-    // once its media is cached), so there is nothing to refresh — and a
-    // partial payload would wipe media from copies that do not exist.
-    if (obj.mediaPending) return;
     const author = await getActorById(ctx.db, obj.actorId);
     if (!author) return;
     // Full payload: clients replace their cached copy, so a status.update
@@ -606,10 +602,11 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     hasAttachments: storedAttachments.length > 0,
   });
 
-  // Hold the status out of feeds until its remote media (attachments and the
-  // author's avatar) is in R2: clients must not be sent origin URLs. A held
-  // status is not streamed either — the cron announces it once released.
-  const mediaHeld = await markObjectMediaPending(ctx.db, obj.id);
+  // Flag the status while its remote media (attachments and the author's
+  // avatar) is still being cached: it is served and streamed **with the origin
+  // URLs** so the post is never shown without its media, and the release
+  // broadcast (`status.update`, cached copies) swaps them once ready.
+  await markObjectMediaPending(ctx.db, obj.id);
 
   // Process tags: mentions (notify) + emoji (cache federated emoji)
   const mentionedLocalIds = new Set<string>();
@@ -709,7 +706,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   }
 
   // Broadcast to timeline streaming clients (fire-and-forget)
-  if (ctx.timelineStream && !mediaHeld) {
+  if (ctx.timelineStream) {
     const statusVisibility = resolveVisibility(obj.to, obj.cc);
     // Silenced (limited) and suspended authors are hidden from the public
     // streams, but their followers still receive posts on their home feeds.

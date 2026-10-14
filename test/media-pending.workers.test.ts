@@ -9,12 +9,16 @@ beforeAll(async () => {
 import {
   clearMediaPending,
   enqueueMediaCache,
+  getActorById,
+  getAttachmentsByObjectId,
   getHomeTimeline,
+  getObjectById,
   getPublicTimeline,
   markObjectMediaPending,
   releaseMediaPendingObjects,
   releaseStaleMediaPendingObjects,
 } from "@/lib/db";
+import { serializeStatus } from "@/lib/mastodon/serializers";
 
 const REMOTE_ACTOR = "https://remote.example/users/author";
 const REMOTE_OBJECT = "https://remote.example/objects/1";
@@ -65,8 +69,9 @@ describe("media-pending gating", () => {
     await markObjectMediaPending(db, REMOTE_OBJECT);
     expect(await mediaPending(REMOTE_OBJECT)).toBe(1);
 
-    // Hidden from the public timeline while pending.
-    expect((await getPublicTimeline(db, 20)).map((o) => o.id)).toEqual([]);
+    // Visible while pending: the status is served with the origin media until
+    // the cached copy is ready (the release broadcast swaps it in).
+    expect((await getPublicTimeline(db, 20)).map((o) => o.id)).toEqual([REMOTE_OBJECT]);
 
     await db
       .prepare("UPDATE media_cache SET status = 'ready', r2_key = 'cache/media/x.png', cached_url = 'https://local.example/api/media/cache/media/x.png', fetched_at = datetime('now') WHERE source_url = ?")
@@ -109,6 +114,43 @@ describe("media-pending gating", () => {
     expect(await mediaPending(REMOTE_OBJECT)).toBe(0);
   });
 
+  it("serves the origin media while held and the cached copy once released", async () => {
+    await seedObject();
+    await db
+      .prepare(
+        `INSERT INTO attachments (id, object_id, type, url, remote_url, mime_type)
+         VALUES ('att-1', ?, 'image', ?, ?, 'image/png')`
+      )
+      .bind(REMOTE_OBJECT, SRC, SRC)
+      .run();
+    await enqueueMediaCache(db, SRC, "attachment", "att-1");
+    await markObjectMediaPending(db, REMOTE_OBJECT);
+
+    const author = (await getActorById(db, REMOTE_ACTOR))!;
+    const held = await getObjectById(db, REMOTE_OBJECT);
+    const heldAttachments = await getAttachmentsByObjectId(db, REMOTE_OBJECT);
+    const served = serializeStatus(held!, author, "local.example", { attachments: heldAttachments });
+    expect(served.media_attachments.map((a) => a.url)).toEqual([SRC]);
+
+    // The cache finishes and the release clears the flag: the client is
+    // updated with the cached copy (`status.update`), not the origin.
+    await db
+      .prepare(
+        "UPDATE media_cache SET status = 'ready', r2_key = 'cache/media/x.png', cached_url = 'https://local.example/api/media/cache/media/x.png', fetched_at = datetime('now') WHERE source_url = ?"
+      )
+      .bind(SRC)
+      .run();
+    await db
+      .prepare("UPDATE attachments SET url = 'https://local.example/api/media/cache/media/x.png' WHERE id = 'att-1'")
+      .run();
+    expect(await releaseMediaPendingObjects(db, 50)).toEqual([REMOTE_OBJECT]);
+
+    const released = await getObjectById(db, REMOTE_OBJECT);
+    const releasedAttachments = await getAttachmentsByObjectId(db, REMOTE_OBJECT);
+    const updated = serializeStatus(released!, author, "local.example", { attachments: releasedAttachments });
+    expect(updated.media_attachments.map((a) => a.url)).toEqual(["https://local.example/api/media/cache/media/x.png"]);
+  });
+
   it("never holds local statuses (their media is already on R2)", async () => {
     const local = "https://local.example/users/me";
     await db
@@ -126,7 +168,7 @@ describe("media-pending gating", () => {
     expect(await mediaPending("https://local.example/objects/1")).toBe(0);
   });
 
-  it("filters held statuses out of the home timeline", async () => {
+  it("keeps held statuses in the home timeline", async () => {
     const local = "https://local.example/users/me";
     await db
       .prepare(
@@ -144,7 +186,7 @@ describe("media-pending gating", () => {
     await enqueueMediaCache(db, SRC, "attachment", "att-1");
     await markObjectMediaPending(db, REMOTE_OBJECT);
 
-    expect((await getHomeTimeline(db, local, 20)).map((entry) => entry.object.id)).toEqual([]);
+    expect((await getHomeTimeline(db, local, 20)).map((entry) => entry.object.id)).toEqual([REMOTE_OBJECT]);
   });
 
   it("releases stale holds so a degraded cache cannot hide content forever", async () => {

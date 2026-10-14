@@ -143,7 +143,7 @@ describe("boost streaming payloads", () => {
     expect(wrapper!.reblog!.poll?.id).toBe("poll-1");
   });
 
-  it("does not stream a status held while its remote media is cached", async () => {
+  it("streams a held status with the origin media while its copy is cached", async () => {
     const HELD = "https://other.example/objects/held";
     await processInboxActivity(
       {
@@ -170,9 +170,13 @@ describe("boost streaming payloads", () => {
       .bind(HELD)
       .first<{ media_pending: number }>();
     expect(row?.media_pending).toBe(1);
-    // Held statuses never reach clients (they would carry origin URLs); the
-    // cron announces them with the cached copies once released.
-    expect(broadcastMocks.broadcastPublicStatus).not.toHaveBeenCalled();
-    expect(broadcastMocks.broadcastHomeStatus).not.toHaveBeenCalled();
+
+    // The status reaches clients right away, with the origin media: showing it
+    // without the resource (or not at all) until the cache finishes is worse.
+    expect(broadcastMocks.broadcastPublicStatus).toHaveBeenCalled();
+    const payload = broadcastMocks.broadcastPublicStatus.mock.calls.at(-1)?.[1] as {
+      media_attachments: { url: string }[];
+    };
+    expect(payload.media_attachments.map((a) => a.url)).toEqual(["https://other.example/media/held.jpg"]);
   });
 });

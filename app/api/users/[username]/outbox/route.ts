@@ -98,7 +98,7 @@ export async function GET(
       const oldest = await env.DB
         .prepare(
           `SELECT id FROM objects
-           WHERE actor_id = ? AND visibility = 'public' AND media_pending = 0
+           WHERE actor_id = ? AND visibility = 'public'
            ORDER BY published ASC LIMIT 20`
         )
         .bind(actor.id)

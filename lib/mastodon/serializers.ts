@@ -459,12 +459,17 @@ export function serializeStatus(
     // Held statuses (remote media still being cached) never expose origin
     // URLs: without media they are only serialized in non-feed contexts, where
     // they are filled in by the release broadcast once cached.
-    media_attachments: obj.mediaPending ? [] : (opts.attachments ?? []).map(serializeAttachment),
+    // A held row (remote media still caching) serves the origin URL: the status
+    // shows the remote resource immediately, and the release broadcast swaps in
+    // the cached copy (`broadcastStatusCreatedToAudience` → `status.update`).
+    media_attachments: (opts.attachments ?? []).map((att) =>
+      obj.mediaPending && att.remoteUrl ? serializeAttachment({ ...att, url: att.remoteUrl }) : serializeAttachment(att)
+    ),
     mentions: extractMentionsFromRaw(obj.raw, localDomain),
     tags: extractHashtags(obj.content ?? "", obj.raw, localDomain),
     emojis: filterUsedEmojis([obj.content, obj.contentWarning], emojis).map(serializeEmoji),
-    card: obj.mediaPending ? null : parsePreviewCard(obj.cardJson),
-    location: obj.mediaPending ? null : parseLocationJson(obj.locationJson),
+    card: parsePreviewCard(obj.cardJson),
+    location: parseLocationJson(obj.locationJson),
     poll: opts.poll ?? null,
     filtered: opts.filtered ?? [],
     quotes_count: opts.quotesCount ?? 0,

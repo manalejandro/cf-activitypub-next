@@ -79,7 +79,6 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'public'
                AND o.type = 'Note'
                AND o.published >= ?
-               AND o.media_pending = 0
                AND NOT EXISTS (
                SELECT 1 FROM actors a
                WHERE a.id = o.actor_id
@@ -97,7 +96,6 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'unlisted'
                AND o.type = 'Note'
                AND o.published >= ?
-               AND o.media_pending = 0
                AND NOT EXISTS (
                SELECT 1 FROM actors a
                WHERE a.id = o.actor_id

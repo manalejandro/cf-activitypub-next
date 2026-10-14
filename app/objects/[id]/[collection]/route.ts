@@ -54,7 +54,7 @@ export async function GET(
   const rows = await env.DB
     .prepare(
       `SELECT o.id FROM objects o
-       WHERE o.in_reply_to_id = ? AND o.media_pending = 0
+       WHERE o.in_reply_to_id = ?
          AND o.visibility IN ('public', 'unlisted')
          AND (? IS NULL OR o.published > (SELECT published FROM objects WHERE id = ?))
        ORDER BY o.published ASC LIMIT ?`
