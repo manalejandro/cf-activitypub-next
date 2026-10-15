@@ -20,10 +20,42 @@ const root = fileURLToPath(new URL(".", import.meta.url));
  * build. `lib/db/schema.sql` is split with Wrangler's own SQL splitter and
  * injected as the `TEST_SCHEMA` binding for `test/helpers/db.ts`.
  */
+/**
+ * The app has no `next` dependency: the vinext Vite plugin resolves the public
+ * `next/*` modules to its own shims (`vinext/dist/shims/public-shim-map.json`).
+ * The test projects run without that plugin, so the same mapping is applied
+ * here — otherwise every route handler import fails to resolve.
+ */
+const NEXT_SHIMS: Record<string, string> = {
+  "next/link": "vinext/shims/link",
+  "next/head": "vinext/shims/head",
+  "next/router": "vinext/shims/router",
+  "next/compat/router": "vinext/shims/compat-router",
+  "next/image": "vinext/shims/image",
+  "next/legacy/image": "vinext/shims/legacy-image",
+  "next/dynamic": "vinext/shims/dynamic",
+  "next/app": "vinext/shims/app",
+  "next/document": "vinext/shims/document",
+  "next/config": "vinext/shims/config",
+  "next/script": "vinext/shims/script",
+  "next/server": "vinext/shims/server",
+  "next/navigation": "vinext/shims/navigation",
+  "next/headers": "vinext/shims/headers",
+  "next/font/google": "vinext/shims/font-google",
+  "next/font/local": "vinext/shims/font-local",
+  "next/cache": "vinext/shims/cache",
+  "next/form": "vinext/shims/form",
+  "next/og": "vinext/shims/og",
+  "next/web-vitals": "vinext/shims/web-vitals",
+  "next/error": "vinext/shims/error",
+  "next/constants": "vinext/shims/constants",
+};
+
 export default defineConfig({
   resolve: {
     alias: {
       "@": root,
+      ...NEXT_SHIMS,
     },
   },
   test: {

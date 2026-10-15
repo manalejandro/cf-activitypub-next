@@ -636,7 +636,7 @@ function schemaForObject(text, serializerMap, src) {
       const key = match[2] ?? match[3];
       const value = match[4];
       const placeholder = /^\[\s*\]$/.test(value.trim()) || /^\{\s*\}$/.test(value.trim());
-      let schema = placeholder ? propertyFromSource(src, key, serializerMap) : schemaForExpression(src, value, serializerMap);
+      const schema = placeholder ? propertyFromSource(src, key, serializerMap) : schemaForExpression(src, value, serializerMap);
       properties[key] = schema ?? schemaForExpression(src, value, serializerMap) ?? literalSchema(value) ?? {};
     } else if (/^[A-Za-z_$][\w$]*$/.test(entry)) {
       // Shorthand property — resolve the local variable it refers to.
