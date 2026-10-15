@@ -3,6 +3,7 @@
 import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale } from "@/lib/i18n";
@@ -10,6 +11,7 @@ import { Icon } from "@/components/Icon";
 import { Pagination } from "@/components/Pagination";
 import { avatarInitial } from "@/lib/avatar";
 import { purgeDateFrom } from "@/lib/purge-date";
+import { profileHref } from "@/lib/profile-link";
 
 interface SuspendedAccount {
   id: string;
@@ -146,8 +148,10 @@ export default function AdminSuspendedPage() {
                         )}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
-                        <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
+                        <Link href={profileHref(a.account)} style={{ color: "inherit", textDecoration: "none", display: "block" }}>
+                          <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
+                          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
+                        </Link>
                       </div>
                     </div>
                   </td>

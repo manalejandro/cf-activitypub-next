@@ -10,6 +10,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { Pagination } from "@/components/Pagination";
 import { purgeDateFrom } from "@/lib/purge-date";
+import { profileHref } from "@/lib/profile-link";
 
 interface AdminAccount {
   id: string;
@@ -200,12 +201,14 @@ export default function AdminAccountsPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                         <Avatar avatar={a.account.avatar} name={a.account.display_name || a.username} size={34} />
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
-                          <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
+                          <Link href={profileHref(a.account)} style={{ color: "inherit", textDecoration: "none", display: "block" }}>
+                            <div style={{ fontWeight: 600 }}>{a.account.display_name || a.username}</div>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>@{a.account.acct}</div>
+                          </Link>
                           {/* The email sits under the handle: as a column of its
                               own it squeezed every other one. */}
                           {a.email && (
-                            <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", overflowWrap: "anywhere" }}>{a.email}</div>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontWeight: 600, overflowWrap: "anywhere" }}>{a.email}</div>
                           )}
                         </div>
                       </div>

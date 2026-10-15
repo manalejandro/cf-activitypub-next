@@ -17,6 +17,7 @@ import { useLimits } from "@/lib/limits-client";
 import { Loading } from "@/components/Loading";
 import { Tabs } from "@/components/Tabs";
 import { notificationsQuery, type NotificationsTab } from "@/lib/notifications-query";
+import { profileHref } from "@/lib/profile-link";
 
 interface Account {
   id: string;
@@ -98,11 +99,6 @@ export default function NotificationsPage() {
     return d.toLocaleString();
   }
 
-  function getProfileHref(account: Account) {
-    return account.acct.includes("@")
-      ? `/users/remote?url=${encodeURIComponent(account.id)}`
-      : `/users/${account.username}`;
-  }
 
   async function handleFollowRequestAction(notificationId: string | null, accountId: string, action: "accept" | "reject") {
     if (pendingAction) return;
@@ -280,7 +276,7 @@ export default function NotificationsPage() {
             {notifications.map((n) => {
               const meta = NOTIF_LABELS[n.type] ?? { icon: "bell" as IconName, key: "" };
               const metaText = meta.key ? (t[meta.key as keyof typeof t] ?? n.type) : n.type;
-              const accountHref = getProfileHref(n.account);
+              const accountHref = profileHref(n.account);
               // Server-side filters: hide notifications whose status is filtered
               // with a "hide" action in the notifications context.
               const hiddenByFilter = (n.status?.filtered ?? []).some(
