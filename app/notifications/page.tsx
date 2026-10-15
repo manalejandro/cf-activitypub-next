@@ -63,12 +63,6 @@ export default function NotificationsPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const limits = useLimits();
-  const tabRef = useRef(tab);
-
-  useEffect(() => {
-    tabRef.current = tab;
-  }, [tab]);
-
   const fetchPage = useCallback(async (maxId?: string) => {
     const res = await fetch(notificationsQuery(tab, limits.pageSize, maxId), { credentials: "include", cache: "no-store" });
     if (!res.ok) return { items: [], hasMore: true };
@@ -131,32 +125,31 @@ export default function NotificationsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Real-time: prepend new notifications as they arrive via streaming.
-  // Payload is currently "{}" so we refetch the latest notification instead —
-  // with the active tab's filter, so the mentions tab only takes mentions.
+  // Real-time: reconcile the feed when a notification event arrives. The
+  // payload is "{}", so there is no id to prepend: `catchUp` refetches the
+  // first page and merges it on top (with the active tab's filter). Fetching a
+  // single notification instead added only the newest one — a burst left the
+  // badge counting more than the list showed until a reload.
   useTimelineStream("user:notification", (event) => {
     if (event !== "notification") return;
-    const requestedTab = tabRef.current;
-    fetch(notificationsQuery(requestedTab, 1), { credentials: "include", cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const data = await res.json() as Notification[];
-        if (data.length === 0) return;
-        // The tab switched while the request was in flight: the notification
-        // belongs to the feed we already left.
-        if (requestedTab !== tabRef.current) return;
-        setNotifications((prev) => {
-          if (prev.some((n) => n.id === data[0].id)) return prev;
-          return [data[0], ...prev];
-        });
-      })
-      .catch(() => {});
+    void catchUp();
   }, {
     onReconnect: () => {
       // Catch up on notifications that arrived while the socket was down.
       void catchUp();
     },
   });
+
+  // The sidebar badge keeps polling while the tab is hidden, but a hidden tab
+  // also misses stream events: coming back to it reconciles the list with the
+  // server instead of leaving it stale until a manual reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void catchUp();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [catchUp]);
 
   // Infinite scroll
   useEffect(() => {
