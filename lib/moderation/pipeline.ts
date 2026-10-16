@@ -88,7 +88,7 @@ export async function screenStatus(
   const cached = await getCachedContentVerdict(env, input.authorId, hash);
   if (cached) {
     if (cached.action === "blocked") {
-      await warnOrSuspend(env, input, previousWarnings, cached.reason ?? "Contenido bloqueado.", "high", "heuristic");
+      await warnOrSuspend(env, input, plainText, previousWarnings, cached.reason ?? "Contenido bloqueado.", "high", "heuristic");
       if (input.objectId) {
         await deleteStatus(env, { objectId: input.objectId, reason: cached.reason ?? "Contenido bloqueado.", confidence: "high", source: "heuristic", model: "heuristic", details: { stage: "cached_verdict" } });
       }
@@ -160,7 +160,7 @@ export async function screenStatus(
   if (strongSpam) {
     const reason = `Contenido detectado como spam por heurísticas (${signals.flags.join(", ")}).`;
     await cacheContentVerdict(env, input.authorId, hash, { action: "blocked", reason });
-    await warnOrSuspend(env, input, previousWarnings, reason, "high", "heuristic");
+    await warnOrSuspend(env, input, plainText, previousWarnings, reason, "high", "heuristic");
     if (input.objectId) {
       await deleteStatus(env, { objectId: input.objectId, reason, confidence: "high", source: "heuristic", model: "heuristic", details });
     }
@@ -234,7 +234,7 @@ export async function screenStatus(
     }
 
     if (vector.autoAction === "delete") {
-      await warnOrSuspend(env, input, previousWarnings, reason, "high", "ai");
+      await warnOrSuspend(env, input, plainText, previousWarnings, reason, "high", "ai");
       if (input.objectId) {
         await deleteStatus(env, { objectId: input.objectId, reason, confidence: "high", source: "ai", model: GUARDIAN_MODEL, details });
       }
@@ -300,7 +300,7 @@ export async function screenStatus(
     const reason = verdict?.reason ?? "Contenido clasificado como grave por el filtro de seguridad.";
     const confidence = verdict?.confidence ?? "high";
     await cacheContentVerdict(env, input.authorId, hash, { action: "blocked", reason });
-    await warnOrSuspend(env, input, previousWarnings, reason, confidence, "ai");
+    await warnOrSuspend(env, input, plainText, previousWarnings, reason, confidence, "ai");
     if (input.objectId) {
       await deleteStatus(env, { objectId: input.objectId, reason, confidence, source: "ai", model: GUARDIAN_MODEL, details });
     }
@@ -357,13 +357,15 @@ export async function screenStatus(
 async function warnOrSuspend(
   env: ModerationEnv,
   input: ScreenStatusInput,
+  /** Offending text: the lesson and the audit entry carry it. */
+  content: string,
   previousWarnings: number,
   reason: string,
   confidence: "low" | "medium" | "high",
   source: "ai" | "heuristic"
 ): Promise<void> {
   if (previousWarnings >= 1) {
-    await suspendAccount(env, { actorId: input.authorId, reason, confidence, source, model: "heuristic", details: { stage: "pipeline" } });
+    await suspendAccount(env, { actorId: input.authorId, reason, confidence, source, model: "heuristic", details: { stage: "pipeline", content } });
   } else {
     await warnAccount(env, { actorId: input.authorId, reason, confidence, source, model: "heuristic", details: { stage: "pipeline" } });
   }

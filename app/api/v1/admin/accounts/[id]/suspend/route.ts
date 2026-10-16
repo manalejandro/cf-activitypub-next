@@ -6,6 +6,7 @@ import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
+import { learnFromSuspension } from "@/lib/moderation/learn";
 import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -30,6 +31,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
 
+  // A moderator's suspension is a confirmed abuse decision: the Guardian
+  // remembers the account (its posts and profile) so its next incarnation is
+  // caught without a fresh model call.
+  const lesson = await learnFromSuspension(env, {
+    actorId: id,
+    reason: "Account suspended by an administrator.",
+    model: "admin",
+  });
+
   await recordModeration(env, {
     id: generateId(),
     source: "user",
@@ -39,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     reason: "Account suspended by an administrator.",
     confidence: null,
     model: "admin",
-    details: { username: actor.username, domain: actor.domain },
+    details: { username: actor.username, domain: actor.domain, learned: lesson },
     emailSent: false,
     emailTo: null,
     relatedId: null,

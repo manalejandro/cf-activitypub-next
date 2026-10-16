@@ -159,7 +159,8 @@ export async function evaluateReportWithAI(env: ModerationEnv, input: ReportAIIn
     return;
   }
 
-  const details = { stage: "report", reporterId: reporter.id, targetId: target.id, category, reviewedStatuses, invalidStatuses, mismatchedOwnership, statusContent: statusContents.join("\n---\n").slice(0, 1000) };
+  const evidence = statusContents.join("\n---\n").slice(0, 1000);
+  const details = { stage: "report", reporterId: reporter.id, targetId: target.id, category, reviewedStatuses, invalidStatuses, mismatchedOwnership, statusContent: evidence, content: evidence };
   let actionNote = `[AI] Decisión: ${verdict.action}. Razón: ${verdict.reason} (confianza: ${verdict.confidence})`;
 
   if (verdict.action === "suspend") {

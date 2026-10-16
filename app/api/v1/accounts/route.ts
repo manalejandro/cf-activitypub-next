@@ -18,10 +18,11 @@ import { hashPassword, generateSecureToken } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { sendVerificationEmail } from "@/lib/email";
 import { evaluateRegistration } from "@/lib/moderation/ai";
-import { rejectAccount, approveAccount, GUARDIAN_MODEL } from "@/lib/moderation/actions";
+import { rejectAccount, GUARDIAN_MODEL } from "@/lib/moderation/actions";
 import { runWithTimeout } from "@/lib/moderation/util";
 import { chargeGlobalAI, AI_UNITS_REASON } from "@/lib/moderation/budget";
 import { computeRegistrationSignals } from "@/lib/moderation/heuristics";
+import { AUTO_ACTION_THRESHOLD, vectorPreScreen } from "@/lib/moderation/vectors";
 import { canonicalEmailHash } from "@/lib/canonical-email";
 import { recordModeration } from "@/lib/moderation/log";
 import { emailDomain, isBlockedEmailDomain, MIN_PASSWORD_LENGTH, registrationBlockedEmailDomains } from "@/lib/constants";
@@ -238,7 +239,50 @@ export async function POST(request: NextRequest): Promise<Response> {
     canonicalVariant: priorAttempts > 0,
   });
 
-  if (registrationSignals.flags.length > 0 && env.AI && (await chargeGlobalAI(env, AI_UNITS_REASON))) {
+  // ── Guardian memory: what previous registrations taught it ────────────────
+  // The vector memory holds the profiles of rejected and suspended accounts
+  // (`learnFromSuspension`, `rejectAccount`). A new profile that is a near
+  // duplicate of a confirmed one is refused outright; a looser match is handed
+  // to the model as precedent, so it decides with the history in view.
+  const profileText = `${username.toLowerCase()} ${username}`.trim();
+  const vector = await vectorPreScreen(env, profileText);
+  const knownAbuse = vector.best && vector.best.kind === "registration" && vector.best.score >= AUTO_ACTION_THRESHOLD
+    ? vector.best
+    : null;
+
+  if (knownAbuse) {
+    const reason = `Perfil casi idéntico a un registro rechazado previamente (similitud ${knownAbuse.score.toFixed(2)}): ${knownAbuse.reason ?? "registro spam"}.`;
+    await rejectAccount(env, {
+      actorId,
+      reason,
+      confidence: "high",
+      source: "ai",
+      model: GUARDIAN_MODEL,
+      details: {
+        stage: "registration",
+        username: username.toLowerCase(),
+        source: webRegistration ? "web" : "api",
+        vectorMatch: { id: knownAbuse.id, kind: knownAbuse.kind, score: Number(knownAbuse.score.toFixed(4)) },
+      },
+    });
+    return json({ error: "Registration not approved: your account does not meet the community guidelines.", error_code: "register_error_not_approved" }, 422);
+  }
+
+  const registrationFlagged = registrationSignals.flags.length > 0 || vector.flagged;
+  // Everything the audit entry needs, whether the model reviews the profile or
+  // the heuristics admit it.
+  const auditDetails = {
+    stage: "registration",
+    username: username.toLowerCase(),
+    source: webRegistration ? "web" : "api",
+    flags: registrationSignals.flags,
+    pendingApproval: regs.approvalRequired,
+    vectorMatch: vector.best
+      ? { id: vector.best.id, kind: vector.best.kind, score: Number(vector.best.score.toFixed(4)) }
+      : null,
+  };
+
+  if (registrationFlagged && env.AI && (await chargeGlobalAI(env, AI_UNITS_REASON))) {
     const review = await runWithTimeout(
       evaluateRegistration(env, {
         username: username.toLowerCase(),
@@ -246,6 +290,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         summary: "",
         source: webRegistration ? "web" : "api",
         ipSuspicious: remaining <= 2,
+        precedent: vector.precedent,
       }),
       4000,
       null
@@ -258,21 +303,48 @@ export async function POST(request: NextRequest): Promise<Response> {
         confidence: review.confidence,
         source: "ai",
         model: GUARDIAN_MODEL,
-        details: { stage: "registration", username: username.toLowerCase(), source: webRegistration ? "web" : "api", flags: registrationSignals.flags },
+        details: { ...auditDetails, verdict: "reject" },
       });
       return json({ error: "Registration not approved: your account does not meet the community guidelines.", error_code: "register_error_not_approved" }, 422);
     }
 
-    if (review?.action === "approve" && review.confidence === "high") {
-      await approveAccount(env, {
-        actorId,
-        reason: review.reason,
-        confidence: review.confidence,
-        source: "ai",
-        model: GUARDIAN_MODEL,
-        details: { stage: "registration", username: username.toLowerCase(), flags: registrationSignals.flags },
-      });
-    }
+    // The verdict is recorded even when it changes nothing: an approval keeps
+    // the account as it is (the confirmation email is still pending — the
+    // Guardian must never verify a mailbox), and a missing verdict leaves the
+    // registration for manual review instead of disappearing silently.
+    await recordModeration(env, {
+      id: generateId(),
+      source: "ai",
+      targetType: "account",
+      targetId: actorId,
+      action: "registration_reviewed",
+      reason: review?.reason ?? "Revisión por IA sin veredicto; queda para revisión manual.",
+      confidence: review?.confidence ?? "low",
+      model: GUARDIAN_MODEL,
+      details: { ...auditDetails, verdict: review?.action ?? "unreviewed" },
+      emailSent: false,
+      emailTo: null,
+      relatedId: null,
+    });
+  } else {
+    // No model involved: the deterministic pre-screen is the whole review, and
+    // it is recorded too so every registration is auditable.
+    await recordModeration(env, {
+      id: generateId(),
+      source: "heuristic",
+      targetType: "account",
+      targetId: actorId,
+      action: "registration_reviewed",
+      reason: registrationFlagged
+        ? "Registro marcado; revisión por IA no disponible, queda para revisión manual."
+        : "Registro sin señales; admitido por heurísticas.",
+      confidence: registrationFlagged ? "low" : null,
+      model: "heuristic",
+      details: { ...auditDetails, verdict: registrationFlagged ? "unreviewed" : "allow" },
+      emailSent: false,
+      emailTo: null,
+      relatedId: null,
+    });
   }
 
   // Registration policy: accounts stay pending admin approval when the

@@ -6,6 +6,7 @@ import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
+import { forgetSuspension } from "@/lib/moderation/learn";
 import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -30,6 +31,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
 
+  // Lifting the suspension corrects the record: the Guardian forgets the
+  // lesson, or a mistaken suspension keeps matching new content.
+  const forgotten = await forgetSuspension(env, id);
+
   await recordModeration(env, {
     id: generateId(),
     source: "user",
@@ -39,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     reason: "Account suspension lifted by an administrator.",
     confidence: null,
     model: "admin",
-    details: { username: actor.username, domain: actor.domain },
+    details: { username: actor.username, domain: actor.domain, forgotten },
     emailSent: false,
     emailTo: null,
     relatedId: null,

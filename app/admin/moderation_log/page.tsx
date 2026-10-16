@@ -60,6 +60,9 @@ const ACTION_MAP: Record<string, string> = {
   license_added: "admin_action_license_added",
   license_updated: "admin_action_license_updated",
   license_removed: "admin_action_license_removed",
+  registration_reviewed: "admin_action_registration_reviewed",
+  registration_blocked: "admin_action_registration_blocked",
+  no_action: "admin_action_no_action",
 };
 
 export default function AdminModerationLogPage() {

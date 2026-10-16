@@ -16,6 +16,7 @@ import { recordModeration, hadAction, type ModerationSource } from "./log";
 import type { ModerationKV } from "./util";
 import { GUARDIAN_MODEL } from "./ai";
 import { rememberAbuse, buildAbuseVectorId } from "./vectors";
+import { forgetSuspension, learnFromSuspension } from "./learn";
 import { stripHtml } from "./heuristics";
 
 export interface ModerationEnv {
@@ -175,31 +176,6 @@ export async function notifyReportedAccount(
   }
 }
 
-/** Approve a pending account (sets email as verified — the app's approval proxy). */
-export async function approveAccount(env: ModerationEnv, opts: ActionBase & { actorId: string }): Promise<ActionResult> {
-  const { actorId, reason } = opts;
-  const actor = await getActorById(env.DB, actorId);
-  if (!actor || actor.emailVerified) return { action: "approved", applied: false, emailSent: false };
-
-  await env.DB.prepare("UPDATE actors SET email_verified = 1, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
-  const m = meta(opts, SYSTEM);
-  await recordModeration(env, {
-    id: generateId(),
-    source: m.source,
-    targetType: "account",
-    targetId: actorId,
-    action: "approved",
-    reason: reason ?? "Aprobada automáticamente por el Guardian.",
-    confidence: opts.confidence ?? null,
-    model: m.model,
-    details: opts.details ?? {},
-    emailSent: false,
-    emailTo: null,
-    relatedId: opts.relatedId ?? null,
-  });
-  return { action: "approved", applied: true, emailSent: false };
-}
-
 /** Reject a registration — deletes the account and notifies by email. */
 export async function rejectAccount(env: ModerationEnv, opts: ActionBase & { actorId: string }): Promise<ActionResult> {
   const { actorId, reason } = opts;
@@ -236,7 +212,9 @@ export async function rejectAccount(env: ModerationEnv, opts: ActionBase & { act
       action: "reject",
       text: profileText,
       reason: reason ?? undefined,
-      confidence: opts.confidence ?? undefined,
+      // A moderator's rejection carries no model probability: it is a
+      // confirmed decision, so it is never dropped as "low confidence".
+      confidence: opts.confidence && opts.confidence !== "low" ? opts.confidence : "high",
       model: m.model,
     });
   }
@@ -276,6 +254,20 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
   if (!actor) return { action: "suspended", applied: false, emailSent: false };
   if (actor.suspended) return { action: "suspended", applied: false, emailSent: false };
 
+  // Learn before anything is erased: the lesson embeds the offending content
+  // the caller brought, a sample of the account's own posts and its profile, so
+  // the next account that posts the same thing is caught by the content
+  // screening without a fresh model call. The posts are nulled just below,
+  // which is exactly why this has to run first.
+  const m = meta(opts, SYSTEM);
+  const lesson = await learnFromSuspension(env, {
+    actorId,
+    reason: reason ?? null,
+    confidence: opts.confidence ?? null,
+    model: m.model,
+    content: typeof opts.details?.content === "string" ? opts.details.content : null,
+  });
+
   // Remove visible content so toxic posts stop spreading immediately.
   await env.DB
     .prepare("UPDATE objects SET content = NULL, sensitive = 1 WHERE actor_id = ? AND content IS NOT NULL")
@@ -291,7 +283,6 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
   await broadcastActorState(env, actorId).catch(() => {});
 
   const emailSent = await notifyAccountOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
-  const m = meta(opts, SYSTEM);
   await recordModeration(env, {
     id: generateId(),
     source: m.source,
@@ -301,25 +292,12 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     reason: reason ?? "Cuenta suspendida.",
     confidence: opts.confidence ?? null,
     model: m.model,
-    details: opts.details ?? {},
+    // `learned` shows whether this suspension taught the Guardian anything.
+    details: { ...(opts.details ?? {}), learned: lesson },
     emailSent,
     emailTo: actor.email,
     relatedId: opts.relatedId ?? null,
   });
-
-  // Remember the offending content so near-duplicates are caught immediately.
-  const content = typeof opts.details?.content === "string" ? opts.details.content : "";
-  if (content) {
-    await rememberAbuse(env, {
-      id: buildAbuseVectorId("account", actorId),
-      kind: "account",
-      action: "suspend",
-      text: content,
-      reason: reason ?? undefined,
-      confidence: opts.confidence ?? undefined,
-      model: m.model,
-    });
-  }
 
   return { action: "suspended", applied: true, emailSent };
 }
@@ -338,6 +316,8 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
   // Tell the followers the account is back, or they keep treating it as gone.
   await broadcastActorState(env, actorId).catch(() => {});
   const m = meta(opts, SYSTEM);
+  // A lifted suspension is a correction: stop matching the pattern.
+  const forgotten = await forgetSuspension(env, actorId);
   await recordModeration(env, {
     id: generateId(),
     source: m.source,
@@ -347,7 +327,7 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
     reason: reason ?? "Cuenta restablecida.",
     confidence: opts.confidence ?? null,
     model: m.model,
-    details: opts.details ?? {},
+    details: { ...(opts.details ?? {}), forgotten },
     emailSent: false,
     emailTo: null,
     relatedId: opts.relatedId ?? null,
@@ -503,6 +483,10 @@ export async function blockDomain(env: ModerationEnv, opts: ActionBase & { domai
   }
 
   // Suspend cached remote accounts from the blocked domain so their content stops flowing.
+  // Deliberately no `learnFromSuspension` here: a domain block is an
+  // instance-level policy decision, not per-account confirmed abuse — teaching
+  // the Guardian "everything from this domain is abuse" would poison the
+  // memory and auto-action unrelated content that merely looks similar.
   await env.DB
     .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE domain = ? AND is_local = 0")
     .bind(new Date().toISOString(), normalized)

@@ -350,7 +350,7 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
           confidence: "high",
           source: "heuristic",
           model: "heuristic",
-          details: { stage: "duplicate_spam", count: g.count, sample: stripForDetails(g.sample) },
+          details: { stage: "duplicate_spam", count: g.count, content: stripForDetails(g.sample) },
         });
       } else {
         await warnAccount(env, {
@@ -359,7 +359,7 @@ export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
           confidence: "medium",
           source: "heuristic",
           model: "heuristic",
-          details: { stage: "duplicate_spam", count: g.count, sample: stripForDetails(g.sample) },
+          details: { stage: "duplicate_spam", count: g.count, content: stripForDetails(g.sample) },
         });
       }
     } catch {

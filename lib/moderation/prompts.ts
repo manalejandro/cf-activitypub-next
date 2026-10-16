@@ -139,6 +139,8 @@ export function buildRegistrationDecision(profile: {
   summary: string;
   source: "web" | "api";
   ipSuspicious: boolean;
+  /** RAG precedent — rejected/suspended profiles this one resembles. */
+  precedent?: string | null;
 }): DecisionSchema {
   return {
     state: sanitizeState({
@@ -147,6 +149,7 @@ export function buildRegistrationDecision(profile: {
       bio: profile.summary,
       registration_source: profile.source === "web" ? "web form (email still pending verification)" : "Mastodon app (API, already active)",
       suspicious_ip: profile.ipSuspicious,
+      similar_confirmed_abuse: profile.precedent ?? null,
     }),
     questions: {
       action: {

@@ -4,6 +4,7 @@ import { generateId } from "@/lib/activitypub/utils";
 import { recordModeration } from "@/lib/moderation/log";
 import type { ModerationKV } from "./util";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { learnFromSuspension } from "./learn";
 
 /**
  * Registration hygiene sweep.
@@ -50,6 +51,8 @@ const MAX_SUSPENSIONS = 200;
 const MAX_DELETIONS = 50;
 /** How many local accounts the disposable-domain scan looks at. */
 const DOMAIN_SCAN_LIMIT = 500;
+/** Lessons stored per sweep run (one wave repeats one pattern). */
+const MAX_LESSONS_PER_RUN = 5;
 
 /** Sweep once (no throttling): suspend farms/disposable domains, drop silence. */
 export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Promise<RegistrationSweepResult> {
@@ -97,6 +100,7 @@ export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Prom
     }
   }
 
+  let learned = 0;
   for (const [id, info] of targets) {
     const updated = await env.DB
       .prepare("UPDATE actors SET suspended = 1, suspended_at = ?, updated_at = datetime('now') WHERE id = ? AND suspended = 0")
@@ -105,16 +109,24 @@ export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Prom
     if (!updated.meta?.changes) continue;
     result.suspended += 1;
     result.usernames.push(info.username);
+    // Teach the Guardian the profile of the wave, so a similar registration is
+    // refused without an AI review. Capped per run: the wave repeats the same
+    // pattern and the memory must not be flooded with near-identical entries.
+    const reason = `Bot registration: ${info.reason.toLowerCase()}`;
+    const lesson = learned < MAX_LESSONS_PER_RUN
+      ? await learnFromSuspension(env, { actorId: id, reason, confidence: "high", model: "heuristic" })
+      : null;
+    if (lesson) learned += 1;
     await recordModeration(env, {
       id: generateId(),
       source: "heuristic",
       targetType: "account",
       targetId: id,
       action: "suspended",
-      reason: `Bot registration: ${info.reason.toLowerCase()}`,
+      reason,
       confidence: "high",
       model: "heuristic",
-      details: { username: info.username, reason: info.reason },
+      details: { username: info.username, reason: info.reason, ...(lesson ? { learned: lesson } : {}) },
       emailSent: false,
       emailTo: null,
       relatedId: null,

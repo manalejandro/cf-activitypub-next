@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   sendVerificationEmail: vi.fn(async () => {}),
   evaluateRegistration: vi.fn(async () => null),
   rejectAccount: vi.fn(async () => {}),
-  approveAccount: vi.fn(async () => {}),
   runWithTimeout: vi.fn(async (fn: unknown) => fn),
   chargeGlobalAI: vi.fn(async () => false),
   computeRegistrationSignals: vi.fn(() => ({ flags: [] })),
@@ -75,7 +74,6 @@ vi.mock("@/lib/email", () => ({ sendVerificationEmail: mocks.sendVerificationEma
 vi.mock("@/lib/moderation/ai", () => ({ evaluateRegistration: mocks.evaluateRegistration }));
 vi.mock("@/lib/moderation/actions", () => ({
   rejectAccount: mocks.rejectAccount,
-  approveAccount: mocks.approveAccount,
   GUARDIAN_MODEL: "guardian",
 }));
 vi.mock("@/lib/moderation/util", () => ({ runWithTimeout: mocks.runWithTimeout }));

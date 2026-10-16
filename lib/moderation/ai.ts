@@ -94,6 +94,8 @@ export async function evaluateRegistration(
     summary: string;
     source: "web" | "api";
     ipSuspicious: boolean;
+    /** RAG precedent — rejected/suspended profiles this one resembles. */
+    precedent?: string | null;
   }
 ): Promise<RegistrationVerdict | null> {
   return decide<RegistrationVerdict>(env, buildRegistrationDecision(profile), ["approve", "reject"]);

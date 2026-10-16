@@ -51,8 +51,11 @@ export async function recordModeration(env: LogEnv, entry: Omit<ModerationLogEnt
         entry.relatedId
       )
       .run();
-  } catch {
-    // Never let logging break the main flow.
+  } catch (err) {
+    // Never let logging break the main flow, but a lost audit entry must be
+    // visible in the logs: a silent gap in the audit trail is worse than the
+    // failed write (a missing migration, a locked database, a bad binding…).
+    console.error("[moderation] audit write failed:", err);
   }
 }
 
