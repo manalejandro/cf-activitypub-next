@@ -18,6 +18,7 @@ import { GUARDIAN_MODEL } from "./ai";
 import { rememberAbuse, buildAbuseVectorId } from "./vectors";
 import { forgetSuspension, learnFromSuspension } from "./learn";
 import { stripHtml } from "./heuristics";
+import type { LocalActor } from "@/lib/types";
 
 export interface ModerationEnv {
   DB: D1Database;
@@ -67,7 +68,17 @@ function meta(base: ActionBase, source: ModerationSource, model?: string): Requi
 export async function ensureGuardianActor(env: ModerationEnv, domain: string): Promise<string | null> {
   try {
     const existing = await getActorByUsername(env.DB, "guardian", domain);
-    if (existing) return existing.id;
+    if (existing) {
+      // Self-heal: a row created before `reserved` existed would be a normal
+      // admin account that anyone could suspend or demote.
+      if (!existing.reserved || existing.role !== "admin") {
+        await env.DB
+          .prepare("UPDATE actors SET role = 'admin', reserved = 1, discoverable = 0 WHERE id = ?")
+          .bind(existing.id)
+          .run();
+      }
+      return existing.id;
+    }
 
     const { publicKeyPem, privateKeyPem } = await generateKeyPair();
     const id = actorIRI(`https://${domain}`, "guardian");
@@ -101,6 +112,31 @@ export async function ensureGuardianActor(env: ModerationEnv, domain: string): P
   } catch {
     return null;
   }
+}
+
+/**
+ * The reserved instance actor (the Guardian) is never a moderation target: it
+ * is the instance's own bot, it has no owner to notify, and suspending,
+ * silencing or deleting it would disarm the instance's moderation. The admin
+ * routes refuse it through `accountActionGuard`; this is the same rule for the
+ * Guardian's own decisions, which act without a human in the loop (an inbound
+ * report or a patrol verdict must not be able to turn the bot off).
+ */
+async function refuseProtectedTarget(
+  env: ModerationEnv,
+  actor: LocalActor,
+  attempted: string,
+  opts: ActionBase
+): Promise<void> {
+  await recordNoAction(env, {
+    targetType: "account",
+    targetId: actor.id,
+    action: "no_action",
+    reason: "La cuenta reservada de la instancia (Guardian) no puede ser moderada.",
+    source: opts.source ?? "system",
+    model: opts.model ?? "system",
+    details: { stage: "protected_account", attempted, ...(opts.details ?? {}) },
+  });
 }
 
 /** Try to email the owner of an account about a moderation action. */
@@ -181,6 +217,10 @@ export async function rejectAccount(env: ModerationEnv, opts: ActionBase & { act
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "rejected", applied: false, emailSent: false };
+  if (actor.reserved) {
+    await refuseProtectedTarget(env, actor, "reject", opts);
+    return { action: "rejected", applied: false, emailSent: false };
+  }
 
   const emailSent = await notifyAccountOwner(env, actor, "rejected", reason ?? "Su registro no cumple las normas de la instancia.");
 
@@ -227,6 +267,10 @@ export async function warnAccount(env: ModerationEnv, opts: ActionBase & { actor
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "warned", applied: false, emailSent: false };
+  if (actor.reserved) {
+    await refuseProtectedTarget(env, actor, "warn", opts);
+    return { action: "warned", applied: false, emailSent: false };
+  }
 
   const emailSent = await notifyAccountOwner(env, actor, "warned", reason ?? "Comportamiento que infringe las normas de la comunidad.");
   const m = meta(opts, SYSTEM);
@@ -252,6 +296,10 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "suspended", applied: false, emailSent: false };
+  if (actor.reserved) {
+    await refuseProtectedTarget(env, actor, "suspend", opts);
+    return { action: "suspended", applied: false, emailSent: false };
+  }
   if (actor.suspended) return { action: "suspended", applied: false, emailSent: false };
 
   // Learn before anything is erased: the lesson embeds the offending content
@@ -302,7 +350,10 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
   return { action: "suspended", applied: true, emailSent };
 }
 
-/** Reinstate a suspended account. */
+/**
+ * Reinstate a suspended account. Deliberately allowed on the reserved actor:
+ * if a bug ever suspends the Guardian, lifting it must be possible.
+ */
 export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { actorId: string }): Promise<ActionResult> {
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
@@ -340,6 +391,10 @@ export async function silenceAccount(env: ModerationEnv, opts: ActionBase & { ac
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "silenced", applied: false, emailSent: false };
+  if (actor.reserved) {
+    await refuseProtectedTarget(env, actor, "silence", opts);
+    return { action: "silenced", applied: false, emailSent: false };
+  }
   if (actor.silenced) return { action: "silenced", applied: false, emailSent: false };
 
   await env.DB.prepare("UPDATE actors SET silenced = 1, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();
@@ -367,6 +422,8 @@ export async function unsilenceAccount(env: ModerationEnv, opts: ActionBase & { 
   const { actorId, reason } = opts;
   const actor = await getActorById(env.DB, actorId);
   if (!actor) return { action: "unsilenced", applied: false, emailSent: false };
+  // Like `unsuspendAccount`, a correction must stay possible on the reserved
+  // actor even though nothing should ever silence it.
   if (!actor.silenced) return { action: "unsilenced", applied: false, emailSent: false };
 
   await env.DB.prepare("UPDATE actors SET silenced = 0, updated_at = datetime('now') WHERE id = ?").bind(actorId).run();

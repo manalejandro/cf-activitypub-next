@@ -67,6 +67,7 @@ export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Prom
     .prepare(
       `SELECT id, username, email FROM actors
        WHERE is_local = 1 AND suspended = 0 AND email IS NOT NULL
+         AND COALESCE(reserved, 0) = 0
          AND (email_verified = 0
               OR (statuses_count = 0 AND followers_count = 0 AND following_count = 0))
        ORDER BY created_at DESC LIMIT ?`
@@ -140,6 +141,7 @@ export async function sweepAbusiveRegistrations(env: RegistrationSweepEnv): Prom
       .prepare(
         `SELECT id, username FROM actors
          WHERE is_local = 1 AND email_verified = 0 AND suspended = 0
+           AND COALESCE(reserved, 0) = 0
            AND datetime(created_at) < datetime('now', ?)
            AND statuses_count = 0 AND followers_count = 0 AND following_count = 0
          LIMIT ?`

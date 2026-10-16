@@ -19,7 +19,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
 
-  const denied = await accountActionGuard(request, env, actor, { removesAccess: false });
+  // Lifting a suspension is a restoration: allowed even on the reserved actor,
+  // whose state nothing else may change.
+  const denied = await accountActionGuard(request, env, actor, { removesAccess: false, restores: true });
   if (denied) return denied;
 
   await env.DB

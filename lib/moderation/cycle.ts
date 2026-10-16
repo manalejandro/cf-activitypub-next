@@ -102,7 +102,7 @@ async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
 async function reviewableAccounts(db: D1Database): Promise<{ id: string }[]> {
   const rows = await db
     .prepare(
-      "SELECT id FROM actors WHERE (created_at >= datetime('now', '-1 day') OR (following_count >= 50 AND followers_count < 5)) AND suspended = 0 LIMIT 10"
+      "SELECT id FROM actors WHERE (created_at >= datetime('now', '-1 day') OR (following_count >= 50 AND followers_count < 5)) AND suspended = 0 AND COALESCE(reserved, 0) = 0 LIMIT 10"
     )
     .all<{ id: string }>();
   return rows.results;

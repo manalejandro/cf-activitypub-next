@@ -89,6 +89,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       last_active_at: r.last_active_at ? String(r.last_active_at) : null,
       suspended_at: r.suspended_at ? String(r.suspended_at) : null,
       role: String(r.role ?? "user"),
+      // Reserved rows (the instance's Guardian) are immutable: the table hides
+      // their action buttons, the API refuses the actions anyway.
+      reserved: Boolean(r.reserved),
       confirmed: actor.emailVerified,
       suspended: Boolean(r.suspended),
       silenced: Boolean(r.silenced),

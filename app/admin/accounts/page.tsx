@@ -21,6 +21,8 @@ interface AdminAccount {
   last_active_at: string | null;
   suspended_at: string | null;
   role: string;
+  /** Reserved rows (the instance's Guardian) are immutable. */
+  reserved: boolean;
   confirmed: boolean;
   suspended: boolean;
   silenced: boolean;
@@ -247,7 +249,9 @@ export default function AdminAccountsPage() {
                       <RoleBadge role={a.role} t={t} />
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem" }}>
-                      {a.suspended ? (
+                      {a.reserved ? (
+                        <span className="badge" style={{ background: "rgba(99,102,241,0.12)", color: "var(--accent)" }}>{t.admin_status_reserved}</span>
+                      ) : a.suspended ? (
                         <>
                           <span className="badge" style={{ background: "rgba(248,113,113,0.12)", color: "var(--danger)" }}>{t.admin_status_suspended}</span>
                           {a.suspended_at ? (
@@ -282,6 +286,9 @@ export default function AdminAccountsPage() {
                       {formatDate(a.created_at)}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", textAlign: "right" }}>
+                      {a.reserved ? (
+                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                      ) : (
                       <div style={{ display: "flex", gap: "0.375rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
                         {(!a.confirmed || a.approved === false) && (
                           <button className="btn btn-primary btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "approve")}>
@@ -333,6 +340,7 @@ export default function AdminAccountsPage() {
                           </button>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

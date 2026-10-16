@@ -20,6 +20,11 @@ interface GuardEnv {
 export interface AccountGuardOptions {
   /** Set when the action removes access entirely (delete/reject/suspend). */
   removesAccess?: boolean;
+  /**
+   * Restoration (unsuspend/unsilence). A reserved actor is immutable, but a
+   * state that should never have been applied must stay repairable.
+   */
+  restores?: boolean;
 }
 
 /**
@@ -32,8 +37,8 @@ export async function accountActionGuard(
   target: Pick<LocalActor, "id" | "role" | "reserved">,
   opts: AccountGuardOptions = {}
 ): Promise<globalThis.Response | null> {
-  if (target.reserved) {
-    return json({ error: "The instance actor cannot be modified" }, 422);
+  if (target.reserved && !opts.restores) {
+    return json({ error: "The instance actor cannot be modified", error_code: "admin_error_reserved_account" }, 422);
   }
 
   const role = await getAdminRole(request, env as never);

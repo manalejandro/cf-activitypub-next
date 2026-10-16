@@ -3,6 +3,7 @@ import { json, notFound } from "@/lib/cf";
 import { getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
+import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { sendWelcomeEmail } from "@/lib/email";
@@ -18,6 +19,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const actor = await getActorById(env.DB, id);
   if (!actor) return notFound();
+
+  // Same guard as every other account action: the reserved instance actor is
+  // immutable, nobody approves their own account and administrator targets
+  // need a full admin.
+  const denied = await accountActionGuard(request, env, actor, { removesAccess: false });
+  if (denied) return denied;
 
   // Approval-required registrations pend with approved=0; approving marks the
   // account active. email_verified=1 keeps the legacy "approve" behaviour for
