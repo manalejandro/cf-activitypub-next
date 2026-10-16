@@ -74,6 +74,17 @@ export default function AdminModerationLogPage() {
   const [clearingAll, setClearingAll] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  // Editing the audit log (removing an entry, wiping it) is an administrator
+  // action, like the endpoint: moderators read it.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/v1/accounts/verify_credentials", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null) as Promise<{ roles?: { name?: string }[] } | null>)
+      .then((me) => setIsAdmin((me?.roles?.[0]?.name ?? "").toLowerCase() === "admin"))
+      .catch(() => {});
+  }, [token]);
 
   const fetchLog = useCallback(async () => {
     if (!token) return;
@@ -146,7 +157,7 @@ export default function AdminModerationLogPage() {
         {t.admin_log_desc}
       </p>
 
-      {entries.length > 0 && (
+      {isAdmin && entries.length > 0 && (
         <div style={{ marginBottom: "1rem" }}>
           <button
             className="btn btn-outline btn-sm"
@@ -225,14 +236,16 @@ export default function AdminModerationLogPage() {
                       {e.reason || <span style={{ color: "var(--text-muted)" }}>—</span>}
                     </td>
                     <td style={{ padding: "0.625rem 0.75rem", textAlign: "right" }}>
-                      <button
-                        className="btn btn-outline btn-sm"
-                        style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
-                        disabled={actionLoading === e.id}
-                        onClick={() => removeEntry(e.id)}
-                      >
-                        {actionLoading === e.id ? "..." : t.admin_btn_remove}
-                      </button>
+                      {isAdmin && (
+                        <button
+                          className="btn btn-outline btn-sm"
+                          style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                          disabled={actionLoading === e.id}
+                          onClick={() => removeEntry(e.id)}
+                        >
+                          {actionLoading === e.id ? "..." : t.admin_btn_remove}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

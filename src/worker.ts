@@ -36,6 +36,7 @@ import { getAnonymousTimelineAccess } from "../lib/db";
 import { anonymousTimelineAllowed } from "../lib/anonymous-timelines";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
+import { parseEventInput } from "../lib/event";
 import { notifyExpiredPolls, refreshRemotePoll } from "../lib/activitypub/polls";
 import {
   backfillRemoteSharedInboxes,
@@ -619,6 +620,10 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const published = new Date().toISOString();
       const noteId = generateId();
       const locationJson = normalizeLocationInput((body as Record<string, unknown>).location) ?? null;
+      // The composer's event mode: a malformed payload (validated when it was
+      // scheduled) falls back to a plain note rather than blocking the queue.
+      const eventResult = parseEventInput((body as Record<string, unknown>).event);
+      const event = "error" in eventResult ? null : eventResult.event;
       // FEP-6757: the license chosen when the post was scheduled.
       let licenseUrl: string | null = null;
       const licenseId = typeof body.license === "string" ? body.license.trim() : "";
@@ -645,6 +650,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         language,
         tags: [],
         location: locationJson ? parseLocationJson(locationJson) : null,
+        event,
         licenseUrl: licenseUrl ?? undefined,
         conversation,
       });

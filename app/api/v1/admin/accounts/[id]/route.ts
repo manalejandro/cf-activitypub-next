@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
 import { getActorById, setActorApproval } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { requireAdmin } from "@/lib/admin-auth";
+import { getAdminRole, requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
@@ -114,25 +114,27 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/v1/admin/accounts/:id — permanently delete a local account from
- * the instance. Removes the actor row and every cascade-dependent row, plus
- * the sessions/activities/moderation entries that reference it without an FK.
- * This mirrors POST /api/v1/accounts/delete (self-delete) but for an admin.
- */
-/**
- * DELETE /api/v1/admin/accounts/:id — remove an account and its data.
+ * DELETE /api/v1/admin/accounts/:id — permanently delete an account from the
+ * instance. Removes the actor row and every cascade-dependent row, plus the
+ * sessions/activities/moderation entries that reference it without an FK (the
+ * owner's own `POST /api/v1/accounts/delete` shares the work).
  *
- * Moderation action: moderators may delete regular accounts, like suspend and
- * silence. `accountActionGuard` still blocks self-actions, the reserved
- * instance actor, administrator targets (full admin required) and removing the
- * last administrator's access.
+ * **Full administrators only**: a moderator can suspend, silence, approve or
+ * reject an account, but deleting one is irreversible (posts, followers and
+ * uploads go with it), so it is reserved to administrators. This mirrors how
+ * instance mutations, role changes and audit wipes are guarded.
+ * `accountActionGuard` still blocks self-actions, the reserved instance actor,
+ * administrator targets and removing the last administrator's access.
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
-  if (!(await requireAdmin(request, env))) {
-    return json({ error: "Unauthorized" }, 401);
+  const role = await getAdminRole(request, env);
+  if (role !== "admin") {
+    return role
+      ? json({ error: "Administrator role required", error_code: "admin_account_delete_admin_only" }, 403)
+      : json({ error: "Unauthorized" }, 401);
   }
 
   const { id } = await params;

@@ -47,6 +47,17 @@ export default function AdminInstancesPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+  // Purging a domain deletes every cached account of that instance (a mass
+  // deletion): administrators only, like the endpoint itself.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/v1/accounts/verify_credentials", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null) as Promise<{ roles?: { name?: string }[] } | null>)
+      .then((me) => setIsAdmin((me?.roles?.[0]?.name ?? "").toLowerCase() === "admin"))
+      .catch(() => {});
+  }, [token]);
 
   const [adding, setAdding] = useState(false);
   const [newDomain, setNewDomain] = useState("");
@@ -295,10 +306,12 @@ export default function AdminInstancesPage() {
                         onClick={() => void action(instance.domain, instance.suspended ? "unsuspend" : "suspend")}>
                         {instance.suspended ? t.admin_instances_btn_unsuspend : t.admin_instances_btn_suspend}
                       </button>
-                      <button className="btn btn-danger btn-sm"
-                        disabled={busyRow} onClick={() => void purge(instance.domain)}>
-                        {t.admin_instances_btn_purge}
-                      </button>
+                      {isAdmin && (
+                        <button className="btn btn-danger btn-sm"
+                          disabled={busyRow} onClick={() => void purge(instance.domain)}>
+                          {t.admin_instances_btn_purge}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

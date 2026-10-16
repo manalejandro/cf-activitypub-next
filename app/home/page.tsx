@@ -29,6 +29,7 @@ import { AnnouncementsBanner } from "@/components/AnnouncementsBanner";
 import { useLimits } from "@/lib/limits-client";
 import type { Status, Me, MediaAttachment } from "@/components/StatusCard";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
+import { MAX_EVENT_LOCATION_CHARS, MAX_EVENT_NAME_CHARS } from "@/lib/event";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { Loading } from "@/components/Loading";
 
@@ -212,6 +213,13 @@ export default function HomePage() {
   // Scheduling state
   const [scheduling, setScheduling] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  // Event compose state (ActivityStreams Event): title + time range, with the
+  // status text as the description.
+  const [eventMode, setEventMode] = useState(false);
+  const [eventName, setEventName] = useState("");
+  const [eventStart, setEventStart] = useState("");
+  const [eventEnd, setEventEnd] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -258,7 +266,8 @@ export default function HomePage() {
     e.preventDefault();
     if (uploadingMedia) return;
     const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
-    if (!composing.trim() && mediaFiles.length === 0 && !hasPoll) return;
+    const hasEvent = eventMode && eventName.trim() !== "" && eventStart !== "" && (!eventEnd || new Date(eventEnd) >= new Date(eventStart));
+    if (!composing.trim() && mediaFiles.length === 0 && !hasPoll && !hasEvent) return;
     setPosting(true);
     setEmojiOpen(false);
     const body: Record<string, unknown> = {
@@ -282,6 +291,15 @@ export default function HomePage() {
         options: pollOptions.filter((o) => o.trim()),
         expires_in: pollExpiry,
         multiple: pollMultiple,
+      };
+    }
+    if (hasEvent) {
+      // `datetime-local` values are local time; the API stores UTC instants.
+      body.event = {
+        name: eventName.trim(),
+        start_time: new Date(eventStart).toISOString(),
+        end_time: eventEnd ? new Date(eventEnd).toISOString() : null,
+        location: eventLocation.trim(),
       };
     }
     // Flush any pending media descriptions before posting
@@ -321,6 +339,11 @@ export default function HomePage() {
         setPollMode(false);
         setPollOptions(["", ""]);
         setPollMultiple(false);
+        setEventMode(false);
+        setEventName("");
+        setEventStart("");
+        setEventEnd("");
+        setEventLocation("");
         await refresh();
       } else {
         const data = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
@@ -525,6 +548,56 @@ export default function HomePage() {
               </div>
             )}
 
+            {/* Event (ActivityStreams Event) */}
+            {eventMode && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)" }}>{t.composer_event}</div>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={t.composer_event_title_ph}
+                  aria-label={t.composer_event_title}
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  maxLength={MAX_EVENT_NAME_CHARS}
+                  style={{ fontSize: "0.9rem" }}
+                />
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem", fontSize: "0.78rem", color: "var(--text-secondary)", flex: "1 1 11rem" }}>
+                    {t.composer_event_start}
+                    <input
+                      type="datetime-local"
+                      className="input"
+                      value={eventStart}
+                      onChange={(e) => setEventStart(e.target.value)}
+                      style={{ fontSize: "0.85rem" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem", fontSize: "0.78rem", color: "var(--text-secondary)", flex: "1 1 11rem" }}>
+                    {t.composer_event_end}
+                    <input
+                      type="datetime-local"
+                      className="input"
+                      value={eventEnd}
+                      onChange={(e) => setEventEnd(e.target.value)}
+                      min={eventStart || undefined}
+                      style={{ fontSize: "0.85rem" }}
+                    />
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={t.composer_event_location_ph}
+                  aria-label={t.composer_event_location}
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  maxLength={MAX_EVENT_LOCATION_CHARS}
+                  style={{ fontSize: "0.85rem" }}
+                />
+              </div>
+            )}
+
             {/* Schedule picker */}
             {scheduling && (
               <input
@@ -639,7 +712,7 @@ export default function HomePage() {
                   type="button"
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: pollMode ? "var(--accent-bg)" : undefined }}
-                  onClick={() => setPollMode((v) => !v)}
+                  onClick={() => setPollMode((v) => { if (!v) setEventMode(false); return !v; })}
                   disabled={mediaFiles.length > 0}
                   title={t.composer_poll}
                   aria-label={t.composer_poll}
@@ -658,6 +731,18 @@ export default function HomePage() {
                   >
                     <Icon name="map-marker" size="1rem" />
                   </button>
+                {/* Event button (ActivityStreams Event) */}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: eventMode ? "var(--accent-bg)" : undefined }}
+                  onClick={() => setEventMode((v) => { if (!v) setPollMode(false); return !v; })}
+                  title={t.composer_event}
+                  aria-label={t.composer_event}
+                  aria-pressed={eventMode}
+                >
+                  <Icon name="calendar" size="1rem" />
+                </button>
                 {/* Schedule button */}
                 <button
                   type="button"
@@ -682,7 +767,7 @@ export default function HomePage() {
                 <button
                   type="submit"
                   className="btn btn-primary btn-sm"
-                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS))}
+                  disabled={posting || uploadingMedia || (!composing.trim() && mediaFiles.length === 0 && !(pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS) && !(eventMode && eventName.trim() !== "" && eventStart !== "" && (!eventEnd || new Date(eventEnd) >= new Date(eventStart))))}
                 >
                   {posting ? t.compose_posting : uploadingMedia ? <Icon name="hourglass" spin color="#fff" /> : t.compose_post}
                 </button>

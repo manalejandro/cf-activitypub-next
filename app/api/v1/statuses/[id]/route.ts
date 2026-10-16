@@ -16,6 +16,7 @@ import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
+import { eventFromRaw } from "@/lib/event";
 import { refreshRemotePoll, applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
 import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
@@ -247,6 +248,9 @@ export async function PUT(
     to: rewriteList(originalTo),
     cc: rewriteList(originalCc),
     location: locationJson ? parseLocationJson(locationJson) : null,
+    // An edit keeps the stored `Event` shape (title + time range); only the
+    // description changes.
+    event: eventFromRaw(obj.raw),
     licenseUrl: licenseUrl ?? undefined,
     // Preserve the thread identity across edits (see `conversationUri`).
     conversation: conversationFromRaw(obj.raw) ?? undefined,

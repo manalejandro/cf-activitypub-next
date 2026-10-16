@@ -112,18 +112,37 @@ describe("account moderation by role", () => {
       new Request("https://local.example/api/v1/admin/accounts/x", { method: "DELETE" }) as never,
       { params: Promise.resolve({ id }) }
     );
-    return { status: res.status, body: (await res.json()) as { ok?: boolean; error?: string } };
+    return { status: res.status, body: (await res.json()) as { ok?: boolean; error?: string; error_code?: string } };
   }
 
-  it("lets a moderator delete a regular account", async () => {
+  it("refuses a moderator: deletion is an administrator action", async () => {
     mocks.getAdminRole.mockResolvedValue("moderator");
     mocks.getActorById.mockResolvedValue(actor("user"));
 
     const result = await deleteAccount();
 
+    expect(result.status).toBe(403);
+    expect(result.body.error_code).toBe("admin_account_delete_admin_only");
+    // Nothing was deleted.
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("lets a full administrator delete a regular account", async () => {
+    mocks.getAdminRole.mockResolvedValue("admin");
+    // A cached remote account takes the plain purge path (no R2/queue work).
+    mocks.getActorById.mockResolvedValue({
+      ...actor("user"),
+      id: "https://remote.example/users/spammer",
+      username: "spammer",
+      domain: "remote.example",
+      isLocal: false,
+    } as LocalActor);
+
+    const result = await deleteAccount("https://remote.example/users/spammer");
+
     expect(result.status).toBe(200);
     expect(result.body).toEqual({ ok: true });
-    expect(mocks.run).toHaveBeenCalledWith("https://local.example/users/spammer");
+    expect(mocks.run).toHaveBeenCalledWith("https://remote.example/users/spammer");
   });
 
   it("keeps administrator accounts for full admins", async () => {
@@ -137,7 +156,7 @@ describe("account moderation by role", () => {
   });
 
   it("rejects anonymous callers before touching the account", async () => {
-    mocks.requireAdmin.mockResolvedValue(false);
+    mocks.getAdminRole.mockResolvedValue(null);
 
     const result = await deleteAccount();
 

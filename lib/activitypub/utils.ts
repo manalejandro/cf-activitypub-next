@@ -218,6 +218,13 @@ export function buildNote(
     tags?: import("@/lib/types").APTag[];
     attachments?: import("@/lib/types").APAttachment[];
     location?: GeoLocation | null;
+    /**
+     * ActivityStreams `Event`: the document is published as an event (title +
+     * time range) instead of a plain `Note`, with the status text as its
+     * description. The venue shares the `location` property with the
+     * geolocation above.
+     */
+    event?: import("@/lib/event").EventInput | null;
     /** FEP-6757: canonical license URI for this status (dcterms:license). */
     licenseUrl?: string;
     /** OStatus conversation URI (`conversationUri`/`conversationFromRaw`). */
@@ -276,7 +283,7 @@ export function buildNote(
   const note: APNote = {
     "@context": noteContext(options),
     id: noteId,
-    type: "Note",
+    type: options.event ? "Event" : "Note",
     attributedTo: actorId,
     content: emojiImgsToShortcodes(options.content) + locationLink,
     published: options.published,
@@ -306,20 +313,36 @@ export function buildNote(
       type: "Collection",
       totalItems: options.reblogsCount ?? 0,
     },
-    ...(options.location
+    // An event's venue and the status' geolocation are the same `location`
+    // property, so both are merged into one Place: coordinates (with the map
+    // URL) when the user shared a point, the venue name when the event has one.
+    ...(options.location || options.event?.location
       ? {
           location: {
             type: "Place",
-            name: options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`,
-            latitude: options.location.latitude,
-            longitude: options.location.longitude,
-            // Remote clients (and our own timeline) use it to open the map on
-            // the instance that hosts the location page.
-            url: locationUrl,
+            name: options.event?.location
+              ?? (options.location
+                ? options.location.name ?? `${options.location.latitude.toFixed(4)}, ${options.location.longitude.toFixed(4)}`
+                : undefined),
+            ...(options.location
+              ? {
+                  latitude: options.location.latitude,
+                  longitude: options.location.longitude,
+                  // Remote clients (and our own timeline) use it to open the map on
+                  // the instance that hosts the location page.
+                  url: locationUrl,
+                }
+              : {}),
           } as unknown as import("@/lib/types").APObject,
         }
       : {}),
   };
+
+  if (options.event) {
+    note.name = options.event.name;
+    note.startTime = options.event.startTime;
+    if (options.event.endTime) note.endTime = options.event.endTime;
+  }
 
   if (options.inReplyTo) note.inReplyTo = options.inReplyTo;
   // OStatus conversation (Mastodon groups threads by it when the root is not

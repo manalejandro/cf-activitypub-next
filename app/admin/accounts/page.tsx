@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
-import { useLocale, type Translations } from "@/lib/i18n";
+import { translateKey, useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { Pagination } from "@/components/Pagination";
@@ -56,6 +56,19 @@ export default function AdminAccountsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  // Deleting an account, changing a role and memorializing are full
+  // administrator actions: a moderator only gets the moderation buttons
+  // (approve/reject, silence, suspend).
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/v1/accounts/verify_credentials", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null) as Promise<{ roles?: { name?: string }[] } | null>)
+      .then((me) => setIsAdmin((me?.roles?.[0]?.name ?? "").toLowerCase() === "admin"))
+      .catch(() => {});
+  }, [token]);
 
   const fetchAccounts = useCallback(async () => {
     if (!token) return;
@@ -90,28 +103,41 @@ export default function AdminAccountsPage() {
   async function performAction(id: string, action: string) {
     if (!token) return;
     setActionLoading(`${id}:${action}`);
+    setError(null);
     try {
-      await fetch(`/api/v1/admin/accounts/${encodeURIComponent(id)}/${action}`, {
+      const res = await fetch(`/api/v1/admin/accounts/${encodeURIComponent(id)}/${action}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) { router.push("/login"); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+        setError(translateKey(t, data?.error_code, data?.error ?? t.error_network) ?? t.error_network);
+        return;
+      }
       await fetchAccounts();
     } catch { /* ignore */ }
-    setActionLoading(null);
+    finally { setActionLoading(null); }
   }
 
   async function deleteAccount(id: string) {
     if (!token || !window.confirm(t.admin_delete_confirm)) return;
     setActionLoading(`${id}:delete`);
+    setError(null);
     try {
       const res = await fetch(`/api/v1/admin/accounts/${encodeURIComponent(id)}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) { router.push("/login"); return; }
+      if (res.status === 401) { router.push("/login"); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null) as { error?: string; error_code?: string } | null;
+        setError(translateKey(t, data?.error_code, data?.error ?? t.error_network) ?? t.error_network);
+        return;
+      }
       await fetchAccounts();
     } catch { /* ignore */ }
-    setActionLoading(null);
+    finally { setActionLoading(null); }
   }
 
   function formatDate(dateStr: string) {
@@ -131,6 +157,10 @@ export default function AdminAccountsPage() {
           ({total})
         </span>
       </h1>
+
+      {error && (
+        <div style={{ color: "var(--danger)", fontSize: "0.85rem", marginBottom: "1rem" }} role="alert">{error}</div>
+      )}
 
       <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
         <input
@@ -274,30 +304,34 @@ export default function AdminAccountsPage() {
                             <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "suspend")} style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
                               {isBusy && actionLoading === `${a.id}:suspend` ? "..." : t.admin_btn_suspend}
                             </button>
-                            <button
-                              className="btn btn-outline btn-sm"
-                              disabled={isBusy}
-                              onClick={() => {
-                                if (window.confirm(t.admin_memorialize_confirm)) void performAction(a.id, "memorialize");
-                              }}
-                            >
-                              {isBusy && actionLoading === `${a.id}:memorialize` ? "..." : t.admin_btn_memorialize}
-                            </button>
+                            {isAdmin && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                disabled={isBusy}
+                                onClick={() => {
+                                  if (window.confirm(t.admin_memorialize_confirm)) void performAction(a.id, "memorialize");
+                                }}
+                              >
+                                {isBusy && actionLoading === `${a.id}:memorialize` ? "..." : t.admin_btn_memorialize}
+                              </button>
+                            )}
                           </>
                         )}
-                        {(a.role === "user" || a.role === "moderator") && (
+                        {isAdmin && (a.role === "user" || a.role === "moderator") && (
                           <button className="btn btn-outline btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "promote")}>
                             {isBusy && actionLoading === `${a.id}:promote` ? "..." : t.admin_btn_promote}
                           </button>
                         )}
-                        {(a.role === "moderator" || a.role === "admin") && (
+                        {isAdmin && (a.role === "moderator" || a.role === "admin") && (
                           <button className="btn btn-ghost btn-sm" disabled={isBusy} onClick={() => performAction(a.id, "demote")}>
                             {isBusy && actionLoading === `${a.id}:demote` ? "..." : t.admin_btn_demote}
                           </button>
                         )}
-                        <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} disabled={isBusy} onClick={() => deleteAccount(a.id)}>
-                          {isBusy && actionLoading === `${a.id}:delete` ? "..." : t.admin_btn_delete}
-                        </button>
+                        {isAdmin && (
+                          <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} disabled={isBusy} onClick={() => deleteAccount(a.id)}>
+                            {isBusy && actionLoading === `${a.id}:delete` ? "..." : t.admin_btn_delete}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

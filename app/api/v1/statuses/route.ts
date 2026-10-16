@@ -27,6 +27,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
+import { parseEventInput } from "@/lib/event";
 import { applyPollToNote } from "@/lib/activitypub/polls";
 import {
   buildNote,
@@ -212,9 +213,15 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   let content = (body.status as string | undefined)?.trim();
+  // Optional ActivityStreams Event (the composer's event mode): the status is
+  // published as an `Event` with a title and a time range instead of a Note.
+  // An event carries no poll, so a poll sent along is ignored.
+  const eventResult = parseEventInput(body.event);
+  if ("error" in eventResult) return json({ error: "Invalid event", error_code: eventResult.error }, 422);
+  const event = eventResult.event;
   const pollRaw = body.poll as { options?: string[]; expires_in?: number; multiple?: boolean } | undefined;
-  const hasPoll = pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
-  if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
+  const hasPoll = !event && pollRaw && Array.isArray(pollRaw.options) && pollRaw.options.filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
+  if (!content && !hasPoll && !event) return json({ error: "status content or poll is required" }, 422);
 
   // Enforce the instance limits reported by /api/v1/instance (lib/constants).
   if ((content ?? "").length > limits.maxStatusChars) {
@@ -513,6 +520,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     to: noteTo,
     cc: noteCc,
     location: locationJson ? parseLocationJson(locationJson) : null,
+    event,
     licenseUrl: licenseUrl ?? undefined,
     conversation,
   });
@@ -525,7 +533,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   await createObject(env.DB, {
     id: note.id,
-    type: "Note",
+    type: event ? "Event" : "Note",
     actorId: actor.id,
     // `note.content` includes the 📍 location link, so local and federated
     // copies render identically.
@@ -778,7 +786,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const serializedQuote = quoteId ? await serializeQuote(env.DB, await getObjectById(env.DB, quoteId), domain, actor.id) : null;
   const serializedStatus = serializeStatus(
-    { id: note.id, type: "Note", actorId: actor.id, content: note.content ?? htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, licenseUrl, raw: JSON.stringify(note) },
+    { id: note.id, type: event ? "Event" : "Note", actorId: actor.id, content: note.content ?? htmlContent, contentWarning: sensitive ? spoilerText : null, sensitive, visibility: visibility as "public", inReplyToId: inReplyToId ?? null, quoteId, language: language ?? null, url: note.id, repliesCount: 0, reblogsCount: 0, favouritesCount: 0, published, updatedAt: published, local: true, locationJson: locationJson ?? null, licenseUrl, raw: JSON.stringify(note) },
     actor,
     domain,
     { attachments: linkedAttachments, poll: serializedPoll, inReplyToAccountId: replyToAccountId ?? null, quote: serializedQuote, quotesCount: 0, authorLastStatusAt: published.slice(0, 10), emojis: localEmojis }

@@ -180,10 +180,13 @@ export function APTypeBlock({
   apType,
   apMeta,
   mediaAttachments = [],
+  isLocal = false,
 }: {
   apType?: string | null;
   apMeta?: APMeta | null;
   mediaAttachments?: APBlockMedia[];
+  /** Local object: "open original" links point back at this same instance. */
+  isLocal?: boolean;
 }) {
   const { t } = useLocale();
   if (!apType || apType === "Note") return null;
@@ -193,28 +196,38 @@ export function APTypeBlock({
     const start = formatDateTime(apMeta?.startTime);
     const end = formatDateTime(apMeta?.endTime);
     const title = apMeta?.name;
+    // A venue without coordinates is just a name: linking it would open a map
+    // at 0,0 (the event only carries a place name).
+    const venueHref = apMeta?.locationUrl
+      ?? (apMeta?.latitude != null && apMeta?.longitude != null
+        ? locationPath({ name: apMeta.location ?? null, latitude: apMeta.latitude, longitude: apMeta.longitude })
+        : null);
     return (
       <div style={cardStyle()}>
         {title && (
           <span style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text)" }}><Icon name="calendar" /> {title}</span>
         )}
         {start && <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}><Icon name="clock-o" /> {start}{end ? ` → ${end}` : ""}</span>}
-        {apMeta?.location && (
+        {apMeta?.location && (venueHref ? (
           <Link
-            href={apMeta.locationUrl ?? locationPath({ name: apMeta.location, latitude: apMeta.latitude ?? 0, longitude: apMeta.longitude ?? 0 })}
+            href={venueHref}
             target="_blank"
             rel="nofollow noopener noreferrer"
             style={{ fontSize: "0.85rem", color: "var(--text-secondary)", textDecoration: "none" }}
           >
             <Icon name="map-marker" /> {apMeta.location}
           </Link>
-        )}
+        ) : (
+          <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}><Icon name="map-marker" /> {apMeta.location}</span>
+        ))}
         {apMeta?.duration && (
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }} className="flex items-center gap-1">
             <Icon name="hourglass-o" /> {formatDuration(apMeta.duration)}
           </span>
         )}
-        {apMeta?.url && <Link href={apMeta.url} target="_blank" rel="nofollow noopener noreferrer" style={{ fontSize: "0.85rem", color: "var(--accent)", textDecoration: "none" }}>{t.ap_open_event}</Link>}
+        {/* A local event's "original" is this same instance (the link would
+            point at our own object URL), so it is only offered for remote ones. */}
+        {apMeta?.url && !isLocal && <Link href={apMeta.url} target="_blank" rel="nofollow noopener noreferrer" style={{ fontSize: "0.85rem", color: "var(--accent)", textDecoration: "none" }}>{t.ap_open_event}</Link>}
       </div>
     );
   }
@@ -347,7 +360,7 @@ export function APTypeBlock({
   //    text + link for bare questions without stored poll options ─────────
   if (apType === "Question") {
     const name = apMeta?.name;
-    const target = apMeta?.url;
+    const target = isLocal ? null : apMeta?.url;
     if (!name && !target) return null;
     return (
       <div style={cardStyle()}>

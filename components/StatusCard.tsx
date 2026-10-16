@@ -1075,7 +1075,12 @@ function StatusCardInner({
             (which carries "open original") is only for bare questions without
             stored options, so it must not duplicate every poll. */}
         {showContent && !(status.ap_type === "Question" && status.poll) && (
-          <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />
+          <APTypeBlock
+            apType={status.ap_type}
+            apMeta={status.ap_meta}
+            mediaAttachments={status.media_attachments ?? []}
+            isLocal={!status.account.acct?.includes("@")}
+          />
         )}
         {showContent && status.quote && <QuoteInline quote={status.quote} />}
         {blurByFilter && !filterRevealed && (
