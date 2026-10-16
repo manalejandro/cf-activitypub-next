@@ -3491,14 +3491,17 @@ export async function createNotification(db: D1Database, notif: LocalNotificatio
   // interact with the recipient: drop their notifications entirely.
   if (await isActorBlockedBy(db, notif.targetAccountId, notif.accountId)) return false;
   const filtered = notif.filtered ?? (await isFilteredNotification(db, notif));
-  await db
+  const result = await db
     .prepare(
       `INSERT OR IGNORE INTO notifications (id, type, account_id, target_account_id, object_id, is_read, filtered)
        VALUES (?,?,?,?,?,?,?)`
     )
     .bind(notif.id, notif.type, notif.accountId, notif.targetAccountId, notif.objectId ?? null, 0, filtered ? 1 : 0)
     .run();
-  return !filtered;
+  // A duplicate (the dedup index ignored the insert) must not be delivered
+  // again: the poll-expiry pass re-runs until the author's notification marks
+  // it done, and no re-run may push the same notification twice.
+  return !filtered && (result.meta?.changes ?? 0) > 0;
 }
 
 /**
@@ -5722,6 +5725,49 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
 export async function deletePendingMediaCache(db: D1Database): Promise<number> {
   const res = await db.prepare("DELETE FROM media_cache WHERE status != 'ready'").run();
   return res.meta?.changes ?? 0;
+}
+
+/**
+ * Expired polls whose author has not been notified yet — the notification row
+ * itself is the marker, so the pass is idempotent (the cron runs it every
+ * tick). The 7-day bound keeps the ordered scan on `idx_polls_expires` short
+ * and deliberately skips history: a deploy never spams voters with old polls.
+ */
+export async function listPollsToNotify(
+  db: D1Database,
+  limit = 20
+): Promise<{ pollId: string; objectId: string; actorId: string }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT p.id AS poll_id, p.object_id AS object_id, o.actor_id AS actor_id
+       FROM polls p
+       JOIN objects o ON o.id = p.object_id
+       WHERE p.expires_at IS NOT NULL
+         AND datetime(p.expires_at) <= datetime('now')
+         AND datetime(p.expires_at) >= datetime('now', '-7 days')
+         AND NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.object_id = o.id AND n.type = 'poll' AND n.account_id = o.actor_id
+         )
+       ORDER BY p.expires_at ASC
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ poll_id: string; object_id: string; actor_id: string }>();
+  return (rows.results ?? []).map((r) => ({ pollId: r.poll_id, objectId: r.object_id, actorId: r.actor_id }));
+}
+
+/** Local accounts that voted in a poll (Mastodon's `PollExpirationNotifyWorker`). */
+export async function listLocalPollVoters(db: D1Database, pollId: string): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT pv.actor_id FROM poll_votes pv
+       JOIN actors a ON a.id = pv.actor_id
+       WHERE pv.poll_id = ? AND a.is_local = 1`
+    )
+    .bind(pollId)
+    .all<{ actor_id: string }>();
+  return (rows.results ?? []).map((r) => r.actor_id);
 }
 
 /** R2 keys currently referenced by cache rows (purge enumeration). */

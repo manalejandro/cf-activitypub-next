@@ -36,7 +36,7 @@ import { getAnonymousTimelineAccess } from "../lib/db";
 import { anonymousTimelineAllowed } from "../lib/anonymous-timelines";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
-import { refreshRemotePoll } from "../lib/activitypub/polls";
+import { notifyExpiredPolls, refreshRemotePoll } from "../lib/activitypub/polls";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -1188,6 +1188,12 @@ async function executeScheduled(env: Env): Promise<void> {
       }
     });
     await Promise.all(pollWorkers);
+
+    // Polls that expired since the last tick: notify the local voters and the
+    // author (Mastodon's `PollExpirationNotifyWorker`). Runs here so a remote
+    // poll — whose author is remote — still tells the people who voted here.
+    const notified = await notifyExpiredPolls(env, 20);
+    if (notified > 0) console.log(`[cron] notified ${notified} expired poll(s)`);
   } catch (err) {
     console.error("[cron] poll refresh failed", err);
   }

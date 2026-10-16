@@ -1071,7 +1071,12 @@ function StatusCardInner({
             {new Date(status.created_at).toLocaleString()}
           </div>
         )}
-        {showContent && <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />}
+        {/* A poll renders its own card: the AP type block's Question fallback
+            (which carries "open original") is only for bare questions without
+            stored options, so it must not duplicate every poll. */}
+        {showContent && !(status.ap_type === "Question" && status.poll) && (
+          <APTypeBlock apType={status.ap_type} apMeta={status.ap_meta} mediaAttachments={status.media_attachments ?? []} />
+        )}
         {showContent && status.quote && <QuoteInline quote={status.quote} />}
         {blurByFilter && !filterRevealed && (
           <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>
@@ -1082,7 +1087,24 @@ function StatusCardInner({
           </div>
         )}
         {showContent && <MediaGrid attachments={status.media_attachments ?? []} sensitive={status.sensitive || (blurByFilter && !filterRevealed)} defaultRevealed={prefs["reading:expand:media"] === "show_all"} />}
-        {showContent && status.poll && <PollView poll={status.poll} />}
+        {showContent && status.poll && (
+          <>
+            <PollView poll={status.poll} />
+            {/* The origin is only interesting for a remote poll (a local one's
+                "original" is this same instance): at the end of the status,
+                below the votes. */}
+            {status.account.acct.includes("@") && status.ap_meta?.url && (
+              <a
+                href={status.ap_meta.url}
+                target="_blank"
+                rel="nofollow noopener noreferrer"
+                style={{ display: "inline-block", marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--accent)", textDecoration: "none" }}
+              >
+                {t.ap_open_original}
+              </a>
+            )}
+          </>
+        )}
         {showContent && status.location && (
           <LocationPreview location={status.location} />
         )}

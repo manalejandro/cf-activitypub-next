@@ -7,13 +7,57 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { getPollByObjectId, getPollOptions, getPollsByObjectIds, setPollVoteCounts } from "@/lib/db";
+import { getPollByObjectId, getPollOptions, getPollsByObjectIds, listLocalPollVoters, listPollsToNotify, setPollVoteCounts } from "@/lib/db";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
+import { notify, type NotifyEnv } from "@/lib/notify";
+import { generateId } from "@/lib/activitypub/utils";
 import type { APNote, LocalObject, LocalPoll, LocalPollOption } from "@/lib/types";
 
 interface RefreshBindings {
   DB: D1Database;
   KV: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> };
+}
+
+/**
+ * Notify the people a poll owes an answer to once it expires — Mastodon's
+ * `PollExpirationNotifyWorker`: the **local voters** (`notify_local_voters!`,
+ * for local and remote polls alike) and the author (`notify_remote_voters_and_owner!`,
+ * local polls). Remote polls are the case that used to be silent: their author
+ * is remote, so nothing local was ever told, and the notification only needs
+ * our own rows — never the origin.
+ *
+ * The author's notification doubles as the marker: `listPollsToNotify` skips
+ * polls that already have it, and `createNotification` ignores duplicates, so
+ * a re-run (or a crash halfway) never delivers the same notification twice.
+ */
+export async function notifyExpiredPolls(env: NotifyEnv, limit = 20): Promise<number> {
+  const expired = await listPollsToNotify(env.DB, limit);
+  for (const poll of expired) {
+    try {
+      const createdAt = new Date().toISOString();
+      for (const voterId of await listLocalPollVoters(env.DB, poll.pollId)) {
+        await notify(env, {
+          id: generateId(),
+          type: "poll",
+          accountId: poll.actorId,
+          targetAccountId: voterId,
+          objectId: poll.objectId,
+          read: false,
+          createdAt,
+        });
+      }
+      await notify(env, {
+        id: generateId(),
+        type: "poll",
+        accountId: poll.actorId,
+        targetAccountId: poll.actorId,
+        objectId: poll.objectId,
+        read: false,
+        createdAt,
+      });
+    } catch { /* one poll must not stop the pass */ }
+  }
+  return expired.length;
 }
 
 /**

@@ -61,6 +61,9 @@ export default function PollPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<number[]>([]);
   const [voting, setVoting] = useState(false);
+  // Only a remote poll has an "original" elsewhere: a local one's origin is
+  // this same instance, so the link is noise (and pointed at a raw object URL).
+  const [remotePoll, setRemotePoll] = useState(false);
 
   // The countdown must keep ticking while the page is open: it was computed
   // once when the poll loaded and stayed frozen (same bug as the status
@@ -72,6 +75,18 @@ export default function PollPage() {
     const id = setInterval(() => setTimeLeft(formatTimeLeft(expiresAt, t)), 1000);
     return () => clearInterval(id);
   }, [expiresAt, expired, t]);
+
+  useEffect(() => {
+    if (!statusId) return;
+    let alive = true;
+    fetch(`/api/v1/statuses/${encodeURIComponent(statusId)}`, { credentials: "include" })
+      .then(async (res) => (res.ok ? (await res.json()) as { account?: { acct?: string } } : null))
+      .then((data) => {
+        if (alive && data?.account?.acct) setRemotePoll(data.account.acct.includes("@"));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [statusId]);
 
   useEffect(() => {
     if (!pollId) return;
@@ -313,7 +328,7 @@ export default function PollPage() {
               </span>
             </div>
 
-            {statusId && (
+            {statusId && remotePoll && (
               <div
                 style={{
                   marginTop: "1rem",
