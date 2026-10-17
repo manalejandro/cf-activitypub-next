@@ -119,8 +119,12 @@ export function buildActor(
     // Mastodon's ActorSerializer advertises the handle as `webfinger`; some
     // implementations display it without a WebFinger lookup.
     webfinger: `${username}@${new URL(baseUrl).hostname}`,
-    name: emojiImgsToShortcodes(options.displayName ?? username),
-    summary: emojiImgsToShortcodes(options.summary ?? ""),
+    // A suspended actor keeps only its handle: the display name, the bio and
+    // the profile fields are what the account wrote (Mastodon's
+    // `SuspendAccountService#purge_profile!`), and they must not keep
+    // circulating through the fediverse.
+    name: emojiImgsToShortcodes(options.suspended ? username : options.displayName ?? username),
+    summary: options.suspended ? "" : emojiImgsToShortcodes(options.summary ?? ""),
     url: `${baseUrl}/@${username}`,
     inbox: inboxIRI(baseUrl, username),
     outbox: outboxIRI(baseUrl, username),
@@ -151,7 +155,7 @@ export function buildActor(
   if (options.headerUrl && !options.suspended) {
     actor.image = { type: "Image", id: options.headerUrl, url: options.headerUrl, mediaType: "image/webp" };
   }
-  if (options.fields && options.fields.length > 0) {
+  if (options.fields && options.fields.length > 0 && !options.suspended) {
     actor.attachment = options.fields.map((f) => ({
       type: "PropertyValue",
       name: f.name,

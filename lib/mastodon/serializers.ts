@@ -139,9 +139,14 @@ export function serializeAccount(
   // Local actors store plain-text notes/fields, so linkify them the same way
   // statuses are. Remote actors carry federated HTML that is walk-linkified so
   // any :emoji: shortcodes are replaced with <img> using the cached emojis.
-  const note = isLocal
-    ? linkifyInline(localSummaryToPlain(actor.summary ?? ""), baseUrl, opts.emojis)
-    : linkifyHtmlText(sanitizeFediverseHtml(actor.summary ?? "") ?? "", baseUrl, opts.emojis);
+  // A suspended account serves none of it: only the handle survives (Mastodon's
+  // `SuspendAccountService#purge_profile!` empties the display name, the bio and
+  // the fields), while the stored values stay for a reinstatement.
+  const note = actor.suspended
+    ? ""
+    : isLocal
+      ? linkifyInline(localSummaryToPlain(actor.summary ?? ""), baseUrl, opts.emojis)
+      : linkifyHtmlText(sanitizeFediverseHtml(actor.summary ?? "") ?? "", baseUrl, opts.emojis);
 
   // A suspended account keeps no uploaded profile media: the avatar and the
   // header fall back to the instance defaults. The files stay in R2 (a
@@ -158,7 +163,7 @@ export function serializeAccount(
     id: actor.id,
     username: actor.username,
     acct,
-    display_name: actor.displayName ?? actor.username,
+    display_name: actor.suspended ? actor.username : actor.displayName ?? actor.username,
     locked: actor.manuallyApprovesFollowers,
     bot: actor.isBot,
     group: false,
@@ -192,7 +197,7 @@ export function serializeAccount(
           ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }]
           : []
         : null,
-    fields: (opts.fields ?? []).map((f) => ({
+    fields: (actor.suspended ? [] : opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: isLocal
         ? linkifyInline(f.value, baseUrl, opts.emojis)

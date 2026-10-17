@@ -177,44 +177,61 @@ describe("suspending an account", () => {
 
   it("stops serving the uploaded avatar and header", async () => {
     await db
-      .prepare("UPDATE actors SET avatar_url = ?, header_url = ? WHERE id = ?")
-      .bind(`${BASE}/media/spammer-avatar.png`, `${BASE}/media/spammer-header.png`, SPAMMER)
+      .prepare("UPDATE actors SET avatar_url = ?, header_url = ?, display_name = ?, summary = ? WHERE id = ?")
+      .bind(`${BASE}/media/spammer-avatar.png`, `${BASE}/media/spammer-header.png`, "Ofertas Ya", "Sígueme y gana dinero", SPAMMER)
+      .run();
+    await db
+      .prepare("INSERT INTO actor_fields (id, actor_id, name, value, position) VALUES ('f1', ?, 'Web', 'https://spam.example', 0)")
+      .bind(SPAMMER)
       .run();
 
     const before = (await (await ACCOUNT(
       new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
       { params: Promise.resolve({ id: SPAMMER }) }
-    )).json()) as { avatar: string; header: string };
+    )).json()) as { avatar: string; header: string; display_name: string; note: string; fields: unknown[] };
     expect(before.avatar).toBe(`${BASE}/media/spammer-avatar.png`);
+    expect(before.display_name).toBe("Ofertas Ya");
+    expect(before.note).toContain("gana dinero");
+    expect(before.fields).toHaveLength(1);
 
     await adminCall(SUSPEND, SPAMMER);
 
     const account = (await (await ACCOUNT(
       new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
       { params: Promise.resolve({ id: SPAMMER }) }
-    )).json()) as { avatar: string; avatar_static: string; header: string; header_static: string };
+    )).json()) as { avatar: string; avatar_static: string; header: string; header_static: string; display_name: string; note: string; fields: unknown[] };
     expect(account.avatar).toBe(`${BASE}/default-avatar.png`);
     expect(account.avatar_static).toBe(`${BASE}/default-avatar.png`);
     expect(account.header).toBe(`${BASE}/default-header.png`);
     expect(account.header_static).toBe(`${BASE}/default-header.png`);
+    // Nothing the account wrote survives either: only the handle.
+    expect(account.display_name).toBe("spammer");
+    expect(account.note).toBe("");
+    expect(account.fields).toEqual([]);
 
     // The federated document advertises no profile media either.
     const apRes = await ACTOR_DOCUMENT(
       new NextRequest(`${BASE}/api/users/spammer`),
       { params: Promise.resolve({ username: "spammer" }) }
     );
-    const ap = (await apRes.json()) as { suspended?: boolean; icon?: unknown; image?: unknown };
+    const ap = (await apRes.json()) as { suspended?: boolean; icon?: unknown; image?: unknown; name?: string; summary?: string; attachment?: unknown };
     expect(ap.suspended).toBe(true);
     expect(ap.icon).toBeUndefined();
     expect(ap.image).toBeUndefined();
+    expect(ap.name).toBe("spammer");
+    expect(ap.summary).toBe("");
+    expect(ap.attachment).toBeUndefined();
 
     // Reinstating the account brings the uploaded files back (nothing was lost).
     await adminCall(UNSUSPEND, SPAMMER);
     const restored = (await (await ACCOUNT(
       new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
       { params: Promise.resolve({ id: SPAMMER }) }
-    )).json()) as { avatar: string; header: string };
+    )).json()) as { avatar: string; header: string; display_name: string; note: string; fields: unknown[] };
     expect(restored.avatar).toBe(`${BASE}/media/spammer-avatar.png`);
     expect(restored.header).toBe(`${BASE}/media/spammer-header.png`);
+    expect(restored.display_name).toBe("Ofertas Ya");
+    expect(restored.note).toContain("gana dinero");
+    expect(restored.fields).toHaveLength(1);
   });
 });
