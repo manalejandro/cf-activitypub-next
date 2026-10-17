@@ -13907,6 +13907,31 @@
         }
       }
     },
+    "/quote_authorizations/{id}": {
+      "get": {
+        "summary": "Get /quote_authorizations/{id}",
+        "operationId": "get_quote_authorizations_Byid",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/security.txt": {
       "get": {
         "summary": "Get /security.txt",

@@ -43,7 +43,8 @@ import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
-import { DEFAULT_CONTEXT } from "@/lib/activitypub/vocab";
+import { buildQuoteRequest, ensureLocalQuoteAuthorization } from "@/lib/activitypub/quotes";
+import { setObjectQuoteAuthorizationUri } from "@/lib/db";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
 import type { MentionsMap } from "@/lib/activitypub/content";
@@ -273,6 +274,8 @@ export async function POST(request: NextRequest): Promise<Response> {
   const quotedStatusIdRaw = (body.quoted_status_id as string | undefined) ?? (body.quote_id as string | undefined);
   let quoteId: string | null = null;
   let quotedAuthor: import("@/lib/types").LocalActor | null = null;
+  /** Kept for the FEP-044f authorization (a local quoted post is authorized here). */
+  let quotedObject: import("@/lib/types").LocalObject | null = null;
   if (quotedStatusIdRaw) {
     const quotedIri = decodeStatusId(quotedStatusIdRaw, domain);
     let quoted = await getObjectById(env.DB, quotedIri);
@@ -281,6 +284,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (resolved.object) quoted = resolved.object;
     }
     if (!quoted) return json({ error: "Validation failed: Quoted status not found" }, 422);
+    quotedObject = quoted;
     // You cannot quote something you are not allowed to see.
     const quotedVisible = canViewStatus(
       quoted,
@@ -700,9 +704,26 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Attach media to AP Note now that linkedAttachments is populated
   if (linkedAttachments.length > 0) note.attachment = linkedAttachments.map(toAPAttachment);
 
+  // FEP-044f: a quote of one of OUR posts needs no round trip — we are the
+  // quoted server, so the authorization is minted here and the note carries it
+  // from the start (a quote of a remote post gets it later, via the Accept).
+  let quoteAuthorizationUri: string | null = null;
+  if (quoteId && quotedObject?.local) {
+    quoteAuthorizationUri = await ensureLocalQuoteAuthorization(env, {
+      baseUrl,
+      quoted: quotedObject,
+      authorUsername: actor.username,
+      interactingObjectId: note.id,
+    });
+    if (quoteAuthorizationUri) {
+      (note as Record<string, unknown>).quoteAuthorization = quoteAuthorizationUri;
+      await setObjectQuoteAuthorizationUri(env.DB, note.id, quoteAuthorizationUri);
+    }
+  }
+
   // Update stored raw to include poll + attachment fields added after initial createObject.
   // Use a direct query to avoid bumping updated_at (these are not user edits).
-  if (hasPoll || linkedAttachments.length > 0) {
+  if (hasPoll || linkedAttachments.length > 0 || quoteAuthorizationUri) {
     await env.DB
       .prepare("UPDATE objects SET raw = ? WHERE id = ?")
       .bind(JSON.stringify(note), note.id)
@@ -746,15 +767,12 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
     quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
     if (quoteAuthorInboxes.length > 0) {
-      const quoteRequest = {
-        "@context": DEFAULT_CONTEXT,
-        id: `${baseUrl}/quote_requests/${generateId()}`,
-        type: "QuoteRequest",
-        actor: actor.id,
-        to: [quotedAuthor.id],
-        object: quoteId,
-        instrument: note.id,
-      };
+      const quoteRequest = buildQuoteRequest(baseUrl, {
+        activityId: generateId(),
+        actorId: actor.id,
+        quotingObjectId: note.id,
+        quotedObjectId: quoteId,
+      });
       await enqueueDeliveries(env.DELIVERY_QUEUE, quoteAuthorInboxes, JSON.stringify(quoteRequest), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
   }

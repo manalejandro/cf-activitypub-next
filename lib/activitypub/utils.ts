@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, OSTATUS_CONVERSATION_CONTEXT, PUBLIC_ADDRESS } from "./vocab";
+import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, OSTATUS_CONVERSATION_CONTEXT, PUBLIC_ADDRESS, QUOTE_AUTHORIZATION_CONTEXT } from "./vocab";
 import { emojiImgsToShortcodes, fieldValueForVerification } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
@@ -200,10 +200,11 @@ export function buildActor(
  * term must resolve to `ostatus:conversation`, not the MLS one that
  * `DEFAULT_CONTEXT` carries for our E2EE documents.
  */
-function noteContext(options: { licenseUrl?: string; conversation?: string | null }): (string | Record<string, unknown>)[] {
+function noteContext(options: { licenseUrl?: string; conversation?: string | null; quoteAuthorization?: string | null }): (string | Record<string, unknown>)[] {
   const extensions: (string | Record<string, unknown>)[] = [];
   if (options.licenseUrl) extensions.push(FEP_6757_CONTEXT);
   if (options.conversation) extensions.push(OSTATUS_CONVERSATION_CONTEXT);
+  if (options.quoteAuthorization) extensions.push(QUOTE_AUTHORIZATION_CONTEXT);
   return extensions.length > 0 ? [...DEFAULT_CONTEXT, ...extensions] : DEFAULT_CONTEXT;
 }
 
@@ -235,6 +236,11 @@ export function buildNote(
     licenseUrl?: string;
     /** OStatus conversation URI (`conversationUri`/`conversationFromRaw`). */
     conversation?: string | null;
+    /**
+     * FEP-044f approval URI. Mastodon shows a quote as "pending approval" until
+     * the quoting note carries the authorization issued by the quoted server.
+     */
+    quoteAuthorization?: string | null;
     /** Counters advertised as the `likes`/`shares` collections. */
     favouritesCount?: number;
     reblogsCount?: number;
@@ -356,6 +362,8 @@ export function buildNote(
   if (options.conversation) (note as Record<string, unknown>).conversation = options.conversation;
   // FEP-6757: the canonical license URI of the status (Dublin Core license).
   if (options.licenseUrl) (note as Record<string, unknown>).license = options.licenseUrl;
+  // FEP-044f: the approval URI that makes the quote show up on Mastodon.
+  if (options.quoteAuthorization) (note as Record<string, unknown>).quoteAuthorization = options.quoteAuthorization;
   // FEP-044f / Mastodon's NoteSerializer: the quote policy. Without it a
   // Mastodon 4.4+ receiver resolves `canQuote` to `:denied` and its users
   // cannot quote the post at all (the policy is read from the raw JSON, but

@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS account_notes;
 DROP TABLE IF EXISTS activities;
 DROP TABLE IF EXISTS actor_fields;
 DROP TABLE IF EXISTS announcement_reactions;
+DROP TABLE IF EXISTS quote_authorizations;
 DROP TABLE IF EXISTS announces;
 DROP TABLE IF EXISTS blocks;
 DROP TABLE IF EXISTS bookmarks;

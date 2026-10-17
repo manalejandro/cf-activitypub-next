@@ -38,6 +38,7 @@ import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
 import { parseEventInput } from "../lib/event";
 import { notifyExpiredPolls, refreshRemotePoll } from "../lib/activitypub/polls";
+import { retryPendingQuoteRequests } from "../lib/activitypub/quotes";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -1200,6 +1201,12 @@ async function executeScheduled(env: Env): Promise<void> {
     // poll — whose author is remote — still tells the people who voted here.
     const notified = await notifyExpiredPolls(env, 20);
     if (notified > 0) console.log(`[cron] notified ${notified} expired poll(s)`);
+
+    // Quotes whose FEP-044f authorization never arrived (a lost `Accept`, or one
+    // that landed before the flow existed): ask the quoted server again. Without
+    // it the quote stays "pending approval" on Mastodon forever.
+    const quoteRequests = await retryPendingQuoteRequests(env, 10);
+    if (quoteRequests > 0) console.log(`[cron] re-requested ${quoteRequests} quote authorization(s)`);
   } catch (err) {
     console.error("[cron] poll refresh failed", err);
   }

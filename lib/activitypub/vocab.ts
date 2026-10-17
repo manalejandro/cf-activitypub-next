@@ -207,6 +207,19 @@ export const FEP_6757_CONTEXT = "https://w3id.org/fep/6757";
  * their `conversation` resolves to the OStatus property (the last JSON-LD
  * definition wins) while MLS documents keep theirs.
  */
+/**
+ * FEP-044f quote authorizations. `quoteAuthorization` is not a core
+ * ActivityStreams term: without declaring it a JSON-LD processor drops it and
+ * Mastodon keeps showing the quote as "pending approval".
+ */
+export const QUOTE_AUTHORIZATION_CONTEXT = {
+  quoteAuthorization: { "@id": "https://w3id.org/fep/044f#quoteAuthorization", "@type": "@id" },
+  QuoteAuthorization: "https://w3id.org/fep/044f#QuoteAuthorization",
+  QuoteRequest: "https://w3id.org/fep/044f#QuoteRequest",
+  interactingObject: { "@id": "https://w3id.org/fep/044f#interactingObject", "@type": "@id" },
+  interactionTarget: { "@id": "https://w3id.org/fep/044f#interactionTarget", "@type": "@id" },
+};
+
 export const OSTATUS_CONVERSATION_CONTEXT = {
   ostatus: "http://ostatus.org#",
   conversation: "ostatus:conversation",

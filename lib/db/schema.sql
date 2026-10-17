@@ -97,6 +97,10 @@ CREATE TABLE IF NOT EXISTS objects (
   visibility      TEXT NOT NULL DEFAULT 'public',  -- public|unlisted|private|direct
   in_reply_to_id  TEXT,
   quote_id        TEXT,
+  -- FEP-044f: the `quoteAuthorization` URI issued by the quoted post's server.
+  -- Mastodon shows a quote as "pending approval" until the quoting note
+  -- carries it, so a quote of a remote post fills this when the Accept arrives.
+  quote_authorization_uri TEXT,
   language        TEXT,
   url             TEXT,
   replies_count   INTEGER NOT NULL DEFAULT 0,
@@ -315,6 +319,21 @@ CREATE TABLE IF NOT EXISTS announces (
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (actor_id, object_id)
 );
+
+-- FEP-044f quote authorizations we issued: one per remote (or local) status
+-- that quotes one of our posts, served at /quote_authorizations/<id> and
+-- echoed in the `Accept{QuoteRequest}` we answer with.
+CREATE TABLE IF NOT EXISTS quote_authorizations (
+  id                    TEXT PRIMARY KEY,
+  object_id             TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+  actor_id              TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  interacting_object_id TEXT NOT NULL,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (interacting_object_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quote_auth_object ON quote_authorizations(object_id);
+CREATE INDEX IF NOT EXISTS idx_quote_auth_actor  ON quote_authorizations(actor_id);
 
 CREATE INDEX IF NOT EXISTS idx_announces_actor  ON announces(actor_id);
 CREATE INDEX IF NOT EXISTS idx_announces_object ON announces(object_id);

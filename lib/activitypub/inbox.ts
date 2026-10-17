@@ -51,7 +51,7 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { upsertCustomEmoji, enqueueMediaCache } from "@/lib/db";
+import { upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
@@ -71,6 +71,13 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
+import {
+  approvalUriFrom,
+  buildAcceptQuoteRequest,
+  buildRejectQuoteRequest,
+  quoteAuthorizationIRI,
+  redistributeQuoteAuthorization,
+} from "./quotes";
 import { DEFAULT_CONTEXT, isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLicenseUrl } from "@/lib/licenses";
@@ -881,9 +888,48 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   }
 }
 
+/**
+ * FEP-044f: the quoted server approved a quote of one of our posts. Mastodon
+ * keeps the quote hidden as "pending approval" until the quoting note carries
+ * the authorization, so the URI is stored and the post redistributed with it.
+ */
+async function handleQuoteAccept(activity: APActivity, ctx: InboxContext, obj: APActivity): Promise<boolean> {
+  if (obj.type !== "QuoteRequest") return false;
+  const signerId = activityActorId(activity);
+  const approvalUri = approvalUriFrom((activity as Record<string, unknown>).result);
+  const quotedUri = typeof obj.object === "string" ? obj.object : null;
+  const instrument = typeof (obj as Record<string, unknown>).instrument === "string"
+    ? (obj as Record<string, unknown>).instrument as string
+    : null;
+  if (!approvalUri || !/^https?:\/\//i.test(approvalUri) || !quotedUri || !instrument) return true;
+
+  // The authorization must live on the quoted account's server, which is also
+  // the signer of the Accept.
+  let sameHost = false;
+  try {
+    sameHost = new URL(approvalUri).hostname.toLowerCase() === new URL(signerId).hostname.toLowerCase();
+  } catch { sameHost = false; }
+  if (!sameHost) return true;
+
+  const status = await getObjectById(ctx.db, instrument);
+  if (!status?.local || status.quoteId !== quotedUri) return true;
+  const quoted = await getObjectById(ctx.db, quotedUri);
+  if (!quoted || quoted.actorId !== signerId) return true;
+
+  await setObjectQuoteAuthorizationUri(ctx.db, status.id, approvalUri);
+  await redistributeQuoteAuthorization(
+    { DB: ctx.db, DELIVERY_QUEUE: ctx.deliveryQueue ?? null },
+    { baseUrl: ctx.baseUrl, object: status, authorizationUri: approvalUri }
+  ).catch(() => 0);
+  return true;
+}
+
 async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APActivity | undefined;
   if (!obj) return;
+  // A quote approval is answered by the quoted server; handled before the
+  // follow/relay paths because its object is a QuoteRequest, not a Follow.
+  if (await handleQuoteAccept(activity, ctx, obj)) return;
   const signerId = activityActorId(activity);
 
   const followActivityId = typeof obj === "string" ? obj : obj.id;
@@ -1038,18 +1084,45 @@ async function handleQuoteRequest(activity: APActivity, ctx: InboxContext): Prom
     && !(await isActorBlockedBy(ctx.db, requesterId, quoted.actorId));
 
   const activityId = activity.id as string;
-  const reply = {
-    "@context": DEFAULT_CONTEXT,
-    id: `${author.id}#${accepted ? "accepts" : "rejects"}/quote_requests/${encodeURIComponent(activityId)}`,
-    type: accepted ? "Accept" : "Reject",
-    actor: author.id,
-    to: [requesterId],
-    object: activity,
-    ...(accepted ? { result: `${author.id}#quote_approvals/${encodeURIComponent(activityId)}` } : {}),
-  } as unknown as APActivity;
-
   const requester = await getActorById(ctx.db, requesterId);
   const inbox = requester?.inbox ?? `${requesterId}/inbox`;
+
+  // The `result` must be a fetchable `QuoteAuthorization` object (Mastodon
+  // resolves it and checks `interactingObject`/`interactionTarget`): a fragment
+  // IRI would fetch the actor document and the quote would be rejected.
+  let approvalUri: string | null = null;
+  if (accepted) {
+    let auth = await getQuoteAuthorizationByInteractingObject(ctx.db, instrumentUri);
+    if (!auth) {
+      const id = generateId();
+      await createQuoteAuthorization(ctx.db, {
+        id,
+        objectId: quoted.id,
+        actorId: author.id,
+        interactingObjectId: instrumentUri,
+      });
+      auth = { id, objectId: quoted.id, actorId: author.id, interactingObjectId: instrumentUri, createdAt: new Date().toISOString() };
+    }
+    approvalUri = quoteAuthorizationIRI(ctx.baseUrl, auth.id);
+  }
+
+  const reply = accepted
+    ? buildAcceptQuoteRequest(ctx.baseUrl, {
+        id: generateId(),
+        actorId: author.id,
+        quotedObjectId: quoted.id,
+        quotingObjectId: instrumentUri,
+        requestId: activityId,
+        approvalUri: approvalUri!,
+      })
+    : buildRejectQuoteRequest(ctx.baseUrl, {
+        id: generateId(),
+        actorId: author.id,
+        quotedObjectId: quoted.id,
+        quotingObjectId: instrumentUri,
+        requestId: activityId,
+      });
+
   if (ctx.deliveryQueue) {
     await enqueueDeliveries(ctx.deliveryQueue, [inbox], JSON.stringify(reply), author.id, `${author.id}#main-key`, author.privateKeyPem).catch(() => {});
   }

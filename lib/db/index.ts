@@ -2357,6 +2357,75 @@ export async function getObjectsQuoting(
 }
 
 /** Count of accepted quotes on an object. */
+// ─────────────────────────────────────────
+// Quote authorizations (FEP-044f)
+// ─────────────────────────────────────────
+
+export interface QuoteAuthorizationRow {
+  id: string;
+  objectId: string;
+  actorId: string;
+  interactingObjectId: string;
+  createdAt: string;
+}
+
+function rowToQuoteAuthorization(r: Row): QuoteAuthorizationRow {
+  return {
+    id: r.id as string,
+    objectId: r.object_id as string,
+    actorId: r.actor_id as string,
+    interactingObjectId: r.interacting_object_id as string,
+    createdAt: r.created_at as string,
+  };
+}
+
+/**
+ * Record an authorization we issued for one of our posts. Idempotent: the same
+ * quoting post re-requesting approval keeps the first authorization (the row is
+ * what `/quote_authorizations/<id>` serves and what the Accept points at).
+ */
+export async function createQuoteAuthorization(
+  db: D1Database,
+  auth: { id: string; objectId: string; actorId: string; interactingObjectId: string }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO quote_authorizations (id, object_id, actor_id, interacting_object_id)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(auth.id, auth.objectId, auth.actorId, auth.interactingObjectId)
+    .run();
+}
+
+export async function getQuoteAuthorizationById(db: D1Database, id: string): Promise<QuoteAuthorizationRow | null> {
+  const row = await db.prepare("SELECT * FROM quote_authorizations WHERE id = ?").bind(id).first<Row>();
+  return row ? rowToQuoteAuthorization(row) : null;
+}
+
+export async function getQuoteAuthorizationByInteractingObject(
+  db: D1Database,
+  interactingObjectId: string
+): Promise<QuoteAuthorizationRow | null> {
+  const row = await db
+    .prepare("SELECT * FROM quote_authorizations WHERE interacting_object_id = ?")
+    .bind(interactingObjectId)
+    .first<Row>();
+  return row ? rowToQuoteAuthorization(row) : null;
+}
+
+/**
+ * Store the approval URI a quote post carries. Deliberately not `updateObject`:
+ * that records an edit-history row and stamps `updated_at`, which would mark the
+ * status as edited just because its quote was approved.
+ */
+export async function setObjectQuoteAuthorizationUri(
+  db: D1Database,
+  objectId: string,
+  uri: string | null
+): Promise<void> {
+  await db.prepare("UPDATE objects SET quote_authorization_uri = ? WHERE id = ?").bind(uri, objectId).run();
+}
+
 export async function getObjectQuotesCount(db: D1Database, objectId: string): Promise<number> {
   const row = await db
     .prepare("SELECT COUNT(*) AS c FROM objects WHERE quote_id = ?")
