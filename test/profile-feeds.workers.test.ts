@@ -58,8 +58,8 @@ describe("discoverProfileFeeds", () => {
     const feeds = await discoverProfileFeeds(env, { username: "alice", domain: DOMAIN, isLocal: true, suspended: false }, DOMAIN);
 
     expect(feeds).toEqual({
-      rss: `${BASE}/users/alice/rss`,
-      atom: `${BASE}/users/alice/atom`,
+      rss: `${BASE}/@alice.rss`,
+      atom: `${BASE}/@alice.atom`,
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -152,8 +152,8 @@ describe("the profile endpoints advertise the feeds", () => {
     expect(res.status).toBe(200);
     const account = (await res.json()) as { feeds?: { rss: string | null; atom: string | null } | null };
     expect(account.feeds).toEqual({
-      rss: `${BASE}/users/alice/rss`,
-      atom: `${BASE}/users/alice/atom`,
+      rss: `${BASE}/@alice.rss`,
+      atom: `${BASE}/@alice.atom`,
     });
   });
 });

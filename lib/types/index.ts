@@ -565,9 +565,9 @@ export interface MastodonAccount {
   source?: MastodonSource;
   supports_calls?: boolean;
   /**
-   * The profile's feeds, when the server hosting the account serves them
-   * (`/users/:username/rss|atom` here, `/@user.rss|atom` on a remote one).
-   * Only the profile endpoints fill it.
+   * The profile's feeds, when the server hosting the account serves them:
+   * `/@username.rss|atom` here (Mastodon's shape) and on a remote server the
+   * same convention on its own host. Only the profile endpoints fill it.
    */
   feeds?: { rss: string | null; atom: string | null } | null;
 }

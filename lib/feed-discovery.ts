@@ -69,11 +69,10 @@ export async function discoverProfileFeeds(
   if (actor.suspended) return null;
 
   if (actor.isLocal) {
-    const base = `https://${localDomain}`;
-    return {
-      rss: `${base}/users/${encodeURIComponent(actor.username)}/rss`,
-      atom: `${base}/users/${encodeURIComponent(actor.username)}/atom`,
-    };
+    // Mastodon's public shape (`/@username.rss`), which `proxy.ts` rewrites to
+    // the feed routes: the same URL a reader would find on any other instance.
+    const base = `https://${localDomain}/@${encodeURIComponent(actor.username)}`;
+    return { rss: `${base}.rss`, atom: `${base}.atom` };
   }
 
   const acct = `${actor.username}@${actor.domain}`;

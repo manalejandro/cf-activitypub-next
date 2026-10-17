@@ -830,8 +830,8 @@ export default function ProfilePage() {
                 in the page head. Only local profiles have them. */}
             {!account.acct.includes("@") && (
               <>
-                <link rel="alternate" type="application/rss+xml" title={`${account.display_name || account.username} — RSS`} href={`/users/${encodeURIComponent(account.username)}/rss`} />
-                <link rel="alternate" type="application/atom+xml" title={`${account.display_name || account.username} — Atom`} href={`/users/${encodeURIComponent(account.username)}/atom`} />
+                <link rel="alternate" type="application/rss+xml" title={`${account.display_name || account.username} — RSS`} href={`/@${encodeURIComponent(account.username)}.rss`} />
+                <link rel="alternate" type="application/atom+xml" title={`${account.display_name || account.username} — Atom`} href={`/@${encodeURIComponent(account.username)}.atom`} />
               </>
             )}
 

@@ -14472,7 +14472,7 @@
               }
             },
             "nullable": true,
-            "description": "The profile's feeds, when the server hosting the account serves them\n(`/users/:username/rss|atom` here, `/@user.rss|atom` on a remote one).\nOnly the profile endpoints fill it."
+            "description": "The profile's feeds, when the server hosting the account serves them:\n`/@username.rss|atom` here (Mastodon's shape) and on a remote server the\nsame convention on its own host. Only the profile endpoints fill it."
           }
         }
       },
