@@ -20,7 +20,7 @@ assets = { directory = "dist/client", not_found_handling = "none", binding = "AS
 # MAX_HEADER_SIZE = "5242880"
 INSTANCE_TITLE = "CF ActivityPub"
 INSTANCE_DESCRIPTION = "A federated social network powered by ActivityPub and Cloudflare"
-INSTANCE_VERSION = "1.5.2"
+INSTANCE_VERSION = "1.5.3"
 INSTANCE_URL = "https://cf-ap.example.com"
 NODE_ENV = "production"
 VAPID_PUBLIC_KEY = ""
