@@ -76,6 +76,12 @@ export async function GET(
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound("Author not found");
 
+  // A suspended account's content is removed publicly (Mastodon's
+  // `StatusPolicy#show?` refuses `author.unavailable?`): the permalink must not
+  // keep serving the status, its media or its card. Only its owner can still
+  // read it — the author object itself carries the notice.
+  if (author.suspended && authActor?.id !== obj.actorId) return notFound("Record not found");
+
   const isFollowing = authActor ? await isAcceptedFollower(env.DB, authActor.id, obj.actorId) : false;
   if (!canViewStatus(obj, authActor?.id ?? null, isFollowing)) {
     return notFound("Record not found");

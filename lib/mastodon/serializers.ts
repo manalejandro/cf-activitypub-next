@@ -143,6 +143,17 @@ export function serializeAccount(
     ? linkifyInline(localSummaryToPlain(actor.summary ?? ""), baseUrl, opts.emojis)
     : linkifyHtmlText(sanitizeFediverseHtml(actor.summary ?? "") ?? "", baseUrl, opts.emojis);
 
+  // A suspended account keeps no uploaded profile media: the avatar and the
+  // header fall back to the instance defaults. The files stay in R2 (a
+  // reinstatement brings them back), they are simply not served — moderation
+  // must not keep distributing what the account uploaded.
+  const avatarUrl = actor.suspended
+    ? `https://${localDomain}${DEFAULT_AVATAR}`
+    : actor.avatarCacheUrl ?? actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`;
+  const headerUrl = actor.suspended
+    ? `https://${localDomain}${DEFAULT_HEADER}`
+    : actor.headerCacheUrl ?? actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`;
+
   const account: MastodonAccount = {
     id: actor.id,
     username: actor.username,
@@ -160,10 +171,10 @@ export function serializeAccount(
     uri: actor.id,
     // Remote profiles render from the R2 media cache when available (the
     // original URL stays in avatar_url/header_url for federation).
-    avatar: actor.avatarCacheUrl ?? actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
-    avatar_static: actor.avatarCacheUrl ?? actor.avatarUrl ?? `https://${localDomain}${DEFAULT_AVATAR}`,
-    header: actor.headerCacheUrl ?? actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
-    header_static: actor.headerCacheUrl ?? actor.headerUrl ?? `https://${localDomain}${DEFAULT_HEADER}`,
+    avatar: avatarUrl,
+    avatar_static: avatarUrl,
+    header: headerUrl,
+    header_static: headerUrl,
     followers_count: actor.followersCount,
     following_count: actor.followingCount,
     statuses_count: actor.statusesCount,

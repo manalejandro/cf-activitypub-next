@@ -143,10 +143,12 @@ export function buildActor(
     },
   };
 
-  if (options.avatarUrl) {
+  // A suspended actor advertises no avatar/header: the uploaded files must not
+  // keep circulating through the fediverse (peers render their own default).
+  if (options.avatarUrl && !options.suspended) {
     actor.icon = { type: "Image", id: options.avatarUrl, url: options.avatarUrl, mediaType: "image/webp" };
   }
-  if (options.headerUrl) {
+  if (options.headerUrl && !options.suspended) {
     actor.image = { type: "Image", id: options.headerUrl, url: options.headerUrl, mediaType: "image/webp" };
   }
   if (options.fields && options.fields.length > 0) {

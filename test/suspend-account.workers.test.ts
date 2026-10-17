@@ -12,7 +12,9 @@ import { NextRequest } from "next/server";
 import { POST as SUSPEND } from "@/app/api/v1/admin/accounts/[id]/suspend/route";
 import { POST as UNSUSPEND } from "@/app/api/v1/admin/accounts/[id]/unsuspend/route";
 import { GET as ACCOUNT } from "@/app/api/v1/accounts/[id]/route";
+import { GET as ACTOR_DOCUMENT } from "@/app/api/users/[username]/route";
 import { GET as STATUSES } from "@/app/api/v1/accounts/[id]/statuses/route";
+import { GET as STATUS } from "@/app/api/v1/statuses/[id]/route";
 import { suspendAccount } from "@/lib/moderation/actions";
 
 const db = env.DB;
@@ -163,5 +165,56 @@ describe("suspending an account", () => {
       { params: Promise.resolve({ id: SPAMMER }) }
     );
     expect(await statusesRes.json()).toEqual([]);
+
+    // The permalink is gone too: it must not keep serving the media and the
+    // card the account uploaded.
+    const statusRes = await STATUS(
+      new NextRequest(`${BASE}/api/v1/statuses/${encodeURIComponent(`${BASE}/objects/1`)}`),
+      { params: Promise.resolve({ id: `${BASE}/objects/1` }) }
+    );
+    expect(statusRes.status).toBe(404);
+  });
+
+  it("stops serving the uploaded avatar and header", async () => {
+    await db
+      .prepare("UPDATE actors SET avatar_url = ?, header_url = ? WHERE id = ?")
+      .bind(`${BASE}/media/spammer-avatar.png`, `${BASE}/media/spammer-header.png`, SPAMMER)
+      .run();
+
+    const before = (await (await ACCOUNT(
+      new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
+      { params: Promise.resolve({ id: SPAMMER }) }
+    )).json()) as { avatar: string; header: string };
+    expect(before.avatar).toBe(`${BASE}/media/spammer-avatar.png`);
+
+    await adminCall(SUSPEND, SPAMMER);
+
+    const account = (await (await ACCOUNT(
+      new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
+      { params: Promise.resolve({ id: SPAMMER }) }
+    )).json()) as { avatar: string; avatar_static: string; header: string; header_static: string };
+    expect(account.avatar).toBe(`${BASE}/default-avatar.png`);
+    expect(account.avatar_static).toBe(`${BASE}/default-avatar.png`);
+    expect(account.header).toBe(`${BASE}/default-header.png`);
+    expect(account.header_static).toBe(`${BASE}/default-header.png`);
+
+    // The federated document advertises no profile media either.
+    const apRes = await ACTOR_DOCUMENT(
+      new NextRequest(`${BASE}/api/users/spammer`),
+      { params: Promise.resolve({ username: "spammer" }) }
+    );
+    const ap = (await apRes.json()) as { suspended?: boolean; icon?: unknown; image?: unknown };
+    expect(ap.suspended).toBe(true);
+    expect(ap.icon).toBeUndefined();
+    expect(ap.image).toBeUndefined();
+
+    // Reinstating the account brings the uploaded files back (nothing was lost).
+    await adminCall(UNSUSPEND, SPAMMER);
+    const restored = (await (await ACCOUNT(
+      new NextRequest(`${BASE}/api/v1/accounts/${encodeURIComponent(SPAMMER)}`),
+      { params: Promise.resolve({ id: SPAMMER }) }
+    )).json()) as { avatar: string; header: string };
+    expect(restored.avatar).toBe(`${BASE}/media/spammer-avatar.png`);
+    expect(restored.header).toBe(`${BASE}/media/spammer-header.png`);
   });
 });

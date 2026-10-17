@@ -110,6 +110,9 @@ export default defineConfig({
           name: "workers",
           include: ["test/**/*.workers.test.ts"],
           globals: true,
+          // The AI/Vectorize bindings have no local simulator: the moderation
+          // memory is mocked for every workers test (see the setup file).
+          setupFiles: ["./test/setup-workers.ts"],
           // Miniflare workers share the local runtime; running the few
           // integration files serially avoids a teardown race where Vitest
           // cannot close the pool (process hangs after the tests pass).
