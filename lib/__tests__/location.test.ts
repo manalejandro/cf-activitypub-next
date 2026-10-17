@@ -1,21 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import {
-  distanceMeters,
-  isLocationPageUrl,
-  parseCoordinatePair,
-  routeApiUrl,
-  routeEndsShort,
-  routeRequestUrls,
-  routeSnapTooFar,
-  ROUTE_END_TOLERANCE_METERS,
-  locationEmbedUrl,
-  locationPageUrl,
-  locationPath,
-  parseLocationQuery,
-  previewCardFor,
-  staticLocationTileUrl,
-} from "@/lib/location";
+import { ROUTE_END_TOLERANCE_METERS, distanceMeters, isLocationPageUrl, locationEmbedUrl, locationPageUrl, locationPath, mapCoverScale, parseCoordinatePair, parseLocationQuery, previewCardFor, routeApiUrl, routeEndsShort, routeRequestUrls, routeSnapTooFar, staticLocationTileUrl } from "@/lib/location";
 import { buildNote, extractLocationJson, parseLocationJson } from "@/lib/activitypub/utils";
 import type { APAttachment } from "@/lib/types";
 
@@ -181,5 +166,46 @@ describe("buildNote location federation", () => {
       location: MADRID,
     });
     expect(note.attachment).toHaveLength(2);
+  });
+});
+
+describe("mapCoverScale", () => {
+  const mosaic = { mosaicWidth: 1024, mosaicHeight: 768 };
+  // A 4x3 mosaic centred on the point: the pin sits two tiles in, so offsetX
+  // runs from 512 (start of the tile) to 768 (its end).
+  const frame = { frameWidth: 645, frameHeight: 430 };
+
+  it("never shrinks the mosaic", () => {
+    expect(mapCoverScale({ ...frame, offsetX: 517, offsetY: 300, ...mosaic })).toBe(1);
+  });
+
+  it("scales when the pin is near the right edge of its tile", () => {
+    // Without the scale the mosaic ends at offsetX + 1024 - 512 = 765 + 512…
+    // the frame's right half (322px) needs 322/256 of the remaining mosaic.
+    const scale = mapCoverScale({ ...frame, offsetX: 765, offsetY: 300, ...mosaic });
+    expect(scale).toBeCloseTo(645 / 2 / (1024 - 765), 5);
+    expect(scale).toBeGreaterThan(1);
+  });
+
+  it("covers both edges after scaling around the pin", () => {
+    const scale = mapCoverScale({ ...frame, offsetX: 765, offsetY: 300, ...mosaic });
+    const halfWidth = frame.frameWidth / 2;
+    // Edges in screen space, measured from the frame's centre (the pin).
+    expect(-765 * scale).toBeLessThanOrEqual(-halfWidth);
+    expect((1024 - 765) * scale).toBeGreaterThanOrEqual(halfWidth);
+  });
+
+  it("drives the scale from the frame, not from the mosaic", () => {
+    // A mosaic that is wider than the frame still needs a scale when the pin
+    // sits near its edge — the bug: the old formula measured the mosaic itself.
+    const wide = mapCoverScale({ frameWidth: 645, frameHeight: 430, offsetX: 768, offsetY: 512, ...mosaic });
+    expect(wide).toBeCloseTo(645 / 2 / 256, 5);
+  });
+
+  it("grows with a wider frame", () => {
+    const narrow = mapCoverScale({ frameWidth: 645, frameHeight: 430, offsetX: 765, offsetY: 300, ...mosaic });
+    const wide = mapCoverScale({ frameWidth: 1100, frameHeight: 733, offsetX: 765, offsetY: 300, ...mosaic });
+    expect(wide).toBeGreaterThan(narrow);
+    expect(wide).toBeCloseTo(550 / (1024 - 765), 5);
   });
 });

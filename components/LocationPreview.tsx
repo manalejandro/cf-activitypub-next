@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { LOCATION_MAP_ZOOM, locationPath, tileX, tileY, type GeoLocation } from "@/lib/location";
+import { LOCATION_MAP_ZOOM, locationPath, mapCoverScale, tileX, tileY, type GeoLocation } from "@/lib/location";
 
 const TILE = 256;
 const ZOOM = LOCATION_MAP_ZOOM;
@@ -33,23 +33,32 @@ export default function LocationPreview({ location }: { location: GeoLocation })
   const width = COLS * TILE;
   const height = ROWS * TILE;
 
-  // Scale the mosaic to fully cover the card: a fixed 1024px mosaic left white
-  // strips on the sides of wider cards depending on the fractional position of
-  // the point. Scaling around the pin keeps it at the exact location.
-  const boxRef = useRef<HTMLSpanElement>(null);
+  // The mosaic is centred on the point, not on its own middle: the visible
+  // window is [offsetX - w/2, offsetX + w/2] of it, so a point near the edge of
+  // its tile leaves a strip of the card empty (that was the white band on the
+  // right). Scale the mosaic around the pin until the nearest edge is out of
+  // the card — measuring the *container*, and the distance from the pin to each
+  // side, not the mosaic's own size (which is fixed and always "covers" itself).
+  const frameRef = useRef<HTMLSpanElement>(null);
   const [cover, setCover] = useState(1);
   useEffect(() => {
-    const el = boxRef.current;
+    const el = frameRef.current;
     if (!el) return;
     const update = () => {
-      const next = Math.max(el.clientWidth / width, el.clientHeight / height, 1);
-      setCover(next);
+      setCover(mapCoverScale({
+        frameWidth: el.clientWidth,
+        frameHeight: el.clientHeight,
+        offsetX,
+        offsetY,
+        mosaicWidth: width,
+        mosaicHeight: height,
+      }));
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [width, height]);
+  }, [width, height, offsetX, offsetY]);
 
   const max = 2 ** ZOOM;
   const tiles: { key: string; src: string; left: number; top: number }[] = [];
@@ -75,9 +84,8 @@ export default function LocationPreview({ location }: { location: GeoLocation })
       rel="nofollow noopener noreferrer"
       style={{ display: "block", marginTop: "0.6rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", textDecoration: "none", color: "inherit" }}
     >
-      <span style={{ display: "block", position: "relative", width: "100%", aspectRatio: "3 / 2", overflow: "hidden", background: "var(--bg-overlay)" }}>
+      <span ref={frameRef} style={{ display: "block", position: "relative", width: "100%", aspectRatio: "3 / 2", overflow: "hidden", background: "var(--bg-overlay)" }}>
         <span
-          ref={boxRef}
           style={{
             position: "absolute",
             left: `calc(50% - ${offsetX}px)`,

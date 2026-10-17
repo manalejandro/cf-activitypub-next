@@ -96,6 +96,36 @@ export function tileY(latitude: number, zoom: number): number {
 }
 
 /**
+ * Scale a tile mosaic so it covers its frame.
+ *
+ * The mosaic is centred on the point, not on its own middle, so the frame shows
+ * the window `[offsetX - w/2, offsetX + w/2]` of it: a point near the edge of
+ * its tile leaves a strip of the frame empty (the white band on the right). The
+ * scale is driven by the distance from the pin to each side, and by the
+ * *frame's* size — measuring the mosaic's own size always yields 1, because it
+ * is fixed. Never shrinks below 1.
+ */
+export function mapCoverScale(input: {
+  frameWidth: number;
+  frameHeight: number;
+  offsetX: number;
+  offsetY: number;
+  mosaicWidth: number;
+  mosaicHeight: number;
+}): number {
+  const halfWidth = input.frameWidth / 2;
+  const halfHeight = input.frameHeight / 2;
+  const scale = Math.max(
+    halfWidth / input.offsetX,
+    halfWidth / (input.mosaicWidth - input.offsetX),
+    halfHeight / input.offsetY,
+    halfHeight / (input.mosaicHeight - input.offsetY),
+    1
+  );
+  return Number.isFinite(scale) ? scale : 1;
+}
+
+/**
  * One OSM tile around the point (served through our tile proxy), used as the
  * OpenGraph image and the oEmbed thumbnail.
  */
