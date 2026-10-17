@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "旧职位将每小时自动被删除.",
   "profile_remote_badge": "远程账户",
   "profile_remote_view": "查看原始内容",
+  "profile_feed_rss": "RSS 订阅",
+  "profile_feed_atom": "Atom 订阅",
   "profile_remote_no_posts": "此账户没有缓存员额 .",
   "profile_remote_no_followers": "无缓存追随者.",
   "profile_remote_no_following": "无缓存跟踪 .",

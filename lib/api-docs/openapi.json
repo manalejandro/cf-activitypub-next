@@ -14458,6 +14458,21 @@
           "supports_calls": {
             "type": "boolean",
             "nullable": true
+          },
+          "feeds": {
+            "type": "object",
+            "properties": {
+              "rss": {
+                "type": "string",
+                "nullable": true
+              },
+              "atom": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "nullable": true,
+            "description": "The profile's feeds, when the server hosting the account serves them\n(`/users/:username/rss|atom` here, `/@user.rss|atom` on a remote one).\nOnly the profile endpoints fill it."
           }
         }
       },

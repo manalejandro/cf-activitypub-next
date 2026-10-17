@@ -167,12 +167,21 @@ export async function safeFetchTracked(
     // against them. Callers may override it (the media cache sends its own).
     const headers = new Headers(init.headers);
     if (!headers.has("User-Agent")) headers.set("User-Agent", federationUserAgent());
-    const res = await fetch(current, {
-      ...init,
-      headers,
-      redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let res: Response;
+    try {
+      res = await fetch(current, {
+        ...init,
+        headers,
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // DNS/TLS failures and the timeout abort throw here; callers only handle
+      // "a response or null", so a route must never 500 because an origin is
+      // unreachable.
+      console.warn(`[federation] Request to ${current} failed: ${String(err)}`);
+      return { res: null, finalUrl: current };
+    }
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
       if (!location) return { res, finalUrl: current };

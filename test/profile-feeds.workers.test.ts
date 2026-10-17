@@ -1,62 +1,45 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { applyTestSchema, resetTestStorage } from "./helpers/db";
-import { GET as RSS } from "@/app/users/[username]/rss/route";
-import { GET as ATOM } from "@/app/users/[username]/atom/route";
+
+const fetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/activitypub/federation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/activitypub/federation")>()),
+  safeFetch: fetchMock,
+}));
+
+import { discoverProfileFeeds } from "@/lib/feed-discovery";
+import { serializeAccount } from "@/lib/mastodon/serializers";
+import { GET as LOOKUP } from "@/app/api/v1/accounts/lookup/route";
 
 const db = env.DB;
-const BASE = "https://local.example.test";
-const ALICE = `${BASE}/users/alice`;
+const BASE = env.INSTANCE_URL ?? "https://local.example.test";
+const DOMAIN = new URL(BASE).hostname;
+
+function feed(): Response {
+  return new Response("<rss/>", { status: 200, headers: { "Content-Type": "application/rss+xml" } });
+}
+
+function missing(): Response {
+  return new Response("nope", { status: 404, headers: { "Content-Type": "text/html" } });
+}
 
 async function seedActor(
   id: string,
-  opts: { local?: boolean; silenced?: boolean; suspended?: boolean } = {}
-): Promise<void> {
+  opts: { local?: boolean; suspended?: boolean } = {}
+): Promise<string> {
   const username = id.split("/").pop()!;
   const domain = new URL(id).hostname;
   await db
     .prepare(
-      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local, discoverable, email, email_verified, silenced, suspended)
-       VALUES (?, ?, ?, 'pub', ?, ?, 1, ?, 1, ?, ?)`
+      `INSERT INTO actors (id, username, domain, public_key_pem, private_key_pem, is_local, discoverable, suspended, email, email_verified)
+       VALUES (?, ?, ?, 'pub', ?, ?, 1, ?, ?, 1)`
     )
-    .bind(id, username, domain, opts.local === false ? null : "priv", opts.local === false ? 0 : 1, `${username}@example.com`, opts.silenced ? 1 : 0, opts.suspended ? 1 : 0)
+    .bind(id, username, domain, opts.local === false ? null : "priv", opts.local === false ? 0 : 1, opts.suspended ? 1 : 0, `${username}@example.com`)
     .run();
-}
-
-async function seedStatus(
-  id: string,
-  opts: {
-    actor?: string;
-    visibility?: string;
-    content?: string;
-    reply?: string;
-    published?: string;
-    raw?: string;
-  } = {}
-): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO objects (id, type, actor_id, content, visibility, in_reply_to_id, published, updated_at, is_local, media_pending, raw)
-       VALUES (?, 'Note', ?, ?, ?, ?, ?, ?, 1, 0, ?)`
-    )
-    .bind(
-      id,
-      opts.actor ?? ALICE,
-      opts.content ?? "<p>hola</p>",
-      opts.visibility ?? "public",
-      opts.reply ?? null,
-      opts.published ?? "2026-10-01T10:00:00Z",
-      opts.published ?? "2026-10-01T10:00:00Z",
-      opts.raw ?? "{}"
-    )
-    .run();
-}
-
-function feed(handler: typeof RSS, username: string, query = ""): Promise<Response> {
-  return handler(new NextRequest(`${BASE}/users/${username}/rss${query}`), {
-    params: Promise.resolve({ username }),
-  });
+  return id;
 }
 
 beforeAll(async () => {
@@ -65,93 +48,112 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetTestStorage();
-  await seedActor(ALICE);
-  await seedActor(`${BASE}/users/spammer`, { silenced: true });
-  await seedActor(`${BASE}/users/gone`, { suspended: true });
-  await seedActor("https://remote.example/users/bob", { local: false });
+  fetchMock.mockReset();
 });
 
-describe("profile feeds", () => {
-  it("serves the public posts as RSS, newest first, without replies, boosts or private posts", async () => {
-    await seedStatus(`${BASE}/objects/1`, { content: "<p>el más nuevo &amp; bonito</p>", published: "2026-10-03T10:00:00Z" });
-    await seedStatus(`${BASE}/objects/2`, { visibility: "unlisted", content: "<p>no listado</p>", published: "2026-10-02T10:00:00Z" });
-    await seedStatus(`${BASE}/objects/3`, { content: "<p>respuesta</p>", reply: `${BASE}/objects/1`, published: "2026-10-01T10:00:00Z" });
-    await seedStatus(`${BASE}/objects/4`, { visibility: "private", content: "<p>privado</p>", published: "2026-09-30T10:00:00Z" });
-    await seedStatus(`${BASE}/objects/5`, { content: '<p>#etiqueta <a href="/tags/etiqueta">#etiqueta</a></p>', published: "2026-09-29T10:00:00Z" });
-    await db
-      .prepare("INSERT INTO announces (id, actor_id, object_id, created_at) VALUES ('a1', ?, ?, '2026-10-04T10:00:00Z')")
-      .bind(ALICE, `${BASE}/objects/1`)
-      .run();
+describe("discoverProfileFeeds", () => {
+  it("points a local account at this instance's feeds", async () => {
+    await seedActor(`${BASE}/users/alice`);
 
-    const res = await feed(RSS, "alice");
+    const feeds = await discoverProfileFeeds(env, { username: "alice", domain: DOMAIN, isLocal: true, suspended: false }, DOMAIN);
+
+    expect(feeds).toEqual({
+      rss: `${BASE}/users/alice/rss`,
+      atom: `${BASE}/users/alice/atom`,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("gives a suspended account none (its content is not served)", async () => {
+    await seedActor(`${BASE}/users/alice`, { suspended: true });
+
+    expect(await discoverProfileFeeds(env, { username: "alice", domain: DOMAIN, isLocal: true, suspended: true }, DOMAIN)).toBeNull();
+    expect(await discoverProfileFeeds(env, { username: "bob", domain: "remote.example", isLocal: false, suspended: true }, DOMAIN)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("probes a remote server once and caches what it serves", async () => {
+    fetchMock.mockImplementation(async (url: string) => (url.endsWith(".rss") ? feed() : missing()));
+
+    const actor = { username: "bob", domain: "remote.example", isLocal: false, suspended: false };
+    expect(await discoverProfileFeeds(env, actor, DOMAIN)).toEqual({
+      rss: "https://remote.example/@bob.rss",
+      atom: null,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((c) => c[0]).sort()).toEqual([
+      "https://remote.example/@bob.atom",
+      "https://remote.example/@bob.rss",
+    ]);
+
+    // The second profile view answers from KV: no more probes.
+    fetchMock.mockClear();
+    expect(await discoverProfileFeeds(env, actor, DOMAIN)).toEqual({
+      rss: "https://remote.example/@bob.rss",
+      atom: null,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("remembers a server without feeds instead of probing every time", async () => {
+    fetchMock.mockResolvedValue(missing());
+
+    const actor = { username: "bob", domain: "remote.example", isLocal: false, suspended: false };
+    expect(await discoverProfileFeeds(env, actor, DOMAIN)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockClear();
+    expect(await discoverProfileFeeds(env, actor, DOMAIN)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("treats an unreachable origin as no feeds", async () => {
+    fetchMock.mockResolvedValue(null);
+
+    expect(await discoverProfileFeeds(env, { username: "bob", domain: "remote.example", isLocal: false, suspended: false }, DOMAIN)).toBeNull();
+  });
+
+  it("ignores a response that is not a feed", async () => {
+    fetchMock.mockResolvedValue(new Response("<html/>", { status: 200, headers: { "Content-Type": "text/html" } }));
+
+    expect(await discoverProfileFeeds(env, { username: "bob", domain: "remote.example", isLocal: false, suspended: false }, DOMAIN)).toBeNull();
+  });
+});
+
+describe("the account entity", () => {
+  it("links a remote account to its profile on its own server", async () => {
+    const actor = {
+      id: "https://remote.example/users/bob",
+      username: "bob",
+      domain: "remote.example",
+      displayName: "Bob",
+      isLocal: false,
+      manuallyApprovesFollowers: false,
+      isBot: false,
+      discoverable: true,
+      createdAt: "2026-01-01T00:00:00Z",
+      followersCount: 0,
+      followingCount: 0,
+      statusesCount: 0,
+    };
+    // `url` is the human profile (Mastodon's semantics), `uri` the AP id: the
+    // remote badge and "view original" open the profile, not the actor JSON.
+    const account = serializeAccount(actor as never, DOMAIN);
+    expect(account.url).toBe("https://remote.example/@bob");
+    expect(account.uri).toBe("https://remote.example/users/bob");
+  });
+});
+
+describe("the profile endpoints advertise the feeds", () => {
+  it("returns them on lookup", async () => {
+    await seedActor(`${BASE}/users/alice`);
+
+    const res = await LOOKUP(new NextRequest(`${BASE}/api/v1/accounts/lookup?acct=alice`));
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("application/rss+xml");
-    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
-    const xml = await res.text();
-
-    expect(xml).toContain("<title>alice</title>");
-    expect(xml).toContain("Public posts from @alice@local.example.test");
-    expect(xml).toContain("<generator>");
-    // Newest public/unlisted first, replies/private/boosts left out.
-    const links = [...xml.matchAll(/<item>[\s\S]*?<link>([^<]+)<\/link>[\s\S]*?<\/item>/g)].map((m) => m[1]);
-    expect(links).toEqual([`${BASE}/@alice/1`, `${BASE}/@alice/2`, `${BASE}/@alice/5`]);
-    expect(xml).not.toContain("/@alice/3");
-    expect(xml).not.toContain("/@alice/4");
-    // Content is escaped once (the stored entity survives the XML escaping).
-    expect(xml).toContain("el más nuevo &amp;amp; bonito");
-    // Hashtags become categories, and site-relative links are absolutized (a
-    // reader resolves them against the feed, a syndicated copy would lose them).
-    expect(xml).toContain("<category>etiqueta</category>");
-    expect(xml).toContain(`href=&quot;${BASE}/tags/etiqueta&quot;`);
-    // `rel="self"` points at the feed itself.
-    expect(xml).toContain(`<atom:link href="${BASE}/users/alice/rss" rel="self" type="application/rss+xml"/>`);
-  });
-
-  it("adds media:content for the attachments and an enclosure for the first audio", async () => {
-    await seedStatus(`${BASE}/objects/1`, { content: "<p>con audio</p>" });
-    await db
-      .prepare(
-        `INSERT INTO attachments (id, object_id, type, url, mime_type, file_size, description)
-         VALUES ('att-1', ?, 'audio', '/api/media/media/alice/clip.mp3', 'audio/mpeg', 2048, 'mi podcast')`
-      )
-      .bind(`${BASE}/objects/1`)
-      .run();
-    await db
-      .prepare(
-        `INSERT INTO attachments (id, object_id, type, url, mime_type, file_size)
-         VALUES ('att-2', ?, 'image', 'https://cdn.example/foto.jpg', 'image/jpeg', 4096)`
-      )
-      .bind(`${BASE}/objects/1`)
-      .run();
-
-    const xml = await (await feed(RSS, "alice")).text();
-    expect(xml).toContain(`<enclosure url="${BASE}/api/media/media/alice/clip.mp3" type="audio/mpeg" length="2048"/>`);
-    expect(xml).toContain(`<media:content url="https://cdn.example/foto.jpg" type="image/jpeg" fileSize="4096" medium="image">`);
-    expect(xml).toContain("<media:description>mi podcast</media:description>");
-  });
-
-  it("serves the same feed as Atom 1.0", async () => {
-    await seedStatus(`${BASE}/objects/1`, { content: "<p>hola</p>" });
-
-    const res = await feed(ATOM, "alice");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("application/atom+xml");
-    const xml = await res.text();
-    expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom"');
-    expect(xml).toContain("<entry>");
-    expect(xml).toContain(`<id>${BASE}/@alice/1</id>`);
-    expect(xml).toContain('<content type="html">');
-  });
-
-  it("keeps serving a limited account's posts but has no feed for suspended, remote or unknown accounts", async () => {
-    await seedStatus(`${BASE}/objects/1`, { actor: `${BASE}/users/spammer`, content: "<p>limitada</p>" });
-
-    const limited = await feed(RSS, "spammer");
-    expect(limited.status).toBe(200);
-    expect(await limited.text()).toContain("limitada");
-
-    expect((await feed(RSS, "gone")).status).toBe(404);
-    expect((await feed(RSS, "bob")).status).toBe(404);
-    expect((await feed(RSS, "nobody")).status).toBe(404);
+    const account = (await res.json()) as { feeds?: { rss: string | null; atom: string | null } | null };
+    expect(account.feeds).toEqual({
+      rss: `${BASE}/users/alice/rss`,
+      atom: `${BASE}/users/alice/atom`,
+    });
   });
 });

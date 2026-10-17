@@ -127,7 +127,7 @@ function filterUsedEmojis(contents: (string | null | undefined)[], emojis: Statu
 export function serializeAccount(
   actor: LocalActor,
   localDomain: string,
-  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: StatusEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean } = {}
+  opts: { isCurrentUser?: boolean; fields?: ActorField[]; emojis?: StatusEmoji[]; supportsCalls?: boolean; role?: string; lastStatusAt?: string | null; moved?: MastodonAccount | null; quotePolicy?: string; language?: string; privacy?: string; sensitive?: boolean; followRequestsCount?: number; hideCollections?: boolean; feeds?: { rss: string | null; atom: string | null } | null } = {}
 ): MastodonAccount {
   const isLocal = actor.isLocal;
   const acct = isLocal
@@ -172,7 +172,10 @@ export function serializeAccount(
     noindex: !actor.discoverable,
     created_at: toIso(actor.createdAt) ?? new Date().toISOString(),
     note,
-    url: isLocal ? `https://${localDomain}/users/${actor.username}` : actor.id,
+    // Mastodon's `url` is the human profile, `uri` the ActivityPub id: a remote
+    // account's web profile is its `@handle` URL (the actor id returns JSON on
+    // most servers), so "view original" links land on the profile.
+    url: isLocal ? `https://${localDomain}/users/${actor.username}` : `https://${actor.domain}/@${actor.username}`,
     uri: actor.id,
     // Remote profiles render from the R2 media cache when available (the
     // original URL stays in avatar_url/header_url for federation).
@@ -197,6 +200,7 @@ export function serializeAccount(
           ? [{ id: actor.role === "admin" ? "1" : "2", name: actor.role.charAt(0).toUpperCase() + actor.role.slice(1), color: "" }]
           : []
         : null,
+    ...(opts.feeds !== undefined ? { feeds: opts.feeds } : {}),
     fields: (actor.suspended ? [] : opts.fields ?? []).map((f) => ({
       name: sanitizeFediversePlain(f.name) ?? f.name,
       value: isLocal

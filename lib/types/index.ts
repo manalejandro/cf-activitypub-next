@@ -564,6 +564,12 @@ export interface MastodonAccount {
   show_media_replies?: boolean;
   source?: MastodonSource;
   supports_calls?: boolean;
+  /**
+   * The profile's feeds, when the server hosting the account serves them
+   * (`/users/:username/rss|atom` here, `/@user.rss|atom` on a remote one).
+   * Only the profile endpoints fill it.
+   */
+  feeds?: { rss: string | null; atom: string | null } | null;
 }
 
 export interface MastodonStatus {

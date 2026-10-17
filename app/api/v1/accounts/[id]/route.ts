@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { json, notFound, unauthorized } from "@/lib/cf";
+import { getBaseUrl, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorById, getActorFields, getDomainCallsSupport, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
@@ -8,6 +8,7 @@ import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { env } from "cloudflare:workers";
 import { getMovedAccount } from "@/lib/mastodon/account-extras";
+import { discoverProfileFeeds } from "@/lib/feed-discovery";
 
 // GET /api/v1/accounts/:id
 export async function GET(
@@ -77,5 +78,9 @@ export async function GET(
 
   const movedAccount = await getMovedAccount(env.DB, actor, domain);
 
-  return json(serializeAccount(actor, domain, { fields, supportsCalls, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB) }));
+  // The profile shows the account's feeds next to the follow button: ours for a
+  // local account, the origin's (probed once, cached) for a remote one.
+  const feeds = await discoverProfileFeeds(env, actor, new URL(getBaseUrl(env)).hostname);
+
+  return json(serializeAccount(actor, domain, { fields, supportsCalls, lastStatusAt, moved: movedAccount, emojis: await getAllCustomEmojis(env.DB), feeds }));
 }

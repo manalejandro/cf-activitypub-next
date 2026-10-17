@@ -52,6 +52,8 @@ interface Account {
   bot: boolean;
   url: string;
   created_at: string;
+  /** Feeds the account's own server serves, when it does. */
+  feeds?: { rss: string | null; atom: string | null } | null;
   fields?: MastodonField[];
   roles?: { id: string; name: string; color: string }[];
   supports_calls?: boolean;
@@ -554,15 +556,23 @@ function RemoteProfileInner() {
               style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0, aspectRatio: "1500 / 500", objectFit: "cover", objectPosition: "center" }}
             />
           ) : null}
-          {/* Remote badge */}
-          <div style={{
-            position: "absolute", top: "0.75rem", right: "0.75rem",
-            background: "rgba(0,0,0,0.55)", color: "#fff",
-            padding: "0.25rem 0.6rem", borderRadius: "var(--radius)",
-            fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem",
-          }}>
+          {/* Remote badge — links to the account on its own server, like the
+              "view original" button next to the follow button. */}
+          <a
+            href={account.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={t.profile_remote_view}
+            style={{
+              position: "absolute", top: "0.75rem", right: "0.75rem",
+              background: "rgba(0,0,0,0.55)", color: "#fff",
+              padding: "0.25rem 0.6rem", borderRadius: "var(--radius)",
+              fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem",
+              textDecoration: "none",
+            }}
+          >
             <Icon name="globe" color="#fff" /> {t.profile_remote_badge}
-          </div>
+          </a>
         </div>
 
         {/* Avatar + actions row */}
@@ -796,6 +806,31 @@ function RemoteProfileInner() {
                   )}
                 </div>
               </>
+            )}
+            {/* Feeds the account's own server serves (RSS/Atom) */}
+            {account.feeds?.rss && (
+              <a
+                href={account.feeds.rss}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-ghost btn-sm"
+                style={{ display: "flex", alignItems: "center", gap: "0.3rem", textDecoration: "none", border: "1px solid var(--border)" }}
+                title={t.profile_feed_rss}
+              >
+                <Icon name="rss" /> RSS
+              </a>
+            )}
+            {account.feeds?.atom && (
+              <a
+                href={account.feeds.atom}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-ghost btn-sm"
+                style={{ display: "flex", alignItems: "center", gap: "0.3rem", textDecoration: "none", border: "1px solid var(--border)" }}
+                title={t.profile_feed_atom}
+              >
+                <Icon name="feed" /> Atom
+              </a>
             )}
           </div>
         </div>

@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "Les anciens messages seront automatiquement supprimés toutes les heures.",
   "profile_remote_badge": "Compte à distance",
   "profile_remote_view": "Afficher l'original",
+  "profile_feed_rss": "Abonnement RSS",
+  "profile_feed_atom": "Abonnement Atom",
   "profile_remote_no_posts": "Aucun message mis en cache pour ce compte.",
   "profile_remote_no_followers": "Pas d'abonnés en cache.",
   "profile_remote_no_following": "Pas de cache suivant.",

@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "古い投稿は自動的に毎時削除されます.",
   "profile_remote_badge": "リモートアカウント",
   "profile_remote_view": "オリジナルを見る",
+  "profile_feed_rss": "RSS 購読",
+  "profile_feed_atom": "Atom 購読",
   "profile_remote_no_posts": "このアカウントのキャッシュされた投稿はありません.",
   "profile_remote_no_followers": "キャッシュされたフォロワーはありません.",
   "profile_remote_no_following": "以下のキャッシュはありません.",

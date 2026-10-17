@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "I post più vecchi verranno automaticamente cancellati ogni ora.",
   "profile_remote_badge": "Account remoto",
   "profile_remote_view": "Visualizza originale",
+  "profile_feed_rss": "Abbonamento RSS",
+  "profile_feed_atom": "Abbonamento Atom",
   "profile_remote_no_posts": "Nessun post in cache per questo account.",
   "profile_remote_no_followers": "Niente seguaci in cache.",
   "profile_remote_no_following": "Niente nascondiglio.",

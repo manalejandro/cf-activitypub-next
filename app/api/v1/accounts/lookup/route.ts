@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
-import { json, notFound, unauthorized } from "@/lib/cf";
+import { getBaseUrl, json, notFound, unauthorized } from "@/lib/cf";
 import { getActorByUsername, getActorFields, getLastStatusAt, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { maybeVerifyRemoteAccount } from "@/lib/activitypub/verification";
 import { getMovedAccount } from "@/lib/mastodon/account-extras";
 import { getAuthenticatedActor } from "@/lib/auth";
+import { discoverProfileFeeds } from "@/lib/feed-discovery";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/lookup?acct=username[@domain]
@@ -41,5 +42,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   // The web profile reads the account from here: without `moved` it showed no
   // "moved" notice and kept the follow button on a migrated account.
   const movedAccount = await getMovedAccount(env.DB, actor, domain);
-  return json(serializeAccount(actor, domain, { fields, lastStatusAt, emojis, moved: movedAccount }));
+  // The profile shows the account's feeds next to the follow button: ours for a
+  // local account, the origin's (probed once, cached) for a remote one.
+  const feeds = await discoverProfileFeeds(env, actor, new URL(getBaseUrl(env)).hostname);
+  return json(serializeAccount(actor, domain, { fields, lastStatusAt, emojis, moved: movedAccount, feeds }));
 }

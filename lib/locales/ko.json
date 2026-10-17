@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "이전 게시물은 자동으로 매 시간 삭제됩니다.",
   "profile_remote_badge": "원격 계정",
   "profile_remote_view": "자주 묻는 질문",
+  "profile_feed_rss": "RSS 구독",
+  "profile_feed_atom": "Atom 구독",
   "profile_remote_no_posts": "이 계정에 대한 캐시 된 게시물 없음.",
   "profile_remote_no_followers": "캐시된 추종자 없음.",
   "profile_remote_no_following": "다음을 캐시하지 않습니다.",

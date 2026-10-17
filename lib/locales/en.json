@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "Older posts will be automatically deleted every hour.",
   "profile_remote_badge": "Remote account",
   "profile_remote_view": "View original",
+  "profile_feed_rss": "RSS subscription",
+  "profile_feed_atom": "Atom subscription",
   "profile_remote_no_posts": "No cached posts for this account.",
   "profile_remote_no_followers": "No cached followers.",
   "profile_remote_no_following": "No cached following.",

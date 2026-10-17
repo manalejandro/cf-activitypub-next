@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "Старые сообщения будут автоматически удаляться каждый час.",
   "profile_remote_badge": "Удаленный аккаунт",
   "profile_remote_view": "Посмотреть оригинал",
+  "profile_feed_rss": "Подписка по RSS",
+  "profile_feed_atom": "Подписка по Atom",
   "profile_remote_no_posts": "Никаких кэшированных сообщений для этого аккаунта.",
   "profile_remote_no_followers": "Никаких кэшированных последователей.",
   "profile_remote_no_following": "Никаких следов.",

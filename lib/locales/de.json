@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "Ältere Posts werden automatisch jede Stunde gelöscht.",
   "profile_remote_badge": "Fernkonto",
   "profile_remote_view": "Originalansicht",
+  "profile_feed_rss": "RSS-Abonnement",
+  "profile_feed_atom": "Atom-Abonnement",
   "profile_remote_no_posts": "Keine Cached Posts für diesen Account.",
   "profile_remote_no_followers": "Keine Cached Follower.",
   "profile_remote_no_following": "Es folgt kein Cached.",

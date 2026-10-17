@@ -164,6 +164,8 @@
   "profile_edit_auto_delete_hint": "Mensagens mais antigas serão automaticamente apagadas a cada hora.",
   "profile_remote_badge": "Conta remota",
   "profile_remote_view": "Ver original",
+  "profile_feed_rss": "Subscrição RSS",
+  "profile_feed_atom": "Subscrição Atom",
   "profile_remote_no_posts": "Nenhuma publicação em cache para esta conta.",
   "profile_remote_no_followers": "Não há seguidores guardados.",
   "profile_remote_no_following": "Não há seguimento em cache.",

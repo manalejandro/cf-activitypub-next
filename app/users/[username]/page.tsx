@@ -56,6 +56,8 @@ interface Account {
   bot: boolean;
   url: string;
   created_at: string;
+  /** Feeds the account's server serves, when it does (profile endpoints only). */
+  feeds?: { rss: string | null; atom: string | null } | null;
   fields: MastodonField[];
   roles?: { id: string; name: string; color: string }[];
   supports_calls?: boolean;
@@ -1105,6 +1107,31 @@ export default function ProfilePage() {
                   </>
                 ) : (
                   !account.suspended && <Link href="/login" className="btn btn-primary btn-sm">{t.account_follow}</Link>
+                )}
+                {/* Feeds the account's server serves (RSS/Atom) */}
+                {account.feeds?.rss && (
+                  <a
+                    href={account.feeds.rss}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ display: "flex", alignItems: "center", gap: "0.3rem", textDecoration: "none", border: "1px solid var(--border)" }}
+                    title={t.profile_feed_rss}
+                  >
+                    <Icon name="rss" /> RSS
+                  </a>
+                )}
+                {account.feeds?.atom && (
+                  <a
+                    href={account.feeds.atom}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ display: "flex", alignItems: "center", gap: "0.3rem", textDecoration: "none", border: "1px solid var(--border)" }}
+                    title={t.profile_feed_atom}
+                  >
+                    <Icon name="feed" /> Atom
+                  </a>
                 )}
               </div>
             </div>
