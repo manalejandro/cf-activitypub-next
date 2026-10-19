@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActor, buildActorDelete, buildAnnounce, buildDelete, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, normalizeAttributionDomains } from "@/lib/activitypub/utils";
+import { buildActor, buildActorDelete, buildAnnounce, buildDelete, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, isoTimestamp, normalizeAttributionDomains } from "@/lib/activitypub/utils";
 
 const BASE = "https://local.example";
 const ACTOR = "https://local.example/users/me";
@@ -232,5 +232,33 @@ describe("buildDelete", () => {
     expect(activity.actor).toBe(ACTOR);
     expect(activity.object).toEqual({ id: `${BASE}/objects/o1`, type: "Tombstone" });
     expect(activity.to).toEqual([PUBLIC]);
+  });
+});
+
+describe("ActivityStreams timestamps", () => {
+  // SQLite's `datetime()` writes "2026-08-07 12:51:03" (space, no zone). Ruby
+  // and JS accept it, but the Rust `time` crate rejects it with "the 'offset
+  // hour' component could not be parsed" — aoderelay relays failed to parse our
+  // actor document, so their Accept{Follow} never arrived and the subscription
+  // stayed pending forever.
+  it("normalizes the SQLite format everywhere we federate it", () => {
+    expect(isoTimestamp("2026-08-07 12:51:03")).toBe("2026-08-07T12:51:03Z");
+    expect(isoTimestamp("2026-10-17T12:47:18.990Z")).toBe("2026-10-17T12:47:18.990Z");
+    expect(isoTimestamp(null)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(isoTimestamp("")).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const actor = buildActor(BASE, "guardian", {
+      publicKeyPem: "pem",
+      published: "2026-08-07 12:51:03",
+    }) as unknown as { published: string };
+    expect(actor.published).toBe("2026-08-07T12:51:03Z");
+
+    const note = buildNote(BASE, "obj1", {
+      actorUsername: "me",
+      content: "hola",
+      published: "2026-08-07 12:51:03",
+      visibility: "public",
+    }) as unknown as { published: string };
+    expect(note.published).toBe("2026-08-07T12:51:03Z");
   });
 });

@@ -71,6 +71,21 @@ export function likedIRI(baseUrl: string, username: string): string {
   return `${actorIRI(baseUrl, username)}/liked`;
 }
 
+/**
+ * ActivityStreams timestamps must be ISO-8601/RFC-3339. SQLite's `datetime()`
+ * default writes `2026-08-07 12:51:03` (space, no zone), which lenient parsers
+ * (Ruby's `Time.parse`, JS `Date`) accept but strict ones do not: the Rust
+ * `time` crate rejects it and relays built on `activitystreams` (aoderelay)
+ * fail to parse our actor document entirely — their `Accept{Follow}` never
+ * arrives and the subscription stays pending forever.
+ */
+export function isoTimestamp(value: string | null | undefined): string {
+  if (!value) return new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return `${value.replace(" ", "T")}Z`;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
 export function keyIRI(baseUrl: string, username: string): string {
   return `${actorIRI(baseUrl, username)}#main-key`;
 }
@@ -141,7 +156,7 @@ export function buildActor(
     manuallyApprovesFollowers: options.manuallyApprovesFollowers ?? false,
     discoverable: options.discoverable ?? true,
     indexable: options.discoverable ?? true,
-    published: options.published ?? new Date().toISOString(),
+    published: isoTimestamp(options.published),
     endpoints: {
       sharedInbox: `${baseUrl}/inbox`,
     },
@@ -298,7 +313,7 @@ export function buildNote(
     type: options.event ? "Event" : "Note",
     attributedTo: actorId,
     content: emojiImgsToShortcodes(options.content) + locationLink,
-    published: options.published,
+    published: isoTimestamp(options.published),
     to,
     cc,
     url: `${baseUrl}/statuses/${id}`,

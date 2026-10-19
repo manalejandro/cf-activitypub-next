@@ -10,7 +10,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { getPollByObjectId, getPollOptions, getPollsByObjectIds, listLocalPollVoters, listPollsToNotify, setPollVoteCounts } from "@/lib/db";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { notify, type NotifyEnv } from "@/lib/notify";
-import { generateId } from "@/lib/activitypub/utils";
+import { generateId, isoTimestamp } from "@/lib/activitypub/utils";
 import type { APNote, LocalObject, LocalPoll, LocalPollOption } from "@/lib/types";
 
 interface RefreshBindings {
@@ -127,7 +127,9 @@ export function applyPollToNote(note: APNote, poll: LocalPoll, options: LocalPol
   target.type = "Question";
   if (poll.multiple) target.anyOf = choices;
   else target.oneOf = choices;
-  target.endTime = poll.expiresAt;
+  // ISO-8601, like every other timestamp we federate: the row may still hold
+  // SQLite's `YYYY-MM-DD HH:MM:SS` and strict parsers (Rust `time`) reject it.
+  target.endTime = isoTimestamp(poll.expiresAt);
   // Mastodon marks a finished poll with `closed` (and keeps `endTime`).
   if (new Date(poll.expiresAt) <= new Date()) target.closed = poll.expiresAt;
   if (poll.votersCount > 0) target.votersCount = poll.votersCount;
