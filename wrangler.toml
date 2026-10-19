@@ -190,7 +190,15 @@ class_name = "GuardianAgentDO"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO", "GuardianAgentDO"]
+new_sqlite_classes = ["TimelineStreamDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CallSignalingDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["GuardianAgentDO"]
 
 [triggers]
 crons = ["* * * * *"]

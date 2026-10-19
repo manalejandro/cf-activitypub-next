@@ -7,7 +7,7 @@ import { getToolName, isToolUIPart } from "ai";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
-import type { GuardianAgent } from "@/lib/guardian/agent";
+import type { GuardianAgentDO } from "@/lib/guardian/agent";
 
 /** Instance name of the shared moderation conversation (one per instance). */
 const AGENT_NAME = "instance";
@@ -33,7 +33,7 @@ export default function AdminGuardianPage() {
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
-  const agent = useAgent<GuardianAgent, { model?: string; snapshot?: Snapshot | null; updatedAt?: string | null }>({
+  const agent = useAgent<GuardianAgentDO, { model?: string; snapshot?: Snapshot | null; updatedAt?: string | null }>({
     agent: "GuardianAgent",
     name: AGENT_NAME,
   });

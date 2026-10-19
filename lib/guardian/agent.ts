@@ -58,7 +58,7 @@ Reglas:
 - Escribe en texto plano: el panel no renderiza markdown, así que nada de **negritas**, asteriscos ni almohadillas. Usa guiones y dos puntos.
 - Si detectas un patrón (spam repetido, una oleada de registros, una cuenta reincidente), dilo explícitamente y sugiere la acción más proporcionada.`;
 
-export class GuardianAgent extends AIChatAgent<Cloudflare.Env, GuardianState> {
+export class GuardianAgentDO extends AIChatAgent<Cloudflare.Env, GuardianState> {
   initialState: GuardianState = {
     model: DEFAULT_GUARDIAN_AGENT_MODEL,
     snapshot: null,
@@ -146,5 +146,5 @@ function exposeMethod<T extends (...args: never[]) => unknown>(method: T, descri
   return method;
 }
 
-exposeMethod(GuardianAgent.prototype.refreshSnapshot, "Refresh the moderation snapshot shown in the panel.");
-exposeMethod(GuardianAgent.prototype.setModel, "Change the Workers AI model id used for the Guardian chat.");
+exposeMethod(GuardianAgentDO.prototype.refreshSnapshot, "Refresh the moderation snapshot shown in the panel.");
+exposeMethod(GuardianAgentDO.prototype.setModel, "Change the Workers AI model id used for the Guardian chat.");

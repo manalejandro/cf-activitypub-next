@@ -12,7 +12,7 @@ vi.mock("@/lib/streaming/broadcast", async (importOriginal) => ({
 import { buildGuardianTools } from "@/lib/guardian/tools";
 import { getGuardianSnapshot } from "@/lib/guardian/snapshot";
 import { routeGuardianAgent, isAgentRequest } from "@/lib/guardian/routing";
-import { GuardianAgent } from "@/lib/guardian/agent";
+import { GuardianAgentDO } from "@/lib/guardian/agent";
 
 const db = env.DB;
 const BASE = env.INSTANCE_URL ?? "https://local.example.test";
@@ -83,7 +83,7 @@ describe("the Guardian agent", () => {
   it("exposes its admin actions over RPC", () => {
     // The callable metadata is registered explicitly (`exposeMethod`) because
     // decorator syntax crashes the deployed Worker — see lib/guardian/agent.ts.
-    const probe = Object.create(GuardianAgent.prototype) as GuardianAgent;
+    const probe = Object.create(GuardianAgentDO.prototype) as GuardianAgentDO;
     expect([...probe.getCallableMethods().keys()].sort()).toEqual(["refreshSnapshot", "setModel"]);
   });
 });

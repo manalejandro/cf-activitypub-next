@@ -14,7 +14,7 @@ export { TimelineStreamDO } from "../lib/streaming/timeline-do";
 // Export the call signaling Durable Object
 export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
 
-export { GuardianAgent } from "../lib/guardian/agent";
+export { GuardianAgentDO } from "../lib/guardian/agent";
 import { routeGuardianAgent } from "../lib/guardian/routing";
 import handler from "vinext/server/fetch-handler";
 
