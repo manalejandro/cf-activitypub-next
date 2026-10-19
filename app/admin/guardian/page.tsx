@@ -172,7 +172,7 @@ export default function AdminGuardianPage() {
               disabled={busy}
             />
             <button type="submit" className="btn btn-primary" disabled={busy || !input.trim()}>
-              <Icon name="paper-plane" /> {t.admin_guardian_send}
+              <Icon name="paper-plane" color="currentColor" /> {t.admin_guardian_send}
             </button>
             {messages.length > 0 && (
               <button

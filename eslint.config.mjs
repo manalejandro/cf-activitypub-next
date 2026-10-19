@@ -167,6 +167,26 @@ const eslintConfig = defineConfig([
     },
     rules: RULES,
   },
+  {
+    // Decorators must never reach a bundle: Vite 8 transforms with Oxc, which
+    // keeps decorator syntax at any target, and workerd's V8 cannot parse it —
+    // a decorated class took the whole deployed Worker down at startup with
+    // `SyntaxError: Invalid or unexpected token` (the Agents SDK's
+    // `@callable()`). Register the metadata explicitly instead
+    // (`exposeMethod` in `lib/guardian/agent.ts`).
+    name: "no-decorators",
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Decorator",
+          message:
+            "Decorators do not survive this toolchain (Oxc keeps them, workerd cannot parse them) and crash the Worker at startup. Use a plain function or an explicit registration instead.",
+        },
+      ],
+    },
+  },
   // The old config ignored these too.
   globalIgnores([
     ".next/**",
