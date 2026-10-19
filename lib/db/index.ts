@@ -170,9 +170,12 @@ function isMentioned(obj: Pick<LocalObject, "raw">, viewerId: string): boolean {
 
 /**
  * Check whether a viewer is allowed to see a status based on visibility rules.
- * Matches Mastodon behaviour:
+ * Matches Mastodon's `StatusPolicy#show?`:
  * - public / unlisted → always visible
- * - private (followers) → visible to author or followers
+ * - private (followers) → visible to the author, the author's followers **and
+ *   the accounts it mentions** (`mention_exists?`): a followers-only post is
+ *   delivered to the mentioned accounts, so the mention notification they get
+ *   must open
  * - direct → visible to author or mentioned users
  */
 export function canViewStatus(
@@ -186,7 +189,7 @@ export function canViewStatus(
     case "unlisted":
       return true;
     case "private":
-      return isFollowing;
+      return isFollowing || (viewerId !== null && isMentioned(obj, viewerId));
     case "direct":
       return viewerId !== null && isMentioned(obj, viewerId);
     default:
