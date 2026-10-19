@@ -180,9 +180,17 @@ class_name = "TimelineStreamDO"
 name = "CALL_SIGNALING"
 class_name = "CallSignalingDO"
 
+# The Guardian's Cloudflare Agent (Agents SDK). `AIChatAgent` persists the
+# conversation in the object's SQLite, so it needs a `new_sqlite_classes`
+# migration — never add it to the existing tag: migrations are immutable once
+# deployed.
+[[durable_objects.bindings]]
+name = "GuardianAgent"
+class_name = "GuardianAgentDO"
+
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO"]
+new_sqlite_classes = ["TimelineStreamDO", "CallSignalingDO", "GuardianAgentDO"]
 
 [triggers]
 crons = ["* * * * *"]

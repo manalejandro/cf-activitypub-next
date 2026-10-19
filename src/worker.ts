@@ -13,6 +13,9 @@
 export { TimelineStreamDO } from "../lib/streaming/timeline-do";
 // Export the call signaling Durable Object
 export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
+
+export { GuardianAgent } from "../lib/guardian/agent";
+import { routeGuardianAgent } from "../lib/guardian/routing";
 import handler from "vinext/server/fetch-handler";
 
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
@@ -1472,6 +1475,12 @@ const worker = {
     ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
+
+    // ── Guardian agent (Agents SDK) ──────────────────────────────────────────
+    // `/agents/:agent/:instance` is served by the Durable Object itself, so it
+    // must be routed before vinext (and gated: administrators only).
+    const agentResponse = await routeGuardianAgent(request, env);
+    if (agentResponse) return agentResponse;
 
     // ── R2 media ─────────────────────────────────────────────────────────────
     // Serve bytes before vinext: the framework appends `Vary: rsc,

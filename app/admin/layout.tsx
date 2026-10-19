@@ -17,6 +17,7 @@ const navItems: { key: keyof Translations; href: string; icon: string }[] = [
   { key: "admin_relays", href: "/admin/relays", icon: "rss" },
   { key: "admin_licenses", href: "/admin/licenses", icon: "balance-scale" },
   { key: "admin_media_cache", href: "/admin/media_cache", icon: "database" },
+  { key: "admin_guardian", href: "/admin/guardian", icon: "shield" },
   { key: "admin_reports", href: "/admin/reports", icon: "flag" },
   { key: "admin_moderation_log", href: "/admin/moderation_log", icon: "file-text-o" },
   { key: "admin_settings", href: "/admin/settings", icon: "cog" },
@@ -31,6 +32,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // The media cache section only makes sense when the cache is enabled: the
   // nav entry is fetched from the metrics endpoint instead of hardcoded.
   const [mediaCacheEnabled, setMediaCacheEnabled] = useState(false);
+  // The Guardian agent moderates (it can suspend accounts), so only
+  // administrators get its entry — a moderator would only reach a 403.
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -47,6 +51,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const roleName = me.roles?.[0]?.name?.toLowerCase() ?? "user";
         if (roleName === "admin" || roleName === "moderator") {
           setAuthorized(true);
+          setIsAdmin(roleName === "admin");
           fetch("/api/v1/admin/media_cache", { headers: { Authorization: `Bearer ${token}` } })
             .then((r) => (r.ok ? r.json() : null) as Promise<{ config?: { enabled?: boolean } } | null>)
             .then((data) => setMediaCacheEnabled(data?.config?.enabled === true))
@@ -78,6 +83,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         {navItems
           .filter((item) => item.href !== "/admin/media_cache" || mediaCacheEnabled)
+          .filter((item) => item.href !== "/admin/guardian" || isAdmin)
           .map((item) => {
           const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
           return (

@@ -27,8 +27,12 @@
     "db:drop": "wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql"
   },
   "dependencies": {
+    "@ai-sdk/react": "^4.0.147",
+    "@cloudflare/ai-chat": "^0.12.1",
     "@types/leaflet": "^1.9.22",
     "@xyflow/react": "^12.12.0",
+    "agents": "^0.28.1",
+    "ai": "^7.0.143",
     "d3-force": "^3.0.0",
     "fork-awesome": "^1.2.0",
     "i18next": "^26.4.7",
@@ -37,7 +41,9 @@
     "react-dom": "^19.3.1",
     "react-i18next": "^17.0.21",
     "react-server-dom-webpack": "^19.3.1",
-    "vinext": "^1.2.1"
+    "vinext": "^1.2.1",
+    "workers-ai-provider": "^4.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.64.0",
