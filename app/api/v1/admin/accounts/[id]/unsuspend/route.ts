@@ -7,6 +7,7 @@ import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { forgetSuspension } from "@/lib/moderation/learn";
+import { broadcastAccountUpdate } from "@/lib/streaming/broadcast";
 import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -25,13 +26,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (denied) return denied;
 
   await env.DB
-    .prepare("UPDATE actors SET suspended = 0, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
+    .prepare("UPDATE actors SET suspended = 0, suspension_origin = NULL, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(id)
     .run();
 
   // Federate the change: peers only re-read the actor document on a refetch
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
+  // Local clients refetch: the account's posts are served again.
+  await broadcastAccountUpdate(env.TIMELINE_STREAM, env.DB, { actorId: id, suspended: false, local: actor.isLocal }).catch(() => {});
 
   // Lifting the suspension corrects the record: the Guardian forgets the
   // lesson, or a mistaken suspension keeps matching new content.

@@ -32,6 +32,10 @@ interface Report {
       display_name: string;
       avatar: string;
     } | null;
+    /** Attachments of the reported post: an image is often the whole report. */
+    media?: { url: string; type: string; description: string | null }[];
+    /** The stored post is gone (deleted here or on its origin). */
+    unavailable?: boolean;
   }[];
   rule_ids: string[];
   target_account: {
@@ -370,7 +374,33 @@ function ReportCard({
                       </span>
                     )}
                   </div>
-                  <RichText html={s.content} />
+                  {s.unavailable ? (
+                    <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{t.admin_report_post_unavailable}</span>
+                  ) : (
+                    <>
+                      <RichText html={s.content} />
+                      {(s.media?.length ?? 0) > 0 && (
+                        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                          {s.media!.map((m) => (
+                            m.type === "image" || m.type === "gifv" ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                key={m.url}
+                                src={m.url}
+                                alt={m.description ?? ""}
+                                loading="lazy"
+                                style={{ maxWidth: 160, maxHeight: 160, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+                              />
+                            ) : (
+                              <a key={m.url} href={m.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.78rem", color: "var(--accent)" }}>
+                                {m.description || m.type}
+                              </a>
+                            )
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
             </div>

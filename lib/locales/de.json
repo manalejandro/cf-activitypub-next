@@ -789,6 +789,7 @@
   "admin_note_placeholder": "Fügen Sie eine Moderationsnote hinzu ..",
   "admin_discussion": "Diskussion",
   "admin_show_posts": "Zeigen {count} angehängte Post(s)",
+  "admin_report_post_unavailable": "Dieser Beitrag ist nicht mehr verfügbar",
   "admin_hide_posts": "Verstecke {count} angehängte Post(s)",
   "admin_status_resolved": "Gelöst",
   "settings_verification_step2_alt": "Alternativ eine <link>-Tag im <head> Ihrer Seite einfügen (nützlich für JavaScript-gerenderte Websites):",

@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS actors (
   auto_delete_after  INTEGER,                   -- auto-delete posts after N seconds (null = disabled)
   role               TEXT NOT NULL DEFAULT 'user', -- user, moderator, admin
   suspended          INTEGER NOT NULL DEFAULT 0,
+  -- 'local' when this instance suspended the account, 'remote' when the
+  -- account's own server did (Mastodon's `suspension_origin`): a local
+  -- suspension is never overridden by the remote actor document.
+  suspension_origin  TEXT,
   silenced           INTEGER NOT NULL DEFAULT 0,   -- 1 = posts hidden from public timelines, still visible to followers
   reserved           INTEGER NOT NULL DEFAULT 0,
   also_known_as      TEXT,                          -- JSON array of alias actor IRIs (account migration)

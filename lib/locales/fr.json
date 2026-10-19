@@ -789,6 +789,7 @@
   "admin_note_placeholder": "Ajouter une note de modération..",
   "admin_discussion": "Débat",
   "admin_show_posts": "Afficher {count} poste(s) joint(s)",
+  "admin_report_post_unavailable": "Cette publication n'est plus disponible",
   "admin_hide_posts": "Cacher {count} poste(s) attaché(s)",
   "admin_status_resolved": "Résolue",
   "settings_verification_step2_alt": "Sinon, ajoutez une balise <link> dans le <head> de votre page (utile pour les sites rendus en JavaScript) :",

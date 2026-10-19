@@ -789,6 +789,7 @@
   "admin_note_placeholder": "Добавить модерацию..",
   "admin_discussion": "Обсуждение",
   "admin_show_posts": "Show {count} attached post(s)",
+  "admin_report_post_unavailable": "Эта публикация больше недоступна",
   "admin_hide_posts": "Hide {count} attached post(s)",
   "admin_status_resolved": "Решенный",
   "settings_verification_step2_alt": "Либо добавьте тег <link> в <head> вашей страницы (удобно для сайтов с рендерингом через JavaScript):",

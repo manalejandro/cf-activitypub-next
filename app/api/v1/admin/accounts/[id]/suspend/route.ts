@@ -7,6 +7,7 @@ import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { learnFromSuspension } from "@/lib/moderation/learn";
+import { broadcastAccountUpdate } from "@/lib/streaming/broadcast";
 import { env } from "cloudflare:workers";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -23,13 +24,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (denied) return denied;
 
   await env.DB
-    .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?")
+    .prepare(
+      `UPDATE actors SET suspended = 1, suspension_origin = 'local',
+         suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?`
+    )
     .bind(new Date().toISOString(), id)
     .run();
 
   // Federate the change: peers only re-read the actor document on a refetch
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
+  // Local clients: cached feeds keep rendering the account's posts until they
+  // are told to drop them — a remote account gets no AP broadcast at all.
+  await broadcastAccountUpdate(env.TIMELINE_STREAM, env.DB, { actorId: id, suspended: true, local: actor.isLocal }).catch(() => {});
 
   // A moderator's suspension is a confirmed abuse decision: the Guardian
   // remembers the account (its posts and profile) so its next incarnation is

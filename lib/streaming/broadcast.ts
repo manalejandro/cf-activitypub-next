@@ -196,6 +196,49 @@ function extractHashtagNames(raw: string | undefined): string[] {
 }
 
 /**
+ * Broadcast an account state change (suspension, reinstatement) to every
+ * timeline that could still be rendering its posts: the public channels, the
+ * home feeds of its local followers and the lists it belongs to.
+ *
+ * A suspension hides the account's posts server-side (every timeline query
+ * filters `suspended = 1`), but a client with a cached feed keeps showing them
+ * until this event arrives — that is the whole point of it.
+ */
+export async function broadcastAccountUpdate(
+  ns: DONamespace,
+  db: D1DatabaseLike,
+  opts: { actorId: string; suspended: boolean; local: boolean }
+): Promise<void> {
+  const payload = JSON.stringify({ id: opts.actorId, suspended: opts.suspended });
+  const tasks: Promise<void>[] = [
+    broadcastToChannel(ns, "public", "account.updated", payload),
+    broadcastToChannel(ns, opts.local ? "public:local" : "public:remote", "account.updated", payload),
+  ];
+
+  try {
+    const followers = await db
+      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+      .bind(opts.actorId)
+      .all<{ id: string }>();
+    for (const row of followers.results) {
+      tasks.push(broadcastToChannel(ns, `home:${actorUsername(row.id)}`, "account.updated", payload));
+    }
+  } catch { /* a missing table must not stop the public event */ }
+
+  try {
+    const lists = await db
+      .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+      .bind(opts.actorId)
+      .all<{ list_id: string }>();
+    for (const row of lists.results) {
+      tasks.push(broadcastToChannel(ns, `list:${row.list_id}`, "account.updated", payload));
+    }
+  } catch { /* ignore */ }
+
+  await Promise.allSettled(tasks);
+}
+
+/**
  * Broadcast a status deletion to EVERY timeline that could show it: public
  * (federated/local/remote), home feeds of local followers, hashtag channels the
  * object is tagged with, and list channels containing the author. Used by both

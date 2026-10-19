@@ -639,6 +639,50 @@ async function enqueueNewProfileImages(
  * Upsert a remote actor — inserts on first encounter, updates on subsequent
  * fetches (e.g. key rotation, profile changes). Preserves local-only fields.
  */
+/**
+ * Apply the `suspended` flag of a remote actor document — Mastodon's
+ * `ProcessAccountService#set_suspension!`:
+ *
+ *  - a suspension **we** applied (`suspension_origin = 'local'`: an admin
+ *    action, the Guardian, a domain block) is never overridden by a fetch;
+ *  - a remote suspension is stored (`origin = 'remote'`) and cleared when the
+ *    account's own server lifts it.
+ *
+ * Returns whether the stored state changed, so callers with a streaming
+ * namespace can tell the connected clients to drop the account's posts.
+ */
+export async function applyRemoteSuspension(db: D1Database, actorId: string, remoteSuspended: boolean): Promise<boolean> {
+  let row: { suspended: number | null; suspension_origin: string | null } | null = null;
+  try {
+    row = await db
+      .prepare("SELECT suspended, suspension_origin FROM actors WHERE id = ?")
+      .bind(actorId)
+      .first<{ suspended: number | null; suspension_origin: string | null }>();
+  } catch {
+    return false; // pre-migration DB: the column does not exist yet
+  }
+  if (!row) return false;
+
+  const stored = Boolean(row.suspended);
+  const localOrigin = stored && row.suspension_origin !== "remote";
+  if (localOrigin) return false;
+
+  if (stored === remoteSuspended) return false;
+
+  await db
+    .prepare(
+      "UPDATE actors SET suspended = ?, suspension_origin = ?, suspended_at = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(
+      remoteSuspended ? 1 : 0,
+      remoteSuspended ? "remote" : null,
+      remoteSuspended ? new Date().toISOString() : null,
+      actorId
+    )
+    .run();
+  return true;
+}
+
 export async function upsertRemoteActor(db: D1Database, actor: APActor, expectedId?: string): Promise<void> {
   // Cache-poisoning guard: never store a fetched document under an id other
   // than the URL it was fetched from. Callers that fetched `actor.id` from the
@@ -679,6 +723,9 @@ export async function upsertRemoteActor(db: D1Database, actor: APActor, expected
     [actor.icon?.url ?? "", "avatar"],
     [actor.image?.url ?? "", "header"],
   ]);
+  // A remote suspension (`toot:suspended`) is the account's own server telling
+  // us it is gone; our own suspensions stay untouched (see the helper).
+  await applyRemoteSuspension(db, actor.id, rawDoc.suspended === true).catch(() => {});
   try {
     try {
       await db

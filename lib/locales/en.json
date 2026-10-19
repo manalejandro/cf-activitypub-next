@@ -789,6 +789,7 @@
   "admin_note_placeholder": "Add a moderation note…",
   "admin_discussion": "Discussion",
   "admin_show_posts": "Show {count} attached post(s)",
+  "admin_report_post_unavailable": "This post is no longer available",
   "admin_hide_posts": "Hide {count} attached post(s)",
   "admin_status_resolved": "Resolved",
   "settings_verification_step2_alt": "Alternatively, add a <link> tag in the <head> of your page (useful for JavaScript-rendered sites):",

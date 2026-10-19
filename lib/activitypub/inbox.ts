@@ -51,7 +51,7 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri } from "@/lib/db";
+import { upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
@@ -61,7 +61,7 @@ import { recordInstanceInboundActivity } from "./instances";
 import { relayForActor, relayMatchesActor } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { notifyReportedAccount } from "@/lib/moderation/actions";
-import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
+import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, broadcastAccountUpdate, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
 import { deliverPushSafe } from "@/lib/push";
 import type { LocalNotification } from "@/lib/types";
 import { serializeStatus, serializePoll, serializeNotification } from "@/lib/mastodon/serializers";
@@ -2129,6 +2129,17 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     if (typeof actor.manuallyApprovesFollowers === "boolean") updates.manuallyApprovesFollowers = actor.manuallyApprovesFollowers;
     if (actor.alsoKnownAs?.length) updates.alsoKnownAs = actor.alsoKnownAs;
     await updateActor(ctx.db, actor.id, updates);
+
+    // The account's own server suspended it (Mastodon distributes an
+    // `Update{Actor}` with `suspended: true`): store it — a suspension we
+    // applied ourselves is never overridden — and drop its posts from the
+    // connected clients' cached feeds, which otherwise keep rendering them.
+    const suspended = (actor as unknown as Record<string, unknown>).suspended === true;
+    if (await applyRemoteSuspension(ctx.db, actor.id, suspended).catch(() => false)) {
+      if (ctx.timelineStream) {
+        await broadcastAccountUpdate(ctx.timelineStream, ctx.db, { actorId: actor.id, suspended, local: false }).catch(() => {});
+      }
+    }
   }
 }
 

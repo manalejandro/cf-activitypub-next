@@ -187,7 +187,8 @@ export async function sweepExpiredAccounts(env: AccountExpirationEnv): Promise<E
   for (const row of expiring.results) {
     const updated = await env.DB
       .prepare(
-        "UPDATE actors SET suspended = 1, suspended_at = ?, updated_at = datetime('now') WHERE id = ? AND suspended = 0"
+        `UPDATE actors SET suspended = 1, suspension_origin = 'local', suspended_at = ?, updated_at = datetime('now')
+          WHERE id = ? AND suspended = 0`
       )
       .bind(new Date(now).toISOString(), row.id)
       .run();

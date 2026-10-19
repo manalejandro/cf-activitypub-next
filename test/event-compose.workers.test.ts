@@ -14,6 +14,7 @@ vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastStatusCreatedToAudience: vi.fn().mockResolvedValue(undefined),
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
   broadcastEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastAccountUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastStatusUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatusUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastObjectDelete: vi.fn().mockResolvedValue(undefined),

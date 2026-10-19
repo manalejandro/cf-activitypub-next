@@ -6,6 +6,7 @@ import { applyTestSchema, resetTestStorage } from "./helpers/db";
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
   broadcastEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastAccountUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastPublicStatus: vi.fn().mockResolvedValue(undefined),
   broadcastHomeStatus: vi.fn().mockResolvedValue(undefined),
   eligibleLocalRecipients: vi.fn(async (_db: unknown, ids: string[]) => ids),

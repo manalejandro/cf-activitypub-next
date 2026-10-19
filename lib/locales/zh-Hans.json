@@ -789,6 +789,7 @@
   "admin_note_placeholder": "添加节制音符..",
   "admin_discussion": "讨论情况",
   "admin_show_posts": "显示 {count} 条附加嘟文",
+  "admin_report_post_unavailable": "该帖子已不可用",
   "admin_hide_posts": "隐藏 {count} 附加的邮箱",
   "admin_status_resolved": "决定",
   "settings_verification_step2_alt": "或者，在页面的 <head> 中添加一个 <link> 标签（适用于 JavaScript 渲染的网站）：",

@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
 import { requireAdmin } from "@/lib/admin-auth";
-import { getActorById, getObjectById, getReportNotes } from "@/lib/db";
+import { getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getReportNotes } from "@/lib/db";
+import { renderEmojiInHtml } from "@/lib/emoji";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { env } from "cloudflare:workers";
@@ -57,22 +58,70 @@ export async function GET(request: NextRequest): Promise<Response> {
   return json({ reports: result, total: Number(totalRow?.n ?? 0) });
 }
 
-async function getReportStatuses(db: D1Database, statusIdsRaw: string | null, domain: string): Promise<{ id: string; content: string; created_at: string | null; account: { id: string; username: string; acct: string; display_name: string; avatar: string } | null }[]> {
+interface ReportStatus {
+  id: string;
+  content: string;
+  created_at: string | null;
+  account: { id: string; username: string; acct: string; display_name: string; avatar: string } | null;
+  media: { url: string; type: string; description: string | null }[];
+  /** The stored post is gone (deleted by moderation or on its origin). */
+  unavailable?: boolean;
+}
+
+/**
+ * The evidence a report carries. A suspended account's posts are nulled by
+ * moderation ("stop spreading"), so the text is recovered from the stored AP
+ * document — the admin judging the report must see what was reported — and the
+ * attachments are included (an image is often the whole report). Statuses that
+ * no longer exist are kept as placeholders instead of silently disappearing.
+ */
+async function getReportStatuses(db: D1Database, statusIdsRaw: string | null, domain: string): Promise<ReportStatus[]> {
   if (!statusIdsRaw) return [];
-  const statusIds = JSON.parse(statusIdsRaw) as string[];
-  return (await Promise.all(
-    statusIds.map(async (sid) => {
+  let statusIds: string[] = [];
+  try {
+    statusIds = JSON.parse(statusIdsRaw) as string[];
+  } catch {
+    return [];
+  }
+  const emojis = await getAllCustomEmojis(db);
+
+  return Promise.all(
+    statusIds.map(async (sid): Promise<ReportStatus> => {
       const decoded = decodeStatusId(sid, domain);
       const obj = await getObjectById(db, decoded);
-      if (!obj) return null;
-      const author = await getActorById(db, obj.actorId);
-      if (!author) return null;
+      const author = obj ? await getActorById(db, obj.actorId) : null;
+      if (!obj || !author) {
+        return { id: sid, content: "", created_at: null, account: null, media: [], unavailable: true };
+      }
+
+      let content = obj.content ?? "";
+      if (!content) {
+        try {
+          const raw = JSON.parse(obj.raw) as { content?: string; tag?: { type?: string; icon?: { url?: string }; name?: string }[] };
+          if (typeof raw.content === "string") content = raw.content;
+          const rawEmojis = (raw.tag ?? [])
+            .filter((t) => t.type === "Emoji" && typeof t.name === "string" && t.icon?.url)
+            .map((t) => ({
+              shortcode: String(t.name).replace(/^:/, "").replace(/:$/, ""),
+              url: t.icon!.url!,
+              static_url: t.icon!.url!,
+            }));
+          if (rawEmojis.length > 0) content = renderEmojiInHtml(content, rawEmojis);
+        } catch { /* malformed raw: keep whatever was stored */ }
+      }
+
+      const attachments = await getAttachmentsByObjectId(db, obj.id);
       return {
         id: sid,
-        content: obj.content ?? "",
+        content,
         created_at: obj.published,
-        account: serializeAccount(author, domain),
+        account: serializeAccount(author, domain, { emojis }),
+        media: attachments.map((a) => ({
+          url: a.url,
+          type: a.type,
+          description: a.description ?? null,
+        })),
       };
     })
-  )).filter((s): s is NonNullable<typeof s> => s !== null);
+  );
 }

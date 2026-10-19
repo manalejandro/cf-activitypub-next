@@ -78,6 +78,30 @@ export function purgeStatusFromCache(statusId: string): void {
   }
 }
 
+/** Whether a feed item is by this account — directly or as a boost of its post. */
+function itemFromAccount(item: unknown, actorId: string): boolean {
+  const entry = item as { account?: { id?: string } | null; reblog?: { account?: { id?: string } | null } | null };
+  return entry.account?.id === actorId || entry.reblog?.account?.id === actorId;
+}
+
+/**
+ * Drop every cached status authored by an account, plus the boosts wrapping its
+ * posts, and return the removed ids (so `seenIds` stops treating them as shown
+ * and a later refetch — after an unsuspension — can bring them back).
+ */
+export function purgeAccountFromCache(actorId: string): string[] {
+  const removed: string[] = [];
+  for (const entry of entries.values()) {
+    entry.items = (entry.items as { id: string; account?: { id?: string } | null; reblog?: { account?: { id?: string } | null } | null }[])
+      .filter((item) => {
+        const mine = itemFromAccount(item, actorId);
+        if (mine) removed.push(item.id);
+        return !mine;
+      });
+  }
+  return removed;
+}
+
 /**
  * Replace a status in every cached feed where it appears (e.g. its
  * `bookmarked`/`favourited`/counters changed). Feeds where the status no
@@ -254,6 +278,20 @@ export function handleStatusStreamEvent<T extends TimelineItem>(
       const updated = JSON.parse(payload) as T;
       updateStatusInCache(updated);
       setItems((prev) => prev.map((s) => applyStatusUpdateInFeed(s, updated)));
+    } catch { /* ignore malformed payload */ }
+    return true;
+  }
+  if (event === "account.updated") {
+    // A suspension hides the account's posts server-side, but a cached feed
+    // keeps rendering them: drop everything it authored (and the boosts
+    // wrapping its posts) the moment the moderation decision lands. An
+    // unsuspension sends the same event with `suspended: false` — the posts
+    // come back on the next refetch, which is why the ids leave `seenIds` too.
+    try {
+      const data = JSON.parse(payload) as { id?: string };
+      if (typeof data.id !== "string" || !data.id) return true;
+      for (const removedId of purgeAccountFromCache(data.id)) seenIds.delete(removedId);
+      setItems((prev) => prev.filter((s) => !itemFromAccount(s, data.id!)));
     } catch { /* ignore malformed payload */ }
     return true;
   }

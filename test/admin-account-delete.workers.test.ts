@@ -7,6 +7,7 @@ import { applyTestSchema, resetTestStorage } from "./helpers/db";
 // what these tests are about (the queue and the followers are empty anyway).
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastAccountUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastActorUpdate: vi.fn().mockResolvedValue(undefined),
 }));
 

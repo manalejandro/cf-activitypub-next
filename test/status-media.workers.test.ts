@@ -14,6 +14,7 @@ vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastStatusCreatedToAudience: vi.fn().mockResolvedValue(undefined),
   broadcastNotificationEvent: vi.fn().mockResolvedValue(undefined),
   broadcastEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastAccountUpdate: vi.fn().mockResolvedValue(undefined),
   eligibleLocalRecipients: vi.fn(async (_db: unknown, ids: string[]) => ids),
   actorExclusion: vi.fn(async (_db: unknown, id: string) => ({ id, domain: null })),
   parentExclusion: vi.fn(async () => null),

@@ -8,6 +8,7 @@
 
 import { generateId, actorIRI } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
+import { broadcastAccountUpdate, type DONamespace } from "@/lib/streaming/broadcast";
 import { generateKeyPair } from "@/lib/activitypub/security";
 import { createActor, getActorById, getActorByUsername, getObjectById } from "@/lib/db";
 import { sendModerationNoticeEmail, type ModerationNoticeAction } from "@/lib/email";
@@ -23,6 +24,8 @@ import type { LocalActor } from "@/lib/types";
 export interface ModerationEnv {
   DB: D1Database;
   DELIVERY_QUEUE?: Queue;
+  /** Streaming Durable Object — moderation actions notify connected clients. */
+  TIMELINE_STREAM?: DONamespace;
   AI?: Ai;
   EMAIL?: SendEmail;
   KV?: ModerationKV;
@@ -322,13 +325,21 @@ export async function suspendAccount(env: ModerationEnv, opts: ActionBase & { ac
     .bind(actorId)
     .run();
   await env.DB
-    .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?")
+    .prepare(
+      `UPDATE actors SET suspended = 1, suspension_origin = 'local',
+         suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE id = ?`
+    )
     .bind(new Date().toISOString(), actorId)
     .run();
   // Disconnect it from the fediverse: every follower marks the account
   // suspended on the next `Update{Actor}` (best effort — moderation must not
   // fail because a delivery could not be queued).
   await broadcastActorState(env, actorId).catch(() => {});
+  // Local clients: a cached feed keeps rendering the suspended account's posts
+  // until they are told to drop them (a remote account gets no AP broadcast).
+  if (env.TIMELINE_STREAM) {
+    await broadcastAccountUpdate(env.TIMELINE_STREAM, env.DB, { actorId, suspended: true, local: actor.isLocal }).catch(() => {});
+  }
 
   const emailSent = await notifyAccountOwner(env, actor, "suspended", reason ?? "Su cuenta ha infringido las normas de la comunidad.");
   await recordModeration(env, {
@@ -361,11 +372,15 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
   if (!actor.suspended) return { action: "unsuspended", applied: false, emailSent: false };
 
   await env.DB
-    .prepare("UPDATE actors SET suspended = 0, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
+    .prepare("UPDATE actors SET suspended = 0, suspension_origin = NULL, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(actorId)
     .run();
   // Tell the followers the account is back, or they keep treating it as gone.
   await broadcastActorState(env, actorId).catch(() => {});
+  // Local clients refetch: the account's posts are served again.
+  if (env.TIMELINE_STREAM) {
+    await broadcastAccountUpdate(env.TIMELINE_STREAM, env.DB, { actorId, suspended: false, local: actor.isLocal }).catch(() => {});
+  }
   const m = meta(opts, SYSTEM);
   // A lifted suspension is a correction: stop matching the pattern.
   const forgotten = await forgetSuspension(env, actorId);
@@ -545,7 +560,10 @@ export async function blockDomain(env: ModerationEnv, opts: ActionBase & { domai
   // the Guardian "everything from this domain is abuse" would poison the
   // memory and auto-action unrelated content that merely looks similar.
   await env.DB
-    .prepare("UPDATE actors SET suspended = 1, suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE domain = ? AND is_local = 0")
+    .prepare(
+      `UPDATE actors SET suspended = 1, suspension_origin = 'local',
+         suspended_at = COALESCE(suspended_at, ?), updated_at = datetime('now') WHERE domain = ? AND is_local = 0`
+    )
     .bind(new Date().toISOString(), normalized)
     .run();
 

@@ -789,6 +789,7 @@
   "admin_note_placeholder": "모의 메모를 추가 ..",
   "admin_discussion": "의논하기",
   "admin_show_posts": "표시 {count} 첨부된 게시물(s)",
+  "admin_report_post_unavailable": "이 게시물은 더 이상 사용할 수 없습니다",
   "admin_hide_posts": "Hide {count} 첨부된 게시물(s)",
   "admin_status_resolved": "해결 된",
   "settings_verification_step2_alt": "또는 페이지의 <head>에 <link> 태그를 추가하세요(JavaScript로 렌더링되는 사이트에 유용):",

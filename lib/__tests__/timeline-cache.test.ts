@@ -17,6 +17,8 @@ interface S {
   id: string;
   created_at?: string;
   content?: string;
+  account?: { id: string };
+  reblog?: S;
 }
 
 const s = (id: string, created_at?: string): S => ({ id, created_at });
@@ -194,5 +196,43 @@ describe("setTimelineCache caps", () => {
     setTimelineCache("tag:new", entry([s("new")]));
     expect(getTimelineCache("tag:1")).toBeDefined();
     expect(getTimelineCache("tag:2")).toBeUndefined();
+  });
+});
+
+describe("account.updated (suspension) stream event", () => {
+  beforeEach(() => clearAllTimelineCaches());
+
+  const entry = (items: S[]) => ({ items, hasMore: false, ready: true, scrollY: 0, fetchedAt: Date.now() });
+
+  it("drops the account's posts and boosts from the feed and the cache", () => {
+    const theirs: S = { id: "s1", created_at: "2026-10-19T10:00:00Z", account: { id: "https://remote.example/users/spammer" } };
+    const boost: S = { id: "s2", created_at: "2026-10-19T11:00:00Z", account: { id: "https://local.example/users/fan" }, reblog: theirs };
+    const mine: S = { id: "s3", created_at: "2026-10-19T12:00:00Z", account: { id: "https://local.example/users/me" } };
+    setTimelineCache("home", entry([theirs, boost, mine]));
+
+    const holder = stateHolder([theirs, boost, mine]);
+    const seen = new Set(["s1", "s2", "s3"]);
+    const handled = handleStatusStreamEvent(
+      "account.updated",
+      JSON.stringify({ id: "https://remote.example/users/spammer", suspended: true }),
+      holder.setItems,
+      seen
+    );
+
+    expect(handled).toBe(true);
+    expect(holder.items.map((i) => i.id)).toEqual(["s3"]);
+    expect((getTimelineCache("home")?.items ?? []).map((i) => (i as S).id)).toEqual(["s3"]);
+    // The removed ids leave `seenIds`, so an unsuspension can bring them back.
+    expect([...seen]).toEqual(["s3"]);
+  });
+
+  it("ignores a payload without an account id", () => {
+    const status: S = { id: "s1", created_at: "2026-10-19T10:00:00Z", account: { id: "https://remote.example/users/spammer" } };
+    setTimelineCache("home", entry([status]));
+    const holder = stateHolder([status]);
+
+    handleStatusStreamEvent("account.updated", "{}", holder.setItems, new Set(["s1"]));
+
+    expect(holder.items.map((i) => i.id)).toEqual(["s1"]);
   });
 });

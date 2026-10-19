@@ -11,6 +11,7 @@ vi.mock("@/lib/moderation/learn", () => ({
 }));
 vi.mock("@/lib/streaming/broadcast", () => ({
   broadcastEvent: vi.fn().mockResolvedValue(undefined),
+  broadcastAccountUpdate: vi.fn().mockResolvedValue(undefined),
   broadcastActorUpdate: vi.fn().mockResolvedValue(undefined),
 }));
 

@@ -789,6 +789,7 @@
   "admin_note_placeholder": "Adicionar uma nota de moderação..",
   "admin_discussion": "Discussão",
   "admin_show_posts": "Mostrar a( s) publicação( s) {count} anexada( s)",
+  "admin_report_post_unavailable": "Esta publicação já não está disponível",
   "admin_hide_posts": "Ocultar {count} posts anexados",
   "admin_status_resolved": "Resolvido",
   "settings_verification_step2_alt": "Alternativamente, adicione uma tag <link> no <head> da sua página (útil para sites renderizados em JavaScript):",
