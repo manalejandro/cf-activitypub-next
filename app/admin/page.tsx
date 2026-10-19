@@ -21,6 +21,20 @@ interface ReportSummary {
   action_taken: boolean;
 }
 
+interface StorageSummary {
+  enabled: boolean;
+  config: { days: number; max_bytes: number; prune_batch: number; size_batch: number };
+  estimate: { bytes: number; rows: number; measuredAt: string | null; databaseBytes: number | null; effectiveBytes: number };
+  last_run: { at: string; objectsDeleted: number; activitiesDeleted: number; bytesFreed: number } | null;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const power = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** power).toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { t } = useLocale();
@@ -28,6 +42,8 @@ export default function AdminDashboard() {
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
   const [federatedAccounts, setFederatedAccounts] = useState<number | null>(null);
   const [reportedCount, setReportedCount] = useState<number | null>(null);
+  const [storage, setStorage] = useState<StorageSummary | null>(null);
+  const [pruning, setPruning] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,10 +73,32 @@ export default function AdminDashboard() {
         setReportedCount(data.filter((r) => !r.action_taken).length);
         return data.length;
       }),
+      fetch("/api/v1/admin/storage", { headers }).then(async (r) => {
+        if (r.ok) setStorage(await r.json() as StorageSummary);
+        return null;
+      }),
     ]).catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const runRetention = async () => {
+    const token = getToken();
+    if (!token || pruning) return;
+    setPruning(true);
+    try {
+      const res = await fetch("/api/v1/admin/storage", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as { estimate: StorageSummary["estimate"]; last_run: StorageSummary["last_run"] };
+        setStorage((prev) => (prev ? { ...prev, estimate: data.estimate, last_run: data.last_run } : prev));
+      }
+    } finally {
+      setPruning(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -77,7 +115,7 @@ export default function AdminDashboard() {
         <StatCard label={t.admin_federated} value={federatedAccounts ?? 0} />
         <StatCard label={t.admin_open_reports} value={reportedCount ?? 0} danger={!!reportedCount && reportedCount > 0} />
       </div>
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "2rem" }}>
         <Link href="/admin/accounts" className="btn btn-primary">
           <Icon name="users" color="#fff" /> {t.admin_accounts}
         </Link>
@@ -85,6 +123,54 @@ export default function AdminDashboard() {
           <Icon name="flag" /> {t.admin_reports}
         </Link>
       </div>
+
+      {storage && (
+        <div className="card" style={{ padding: "1.25rem", maxWidth: "42rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.5rem" }}>
+            <strong style={{ fontSize: "0.95rem" }}>
+              <Icon name="database" /> {t.admin_storage_title}
+            </strong>
+            {storage.enabled ? (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => void runRetention()} disabled={pruning}>
+                <Icon name={pruning ? "hourglass" : "trash"} spin={pruning} /> {pruning ? t.admin_storage_running : t.admin_storage_run}
+              </button>
+            ) : (
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{t.admin_storage_disabled}</span>
+            )}
+          </div>
+          <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.6rem" }}>{t.admin_storage_desc}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", fontSize: "0.82rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+              <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_database}</span>
+              <strong>{storage.estimate.databaseBytes ? formatBytes(storage.estimate.databaseBytes) : t.admin_storage_unknown}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+              <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_prunable}</span>
+              <strong>{formatBytes(storage.estimate.bytes)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+              <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_retention}</span>
+              <strong>
+                {storage.config.days > 0
+                  ? t.admin_storage_days.replace("{days}", String(storage.config.days))
+                  : t.admin_storage_no_days}
+                {storage.config.max_bytes > 0
+                  ? ` · ${t.admin_storage_max_bytes.replace("{size}", formatBytes(storage.config.max_bytes))}`
+                  : ""}
+              </strong>
+            </div>
+            {storage.last_run && (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+                <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_last_run}</span>
+                <strong>
+                  {new Date(storage.last_run.at).toLocaleString()} · {storage.last_run.objectsDeleted + storage.last_run.activitiesDeleted}{" "}
+                  {t.admin_storage_deleted} · {formatBytes(storage.last_run.bytesFreed)}
+                </strong>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

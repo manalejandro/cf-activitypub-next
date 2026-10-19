@@ -5721,6 +5721,86 @@
         }
       }
     },
+    "/api/v1/admin/storage": {
+      "get": {
+        "summary": "Get /api/v1/admin/storage",
+        "operationId": "get_api_v1_admin_storage",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "run": {},
+                    "estimate": {},
+                    "last_run": {}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create /api/v1/admin/storage",
+        "operationId": "post_api_v1_admin_storage",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "run": {},
+                    "estimate": {},
+                    "last_run": {}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/verify_account": {
       "post": {
         "summary": "Create /api/v1/admin/verify_account",
@@ -16488,6 +16568,22 @@
           },
           "linkPreviewMaxBytes": {
             "type": "number"
+          },
+          "dbRetentionDays": {
+            "type": "number",
+            "description": "Storage retention: delete federated history older than this many days (0 = keep forever)."
+          },
+          "dbRetentionMaxBytes": {
+            "type": "number",
+            "description": "Storage retention: prune the oldest federated history while the stored payload exceeds this many bytes (0 = unlimited)."
+          },
+          "dbRetentionPruneBatch": {
+            "type": "number",
+            "description": "Storage retention: rows deleted per cron pass."
+          },
+          "dbRetentionSizeBatch": {
+            "type": "number",
+            "description": "Storage retention: rows measured per cron pass while estimating the stored payload."
           },
           "instanceRefreshBatch": {
             "type": "number"

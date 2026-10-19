@@ -63,6 +63,7 @@ const ACTION_MAP: Record<string, string> = {
   registration_reviewed: "admin_action_registration_reviewed",
   registration_blocked: "admin_action_registration_blocked",
   no_action: "admin_action_no_action",
+  storage_pruned: "admin_action_storage_pruned",
 };
 
 export default function AdminModerationLogPage() {

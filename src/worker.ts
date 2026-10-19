@@ -55,6 +55,7 @@ import {
 import { runModerationCycle } from "../lib/moderation/cycle";
 import { runAccountExpiration } from "../lib/moderation/account-expiration";
 import { refreshFollowRecommendations, RECOMMENDATIONS_REFRESH_HOURS } from "../lib/follow-recommendations";
+import { maintainStorageRetention, storageRetentionLimitsFrom } from "../lib/storage-retention";
 import type { APActor } from "../lib/types";
 
 interface Env {
@@ -1241,6 +1242,23 @@ async function executeScheduled(env: Env): Promise<void> {
     });
   } catch (err) {
     console.error("[cron] link preview crawl failed", err);
+  }
+
+  // Storage retention (opt-in): delete federated history the operator has
+  // declared expired (by age and/or by byte budget) and keep the payload
+  // estimate fresh. Runs before the media-cache stage so the cache maintenance
+  // sees the deletions and drops the R2 copies they orphan in the same tick.
+  await setStage("storage-retention");
+  try {
+    const retention = await maintainStorageRetention(env, storageRetentionLimitsFrom(limits));
+    if (retention.objectsDeleted > 0 || retention.activitiesDeleted > 0) {
+      console.log(
+        `[retention] pruned ${retention.objectsDeleted} status(es) and ${retention.activitiesDeleted} activit(ies), ` +
+          `${Math.round(retention.bytesFreed / 1024)} KiB freed (database ${Math.round(retention.effectiveBytes / 1024)} KiB)`
+      );
+    }
+  } catch (err) {
+    console.error("[cron] storage retention failed", err);
   }
 
   // Remote media cache: queue what is missing, fetch a few per tick and keep

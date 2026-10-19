@@ -235,6 +235,14 @@ export interface InstanceLimits {
   linkPreviewFetchBatch: number;
   linkPreviewDays: number;
   linkPreviewMaxBytes: number;
+  /** Storage retention: delete federated history older than this many days (0 = keep forever). */
+  dbRetentionDays: number;
+  /** Storage retention: prune the oldest federated history while the stored payload exceeds this many bytes (0 = unlimited). */
+  dbRetentionMaxBytes: number;
+  /** Storage retention: rows deleted per cron pass. */
+  dbRetentionPruneBatch: number;
+  /** Storage retention: rows measured per cron pass while estimating the stored payload. */
+  dbRetentionSizeBatch: number;
   instanceRefreshBatch: number;
   instanceRefreshDays: number;
   instanceDormantDays: number;
@@ -293,6 +301,10 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   mediaCacheStripMetadata: MEDIA_CACHE_STRIP_METADATA,
   mediaCacheUserAgents: MEDIA_CACHE_BROWSER_USER_AGENTS,
   mediaCacheMaxHoldMinutes: 30,
+  dbRetentionDays: 0,
+  dbRetentionMaxBytes: 0,
+  dbRetentionPruneBatch: 500,
+  dbRetentionSizeBatch: 2000,
   linkPreviewEnabled: true,
   linkPreviewFetchBatch: 5,
   linkPreviewDays: 14,
@@ -398,6 +410,12 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     linkPreviewFetchBatch: num(env, "LINK_PREVIEW_FETCH_BATCH", DEFAULT_LIMITS.linkPreviewFetchBatch),
     linkPreviewDays: num(env, "LINK_PREVIEW_DAYS", DEFAULT_LIMITS.linkPreviewDays),
     linkPreviewMaxBytes: num(env, "LINK_PREVIEW_MAX_BYTES", DEFAULT_LIMITS.linkPreviewMaxBytes),
+    // Storage retention is off unless the operator asks for it: an instance
+    // keeps the federated history it stores forever by default.
+    dbRetentionDays: nonNegativeNum(env, "DB_RETENTION_DAYS", DEFAULT_LIMITS.dbRetentionDays),
+    dbRetentionMaxBytes: nonNegativeNum(env, "DB_RETENTION_MAX_BYTES", DEFAULT_LIMITS.dbRetentionMaxBytes),
+    dbRetentionPruneBatch: num(env, "DB_RETENTION_PRUNE_BATCH", DEFAULT_LIMITS.dbRetentionPruneBatch),
+    dbRetentionSizeBatch: num(env, "DB_RETENTION_SIZE_BATCH", DEFAULT_LIMITS.dbRetentionSizeBatch),
     instanceRefreshBatch: num(env, "INSTANCE_REFRESH_BATCH", DEFAULT_LIMITS.instanceRefreshBatch),
     instanceRefreshDays: num(env, "INSTANCE_REFRESH_DAYS", DEFAULT_LIMITS.instanceRefreshDays),
     instanceDormantDays: num(env, "INSTANCE_DORMANT_DAYS", DEFAULT_LIMITS.instanceDormantDays),

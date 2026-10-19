@@ -91,6 +91,22 @@ LINK_PREVIEW_ENABLED = "true"
 LINK_PREVIEW_FETCH_BATCH = "10"
 LINK_PREVIEW_DAYS = "14"
 LINK_PREVIEW_MAX_BYTES = "2097152"
+# Storage retention (off by default: the instance keeps the federated history
+# it stores forever). Both knobs are independent and 0 disables each one:
+#   DB_RETENTION_DAYS      delete federated history older than N days —
+#                          remote public/unlisted statuses and the processed
+#                          activity ids kept for replay protection.
+#   DB_RETENTION_MAX_BYTES prune the OLDEST federated history while the stored
+#                          payload (the text of those statuses and activities)
+#                          is over this many bytes.
+# Never deleted: your own posts, direct messages, followers-only remote posts,
+# and remote posts a local account bookmarked or replied to. The cron deletes
+# DB_RETENTION_PRUNE_BATCH rows per pass and measures DB_RETENTION_SIZE_BATCH
+# rows per pass while keeping its size estimate fresh.
+# DB_RETENTION_DAYS = "365"
+# DB_RETENTION_MAX_BYTES = "2147483648"
+# DB_RETENTION_PRUNE_BATCH = "500"
+# DB_RETENTION_SIZE_BATCH = "2000"
 INSTANCE_REFRESH_DAYS = "7"
 INSTANCE_DORMANT_DAYS = "30"
 INSTANCE_EXPIRE_DAYS = "90"
