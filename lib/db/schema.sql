@@ -133,16 +133,15 @@ CREATE TABLE IF NOT EXISTS objects (
   license_url     TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_objects_actor_id    ON objects(actor_id);
 CREATE INDEX IF NOT EXISTS idx_objects_published   ON objects(published DESC);
-CREATE INDEX IF NOT EXISTS idx_objects_visibility  ON objects(visibility);
-CREATE INDEX IF NOT EXISTS idx_objects_reply       ON objects(in_reply_to_id);
 CREATE INDEX IF NOT EXISTS idx_objects_quote       ON objects(quote_id);
 -- Inbox Like/Announce objects sometimes carry the status URL instead of its
 -- AP id; resolving that fallback was a full table scan without this index.
 CREATE INDEX IF NOT EXISTS idx_objects_url         ON objects(url);
 -- Reverse lookup for card refreshes/evictions: keep objects.card_json in sync.
-CREATE INDEX IF NOT EXISTS idx_objects_card_id     ON objects(card_id);
+-- Partial: only card-bearing rows (a few percent) — the repair scan and the
+-- media-cache reference resets filter `card_id IS NOT NULL`.
+CREATE INDEX IF NOT EXISTS idx_objects_card_id     ON objects(card_id) WHERE card_id IS NOT NULL;
 -- Finding statuses held by the media cache (partial: pending rows are rare).
 CREATE INDEX IF NOT EXISTS idx_objects_media_pending ON objects(media_pending) WHERE media_pending = 1;
 -- Index-only link-post counts per actor (Guardian behaviour review).
@@ -169,6 +168,9 @@ CREATE INDEX IF NOT EXISTS idx_objects_reply_published   ON objects(in_reply_to_
 CREATE INDEX IF NOT EXISTS idx_objects_vis_local_pub     ON objects(visibility, is_local, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_vis_type_pub      ON objects(visibility, type, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_type_published    ON objects(type, published);
+-- Per-actor counts over a window (the account patrol's `countStatusesSince`):
+-- without it the planner scans every Note of the window instead of the actor's.
+CREATE INDEX IF NOT EXISTS idx_objects_actor_pub_type ON objects(actor_id, published, type);
 CREATE INDEX IF NOT EXISTS idx_objects_local_type_pub    ON objects(is_local, type, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_actor_vis_type_pub ON objects(actor_id, visibility, type, published DESC);
 CREATE INDEX IF NOT EXISTS idx_objects_local_reply       ON objects(is_local, in_reply_to_id);
@@ -188,7 +190,6 @@ CREATE TABLE IF NOT EXISTS object_tags (
   actor_id  TEXT,                   -- denormalized so tag stats stay index-only
   PRIMARY KEY (object_id, tag)
 );
-CREATE INDEX IF NOT EXISTS idx_object_tags_tag_published ON object_tags(tag, published DESC);
 -- Covering index for tag stats (trending tags, tag history): COUNT(*),
 -- COUNT(DISTINCT actor_id) and per-day buckets resolve without touching rows.
 CREATE INDEX IF NOT EXISTS idx_object_tags_tag_pub_actor ON object_tags(tag, published DESC, actor_id);
@@ -1191,6 +1192,7 @@ CREATE TABLE IF NOT EXISTS preview_cards (
 
 CREATE INDEX IF NOT EXISTS idx_preview_cards_refresh ON preview_cards(status, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_preview_cards_image   ON preview_cards(image_url);
+CREATE INDEX IF NOT EXISTS idx_preview_cards_image_cache ON preview_cards(image_cache_url);
 
 -- Statuses waiting for their first link to be crawled (one per object).
 CREATE TABLE IF NOT EXISTS link_preview_queue (

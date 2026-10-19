@@ -22,26 +22,28 @@ export async function GET(request: NextRequest): Promise<Response> {
   const query = (url.searchParams.get("q") ?? "").trim().replace(/^#+/, "").toLowerCase();
   if (!query) return json([]);
 
-  const escapeLike = (s: string) => s.replace(/[%_\\]/g, "\\$&");
-  // Prefix only: the (tag, published) index can serve it (leading-% scans were
-  // the instance's most expensive query pattern). Autocomplete is prefix-based
-  // in Mastodon too.
-  const prefix = `${escapeLike(query)}%`;
+  // Prefix only, and GLOB's own wildcards are stripped from what the user
+  // typed: the pattern must stay a plain prefix so it becomes an index range.
+  const prefix = query.replace(/[*?[\]]/g, "");
   // Same recency bound as the hashtag timeline: dead tags from years ago are
   // not useful suggestions.
   const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
 
+  // Tags are stored lowercased, and GLOB is case-sensitive: it turns the
+  // prefix into an index range on (tag, published, actor_id) — the LIKE it
+  // replaces cannot use the index (SQLite's LIKE is case-insensitive) and
+  // scanned the whole table, 800k rows per call in production.
+  const tagPrefix = prefix.replace(/[*?[\]]/g, "").toLowerCase();
   const rows = await env.DB
     .prepare(
       `SELECT tag, COUNT(*) AS uses, COUNT(DISTINCT actor_id) AS actors
        FROM object_tags
-       WHERE tag LIKE ? ESCAPE '\\'
-         AND published >= ?
+       WHERE tag GLOB ? AND published >= ?
        GROUP BY tag
        ORDER BY uses DESC
        LIMIT ?`
     )
-    .bind(prefix, cutoff, limit)
+    .bind(`${tagPrefix}*`, cutoff, limit)
     .all<{ tag: string; uses: number; actors: number }>();
 
   return json(

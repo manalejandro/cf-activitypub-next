@@ -273,13 +273,15 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
 
 /** Detect accounts repeatedly posting the same content (spambot signature). */
 export async function detectRepeatedSpam(env: GuardianCycleEnv): Promise<void> {
-  // The 24h window scan (up to 3000 rows with signal analysis) is the heaviest
-  // DB loop in the cron; run it at most every 5 minutes so a single tick stays
-  // inside the 60s overlap window. Per-actor markers still prevent re-actions.
+  // The 24h window grouping is one of the heaviest DB scans in the cron (a
+  // temp B-tree over every note of the window, 800ms per pass in production
+  // analytics). It is a backstop — the content gate screens each status as it
+  // arrives — so a wider interval costs nothing but CPU. Per-actor markers
+  // still prevent re-actions.
   if (env.KV) {
     try {
       if (await env.KV.get("guardian:spamdup_run")) return;
-      await env.KV.put("guardian:spamdup_run", "1", { expirationTtl: 300 });
+      await env.KV.put("guardian:spamdup_run", "1", { expirationTtl: 900 });
     } catch {
       // best-effort throttle — keep scanning
     }
@@ -422,11 +424,15 @@ export async function detectSpamDomains(env: GuardianCycleEnv): Promise<void> {
   for (let i = 0; i < reportedActorIds.length; i += 900) {
     const chunk = reportedActorIds.slice(i, i + 900);
     const placeholders = chunk.map(() => "?").join(",");
+    // The id list is exact; `is_local = 0` in the WHERE sent the planner to
+    // `idx_actors_is_local` (a scan of every remote actor per chunk) instead of
+    // the primary key, so the filter happens here.
     const reportedActors = await env.DB
-      .prepare(`SELECT id, domain FROM actors WHERE is_local = 0 AND id IN (${placeholders})`)
+      .prepare(`SELECT id, domain, is_local FROM actors WHERE id IN (${placeholders})`)
       .bind(...chunk)
-      .all<{ id: string; domain: string }>();
+      .all<{ id: string; domain: string; is_local: number }>();
     for (const row of reportedActors.results) {
+      if (row.is_local) continue;
       reportedByDomain.set(row.domain, (reportedByDomain.get(row.domain) ?? 0) + (countByActor.get(row.id) ?? 0));
     }
   }

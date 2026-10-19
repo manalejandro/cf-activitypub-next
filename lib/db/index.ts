@@ -1729,11 +1729,16 @@ export async function replaceRemoteCollectionItems(
       // Only cached REMOTE actors: a remote instance must not be able to
       // feature local accounts in a public collection (FEP-7aa9 requires the
       // featured account's authorization, which we don't ingest for locals).
+      // `id IN (...)` alone: adding `is_local = 0` to the WHERE made the
+      // planner scan `idx_actors_is_local` (every remote actor) instead of the
+      // primary key. The filter moves to JS.
       const rows = await db
-        .prepare(`SELECT id FROM actors WHERE is_local = 0 AND id IN (${placeholders})`)
+        .prepare(`SELECT id, is_local FROM actors WHERE id IN (${placeholders})`)
         .bind(...chunk)
-        .all<{ id: string }>();
-      for (const r of rows.results ?? []) known.add(r.id);
+        .all<{ id: string; is_local: number }>();
+      for (const r of rows.results ?? []) {
+        if (!r.is_local) known.add(r.id);
+      }
     } catch { /* keep the other chunks */ }
   }
   // Preserve the remote `orderedItems` order: SQL result order is not stable
@@ -4626,7 +4631,10 @@ function rowToCustomEmoji(r: Row): LocalCustomEmoji {
 // runs once per minute per worker instead of once per request; mutations
 // invalidate the cache immediately.
 let emojiCache: { at: number; enabled: LocalCustomEmoji[]; all: LocalCustomEmoji[] } | null = null;
-const EMOJI_CACHE_TTL_MS = 60_000;
+// The list is read on every status/account serialization and changes only when
+// an admin edits it: a longer TTL costs a few minutes of staleness and saves
+// thousands of full-table reads a day (the cache is per isolate).
+const EMOJI_CACHE_TTL_MS = 300_000;
 
 export function invalidateCustomEmojiCache(): void {
   emojiCache = null;
@@ -5713,15 +5721,21 @@ export async function resetMediaCacheReferences(
         )
         .bind(cachedJson),
       // Before `preview_cards.image_cache_url` is cleared, so the join still
-      // finds the row the snapshot was built from.
+      // finds the row the snapshot was built from. The CROSS JOIN + INDEXED BY
+      // force the order (the cache list first, then the `card_id` probe): left
+      // to the planner this scanned the whole card index of `objects` — 402M
+      // rows read in production analytics.
       db
         .prepare(
           `UPDATE objects SET card_json = json_set(card_json, '$.image',
              (SELECT pc.image_url FROM preview_cards pc WHERE pc.id = objects.card_id))
            WHERE card_json IS NOT NULL AND rowid IN (
-             SELECT o.rowid FROM objects o
-             JOIN preview_cards pc ON pc.id = o.card_id
+             SELECT o.rowid
+             FROM preview_cards pc
+             CROSS JOIN objects o INDEXED BY idx_objects_card_id
              WHERE pc.image_cache_url IN (SELECT value FROM json_each(?))
+               AND o.card_id IS NOT NULL
+               AND o.card_id = pc.id
              LIMIT 100)`
         )
         .bind(cachedJson),
@@ -5763,11 +5777,18 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
   ];
 
   // Cards are recent: skip the (expensive) objects scan on instances where no
-  // card image was ever cached.
-  const hasCards = await db
-    .prepare("SELECT 1 AS ok FROM preview_cards WHERE image_cache_url IS NOT NULL LIMIT 1")
-    .bind()
-    .first<{ ok: number }>();
+  // card image was ever cached, and once a pass has found nothing to repair
+  // (its own marker: the global one waits for the attachment cursor, so the
+  // card scan used to re-run on every throttled pass — 123 calls, 4.1M rows
+  // read, 26% of the database time).
+  const cardsDone = await getInstanceSetting(db, "media_cache_cards_repaired");
+  const hasCards = cardsDone
+    ? false
+    : await db
+      .prepare("SELECT 1 AS ok FROM preview_cards WHERE image_cache_url IS NOT NULL LIMIT 1")
+      .bind()
+      .first<{ ok: number }>()
+      .then((row) => Boolean(row?.ok));
   if (hasCards) {
     statements.push(
       db
@@ -5795,7 +5816,13 @@ export async function repairMediaCacheReferences(db: D1Database, limit = 200): P
   }
 
   const results = await db.batch(statements);
+  const cardsRepaired = Number(results[results.length - 2]?.meta?.changes ?? 0);
   let repaired = results.reduce((sum, r) => sum + Number(r.meta?.changes ?? 0), 0);
+  // A card pass that found nothing means every snapshot already points at a
+  // live entry: never scan the objects index for it again.
+  if (hasCards && cardsRepaired === 0) {
+    await setInstanceSetting(db, "media_cache_cards_repaired", "1");
+  }
 
   // The attachment pass cannot be indexed (`url LIKE '%/api/media/cache/%'`),
   // so walk the table in rowid windows: each window scans a bounded slice and

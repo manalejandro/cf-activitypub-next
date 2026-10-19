@@ -60,8 +60,10 @@ describe("GET /api/v1/tags/search", () => {
     expect(body[0].name).toBe("newspaper");
     expect(body[0].url).toBe("https://local.example/tags/newspaper");
     expect(Array.isArray(body[0].history)).toBe(true);
-    // Leading `#` and case are trimmed before the LIKE.
-    expect(mocks.bind).toHaveBeenCalledWith("new%", expect.any(String), 5);
+    // Leading `#` and case are trimmed before the GLOB (tags are stored
+    // lowercased; GLOB is case-sensitive, which is what makes the prefix an
+    // index range instead of a full scan).
+    expect(mocks.bind).toHaveBeenCalledWith("new*", expect.any(String), 5);
   });
 
   it("returns an empty list without a query", async () => {
