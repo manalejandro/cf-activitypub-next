@@ -109,6 +109,10 @@ interface Relationship {
   blocking: boolean;
   muting?: boolean;
   followed_by?: boolean;
+  /** The private note this account keeps about the target (Mastodon's Relationship#note). */
+  note?: string;
+  /** Recommended ("featured") on this account's profile (Mastodon's Relationship#endorsed). */
+  endorsed?: boolean;
 }
 
 interface Collection {
@@ -308,6 +312,9 @@ function RemoteProfileInner() {
     if (!res.ok) return;
     const [rel] = await res.json() as Relationship[];
     setRelationship(rel ?? null);
+    // The star must reflect what the account already recommended: it lives in
+    // the relationship, not in local state.
+    setEndorsed(Boolean(rel?.endorsed));
   }
 
   useEffect(() => {
@@ -419,16 +426,32 @@ function RemoteProfileInner() {
     setEndorseBusy(false);
   }
 
+  // The note lives in the relationship (`note`), not in the account: opening
+  // the modal has to prefill it or a saved note looks lost the moment the
+  // modal is reopened.
+  function openNote() {
+    setNoteText(relationship?.note ?? "");
+    setNoteOpen(true);
+  }
+
   async function handleSaveNote() {
     if (!token || !account || noteBusy) return;
     setNoteBusy(true);
-    await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/note`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ comment: noteText }),
-    });
-    setNoteOpen(false);
-    setNoteBusy(false);
+    try {
+      const res = await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/note`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: noteText }),
+      });
+      // The endpoint answers with the updated relationship: keep it so the
+      // profile shows the note and reopening the modal prefills it.
+      if (res.ok) {
+        setRelationship(await res.json() as Relationship);
+        setNoteOpen(false);
+      }
+    } finally {
+      setNoteBusy(false);
+    }
   }
 
   async function loadMorePosts() {
@@ -680,7 +703,7 @@ function RemoteProfileInner() {
                 <button
                   className="btn btn-ghost btn-sm btn-hide-mobile"
                   style={{ border: "1px solid var(--border)" }}
-                  onClick={() => setNoteOpen(true)}
+                  onClick={() => openNote()}
                   title={t.profile_note}
                 >
                   <Icon name="pencil" />
@@ -778,7 +801,7 @@ function RemoteProfileInner() {
                       <button
                         className="btn btn-ghost"
                         style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
-                        onClick={() => { setProfileMenuOpen(false); setNoteOpen(true); }}
+                        onClick={() => { setProfileMenuOpen(false); openNote(); }}
                       >
                         <Icon name="pencil" /> {t.profile_note}
                       </button>
@@ -896,6 +919,18 @@ function RemoteProfileInner() {
           {account.note && (
             <div style={{ fontSize: "0.9rem", lineHeight: 1.55, marginBottom: "0.75rem", whiteSpace: "pre-line" }}>
               <RichText html={account.note} />
+            </div>
+          )}
+
+          {relationship?.note && (
+            <div
+              style={{
+                marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                fontSize: "0.85rem", color: "var(--text-secondary)", whiteSpace: "pre-wrap",
+              }}
+            >
+              <Icon name="pencil" size="0.75rem" /> {relationship.note}
             </div>
           )}
 

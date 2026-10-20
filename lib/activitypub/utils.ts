@@ -607,6 +607,48 @@ export function buildActorDelete(actorId: string): APActivity {
   };
 }
 
+/**
+ * A featured hashtag as Mastodon's `ActivityPub::HashtagSerializer` sends it.
+ */
+export interface APFeaturedTagObject {
+  type: "Hashtag";
+  href: string;
+  name: string;
+}
+
+/**
+ * Mastodon's `ActivityPub::AddSerializer`/`RemoveSerializer`: the activity that
+ * puts an item in (or takes it out of) the actor's **featured collection** — a
+ * pinned status (`object` = the status IRI) or a featured hashtag (`object` = a
+ * Hashtag document). Mastodon serializes only type/actor/object/target (no
+ * `id`) and delivers it to the author's followers, which are the delivery
+ * target, not a `to`/`cc` audience. `target` is the collection the actor
+ * advertises in its document (`featured` for statuses, `featuredTags` for
+ * hashtags).
+ */
+export interface APFeaturedActivity {
+  "@context": unknown;
+  type: "Add" | "Remove";
+  actor: string;
+  object: string | APFeaturedTagObject;
+  target: string;
+}
+
+export function buildFeaturedActivity(
+  type: "Add" | "Remove",
+  actorId: string,
+  object: string | APFeaturedTagObject,
+  collection: "featured" | "tags" = "featured"
+): APFeaturedActivity {
+  return {
+    "@context": DEFAULT_CONTEXT,
+    type,
+    actor: actorId,
+    object,
+    target: `${actorId}/collections/${collection}`,
+  };
+}
+
 export function buildDelete(baseUrl: string, actorId: string, objectId: string, id: string): APActivity {
   // Mastodon's DeleteNoteSerializer: id/type/actor/to + a Tombstone object.
   return {

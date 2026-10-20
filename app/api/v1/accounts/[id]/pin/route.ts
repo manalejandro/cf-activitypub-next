@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getActorById, getAllCustomEmojis, getActorFields } from "@/lib/db";
+import { getActorById, getAllCustomEmojis, getActorFields, getFollow } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { env } from "cloudflare:workers";
 
@@ -16,6 +16,13 @@ export async function POST(
   if (!me) return unauthorized();
   const target = await getActorById(env.DB, rawId);
   if (!target) return notFound();
+  // Mastodon's AccountPin validates the follow relationship before featuring an
+  // account on your profile (a recommendation of an account you do not follow
+  // is not one). Featuring an account is local-only: it is never federated.
+  const follow = await getFollow(env.DB, me.id, rawId);
+  if (follow?.state !== "accepted") {
+    return json({ error: "Validation failed: You must be following the account to feature it" }, 422);
+  }
   const eid = crypto.randomUUID();
   await env.DB
     .prepare("INSERT OR IGNORE INTO endorsements (id, actor_id, target_id) VALUES (?, ?, ?)")

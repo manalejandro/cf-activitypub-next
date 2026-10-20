@@ -6,6 +6,7 @@ import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { resolveLimits } from "@/lib/constants";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import { deliverFeaturedChange } from "@/lib/activitypub/featured";
 import { env } from "cloudflare:workers";
 
 export async function POST(
@@ -51,6 +52,9 @@ export async function POST(
       .prepare("INSERT INTO status_pins (id, actor_id, status_id) VALUES (?, ?, ?)")
       .bind(pinId, me.id, id)
       .run();
+    // Mastodon federates the pin: Add{object: status, target: featured
+    // collection} to the followers, through the delivery queue.
+    await deliverFeaturedChange(env, me, obj.id, "Add");
   }
   const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
   const viewerState = await loadViewerStatusState(env.DB, me.id, obj);

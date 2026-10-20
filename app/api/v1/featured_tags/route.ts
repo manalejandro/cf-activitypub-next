@@ -3,6 +3,8 @@ import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getFeaturedTags, createFeaturedTag } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
+import { deliverFeaturedChange, featuredTagObject } from "@/lib/activitypub/featured";
+import { getBaseUrl } from "@/lib/cf";
 import { resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
@@ -56,6 +58,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const id = generateId();
   await createFeaturedTag(env.DB, id, actor.id, tag.toLowerCase());
+  // Mastodon federates a featured hashtag with an Add whose object is a
+  // Hashtag document, targeting the `tags` collection.
+  await deliverFeaturedChange(env, actor, featuredTagObject(getBaseUrl(env), tag.toLowerCase()), "Add", "tags");
 
   return json({
     id,

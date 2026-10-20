@@ -4,6 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getObjectById, getActorById } from "@/lib/db";
 import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
+import { deliverFeaturedChange } from "@/lib/activitypub/featured";
 import { env } from "cloudflare:workers";
 
 export async function POST(
@@ -19,10 +20,12 @@ export async function POST(
   if (!obj) return notFound();
   const author = await getActorById(env.DB, obj.actorId);
   if (!author) return notFound();
-  await env.DB
+  const removed = await env.DB
     .prepare("DELETE FROM status_pins WHERE actor_id = ? AND status_id = ?")
     .bind(me.id, id)
     .run();
+  // Only a real unpin federates a Remove (Mastodon does the same).
+  if ((removed.meta?.changes ?? 0) > 0) await deliverFeaturedChange(env, me, obj.id, "Remove");
   const viewerState = await loadViewerStatusState(env.DB, me.id, obj);
   return json(await serializeStatusForStream(env.DB, obj, author, domain, {
     ...viewerState,

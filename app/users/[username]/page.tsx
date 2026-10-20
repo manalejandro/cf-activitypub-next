@@ -146,6 +146,10 @@ interface Relationship {
   blocked_by?: boolean;
   muting?: boolean;
   followed_by?: boolean;
+  /** The private note this account keeps about the target (Mastodon's Relationship#note). */
+  note?: string;
+  /** Recommended ("featured") on this account's profile (Mastodon's Relationship#endorsed). */
+  endorsed?: boolean;
 }
 
 interface Collection {
@@ -381,6 +385,9 @@ export default function ProfilePage() {
     if (!res.ok) return;
     const [rel] = await res.json() as Relationship[];
     setRelationship(rel ?? null);
+    // The star must reflect what the account already recommended: it lives in
+    // the relationship, not in local state.
+    setEndorsed(Boolean(rel?.endorsed));
   }
 
   // Reset all user-specific state when navigating between profiles
@@ -793,16 +800,32 @@ export default function ProfilePage() {
     setEndorseBusy(false);
   }
 
+  // The note lives in the relationship (`note`), not in the account: opening
+  // the modal has to prefill it or a saved note looks lost the moment the
+  // modal is reopened.
+  function openNote() {
+    setNoteText(relationship?.note ?? "");
+    setNoteOpen(true);
+  }
+
   async function handleSaveNote() {
     if (!token || !account || noteBusy) return;
     setNoteBusy(true);
-    await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/note`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ comment: noteText }),
-    });
-    setNoteOpen(false);
-    setNoteBusy(false);
+    try {
+      const res = await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}/note`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: noteText }),
+      });
+      // The endpoint answers with the updated relationship: keep it so the
+      // profile shows the note and reopening the modal prefills it.
+      if (res.ok) {
+        setRelationship(await res.json() as Relationship);
+        setNoteOpen(false);
+      }
+    } finally {
+      setNoteBusy(false);
+    }
   }
 
   const isOwnProfile = me && account && me.id === account.id;
@@ -966,14 +989,14 @@ export default function ProfilePage() {
                       style={{ border: "1px solid var(--border)", color: endorsed ? "var(--accent)" : "var(--text-muted)" }}
                       onClick={() => void toggleEndorse()}
                       disabled={endorseBusy}
-                      title={endorsed ? "Dejar de recomendar" : "Recomendar"}
+                      title={endorsed ? t.profile_unendorse : t.profile_endorse}
                     >
                       {endorseBusy ? "…" : <Icon name={endorsed ? "star" : "star-o"} color={endorsed ? "var(--accent)" : undefined} />}
                     </button>
                     <button
                       className="btn btn-ghost btn-sm btn-hide-mobile"
                       style={{ border: "1px solid var(--border)" }}
-                      onClick={() => setNoteOpen(true)}
+                      onClick={() => openNote()}
                       title={t.ap_type_note}
                     >
                       <Icon name="pencil" />
@@ -1066,12 +1089,12 @@ export default function ProfilePage() {
                             onClick={() => { setProfileMenuOpen(false); void toggleEndorse(); }}
                             disabled={endorseBusy}
                           >
-                            <Icon name={endorsed ? "star" : "star-o"} />{endorsed ? ` ${"Dejar de recomendar"}` : ` ${"Recomendar"}`}
+                            <Icon name={endorsed ? "star" : "star-o"} />{endorsed ? ` ${t.profile_unendorse}` : ` ${t.profile_endorse}`}
                           </button>
                           <button
                             className="btn btn-ghost"
                             style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
-                            onClick={() => { setProfileMenuOpen(false); setNoteOpen(true); }}
+                            onClick={() => { setProfileMenuOpen(false); openNote(); }}
                           >
                             <Icon name="pencil" /> {t.ap_type_note}
                           </button>
@@ -1227,6 +1250,18 @@ export default function ProfilePage() {
                   <RichText html={account.note} />
                 </div>
               )}
+
+          {relationship?.note && (
+            <div
+              style={{
+                marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                background: "var(--bg-elevated)", border: "1px solid var(--border)",
+                fontSize: "0.85rem", color: "var(--text-secondary)", whiteSpace: "pre-wrap",
+              }}
+            >
+              <Icon name="pencil" size="0.75rem" /> {relationship.note}
+            </div>
+          )}
 
               {/* Profile fields (Mastodon-style key/value pairs) */}
               {account.fields && account.fields.length > 0 && (

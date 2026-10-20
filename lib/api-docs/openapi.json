@@ -2286,7 +2286,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MastodonAccount"
+                  "$ref": "#/components/schemas/MastodonRelationship"
                 }
               }
             }
@@ -14132,13 +14132,8 @@
                     "type": {
                       "type": "string"
                     },
-                    "totalItems": {
-                      "type": "number"
-                    },
-                    "orderedItems": {
-                      "type": "array",
-                      "items": {}
-                    }
+                    "totalItems": {},
+                    "orderedItems": {}
                   }
                 }
               }
@@ -14234,13 +14229,8 @@
                     "type": {
                       "type": "string"
                     },
-                    "totalItems": {
-                      "type": "number"
-                    },
-                    "items": {
-                      "type": "array",
-                      "items": {}
-                    }
+                    "totalItems": {},
+                    "items": {}
                   }
                 }
               }
