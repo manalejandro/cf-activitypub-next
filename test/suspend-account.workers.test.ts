@@ -16,6 +16,8 @@ import { GET as ACTOR_DOCUMENT } from "@/app/api/users/[username]/route";
 import { GET as STATUSES } from "@/app/api/v1/accounts/[id]/statuses/route";
 import { GET as STATUS } from "@/app/api/v1/statuses/[id]/route";
 import { suspendAccount } from "@/lib/moderation/actions";
+import { createNotification, getNotifications, getUnreadNotificationCount } from "@/lib/db";
+import type { LocalNotification } from "@/lib/types";
 
 const db = env.DB;
 // The federation builds actor ids from INSTANCE_URL (wrangler.toml), so the
@@ -59,6 +61,17 @@ async function seedToken(actorId: string): Promise<void> {
       "INSERT INTO oauth_tokens (id, actor_id, app_id, access_token, scope, created_at) VALUES ('t1', ?, NULL, ?, 'read write', datetime('now'))"
     )
     .bind(actorId, TOKEN)
+    .run();
+}
+
+/** A mention from `SPAMMER` waiting in the local admin's notifications. */
+async function seedNotification(): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO notifications (id, type, account_id, target_account_id, object_id, is_read, filtered, created_at)
+       VALUES ('n1', 'mention', ?, ?, ?, 0, 0, '2026-10-01T10:00:00Z')`
+    )
+    .bind(SPAMMER, ADMIN, `${BASE}/objects/1`)
     .run();
 }
 
@@ -107,6 +120,57 @@ beforeEach(async () => {
 });
 
 describe("suspending an account", () => {
+  it("stores a notification from a suspended account but never delivers it", async () => {
+    await seedStatus();
+    await adminCall(SUSPEND, SPAMMER);
+
+    // A stale activity from its server: the row is kept (reinstating the
+    // account restores it) but nothing may interrupt the recipient — no stream
+    // event, no push, no email.
+    const notif: LocalNotification = {
+      id: "n-late",
+      type: "mention",
+      accountId: SPAMMER,
+      targetAccountId: ADMIN,
+      objectId: `${BASE}/objects/1`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    expect(await createNotification(db, notif)).toBe(false);
+    expect(await getNotifications(db, ADMIN)).toHaveLength(0);
+    const stored = await db
+      .prepare("SELECT COUNT(*) AS n FROM notifications WHERE id = 'n-late'")
+      .first<{ n: number }>();
+    expect(stored?.n).toBe(1);
+
+    await adminCall(UNSUSPEND, SPAMMER);
+    expect(await getNotifications(db, ADMIN)).toHaveLength(1);
+  });
+
+  it("stops serving the notifications it sent (and brings them back on reinstatement)", async () => {
+    await seedStatus();
+    await seedNotification();
+
+    // Before: the mention is in the list and counts as unread.
+    expect(await getNotifications(db, ADMIN)).toHaveLength(1);
+    expect(await getUnreadNotificationCount(db, ADMIN)).toBe(1);
+
+    await adminCall(SUSPEND, SPAMMER);
+
+    // A suspension is "removed publicly": its mentions are not served either —
+    // neither the list nor the badge, which must agree.
+    expect(await getNotifications(db, ADMIN)).toHaveLength(0);
+    expect(await getUnreadNotificationCount(db, ADMIN)).toBe(0);
+    // The row is only hidden, never deleted.
+    const stored = await db.prepare("SELECT COUNT(*) AS n FROM notifications").first<{ n: number }>();
+    expect(stored?.n).toBe(1);
+
+    await adminCall(UNSUSPEND, SPAMMER);
+
+    expect(await getNotifications(db, ADMIN)).toHaveLength(1);
+    expect(await getUnreadNotificationCount(db, ADMIN)).toBe(1);
+  });
+
   it("disconnects it from the fediverse: an Update{Actor} with suspended: true", async () => {
     const res = await adminCall(SUSPEND, SPAMMER);
     expect(res.status).toBe(200);

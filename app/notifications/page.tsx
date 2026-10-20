@@ -131,6 +131,14 @@ export default function NotificationsPage() {
   // single notification instead added only the newest one — a burst left the
   // badge counting more than the list showed until a reload.
   useTimelineStream("user:notification", (event) => {
+    // A suspension hides the account's notifications server-side; a client with
+    // the list already open keeps rendering them until it refetches. The event
+    // arrives on this channel for every account that had notifications from the
+    // suspended one (broadcastAccountUpdate), so the list empties immediately.
+    if (event === "account.updated") {
+      void catchUp();
+      return;
+    }
     if (event !== "notification") return;
     void catchUp();
   }, {

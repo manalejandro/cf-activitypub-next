@@ -54,6 +54,8 @@ interface Account {
   created_at: string;
   /** Feeds the account's own server serves, when it does. */
   feeds?: { rss: string | null; atom: string | null } | null;
+  /** Suspended on this instance: only the handle survives (no note, no avatar). */
+  suspended?: boolean;
   fields?: MastodonField[];
   roles?: { id: string; name: string; color: string }[];
   supports_calls?: boolean;
@@ -627,6 +629,9 @@ function RemoteProfileInner() {
             {/* Follow / Unfollow / Block */}
             {token && !isOwnAccount && (
               <>
+                {/* A suspended account cannot be followed (an existing follow
+                    keeps its unfollow, like Mastodon) nor messaged or called. */}
+                {(!account.suspended || isFollowing) && (
                 <button
                   className={isFollowing || isRequested ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"}
                   onClick={() => void handleFollow()}
@@ -634,6 +639,7 @@ function RemoteProfileInner() {
                 >
                   {followBusy ? "…" : isFollowing ? t.account_following : isRequested ? t.account_requested : t.account_follow}
                 </button>
+                )}
                 <button
                   className="btn btn-ghost btn-sm btn-hide-mobile"
                   style={{ border: "1px solid var(--border)", color: relationship?.blocking ? "var(--danger)" : "var(--text-muted)" }}
@@ -652,7 +658,7 @@ function RemoteProfileInner() {
                 >
                   {muteBusy ? "…" : (<><Icon name="microphone-slash" color={relationship?.muting ? "var(--danger)" : undefined} />{relationship?.muting ? ` ${t.status_muted}` : ""}</>)}
                 </button>
-                {!relationship?.blocking && (
+                {!account.suspended && !relationship?.blocking && (
                   <button
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
@@ -679,7 +685,7 @@ function RemoteProfileInner() {
                 >
                   <Icon name="pencil" />
                 </button>
-                {account.supports_calls && (<>
+                {!account.suspended && account.supports_calls && (<>
                   <button
                     className="btn btn-ghost btn-sm btn-hide-mobile"
                     style={{ border: "1px solid var(--border)" }}
@@ -776,7 +782,7 @@ function RemoteProfileInner() {
                       >
                         <Icon name="pencil" /> {t.profile_note}
                       </button>
-                      {account.supports_calls && (<>
+                      {!account.suspended && account.supports_calls && (<>
                         <button
                           className="btn btn-ghost"
                           style={{ width: "100%", justifyContent: "flex-start", gap: "0.5rem", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
@@ -873,6 +879,20 @@ function RemoteProfileInner() {
           </div>
           <div style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>@{account.acct}</div>
 
+          {account.suspended && (
+            <div
+              style={{
+                marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)",
+                fontSize: "0.85rem", color: "var(--text-secondary)",
+              }}
+            >
+              <strong>{t.account_suspended_title}</strong>
+              {" · "}
+              {t.account_suspended_desc}
+            </div>
+          )}
+
           {account.note && (
             <div style={{ fontSize: "0.9rem", lineHeight: 1.55, marginBottom: "0.75rem", whiteSpace: "pre-line" }}>
               <RichText html={account.note} />
@@ -909,6 +929,9 @@ function RemoteProfileInner() {
           </div>
         </div>
 
+        {/* A suspended account's content is not served: the notice above is
+            the whole profile. */}
+        {!account.suspended && (<>
         {/* Tabs */}
         <Tabs
           tabs={[
@@ -1054,6 +1077,7 @@ function RemoteProfileInner() {
             ))
           )
         )}
+        </>)}
     </PageLayout>
 
       {/* Avatar lightbox */}

@@ -235,6 +235,20 @@ export async function broadcastAccountUpdate(
     }
   } catch { /* ignore */ }
 
+  // An open notifications list keeps rendering them until it knows: push to the
+  // `notification:<username>` channels of the local accounts that received a
+  // notification from this one (they are not necessarily followers, so the
+  // home fan-out above does not reach them).
+  try {
+    const recipients = await db
+      .prepare("SELECT DISTINCT target_account_id AS id FROM notifications WHERE account_id = ?")
+      .bind(opts.actorId)
+      .all<{ id: string }>();
+    for (const row of recipients.results) {
+      tasks.push(broadcastToChannel(ns, `notification:${actorUsername(row.id)}`, "account.updated", payload));
+    }
+  } catch { /* ignore */ }
+
   await Promise.allSettled(tasks);
 }
 

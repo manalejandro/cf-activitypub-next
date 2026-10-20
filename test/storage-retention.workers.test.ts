@@ -74,6 +74,24 @@ async function seedActivity(id: string, published: string, actorId = REMOTE): Pr
     .run();
 }
 
+/**
+ * The bindings object is writable in the test runtime, but an operator running
+ * the suite on a configured instance has DB_RETENTION_* in wrangler.toml: the
+ * "disabled" path is exercised by clearing them and restoring them afterwards.
+ */
+function clearRetentionBindings(): () => void {
+  const bindings = env as unknown as Record<string, string>;
+  const saved = { days: bindings.DB_RETENTION_DAYS, max: bindings.DB_RETENTION_MAX_BYTES };
+  delete bindings.DB_RETENTION_DAYS;
+  delete bindings.DB_RETENTION_MAX_BYTES;
+  return () => {
+    if (saved.days === undefined) delete bindings.DB_RETENTION_DAYS;
+    else bindings.DB_RETENTION_DAYS = saved.days;
+    if (saved.max === undefined) delete bindings.DB_RETENTION_MAX_BYTES;
+    else bindings.DB_RETENTION_MAX_BYTES = saved.max;
+  };
+}
+
 async function count(sql: string, ...binds: unknown[]): Promise<number> {
   const row = await db.prepare(sql).bind(...binds).first<{ n: number }>();
   return Number(row?.n ?? 0);
@@ -278,6 +296,7 @@ describe("storage retention", () => {
   });
 
   it("serves the admin endpoint and audits a manual pass", async () => {
+    const restoreBindings = clearRetentionBindings();
     await seedObject({ id: "https://remote.example/objects/old" });
     await seedActivity("act-old", OLD);
     await db.prepare("UPDATE actors SET role = 'admin' WHERE id = ?").bind(LOCAL).run();
@@ -327,7 +346,7 @@ describe("storage retention", () => {
       .prepare("SELECT action, target_type FROM moderation_log WHERE action = 'storage_pruned'")
       .first<{ action: string; target_type: string }>();
     expect(logged).toMatchObject({ action: "storage_pruned", target_type: "instance" });
-    delete bindings.DB_RETENTION_DAYS;
+    restoreBindings();
   });
 
   it("reports its estimate and last run for the admin panel", async () => {
