@@ -13729,6 +13729,56 @@
         }
       }
     },
+    "/md/statuses/{id}": {
+      "get": {
+        "summary": "Get /md/statuses/{id}",
+        "operationId": "get_md_statuses_Byid",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
+    "/md/users/{username}": {
+      "get": {
+        "summary": "Get /md/users/{username}",
+        "operationId": "get_md_users_Byusername",
+        "tags": [
+          "Misc"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/nodeinfo/{version}": {
       "get": {
         "summary": "Get /nodeinfo/{version}",
