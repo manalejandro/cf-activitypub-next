@@ -733,6 +733,7 @@
   "admin_storage_desc": "Сколько занимает база данных и что делает хранение федеративной истории (переменная окружения).",
   "admin_storage_database": "База данных",
   "admin_storage_prunable": "Федеративная история",
+  "admin_storage_measuring": "Подсчёт…",
   "admin_storage_retention": "Хранение",
   "admin_storage_days": "{days} дней",
   "admin_storage_no_days": "Без ограничения по возрасту",

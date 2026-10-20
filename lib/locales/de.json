@@ -733,6 +733,7 @@
   "admin_storage_desc": "Wie viel die Datenbank belegt und was die Aufbewahrung der föderierten Historie (Umgebungsvariable) tut.",
   "admin_storage_database": "Datenbank",
   "admin_storage_prunable": "Föderierte Historie",
+  "admin_storage_measuring": "Zähle…",
   "admin_storage_retention": "Aufbewahrung",
   "admin_storage_days": "{days} Tage",
   "admin_storage_no_days": "Kein Alterslimit",

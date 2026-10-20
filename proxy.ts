@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { externalProfileUrl } from "@/lib/remote-link";
+import { acceptsMarkdown } from "@/lib/markdown-agents";
 
 // CORS headers for all API routes (ActivityPub federation + Mastodon API)
 const CORS_HEADERS: Record<string, string> = {
@@ -97,6 +98,26 @@ export function proxy(request: NextRequest) {
     Object.entries(CORS_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
     Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
     return rewriteResponse;
+  }
+
+  // Markdown for agents: a client that prefers `text/markdown` gets the
+  // document built from our data. The HTML pages are client-rendered shells
+  // (the status/profile content is fetched from the API in the browser), so
+  // converting the shell — what an edge HTML→Markdown converter does — would
+  // return nothing; the rewrites below land on app/md/** instead.
+  if (method === "GET" && acceptsMarkdown(request.headers.get("accept"))) {
+    const mdStatus = pathname.match(/^\/statuses\/([^/]+)$/);
+    const mdUser = pathname.match(/^\/users\/([^/]+)$/);
+    const mdAt = pathname.match(/^\/@([^/@.]+)$/);
+    const mdUsername = mdStatus ? null : mdUser ? mdUser[1] : mdAt ? mdAt[1] : null;
+    // `/users/remote` is the (authenticated) remote-profile page, not an account.
+    if (mdStatus || (mdUsername && mdUsername !== "remote")) {
+      const url = request.nextUrl.clone();
+      url.pathname = mdStatus ? `/md/statuses/${mdStatus[1]}` : `/md/users/${mdUsername}`;
+      const rewriteResponse = NextResponse.rewrite(url);
+      Object.entries(SECURITY_HEADERS).forEach(([k, v]) => rewriteResponse.headers.set(k, v));
+      return rewriteResponse;
+    }
   }
 
   // Profile feeds, Mastodon's /@username.rss and /@username.atom (its RSS

@@ -733,6 +733,7 @@
   "admin_storage_desc": "データベースの使用量と、連合履歴の保持(環境変数)の動作です。",
   "admin_storage_database": "データベース",
   "admin_storage_prunable": "連合履歴",
+  "admin_storage_measuring": "集計中…",
   "admin_storage_retention": "保持",
   "admin_storage_days": "{days} 日",
   "admin_storage_no_days": "期間制限なし",

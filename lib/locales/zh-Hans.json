@@ -733,6 +733,7 @@
   "admin_storage_desc": "数据库占用多少，以及联邦历史保留（环境变量）会做什么。",
   "admin_storage_database": "数据库",
   "admin_storage_prunable": "联邦历史",
+  "admin_storage_measuring": "统计中…",
   "admin_storage_retention": "保留",
   "admin_storage_days": "{days} 天",
   "admin_storage_no_days": "不限时间",

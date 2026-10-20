@@ -13,7 +13,6 @@ import {
   storageRetentionLimitsFrom,
 } from "@/lib/storage-retention";
 import { resolveLimits } from "@/lib/constants";
-import { getInstanceSetting } from "@/lib/db";
 import { GET as getStorage, POST as postStorage } from "@/app/api/v1/admin/storage/route";
 
 const db = env.DB;
@@ -107,17 +106,50 @@ beforeEach(async () => {
 });
 
 describe("storage retention", () => {
-  it("does nothing while both knobs are 0 (the default)", async () => {
+  it("deletes nothing while both knobs are 0 (the default), but keeps the size estimate", async () => {
     await seedObject({ id: "https://remote.example/objects/old" });
     await seedActivity("act-1", OLD);
 
     const run = await maintainStorageRetention(env, DEFAULT_STORAGE_RETENTION, NOW);
 
     expect(run.enabled).toBe(false);
+    expect(run.objectsDeleted).toBe(0);
+    expect(run.activitiesDeleted).toBe(0);
     expect(await count("SELECT COUNT(*) AS n FROM objects")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM activities")).toBe(1);
-    // Nothing is measured either: a disabled instance never walks the tables.
-    expect(await getInstanceSetting(db, "db:size")).toBeNull();
+
+    // The admin panel shows what the instance stores even with retention off,
+    // so the bounded walk runs either way — and this pass completed.
+    const stats = await readStorageRetentionStats(env);
+    expect(stats.estimate.bytes).toBeGreaterThan(0);
+    expect(stats.estimate.measuredAt).toBe(NOW.toISOString());
+    expect(stats.estimate.measuring).toBe(false);
+  });
+
+  it("publishes the estimate as soon as each table has been walked once", async () => {
+    // Different sizes on purpose: the old walk only published when both windows
+    // happened to be short in the same call, so a busy instance never got an
+    // estimate (the table that finished restarted from rowid 0 while the other
+    // was still mid-scan, and its totals piled up).
+    for (let i = 0; i < 3; i++) {
+      await seedObject({ id: `https://remote.example/objects/w${i}`, raw: "a".repeat(900) });
+    }
+    for (let i = 0; i < 5; i++) {
+      await seedActivity(`act-w${i}`, OLD, REMOTE);
+      await db.prepare("UPDATE activities SET raw = ? WHERE id = ?").bind("b".repeat(900), `act-w${i}`).run();
+    }
+
+    let estimate = await measureStoredPayload(env, 2, NOW);
+    for (let i = 0; i < 10 && !estimate.completed; i++) {
+      estimate = await measureStoredPayload(env, 2, NOW);
+    }
+
+    expect(estimate.completed).toBe(true);
+    // 3 objects + 5 activities of ~900 bytes each: counted once each.
+    expect(estimate.bytes).toBeGreaterThan(7000);
+    expect(estimate.bytes).toBeLessThan(7500);
+    expect(estimate.rows).toBe(8);
+    expect(estimate.measuring).toBe(false);
   });
 
   it("is off unless the operator sets an environment variable", () => {

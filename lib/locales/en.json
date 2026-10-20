@@ -733,6 +733,7 @@
   "admin_storage_desc": "How much the database holds and what the federated-history retention (environment variable) does.",
   "admin_storage_database": "Database",
   "admin_storage_prunable": "Federated history",
+  "admin_storage_measuring": "Counting…",
   "admin_storage_retention": "Retention",
   "admin_storage_days": "{days} days",
   "admin_storage_no_days": "No age limit",

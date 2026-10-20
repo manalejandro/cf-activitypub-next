@@ -24,7 +24,15 @@ interface ReportSummary {
 interface StorageSummary {
   enabled: boolean;
   config: { days: number; max_bytes: number; prune_batch: number; size_batch: number };
-  estimate: { bytes: number; rows: number; measuredAt: string | null; databaseBytes: number | null; effectiveBytes: number };
+  estimate: {
+    bytes: number;
+    rows: number;
+    measuredAt: string | null;
+    measuring: boolean;
+    pendingRows: number;
+    databaseBytes: number | null;
+    effectiveBytes: number;
+  };
   last_run: { at: string; objectsDeleted: number; activitiesDeleted: number; bytesFreed: number } | null;
 }
 
@@ -146,7 +154,13 @@ export default function AdminDashboard() {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_prunable}</span>
-              <strong>{formatBytes(storage.estimate.bytes)}</strong>
+              <strong>
+                {/* The walk is bounded per cron tick: until a pass finishes
+                    there is no number yet, and "0 B" would be a lie. */}
+                {storage.estimate.bytes > 0 || !storage.estimate.measuring
+                  ? formatBytes(storage.estimate.bytes)
+                  : `${t.admin_storage_measuring} (${storage.estimate.pendingRows.toLocaleString()})`}
+              </strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_retention}</span>

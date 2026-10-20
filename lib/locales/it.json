@@ -733,6 +733,7 @@
   "admin_storage_desc": "Quanto occupa il database e cosa fa la conservazione della cronologia federata (variabile d'ambiente).",
   "admin_storage_database": "Database",
   "admin_storage_prunable": "Cronologia federata",
+  "admin_storage_measuring": "Conteggio…",
   "admin_storage_retention": "Conservazione",
   "admin_storage_days": "{days} giorni",
   "admin_storage_no_days": "Nessun limite di età",

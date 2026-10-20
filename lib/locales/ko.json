@@ -733,6 +733,7 @@
   "admin_storage_desc": "데이터베이스 사용량과 연합 기록 보존(환경 변수)의 동작입니다.",
   "admin_storage_database": "데이터베이스",
   "admin_storage_prunable": "연합 기록",
+  "admin_storage_measuring": "집계 중…",
   "admin_storage_retention": "보존",
   "admin_storage_days": "{days}일",
   "admin_storage_no_days": "기간 제한 없음",

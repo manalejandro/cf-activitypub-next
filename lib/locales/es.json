@@ -733,6 +733,7 @@
   "admin_storage_desc": "Cuánto ocupa la base de datos y qué hace la retención de históricos federados (variable de entorno).",
   "admin_storage_database": "Base de datos",
   "admin_storage_prunable": "Histórico federado",
+  "admin_storage_measuring": "Contando…",
   "admin_storage_retention": "Retención",
   "admin_storage_days": "{days} días",
   "admin_storage_no_days": "Sin límite de antigüedad",

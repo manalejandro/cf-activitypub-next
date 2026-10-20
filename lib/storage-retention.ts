@@ -88,24 +88,32 @@ const PRUNABLE_VISIBILITIES = ["public", "unlisted"] as const;
 const NO_CUTOFF = "9999-12-31T00:00:00.000Z";
 
 interface RetentionState {
+  /** State format. 1 (no `version`) is the first walk, which could not finish. */
+  version: number;
   /** Last completed payload pass: bytes and rows of the prunable payload, and when it finished. */
   bytes: number;
   rows: number;
   at: string | null;
-  /** In-progress pass: rowid cursors and what has been counted so far. */
+  /** In-progress pass: rowid cursors, what has been counted and which tables finished. */
   objectsCursor: number;
   activitiesCursor: number;
   objectsTotal: number;
   activitiesTotal: number;
   objectsRows: number;
   activitiesRows: number;
+  objectsDone: boolean;
+  activitiesDone: boolean;
   /** Last database size the binding reported (0 when it does not report one). */
   lastSize: number;
   /** Bytes freed since the file last shrank (SQLite reuses those pages). */
   freedBytes: number;
 }
 
+/** Bumped when the walk's state shape changes (an older one is restarted). */
+const STATE_VERSION = 2;
+
 const EMPTY_STATE: RetentionState = {
+  version: STATE_VERSION,
   bytes: 0,
   rows: 0,
   at: null,
@@ -115,6 +123,8 @@ const EMPTY_STATE: RetentionState = {
   activitiesTotal: 0,
   objectsRows: 0,
   activitiesRows: 0,
+  objectsDone: false,
+  activitiesDone: false,
   lastSize: 0,
   freedBytes: 0,
 };
@@ -128,6 +138,10 @@ export interface StorageRetentionEstimate {
   measuredAt: string | null;
   /** True when this call walked the last window — the estimate is now fresh. */
   completed: boolean;
+  /** True while a pass is still walking (the first estimate is not ready yet). */
+  measuring: boolean;
+  /** Rows counted by the pass in progress. */
+  pendingRows: number;
   /** Database size reported by D1 (null when the runtime does not report one). */
   databaseBytes: number | null;
   /** What the byte budget is compared against: `size - freed`, or the payload estimate. */
@@ -196,7 +210,27 @@ async function readState(env: RetentionEnv): Promise<RetentionState> {
   const raw = await getInstanceSetting(env.DB, STATE_KEY).catch(() => null);
   if (!raw) return { ...EMPTY_STATE };
   try {
-    return { ...EMPTY_STATE, ...(JSON.parse(raw) as Partial<RetentionState>) };
+    const parsed = JSON.parse(raw) as Partial<RetentionState>;
+    const state = { ...EMPTY_STATE, ...parsed };
+    if (parsed.version !== STATE_VERSION) {
+      // The first walk could never publish (it restarted the table that had
+      // finished while the other was still running, so a pass never completed):
+      // keep the published numbers and the file-size bookkeeping, restart the
+      // pass.
+      return {
+        ...state,
+        version: STATE_VERSION,
+        objectsCursor: 0,
+        activitiesCursor: 0,
+        objectsTotal: 0,
+        activitiesTotal: 0,
+        objectsRows: 0,
+        activitiesRows: 0,
+        objectsDone: false,
+        activitiesDone: false,
+      };
+    }
+    return state;
   } catch {
     return { ...EMPTY_STATE };
   }
@@ -216,52 +250,64 @@ async function walkPayload(env: RetentionEnv, state: RetentionState, sizeBatch: 
   // `NOT INDEXED` pins the rowid scan: with the visibility filter present the
   // planner prefers idx_objects_vis_local_pub and then sorts every matching row
   // (half a million of them) to honour `ORDER BY rowid`.
-  const objectsWindow = await env.DB.prepare(
-    `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid,
-            COALESCE(SUM(LENGTH(raw) + COALESCE(LENGTH(content), 0) + COALESCE(LENGTH(card_json), 0)), 0) AS bytes
-       FROM (SELECT rowid, raw, content, card_json FROM objects NOT INDEXED
-              WHERE rowid > ? AND is_local = 0 AND visibility IN ('public', 'unlisted')
-              ORDER BY rowid LIMIT ?)`
-  )
-    .bind(state.objectsCursor, sizeBatch)
-    .all<{ n: number; last_rowid: number; bytes: number }>();
+  const objectsWindow = state.objectsDone
+    ? null
+    : await env.DB.prepare(
+        `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid,
+                COALESCE(SUM(LENGTH(raw) + COALESCE(LENGTH(content), 0) + COALESCE(LENGTH(card_json), 0)), 0) AS bytes
+           FROM (SELECT rowid, raw, content, card_json FROM objects NOT INDEXED
+                  WHERE rowid > ? AND is_local = 0 AND visibility IN ('public', 'unlisted')
+                  ORDER BY rowid LIMIT ?)`
+      )
+        .bind(state.objectsCursor, sizeBatch)
+        .all<{ n: number; last_rowid: number; bytes: number }>();
 
-  const reportedSize = Number(objectsWindow.meta?.size_after ?? 0);
+  const reportedSize = Number(objectsWindow?.meta?.size_after ?? 0);
   if (reportedSize > 0) {
     state.freedBytes = nextFreedBytes({ size: state.lastSize, freed: state.freedBytes }, reportedSize);
     state.lastSize = reportedSize;
   }
 
-  const objectsRow = objectsWindow.results?.[0];
-  let open = false;
-  state.objectsTotal += Number(objectsRow?.bytes ?? 0);
-  state.objectsRows += Number(objectsRow?.n ?? 0);
-  if (Number(objectsRow?.n ?? 0) < sizeBatch) {
-    state.objectsCursor = 0;
-  } else {
-    state.objectsCursor = Number(objectsRow?.last_rowid ?? 0);
-    open = true;
+  const objectsRow = objectsWindow?.results?.[0];
+  if (objectsWindow) {
+    state.objectsTotal += Number(objectsRow?.bytes ?? 0);
+    state.objectsRows += Number(objectsRow?.n ?? 0);
+    if (Number(objectsRow?.n ?? 0) < sizeBatch) {
+      state.objectsCursor = 0;
+      state.objectsDone = true;
+    } else {
+      state.objectsCursor = Number(objectsRow?.last_rowid ?? 0);
+    }
   }
 
-  const activitiesWindow = await env.DB.prepare(
-    `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid, COALESCE(SUM(LENGTH(raw)), 0) AS bytes
-       FROM (SELECT rowid, raw FROM activities NOT INDEXED WHERE rowid > ? ORDER BY rowid LIMIT ?)`
-  )
-    .bind(state.activitiesCursor, sizeBatch)
-    .all<{ n: number; last_rowid: number; bytes: number }>();
+  const activitiesWindow = state.activitiesDone
+    ? null
+    : await env.DB.prepare(
+        `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid, COALESCE(SUM(LENGTH(raw)), 0) AS bytes
+           FROM (SELECT rowid, raw FROM activities NOT INDEXED WHERE rowid > ? ORDER BY rowid LIMIT ?)`
+      )
+        .bind(state.activitiesCursor, sizeBatch)
+        .all<{ n: number; last_rowid: number; bytes: number }>();
 
-  const activitiesRow = activitiesWindow.results?.[0];
-  state.activitiesTotal += Number(activitiesRow?.bytes ?? 0);
-  state.activitiesRows += Number(activitiesRow?.n ?? 0);
-  if (Number(activitiesRow?.n ?? 0) < sizeBatch) {
-    state.activitiesCursor = 0;
-  } else {
-    state.activitiesCursor = Number(activitiesRow?.last_rowid ?? 0);
-    open = true;
+  const activitiesRow = activitiesWindow?.results?.[0];
+  if (activitiesWindow) {
+    state.activitiesTotal += Number(activitiesRow?.bytes ?? 0);
+    state.activitiesRows += Number(activitiesRow?.n ?? 0);
+    if (Number(activitiesRow?.n ?? 0) < sizeBatch) {
+      state.activitiesCursor = 0;
+      state.activitiesDone = true;
+    } else {
+      state.activitiesCursor = Number(activitiesRow?.last_rowid ?? 0);
+    }
   }
 
-  if (!open) {
-    // Both tables reached their end: publish the pass and start a fresh one.
+  // A table that finished keeps its totals (and its `done` flag) and is not
+  // walked again while the other one catches up; the pass publishes when both
+  // have been walked end to end. A single "is anything still open" flag never
+  // published: the table that finished restarted from rowid 0 while the other
+  // was mid-scan, so a pass only completed if both windows happened to be short
+  // in the same call (never, on a busy instance).
+  if (state.objectsDone && state.activitiesDone) {
     state.bytes = state.objectsTotal + state.activitiesTotal;
     state.rows = state.objectsRows + state.activitiesRows;
     state.at = now.toISOString();
@@ -269,6 +315,8 @@ async function walkPayload(env: RetentionEnv, state: RetentionState, sizeBatch: 
     state.activitiesTotal = 0;
     state.objectsRows = 0;
     state.activitiesRows = 0;
+    state.objectsDone = false;
+    state.activitiesDone = false;
   }
 }
 
@@ -278,6 +326,8 @@ function toEstimate(state: RetentionState, completed: boolean): StorageRetention
     rows: state.rows,
     measuredAt: state.at,
     completed,
+    measuring: state.at === null || state.objectsCursor > 0 || state.activitiesCursor > 0,
+    pendingRows: state.objectsRows + state.activitiesRows,
     databaseBytes: state.lastSize > 0 ? state.lastSize : null,
     effectiveBytes: effectiveBytes(state),
   };
@@ -408,7 +458,7 @@ export async function maintainStorageRetention(
   now: Date = new Date()
 ): Promise<StorageRetentionRun> {
   const run: StorageRetentionRun = {
-    enabled: false,
+    enabled: isStorageRetentionEnabled(limits),
     objectsDeleted: 0,
     activitiesDeleted: 0,
     bytesFreed: 0,
@@ -416,9 +466,10 @@ export async function maintainStorageRetention(
     databaseBytes: null,
     measured: false,
   };
-  if (!isStorageRetentionEnabled(limits)) return run;
-  run.enabled = true;
 
+  // The payload walk runs even with retention disabled: the admin panel shows
+  // the federated history it measures, and it is bounded (one window of each
+  // table per call). Only the deletions are gated on the variables.
   const state = await readState(env);
   const before = state.at;
   await walkPayload(env, state, limits.sizeBatch, now);
@@ -433,6 +484,11 @@ export async function maintainStorageRetention(
     state.freedBytes += pruned.bytes;
     run.effectiveBytes = effectiveBytes(state);
   };
+
+  if (!run.enabled) {
+    await writeState(env, state);
+    return run;
+  }
 
   if (limits.days > 0) {
     applyPruned(

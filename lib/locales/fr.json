@@ -733,6 +733,7 @@
   "admin_storage_desc": "Ce que la base de données occupe et ce que fait la rétention de l'historique fédéré (variable d'environnement).",
   "admin_storage_database": "Base de données",
   "admin_storage_prunable": "Historique fédéré",
+  "admin_storage_measuring": "Comptage…",
   "admin_storage_retention": "Rétention",
   "admin_storage_days": "{days} jours",
   "admin_storage_no_days": "Sans limite d'ancienneté",
