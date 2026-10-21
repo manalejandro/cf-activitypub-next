@@ -13,6 +13,15 @@ export interface TimelineCacheEntry<T> {
    * keeps the exact position even if new posts arrived meanwhile.
    */
   anchorId?: string | null;
+  /**
+   * Pagination cursor: the deepest status fetched **contiguously from the
+   * top**. A cached feed is a prefix, so this is usually its last item — but
+   * when a catch-up fetched newer statuses than the cache's newest, the
+   * statuses in between were never downloaded and pagination has to resume
+   * from the fetched page, not from the cached tail (otherwise the reader
+   * scrolls from the new posts straight into yesterday's, skipping the gap).
+   */
+  cursor?: string | null;
 }
 
 const TIMELINE_CACHE_TTL_MS = 5 * 60 * 1000;

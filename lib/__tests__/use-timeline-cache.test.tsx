@@ -1,104 +1,161 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, render, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
-import { clearAllTimelineCaches, getTimelineCache } from "@/lib/streaming/timeline-cache";
+import { clearAllTimelineCaches, getTimelineCache, setTimelineCache } from "@/lib/streaming/timeline-cache";
 
-// The cap travels from the instance limits (default 1000) into every cache
-// write; 2 makes the trimming observable with a handful of items.
-vi.mock("@/lib/limits-client", () => ({
-  useLimits: () => ({ timelineCacheMaxItems: 2 }),
-}));
-
-interface S {
+interface Item {
   id: string;
-  created_at?: string;
+  created_at: string;
 }
 
-const items = (count: number): S[] =>
-  Array.from({ length: count }, (_, i) => ({
-    id: `s${i}`,
-    created_at: `2026-01-${String(count - i).padStart(2, "0")}T00:00:00.000Z`,
-  }));
+const item = (id: number, minute = id): Item => ({
+  id: String(id),
+  created_at: `2026-10-20T${String(Math.floor(minute / 60) % 24).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}:00Z`,
+});
 
-describe("useTimelineCache", () => {
-  beforeEach(() => {
-    clearAllTimelineCaches();
-    window.scrollTo = vi.fn();
+const range = (from: number, to: number): Item[] =>
+  Array.from({ length: from - to + 1 }, (_, i) => item(from - i));
+
+let api: ReturnType<typeof useTimelineCache<Item>> | null = null;
+
+function Harness({ fetchPage }: { fetchPage: (maxId?: string) => Promise<{ items: Item[]; hasMore: boolean }> }) {
+  const hook = useTimelineCache<Item>("test-feed", fetchPage, { refetchOnMount: true });
+  useEffect(() => {
+    api = hook;
   });
+  return <div data-testid="count">{hook.statuses.length}</div>;
+}
 
-  it("caps what a feed writes into the cache", async () => {
-    const fetchPage = vi.fn(async () => ({ items: items(5), hasMore: false }));
-    const { result } = renderHook(() => useTimelineCache("home", fetchPage));
+beforeEach(() => {
+  clearAllTimelineCaches();
+  api = null;
+});
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    // The live feed keeps every fetched item (infinite scroll needs them)…
-    expect(result.current.statuses.map((s) => s.id)).toEqual(["s0", "s1", "s2", "s3", "s4"]);
-    // …but the cached copy is capped to the newest ones.
-    const cached = getTimelineCache<S>("home");
-    expect(cached?.items.map((s) => s.id)).toEqual(["s0", "s1"]);
-    expect(cached?.hasMore).toBe(false);
-  });
-
-  it("defers statuses a background refetch brings in while the reader is scrolled away", async () => {
-    const first = renderHook(() =>
-      useTimelineCache("home", async () => ({ items: items(3), hasMore: true }), { refetchOnMount: true })
-    );
-    await waitFor(() => expect(first.result.current.loading).toBe(false));
-    first.unmount();
-
-    // Scrolled down: the user is reading a status detail, not the top.
-    Object.defineProperty(window, "scrollY", { value: 800, writable: true, configurable: true });
-    const deferred: S[][] = [];
-    const newer = { id: "new1", created_at: "2026-02-01T00:00:00.000Z" };
-    const restored = renderHook(() =>
-      useTimelineCache("home", async () => ({ items: [newer, ...items(3)], hasMore: true }), {
-        refetchOnMount: true,
-        onDeferredItems: (batch) => deferred.push(batch),
-      })
-    );
-
-    await waitFor(() => expect(deferred).toHaveLength(1));
-    // Only the status newer than the feed head is deferred…
-    expect(deferred[0].map((s) => s.id)).toEqual(["new1"]);
-    // …and it stays out of the feed and out of the cache until revealed.
-    expect(restored.result.current.statuses.map((s) => s.id)).toEqual(["s0", "s1", "s2"]);
-    expect(getTimelineCache<S>("home")?.items.map((s) => s.id)).not.toContain("new1");
-  });
-
-  it("merges new statuses straight in when the refetch happens at the top", async () => {
-    Object.defineProperty(window, "scrollY", { value: 0, writable: true, configurable: true });
-    const deferred: S[][] = [];
-    const newer = { id: "new1", created_at: "2026-02-01T00:00:00.000Z" };
-    const { result } = renderHook(() =>
-      useTimelineCache("home", async () => ({ items: [newer, ...items(2)], hasMore: true }), {
-        onDeferredItems: (batch) => deferred.push(batch),
-      })
-    );
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(deferred).toHaveLength(0);
-    expect(result.current.statuses.map((s) => s.id)).toEqual(["new1", "s0", "s1"]);
-  });
-
-  it("restores the capped feed and paginates from its tail", async () => {
-    const first = renderHook(() => useTimelineCache("home", async () => ({ items: items(5), hasMore: true })));
-    await waitFor(() => expect(first.result.current.loading).toBe(false));
-    first.unmount();
-
-    const fetchPage = vi.fn(async () => ({
-      items: [{ id: "older", created_at: "2025-12-31T00:00:00.000Z" }],
-      hasMore: false,
-    }));
-    const restored = renderHook(() => useTimelineCache("home", fetchPage));
-
-    // The cache is a prefix of the live feed, so the restored page continues
-    // from the last cached item without leaving a gap.
-    expect(restored.result.current.statuses.map((s) => s.id)).toEqual(["s0", "s1"]);
-    await act(async () => {
-      await restored.result.current.loadMore();
+describe("useTimelineCache pagination after a catch-up", () => {
+  it("resumes from the fetched page when the catch-up left a gap, not from the cached tail", async () => {
+    // A cached prefix from a previous session: the newest is 1000, the oldest 981.
+    setTimelineCache<Item>("test-feed", {
+      items: range(1000, 981),
+      hasMore: true,
+      scrollY: 0,
+      fetchedAt: Date.now(),
+      ready: true,
+      cursor: "981",
     });
-    expect(fetchPage).toHaveBeenCalledWith("s1");
-    expect(restored.result.current.statuses.map((s) => s.id)).toEqual(["s0", "s1", "older"]);
+
+    const calls: (string | undefined)[] = [];
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      calls.push(maxId);
+      // The first page carries 20 statuses the cache never saw (the reader was
+      // away): there is a gap between 1001 and the cached 1000.
+      if (!maxId) return { items: range(1020, 1001), hasMore: true };
+      // The page right below the fetched one: it fills the gap down to the cache.
+      if (maxId === "1001") return { items: range(1000, 981), hasMore: true };
+      return { items: [], hasMore: false };
+    });
+
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    // The catch-up merged the new page on top of the cache.
+    expect(api!.statuses.map((s) => s.id)).toEqual([
+      ...range(1020, 1001).map((s) => s.id),
+      ...range(1000, 981).map((s) => s.id),
+    ]);
+
+    // The gap was closed before rendering: the fetched page plus the pages
+    // that follow it, then the cached statuses — no [new] → [old] jump.
+    await waitFor(() => expect(calls).toContain("1001"));
+    expect(api!.statuses.map((s) => s.id)).toEqual([
+      ...range(1020, 1001).map((s) => s.id),
+      ...range(1000, 981).map((s) => s.id),
+    ]);
+    // Pagination resumes below the deepest page fetched, never from the cached
+    // tail: scrolling down continues with the statuses that follow.
+    await act(async () => {
+      api!.loadMore();
+    });
+    await waitFor(() => expect(calls).toContain("981"));
+    // 981 was fetched as the *next* page (from the cursor), not as a jump: the
+    // call order proves it.
+    expect(calls.indexOf("981")).toBeGreaterThan(calls.indexOf("1001"));
+  });
+
+  it("stops filling the gap after the bound and leaves the rest to the cursor", async () => {
+    setTimelineCache<Item>("test-feed", {
+      items: range(1000, 981),
+      hasMore: true,
+      scrollY: 0,
+      fetchedAt: Date.now(),
+      ready: true,
+      cursor: "981",
+    });
+
+    const calls: (string | undefined)[] = [];
+    // Every page is fresh (the reader was away for a long time): the gap never
+    // closes, so the eager fill stops after MAX_GAP_PAGES and the cursor keeps
+    // the rest for the scroll sentinel.
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      calls.push(maxId);
+      const from = maxId ? Number(maxId) - 1 : 2000;
+      return { items: range(from, from - 19), hasMore: true };
+    });
+
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    // The first page plus the bounded fill (5 more).
+    await waitFor(() => expect(calls.length).toBe(6));
+    expect(api!.statuses.length).toBe(120);
+    // The deepest page fetched: 2000-19 (first), then five pages down to 1881.
+    expect(getTimelineCache<Item>("test-feed")?.cursor).toBe(String(2000 - 119));
+  });
+
+  it("keeps the cursor when the fetched page connects to the feed", async () => {
+    setTimelineCache<Item>("test-feed", {
+      items: range(1000, 981),
+      hasMore: true,
+      scrollY: 0,
+      fetchedAt: Date.now(),
+      ready: true,
+      cursor: "981",
+    });
+
+    const calls: (string | undefined)[] = [];
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      calls.push(maxId);
+      // The page overlaps the cached feed (its oldest, 985, is already there):
+      // there is no gap, so pagination continues from the remembered cursor.
+      if (!maxId) return { items: range(1004, 985), hasMore: true };
+      return { items: [], hasMore: false };
+    });
+
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    await act(async () => {
+      api!.loadMore();
+    });
+    await waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    expect(calls[1]).toBe("981");
+  });
+
+  it("remembers the cursor in the cache so a restored feed keeps paginating from it", async () => {
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      if (!maxId) return { items: range(20, 1), hasMore: true };
+      if (maxId === "1") return { items: range(40, 21), hasMore: true };
+      return { items: [], hasMore: false };
+    });
+
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    await act(async () => {
+      api!.loadMore();
+    });
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledWith("1"));
+    await waitFor(() => expect(getTimelineCache<Item>("test-feed")?.cursor).toBe("21"));
   });
 });

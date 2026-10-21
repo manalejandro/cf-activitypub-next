@@ -15,6 +15,14 @@ import {
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
+/**
+ * How many extra pages a catch-up may fetch to close the gap between the
+ * statuses that arrived while the reader was away and the cached feed (5 × a
+ * page ≈ 100 statuses, which covers a normal absence). A longer one stops
+ * there: the remaining gap is walked by the scroll sentinel from the cursor.
+ */
+const MAX_GAP_PAGES = 5;
+
 export interface FetchPageResult<T> {
   items: T[];
   hasMore: boolean;
@@ -158,6 +166,13 @@ export function useTimelineCache<T extends { id: string; created_at?: string }>(
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(initial?.hasMore ?? true);
   const seenIdsRef = useRef<Set<string>>(new Set(initial?.items.map((s) => s.id) ?? []));
+  // Deepest status fetched contiguously from the top (see `TimelineCacheEntry.cursor`).
+  const cursorRef = useRef<string | null>(
+    initial?.cursor ?? initial?.items[initial.items.length - 1]?.id ?? null
+  );
+  // How many items the last page carried: a full page of already-known
+  // statuses is pagination reaching the restored cache, not the end.
+  const pageSizeRef = useRef(0);
 
   const keyRef = useRef(key);
   const prevKeyRef = useRef(key);
@@ -215,6 +230,7 @@ export function useTimelineCache<T extends { id: string; created_at?: string }>(
             hasMore: hasMoreRef.current,
             scrollY: window.scrollY > 0 ? window.scrollY : prevEntry.scrollY,
             anchorId: topVisibleStatusId() ?? prevEntry.anchorId ?? null,
+            cursor: cursorRef.current ?? prevEntry.cursor ?? null,
           }, cacheMaxItemsRef.current);
         }
       }
@@ -303,19 +319,49 @@ export function useTimelineCache<T extends { id: string; created_at?: string }>(
           // Scrolled away from the top, a background refetch must not push new
           // statuses into the visible feed: hand them to the caller (the pill)
           // instead, so returning from a status detail keeps the exact position.
+          // The fetched page is contiguous from its newest status down to its
+          // oldest. If that oldest is not in the feed, everything between it
+          // and the feed's top was never downloaded (the reader was away):
+          // keep fetching the pages that follow before the cached statuses, so
+          // the feed doesn't jump from the new posts straight into yesterday's
+          // with the statuses in between missing.
+          const feedIds = new Set(statusesRef.current.map((s) => s.id));
           const onDeferred = optionsRef.current.onDeferredItems;
           const scrolledAway = typeof window !== "undefined" && (window.scrollY ?? 0) > NEW_STATUSES_TOP_OFFSET;
-          let incoming = result.items;
+          let fetched = result.items;
+          let fetchedOldest = fetched[fetched.length - 1]?.id ?? null;
+          if (fetched.length > 0) pageSizeRef.current = fetched.length;
+          const gap = fetchedOldest !== null && !feedIds.has(fetchedOldest);
+          if (gap && !(onDeferred && scrolledAway)) {
+            for (let page = 0; page < MAX_GAP_PAGES; page++) {
+              const next = await fetchPageRef.current(fetchedOldest!);
+              if (cancelled || next.items.length === 0) break;
+              fetched = [...fetched, ...next.items];
+              const nextOldest = next.items[next.items.length - 1]?.id ?? null;
+              if (!nextOldest) break;
+              // The cursor is always the deepest page fetched, whether or not
+              // this one reached the cached window.
+              fetchedOldest = nextOldest;
+              if (feedIds.has(nextOldest)) break;
+            }
+          }
+          if (optionsRef.current.replaceOnRefetch === true || gap) {
+            // Pagination resumes below the deepest page fetched here (the rest
+            // of the gap, when the bound above stopped early).
+            cursorRef.current = fetchedOldest;
+          }
+
+          let incoming = fetched;
           if (onDeferred && scrolledAway) {
             const prevItems = statusesRef.current;
             const known = new Set(prevItems.map((s) => s.id));
             const head = prevItems[0]?.created_at ?? "";
-            const deferred = result.items.filter(
+            const deferred = incoming.filter(
               (item) => !known.has(item.id) && (!head || !item.created_at || item.created_at > head)
             );
             if (deferred.length > 0) {
               const deferredIds = new Set(deferred.map((item) => item.id));
-              incoming = result.items.filter((item) => !deferredIds.has(item.id));
+              incoming = incoming.filter((item) => !deferredIds.has(item.id));
               onDeferred(deferred);
             }
           }
@@ -339,6 +385,7 @@ export function useTimelineCache<T extends { id: string; created_at?: string }>(
               scrollY: cached?.scrollY ?? 0,
               fetchedAt: Date.now(),
               ready: true,
+              cursor: cursorRef.current,
             }, cacheMaxItemsRef.current);
             return merged;
           });
@@ -397,19 +444,23 @@ useIsomorphicLayoutEffect(() => {
       scrollY: prev?.scrollY ?? 0,
       fetchedAt: prev?.fetchedAt ?? Date.now(),
       ready: prev?.ready ?? false,
+      cursor: cursorRef.current ?? prev?.cursor ?? null,
     }, cacheMaxItemsRef.current);
   }, [key, statuses, hasMore]);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMoreRef.current) return;
-    const lastId = statusesRef.current[statusesRef.current.length - 1]?.id;
-    if (!lastId) return;
+    // The cursor, never the feed's last item: after a catch-up merge the tail
+    // belongs to the restored cache, so paginating from it would jump below
+    // the cached window and leave the statuses in between unloaded.
+    const cursor = cursorRef.current;
+    if (!cursor) return;
     // Set the ref synchronously: it only synced after a render, so fast
     // scrolling fired several overlapping pages before the guard caught up.
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const result = await fetchPageRef.current(lastId);
+      const result = await fetchPageRef.current(cursor);
       if (result.items.length === 0) {
         // Only stop paginating when the page truly has no more items. A
         // transient fetch error (empty items + hasMore=true) must keep the
@@ -417,15 +468,21 @@ useIsomorphicLayoutEffect(() => {
         setHasMore(result.hasMore);
         return;
       }
-      // Filtered pages (held media, blocks…) can be shorter than the limit
-      // without being the end of the timeline: stopping there left the feed
-      // "loading" forever. Only a page with nothing new means we are done;
-      // otherwise keep paginating until an empty page arrives.
+      // Advance the cursor to the page's oldest: it is the deepest status
+      // fetched contiguously from the top.
+      const nextCursor = result.items[result.items.length - 1]?.id ?? null;
       const known = new Set(statusesRef.current.map((s) => s.id));
-      if (!result.items.some((item) => !known.has(item.id))) {
+      const hasNew = result.items.some((item) => !known.has(item.id));
+      // A page of already-known statuses is pagination reaching the restored
+      // cache (a prefix of the feed): the statuses below its tail were never
+      // cached, so it keeps walking. Only a page that makes no progress at all
+      // is the end — an empty one is handled above.
+      if (!hasNew && nextCursor === cursor) {
         setHasMore(false);
         return;
       }
+      pageSizeRef.current = result.items.length;
+      if (nextCursor && nextCursor !== cursor) cursorRef.current = nextCursor;
       // Paged items are older than the feed tail; the canonical merge keeps
       // them ordered even if a streamed status slipped in meanwhile. Items
       // inside the fetched window that the server no longer returns were
@@ -448,12 +505,14 @@ useIsomorphicLayoutEffect(() => {
       setStatuses(result.items);
       setHasMore(result.hasMore);
       setLoading(false);
+      cursorRef.current = result.items[result.items.length - 1]?.id ?? null;
       setTimelineCache(keyRef.current, {
         items: result.items,
         hasMore: result.hasMore,
         scrollY: typeof window !== "undefined" ? window.scrollY : 0,
         fetchedAt: Date.now(),
         ready: true,
+        cursor: cursorRef.current,
       }, cacheMaxItemsRef.current);
     } catch {
       setLoading(false);
@@ -467,6 +526,13 @@ useIsomorphicLayoutEffect(() => {
   const catchUp = useCallback(async () => {
     try {
       const result = await fetchPageRef.current();
+      // Same gap rule as the mount fetch: a page whose oldest status is not in
+      // the feed means the statuses in between were never downloaded, so
+      // pagination resumes from the fetched page.
+      const feedIds = new Set(statusesRef.current.map((s) => s.id));
+      const fetchedOldest = result.items[result.items.length - 1]?.id ?? null;
+      if (result.items.length > 0) pageSizeRef.current = result.items.length;
+      if (fetchedOldest !== null && !feedIds.has(fetchedOldest)) cursorRef.current = fetchedOldest;
       setStatuses((prev) => {
         const merged = mergeTimelineItems(result.items, pruneMissingFromWindow(result.items, prev));
         setTimelineCache(keyRef.current, {
@@ -475,6 +541,7 @@ useIsomorphicLayoutEffect(() => {
           scrollY: getTimelineCache<T>(keyRef.current)?.scrollY ?? 0,
           fetchedAt: Date.now(),
           ready: true,
+          cursor: cursorRef.current,
         }, cacheMaxItemsRef.current);
         return merged;
       });
