@@ -16534,6 +16534,14 @@
           "graphMaxNodes": {
             "type": "number"
           },
+          "pageCacheTtl": {
+            "type": "number",
+            "description": "Frontend page cache: seconds a cached HTML shell stays fresh before revalidating."
+          },
+          "pageCacheSwr": {
+            "type": "number",
+            "description": "Frontend page cache: extra seconds a stale shell may be served while it revalidates in the background."
+          },
           "maxImageSize": {
             "type": "number"
           },

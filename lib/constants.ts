@@ -208,6 +208,10 @@ export interface InstanceLimits {
   adminLogPageSize: number;
   mlsMessagesPageSize: number;
   graphMaxNodes: number;
+  /** Frontend page cache: seconds a cached HTML shell stays fresh before revalidating. */
+  pageCacheTtl: number;
+  /** Frontend page cache: extra seconds a stale shell may be served while it revalidates in the background. */
+  pageCacheSwr: number;
   maxImageSize: number;
   maxAvatarSize: number;
   maxHeaderSize: number;
@@ -282,6 +286,8 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   adminLogPageSize: ADMIN_LOG_PAGE_SIZE,
   mlsMessagesPageSize: MLS_MESSAGES_PAGE_SIZE,
   graphMaxNodes: GRAPH_MAX_NODES,
+  pageCacheTtl: 60,
+  pageCacheSwr: 600,
   maxImageSize: MAX_IMAGE_SIZE,
   maxAvatarSize: MAX_AVATAR_SIZE,
   maxHeaderSize: MAX_HEADER_SIZE,
@@ -385,6 +391,9 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     adminLogPageSize: num(env, "ADMIN_LOG_PAGE_SIZE", DEFAULT_LIMITS.adminLogPageSize),
     mlsMessagesPageSize: num(env, "MLS_MESSAGES_PAGE_SIZE", DEFAULT_LIMITS.mlsMessagesPageSize),
     graphMaxNodes: num(env, "GRAPH_MAX_NODES", DEFAULT_LIMITS.graphMaxNodes),
+    // `nonNegativeNum`: 0 is meaningful here (it disables the page cache).
+    pageCacheTtl: nonNegativeNum(env, "PAGE_CACHE_TTL", DEFAULT_LIMITS.pageCacheTtl),
+    pageCacheSwr: nonNegativeNum(env, "PAGE_CACHE_SWR", DEFAULT_LIMITS.pageCacheSwr),
     maxImageSize: num(env, "MAX_IMAGE_SIZE", DEFAULT_LIMITS.maxImageSize),
     maxAvatarSize: num(env, "MAX_AVATAR_SIZE", DEFAULT_LIMITS.maxAvatarSize),
     maxHeaderSize: num(env, "MAX_HEADER_SIZE", DEFAULT_LIMITS.maxHeaderSize),

@@ -56,6 +56,7 @@ import { runModerationCycle } from "../lib/moderation/cycle";
 import { runAccountExpiration } from "../lib/moderation/account-expiration";
 import { refreshFollowRecommendations, RECOMMENDATIONS_REFRESH_HOURS } from "../lib/follow-recommendations";
 import { maintainStorageRetention, storageRetentionLimitsFrom } from "../lib/storage-retention";
+import { pageCacheLimitsFrom, withPageCache } from "../lib/page-cache";
 import type { APActor } from "../lib/types";
 
 interface Env {
@@ -1543,7 +1544,15 @@ const worker = {
         return handleCallSignalingUpgrade(request, env, callMatch[1]);
       }
     }
-    return handler.fetch(request, env, ctx);
+    // Short-lived edge cache for the HTML shells (see lib/page-cache.ts): the
+    // framework sends them with `no-store`, so every visit re-rendered them.
+    // RSC payloads, APIs and authenticated surfaces are never cached.
+    return withPageCache(
+      request,
+      ctx,
+      pageCacheLimitsFrom(resolveLimits(env as unknown as Record<string, unknown>)),
+      () => handler.fetch(request, env, ctx)
+    );
   },
 
   // Queue consumer: process ActivityPub delivery jobs

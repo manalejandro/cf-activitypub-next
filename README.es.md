@@ -102,9 +102,9 @@ npx wrangler vectorize create moderation-vectors --dimensions=1024 --metric=cosi
 
 Después descomenta el bloque `[[vectorize]]` al inicio de `wrangler.toml`. Sin el binding, la moderación sigue funcionando igual — la memoria vectorial simplemente queda desactivada.
 
-### Variables de texto plano (`[vars]` en `wrangler.toml`)
+### Variables de texto plano (documentadas en `.env.example`)
 
-Todas las variables están documentadas con su valor por defecto en **[`.env.example`](.env.example)**: cópialo a `.env` (ignorado por git) para cambiar lo que quieras — sus valores ganan a los `[vars]` de `wrangler.toml` tanto en local como al desplegar, y `npm run check:env` mantiene la lista completa. La tabla de abajo es solo el puñado necesario en los pasos de despliegue:
+Todas las variables están documentadas con su valor por defecto en **[`.env.example`](.env.example)**: cópialo a `.env` (ignorado por git) para cambiar lo que quieras — los valores de `.env` se fusionan en la configuración del worker al compilar (`wrangler.toml` solo contiene bindings e IDs de recursos), y `npm run check:env` mantiene la lista completa. La tabla de abajo es solo el puñado necesario en los pasos de despliegue:
 
 | Variable | Descripción |
 |---|---|
@@ -295,6 +295,9 @@ wrangler secret put CALLS_TURN_KEY_ID
 wrangler secret put CALLS_API_TOKEN
 ```
 Credenciales en [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime → Calls → TURN.
+
+### Caché del frontend
+- Los shells HTML se cachean en la Cache API de Workers: 60 s frescos y hasta 10 min sirviendo copia obsoleta mientras se revalida en segundo plano (`PAGE_CACHE_TTL` / `PAGE_CACHE_SWR`, `0` lo desactiva). Nunca se cachea nada personalizado — payloads RSC, `/api/*`, peticiones autenticadas y respuestas con `Set-Cookie` se renderizan siempre — y los estáticos con hash mantienen el año inmutable de Cloudflare
 
 ### Tareas programadas
 - Trigger cron cada minuto para encuestas, auto-borrado y otras tareas de mantenimiento

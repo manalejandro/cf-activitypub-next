@@ -102,9 +102,9 @@ npx wrangler vectorize create moderation-vectors --dimensions=1024 --metric=cosi
 
 Then uncomment the `[[vectorize]]` block at the top of `wrangler.toml`. Without a binding, moderation keeps working unchanged — the vector memory simply stays off.
 
-### Plain-text vars (`[vars]` in `wrangler.toml`)
+### Plain-text vars (documented in `.env.example`)
 
-Every variable is documented with its default in **[`.env.example`](.env.example)**: copy it to `.env` (gitignored) to change anything — it overrides `wrangler.toml`'s `[vars]` both locally and at deploy, and `npm run check:env` keeps the list complete. The table below is just the handful needed during the deploy steps:
+Every variable is documented with its default in **[`.env.example`](.env.example)**: copy it to `.env` (gitignored) to change anything — `.env` values are merged into the deployed worker config at build time (`wrangler.toml` holds bindings and resource IDs only), and `npm run check:env` keeps the list complete. The table below is just the handful needed during the deploy steps:
 
 | Variable | Description |
 |---|---|
@@ -294,6 +294,9 @@ wrangler secret put CALLS_TURN_KEY_ID
 wrangler secret put CALLS_API_TOKEN
 ```
 Credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime → Calls → TURN.
+
+### Frontend caching
+- HTML shells are cached in the Workers Cache API: 60 s fresh and up to 10 min served stale while revalidating in the background (`PAGE_CACHE_TTL` / `PAGE_CACHE_SWR`, `0` disables). Nothing personalised is cached — RSC payloads, `/api/*`, authenticated requests and `Set-Cookie` responses always render fresh — and content-hashed static assets keep Cloudflare's immutable one-year caching
 
 ### Scheduled tasks
 - Cron trigger runs every minute for polling, auto-delete, and other maintenance tasks

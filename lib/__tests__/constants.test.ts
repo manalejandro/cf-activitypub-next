@@ -30,3 +30,22 @@ describe("media cache limits", () => {
     expect(resolveLimits({ MEDIA_CACHE_MAX_BYTES: "123" }).mediaCacheMaxBytes).toBe(123);
   });
 });
+
+describe("frontend page cache limits", () => {
+  it("defaults to a minute fresh and ten minutes stale-while-revalidate", () => {
+    const limits = resolveLimits({});
+    expect(limits.pageCacheTtl).toBe(60);
+    expect(limits.pageCacheSwr).toBe(600);
+  });
+
+  it("reads both windows from the env and accepts 0 as 'disabled'", () => {
+    expect(resolveLimits({ PAGE_CACHE_TTL: "120", PAGE_CACHE_SWR: "30" })).toMatchObject({
+      pageCacheTtl: 120,
+      pageCacheSwr: 30,
+    });
+    // 0 disables the cache: it must not fall back to the default (a negative
+    // window is meaningless and resolves to the default instead).
+    expect(resolveLimits({ PAGE_CACHE_TTL: "0" }).pageCacheTtl).toBe(0);
+    expect(resolveLimits({ PAGE_CACHE_TTL: "-5" }).pageCacheTtl).toBe(60);
+  });
+});
