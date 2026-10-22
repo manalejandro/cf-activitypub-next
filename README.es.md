@@ -82,7 +82,7 @@ Luego configúralo como secreto de Cloudflare:
 wrangler secret put ADMIN_TOKEN
 ```
 
-Para desarrollo local, ponlo en `.dev.vars` en su lugar:
+Para desarrollo local, ponlo en `.env` en su lugar (o en `.dev.vars`, que wrangler también lee):
 
 ```
 ADMIN_TOKEN=tu-token-generado
@@ -103,6 +103,8 @@ npx wrangler vectorize create moderation-vectors --dimensions=1024 --metric=cosi
 Después descomenta el bloque `[[vectorize]]` al inicio de `wrangler.toml`. Sin el binding, la moderación sigue funcionando igual — la memoria vectorial simplemente queda desactivada.
 
 ### Variables de texto plano (`[vars]` en `wrangler.toml`)
+
+Todas las variables están documentadas con su valor por defecto en **[`.env.example`](.env.example)**: cópialo a `.env` (ignorado por git) para cambiar lo que quieras — sus valores ganan a los `[vars]` de `wrangler.toml` tanto en local como al desplegar, y `npm run check:env` mantiene la lista completa. La tabla de abajo es solo el puñado necesario en los pasos de despliegue:
 
 | Variable | Descripción |
 |---|---|
@@ -145,7 +147,7 @@ wrangler queues create cf-activitypub-delivery-dlq
 ```
 
 La cola de entrega (`cf-activitypub-delivery`) distribuye las actividades ActivityPub a los
-inboxes remotos. Su consumidor reintenta los fallos transitorios (`max_retries = 5`);
+inboxes remotos. Su consumidor reintenta los fallos transitorios (`max_retries = 16`, backoff exponencial hasta 24 h, respetando `Retry-After`);
 los mensajes que siguen fallando tras todos los reintentos se mueven a la cola de
 mensajes muertos `cf-activitypub-delivery-dlq` en lugar de descartarse en silencio. Inspecciona
 o reenvía esos mensajes con:
@@ -200,6 +202,12 @@ wrangler secret put ADMIN_TOKEN
 npm run db:migrate
 ```
 
+En una instancia que ya tiene datos, `node scripts/upgrade-schema.mjs` vuelve a aplicar el esquema y ejecuta las migraciones idempotentes (columnas, índices y backfills) en su lugar:
+
+```bash
+node scripts/upgrade-schema.mjs
+```
+
 Para reiniciar la base de datos:
 ```bash
 wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql
@@ -212,13 +220,15 @@ npm run db:migrate
 npm run deploy
 ```
 
+`npm run deploy` compila y despliega. Copia `.env.example` a `.env` para sobrescribir cualquier variable de los `[vars]` de `wrangler.toml` en el despliegue (la compilación fusiona `.env` en la configuración subida del worker); los secretos siguen yendo por `wrangler secret put`.
+
 ### Vista previa local
 
 ```bash
 npm run preview
 ```
 
-Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (bindings de Miniflare desde `wrangler.toml`).
+Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (bindings de Miniflare desde `wrangler.toml`, variables desde `.env`).
 
 ## Características
 
@@ -227,17 +237,22 @@ Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (binding
 - Perfiles de actor, Inbox/Outbox, colecciones de Seguidores/Siguiendo
 - Shared inbox para difusión eficiente
 - HTTP Signatures en todas las solicitudes federadas
-- Maneja: Create, Follow, Accept, Reject, Undo, Like, Announce, Delete, Update
+- Maneja: Create, Follow, Accept, Reject, Undo, Like, Announce, Delete, Update, Move, Flag, Add/Remove
+- Citas (autorizaciones [FEP-044f](https://w3id.org/fep/044f)), encuestas, eventos y estados geolocalizados
+- Estados fijados y hashtags destacados (colecciones federadas), relays (suscripciones a relays ActivityPub)
+- Colecciones de cuentas [FEP-7aa9](https://w3id.org/fep/7aa9)
+- Feeds RSS/Atom por perfil (`/@usuario.rss`, `/@usuario.atom`) y [Markdown para agentes](https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/) (`Accept: text/markdown`)
 - Soporte NodeInfo
 
 ### API Mastodon
-- OAuth 2.0 (password + client_credentials)
+- OAuth 2.0 (password + authorization code + PKCE + client_credentials + refresh tokens)
 - Registro de cuentas, gestión de perfil, seguir/dejar de seguir
-- Crear/eliminar estados, favoritos, impulsar, encuestas
-- Líneas de tiempo principal y públicas, líneas de tiempo por hashtag
-- Notificaciones (seguir, mención, favorito, impulso, encuesta, edición)
-- Subida de archivos multimedia (respaldado por R2)
-- Bloqueos, bloqueos por dominio, solicitudes de seguimiento
+- Crear/eliminar estados, favoritos, impulsar, encuestas, citas, marcadores
+- Líneas de tiempo principal y públicas, líneas de tiempo por hashtag, listas, notificaciones filtradas
+- Notificaciones (seguir, mención, favorito, impulso, encuesta, edición, moderación)
+- Subida de archivos multimedia (respaldado por R2) con alt-text automático
+- Bloqueos, bloqueos por dominio, solicitudes de seguimiento, silenciados, recomendaciones, notas privadas
+- Estados programados, mensajería E2EE (MLS), llamadas WebRTC
 
 ### Tiempo real
 - Líneas de tiempo en streaming vía Durable Objects
@@ -264,6 +279,7 @@ Moderación totalmente autónoma — no hay administrador humano, la IA gestiona
 - **Registro de auditoría completo** — cada decisión se escribe en la tabla `moderation_log` con la acción, el motivo y la confianza
 - **Motor de acciones** — las cuentas advertidas / suspendidas / rechazadas (y las publicaciones eliminadas) reciben notificación por correo, y las suspensiones purgan el contenido de la cuenta
 - **API de administración** — lee el registro de moderación vía `GET /api/v1/admin/moderation_log`; opcionalmente protegida por `ADMIN_TOKEN` (Bearer)
+- **Agente Guardián** — chat de administración (`/admin/guardian`, Cloudflare Agents SDK) que responde con el estado real de la instancia mediante herramientas y propone acciones de moderación (suspender, limitar, avisar, borrar, reevaluar un reporte) que solo se ejecutan cuando un administrador las aprueba
 
 ### Llamadas WebRTC
 - Llamadas de voz y vídeo entre usuarios de la misma instancia o entre instancias federadas
@@ -283,6 +299,8 @@ Credenciales en [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime 
 ### Tareas programadas
 - Trigger cron cada minuto para encuestas, auto-borrado y otras tareas de mantenimiento
 - Incluye el ciclo de patrulla del Guardian (barridos de spam/abuso con revisión de IA)
+- Mantenimiento de la caché de medios (retención en R2, expulsión, limpieza de huérfanos), rastreo de previews de enlaces y refresco del registro de instancias
+- Retención de histórico federado (opcional): borra estados remotos públicos/no listados con más de N días y/o mantiene la base por debajo de un presupuesto de bytes (`DB_RETENTION_*`)
 
 ## Descargo de responsabilidad
 

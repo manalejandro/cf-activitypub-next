@@ -82,7 +82,7 @@ Then set it as a Cloudflare secret:
 wrangler secret put ADMIN_TOKEN
 ```
 
-For local development, put it in `.dev.vars` instead:
+For local development, put it in `.env` instead (or `.dev.vars`, which wrangler also reads):
 
 ```
 ADMIN_TOKEN=your-generated-token
@@ -103,6 +103,8 @@ npx wrangler vectorize create moderation-vectors --dimensions=1024 --metric=cosi
 Then uncomment the `[[vectorize]]` block at the top of `wrangler.toml`. Without a binding, moderation keeps working unchanged — the vector memory simply stays off.
 
 ### Plain-text vars (`[vars]` in `wrangler.toml`)
+
+Every variable is documented with its default in **[`.env.example`](.env.example)**: copy it to `.env` (gitignored) to change anything — it overrides `wrangler.toml`'s `[vars]` both locally and at deploy, and `npm run check:env` keeps the list complete. The table below is just the handful needed during the deploy steps:
 
 | Variable | Description |
 |---|---|
@@ -145,7 +147,7 @@ wrangler queues create cf-activitypub-delivery-dlq
 ```
 
 The delivery queue (`cf-activitypub-delivery`) fans out ActivityPub activities to remote inboxes.
-Its consumer retries transient failures (`max_retries = 5`); messages that still fail
+Its consumer retries transient failures (`max_retries = 16`, exponential backoff up to 24h, `Retry-After` honoured); messages that still fail
 after all retries are moved to the dead-letter queue `cf-activitypub-delivery-dlq` instead of
 being silently dropped. Inspect or replay them with:
 
@@ -199,6 +201,12 @@ wrangler secret put ADMIN_TOKEN
 npm run db:migrate
 ```
 
+On an instance that already has data, `node scripts/upgrade-schema.mjs` re-applies the schema and runs the idempotent migrations (new columns, indexes and backfills) instead:
+
+```bash
+node scripts/upgrade-schema.mjs
+```
+
 To reset the database:
 ```bash
 wrangler d1 execute cf-activitypub --remote --file=lib/db/drop.sql
@@ -211,13 +219,15 @@ npm run db:migrate
 npm run deploy
 ```
 
+`npm run deploy` builds and deploys. Copy `.env.example` to `.env` to override any variable from `wrangler.toml`'s `[vars]` for the deployment (the build merges `.env` into the uploaded worker configuration); secrets still go through `wrangler secret put`.
+
 ### Preview locally
 
 ```bash
 npm run preview
 ```
 
-Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindings from `wrangler.toml`).
+Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindings from `wrangler.toml`, variables from `.env`).
 
 ## Features
 
@@ -226,17 +236,22 @@ Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindin
 - Actor profiles, Inbox/Outbox, Followers/Following collections
 - Shared inbox for efficient fan-out
 - HTTP Signatures on all federated requests
-- Handles: Create, Follow, Accept, Reject, Undo, Like, Announce, Delete, Update
+- Handles: Create, Follow, Accept, Reject, Undo, Like, Announce, Delete, Update, Move, Flag, Add/Remove
+- Quotes ([FEP-044f](https://w3id.org/fep/044f) authorizations), polls, events and geolocated statuses
+- Pinned statuses and featured hashtags (federated collections), relays (ActivityPub relay subscriptions)
+- [FEP-7aa9](https://w3id.org/fep/7aa9) collections of accounts
+- RSS/Atom feeds per profile (`/@user.rss`, `/@user.atom`) and [Markdown for agents](https://developers.cloudflare.com/fundamentals/reference/markdown-for-agents/) (`Accept: text/markdown`)
 - NodeInfo support
 
 ### Mastodon API
-- OAuth 2.0 (password + client_credentials)
+- OAuth 2.0 (password + authorization code + PKCE + client_credentials + refresh tokens)
 - Account registration, profile management, follow/unfollow
-- Status create/delete, favourite, reblog, polls
-- Home and public timelines, hashtag timelines
-- Notifications (follow, mention, favourite, reblog, poll, update)
-- Media uploads (R2-backed)
-- Blocks, domain blocks, follow requests
+- Status create/delete, favourite, reblog, polls, quotes, bookmarks
+- Home and public timelines, hashtag timelines, lists, filtered notifications
+- Notifications (follow, mention, favourite, reblog, poll, update, moderation)
+- Media uploads (R2-backed) with automatic alt-text
+- Blocks, domain blocks, follow requests, mutes, endorsements, private notes
+- Scheduled statuses, E2EE (MLS) messaging, WebRTC calls
 
 ### Realtime
 - Streaming timelines via Durable Objects
@@ -263,6 +278,7 @@ Fully autonomous moderation — there is no human admin, the AI runs the instanc
 - **Complete audit trail** — every decision is written to a `moderation_log` table with the action, reason and confidence
 - **Action engine** — warned / deleted / suspended / rejected accounts are notified by email, and suspensions purge the account's content
 - **Admin API** — read the moderation log via `GET /api/v1/admin/moderation_log`; optionally protected by `ADMIN_TOKEN` (Bearer)
+- **Guardian agent** — an admin chat (`/admin/guardian`, Cloudflare Agents SDK) that answers with the instance's real state through tools and proposes moderation actions (suspend, silence, warn, delete, re-run a report) that only run once an administrator approves them
 
 ### WebRTC Calling
 - Voice and video calls between users on the same instance or across federated instances
@@ -282,6 +298,8 @@ Credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime �
 ### Scheduled tasks
 - Cron trigger runs every minute for polling, auto-delete, and other maintenance tasks
 - Includes the Guardian patrol cycle (spam/abuse sweeps with AI review)
+- Media cache maintenance (R2 retention, eviction, orphan cleanup), link-preview crawling and instance-registry refreshes
+- Opt-in federated-history retention: delete remote public/unlisted statuses older than N days and/or keep the database under a byte budget (`DB_RETENTION_*`)
 
 ## Disclaimer
 

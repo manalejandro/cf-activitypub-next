@@ -3,9 +3,11 @@
 # dependencies
 /node_modules
 
-# Local dev variables (copy of .dev.vars.example, may hold secrets).
+# Local dev / deploy variables: the real files may hold secrets, the documented
+# reference is committed.
 .dev.vars*
-!/.dev.vars.example
+.env*
+!.env.example
 /.pnp
 .pnp.*
 .yarn/*
@@ -40,8 +42,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
 
 # vercel
 .vercel

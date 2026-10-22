@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * Fail when the code reads an environment variable that `.dev.vars.example`
- * does not document (the file is the single reference of every variable and its
- * default). Sources of truth:
+ * Fail when the code reads an environment variable that the reference file does
+ * not document. `.env.example` is the canonical one (what `.env`, local dev and
+ * the deploy read); `.dev.vars.example` is accepted as a second name and
+ * checked too when it exists, so neither drifts. Sources of truth:
  *
  *   - `lib/constants.ts`: `resolveLimits()` reads the tunables by name.
  *   - anywhere: `env.NAME` / `env["NAME"]` reads of an upper-case key.
  *
  * Run with `npm run check:env`.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
@@ -31,7 +32,7 @@ function walk(dir, out = []) {
 }
 
 const documented = new Set(
-  readFileSync(join(ROOT, ".dev.vars.example"), "utf8")
+  readFileSync(join(ROOT, ".env.example"), "utf8")
     .split("\n")
     .map((line) => line.replace(/^#\s*/, "").trim())
     .filter((line) => line.includes("="))
@@ -56,10 +57,20 @@ for (const file of walk(ROOT)) {
   }
 }
 
+// A `.dev.vars.example` is a second accepted name for the same reference.
+if (existsSync(join(ROOT, ".dev.vars.example"))) {
+  const alt = readFileSync(join(ROOT, ".dev.vars.example"), "utf8")
+    .split("\n")
+    .map((line) => line.replace(/^#\s*/, "").trim())
+    .filter((line) => line.includes("="))
+    .map((line) => line.split("=")[0].trim());
+  for (const name of alt) documented.add(name);
+}
+
 const missing = [...read.entries()].filter(([name]) => !documented.has(name));
 if (missing.length > 0) {
-  console.error("Environment variables read by the code but missing from .dev.vars.example:");
+  console.error("Environment variables read by the code but missing from .env.example:");
   for (const [name, file] of missing.sort()) console.error(`  - ${name} (${file})`);
   process.exit(1);
 }
-console.log(`check:env OK — ${documented.size} variables documented in .dev.vars.example`);
+console.log(`check:env OK — ${documented.size} variables documented in .env.example`);
