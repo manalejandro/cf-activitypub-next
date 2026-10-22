@@ -1,0 +1,184 @@
+# Local development variables — the reference for every environment variable
+# this instance reads, with its default value.
+#
+# HOW TO USE IT
+#   cp .dev.vars.example .dev.vars     # then edit what you need
+#
+#   `npm run dev` (vite dev) and `wrangler dev` load `.dev.vars` automatically;
+#   the file is gitignored, so real secrets never reach the repository.
+#
+# IMPORTANT: in local dev the values here OVERRIDE wrangler.toml's [vars]. Keep
+# the file as it is to run on the defaults, or trim it to the variables you want
+# to change — a variable that is absent falls back to the default documented
+# here. In production the same names go in wrangler.toml [vars], except the ones
+# marked SECRET, which are set with `wrangler secret put <NAME>`.
+#
+# `npm run check:env` fails when the code reads a variable that is missing here,
+# so this list stays complete.
+#
+# Booleans are "true"/"false"; sizes are bytes; durations are seconds unless the
+# comment says days/minutes; empty means "disabled/not configured" where noted.
+
+# ─── Instance identity ────────────────────────────────────────────────────────
+# Name shown in the UI, the PWA manifest, the instance actor and the page title.
+INSTANCE_TITLE=ActivityPub
+# Description used by /api/v1/instance, Open Graph tags and the manifest.
+INSTANCE_DESCRIPTION=A federated social network powered by ActivityPub and Cloudflare
+# Advertised version: user agent (`CFActivityPub/<version>`) and the sidebar badge.
+INSTANCE_VERSION=1.5.4
+# Public base URL. Actor ids, object IRIs, feeds and federation links are built
+# from it — never from the request Host. No trailing slash.
+INSTANCE_URL=http://localhost:3000
+# "production" turns on the production behaviours (stricter logging, no dev hints).
+NODE_ENV=production
+
+# ─── Secrets (wrangler secret put <NAME>; never commit values) ────────────────
+# Cloudflare Turnstile secret. Empty it and the captcha is not enforced at all.
+#TURNSTILE_SECRET=
+# Web Push private key (VAPID). Without it push notifications are disabled.
+#VAPID_PRIVATE_KEY=
+# Shared operator token: a bearer with this value acts as a full administrator.
+#ADMIN_TOKEN=
+# Cloudflare Calls app credentials (TURN/SFU for calls). Optional.
+#CALLS_TURN_KEY_ID=
+#CALLS_API_TOKEN=
+
+# ─── Email, push, captcha and translation ─────────────────────────────────────
+# Sender address; must belong to a domain with Email Routing enabled.
+FROM_EMAIL=noreply@example.com
+# Web Push public key (must match VAPID_PRIVATE_KEY) and the mailto: contact.
+VAPID_PUBLIC_KEY=
+VAPID_EMAIL=mailto:admin@example.com
+# Public Turnstile site key (the widget); the secret is TURNSTILE_SECRET above.
+TURNSTILE_SITE_KEY=
+# LibreTranslate endpoint for the translate button; empty disables it.
+LIBRETRANSLATE_URL=
+
+# ─── Status and profile limits (Mastodon-compatible defaults) ─────────────────
+# Characters per status (Mastodon: 500).
+MAX_STATUS_CHARS=500
+# Characters of the profile bio (defaults to MAX_STATUS_CHARS).
+MAX_NOTE_CHARS=500
+# Characters of a content warning.
+MAX_CW_CHARS=200
+# Characters of one media description.
+MAX_ALT_TEXT_CHARS=420
+# Media attachments per status.
+MAX_MEDIA_ATTACHMENTS=4
+# Options per poll and characters per option.
+MAX_POLL_OPTIONS=4
+MAX_POLL_OPTION_CHARS=50
+# Poll duration bounds, in seconds (300 = 5 minutes, 2629746 = 1 month).
+POLL_MIN_EXPIRATION=300
+POLL_MAX_EXPIRATION=2629746
+# Featured hashtags per account.
+MAX_FEATURED_TAGS=10
+# Characters Mastodon reserves for every link (URL shortening math).
+CHARACTERS_RESERVED_PER_URL=23
+# Profile fields: count and characters per field name/value.
+MAX_PROFILE_FIELDS=4
+MAX_PROFILE_FIELD_CHARS=255
+# Characters of a display name.
+MAX_DISPLAY_NAME_CHARS=30
+# Pinned statuses per account.
+MAX_PINNED_STATUSES=5
+# Custom emoji shortcode length, featured-tag name length and collection fields.
+MAX_EMOJI_SHORTCODE_CHARS=32
+MAX_FEATURED_TAG_NAME_CHARS=64
+MAX_COLLECTION_NAME_CHARS=40
+MAX_COLLECTION_DESCRIPTION_CHARS=100
+# Characters of an admin announcement.
+MAX_ANNOUNCEMENT_CHARS=10000
+# Characters of a language code ("es", "en-GB"…).
+MAX_LANG_CODE_CHARS=2
+
+# ─── Pagination, caches and graphs ────────────────────────────────────────────
+# Default page size of the Mastodon API.
+PAGE_SIZE=40
+# Statuses per timeline page.
+DEFAULT_TIMELINE_PAGE=20
+# Hard ceiling for `limit=`.
+MAX_PAGE_SIZE=40
+# Items per page of a FEP-7aa9 collection.
+MAX_COLLECTION_PAGE=80
+# Client feed cache: statuses kept per cached timeline (newest first).
+TIMELINE_CACHE_MAX_ITEMS=1000
+# Messages per page of the E2EE inbox and entries per page of the audit log.
+MLS_MESSAGES_PAGE_SIZE=50
+ADMIN_LOG_PAGE_SIZE=50
+# Trending hashtags: how many are ranked and how many are shown.
+TRENDING_TAGS_LIMIT=10
+TRENDING_TAGS_MAX=20
+# Nodes rendered by the federation graph (/graph).
+GRAPH_MAX_NODES=100
+
+# ─── Uploads ──────────────────────────────────────────────────────────────────
+# Maximum bytes per upload type.
+MAX_IMAGE_SIZE=16777216
+MAX_AVATAR_SIZE=2097152
+MAX_HEADER_SIZE=5242880
+MAX_VIDEO_SIZE=103809024
+# Rejected above these: pixels (width×height) and video frame rate/matrix.
+IMAGE_MATRIX_LIMIT=33177600
+VIDEO_FRAME_RATE_LIMIT=120
+VIDEO_MATRIX_LIMIT=2304000
+
+# ─── Remote media cache (R2) ──────────────────────────────────────────────────
+# Cache federated attachments and avatars in R2 instead of hitting the origins.
+MEDIA_CACHE_ENABLED=true
+# Days an attachment entry lives without new serves (profiles: of followed accounts).
+MEDIA_CACHE_DAYS=7
+MEDIA_CACHE_PROFILE_DAYS=30
+# Total byte budget of the cache and per-object/per-image caps.
+MEDIA_CACHE_MAX_BYTES=10737418240
+MEDIA_CACHE_MAX_OBJECT_BYTES=103809024
+MEDIA_CACHE_MAX_IMAGE_BYTES=16777216
+# Objects fetched per cron tick and the floor the eviction never goes below.
+MEDIA_CACHE_FETCH_BATCH=50
+MEDIA_CACHE_MIN_ENTRIES=20
+# Cold entries (no serve for N days, at most M serves) are recycled first.
+MEDIA_CACHE_COLD_DAYS=3
+MEDIA_CACHE_COLD_MAX_HITS=5
+# Strip EXIF/metadata from cached objects (Mastodon parity).
+MEDIA_CACHE_STRIP_METADATA=true
+# Comma-separated user agents tried when downloading media; defaults to the
+# federation bot UA plus two browser UAs (see defaultMediaCacheUserAgents).
+#MEDIA_CACHE_USER_AGENTS=
+# Safety valve: a status whose media is still caching is released after N minutes.
+MEDIA_CACHE_MAX_HOLD_MINUTES=30
+
+# ─── Link previews (Mastodon cards) ───────────────────────────────────────────
+# Crawl the first external link of a status into a preview card.
+LINK_PREVIEW_ENABLED=true
+# Crawls per cron tick and days before a card is refreshed.
+LINK_PREVIEW_FETCH_BATCH=5
+LINK_PREVIEW_DAYS=14
+# Maximum bytes read from a page while crawling.
+LINK_PREVIEW_MAX_BYTES=2097152
+
+# ─── Federated-history retention (off by default) ─────────────────────────────
+# Delete remote public/unlisted statuses older than N days (0 = keep forever).
+DB_RETENTION_DAYS=0
+# Prune the oldest history while the database is over this many bytes (0 = no limit).
+DB_RETENTION_MAX_BYTES=0
+# Rows deleted per cron tick while draining a backlog.
+DB_RETENTION_PRUNE_BATCH=500
+# Rows measured per cron tick while keeping the size estimate fresh.
+DB_RETENTION_SIZE_BATCH=10000
+
+# ─── Federation registry and delivery ─────────────────────────────────────────
+# Remote actors whose shared inbox is backfilled per cron tick.
+SHARED_INBOX_BATCH=5
+# NodeInfo refreshes per cron tick, days between refreshes and dormancy window.
+INSTANCE_REFRESH_BATCH=3
+INSTANCE_REFRESH_DAYS=7
+INSTANCE_DORMANT_DAYS=30
+
+# ─── Moderation ───────────────────────────────────────────────────────────────
+# Daily AI budget in abstract units (screening 1, alt-text 5, reasoning 25).
+# 0 or unset = unlimited.
+AI_DAILY_BUDGET=0
+# Days an unverified registration survives before the sweep deletes it (0 = never).
+UNVERIFIED_ACCOUNT_PURGE_DAYS=7
+# Comma-separated e-mail domains that cannot register (extends the built-in list).
+REGISTRATION_BLOCKED_EMAIL_DOMAINS=
