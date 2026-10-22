@@ -4,6 +4,8 @@
 // Machine-readable security contact info. The Contact is the instance's
 // configured sender email when set, otherwise the site root. Expires is rolled
 // forward one year so the file never goes stale (RFC 9116 §2.5.2).
+import { env } from "cloudflare:workers";
+
 export async function GET(request: Request): Promise<Response> {
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;

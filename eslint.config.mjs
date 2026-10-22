@@ -168,6 +168,40 @@ const eslintConfig = defineConfig([
     rules: RULES,
   },
   {
+    // Worker code must never read a DOM global. `tsconfig` loads `lib.dom`, so
+    // `status`, `name`, `top`, `origin`, `event`… typecheck — and then throw a
+    // `ReferenceError` the moment the route runs in workerd (a `status` typo
+    // once made `broadcastObjectDelete` skip every list channel for months).
+    // The modules below are client-side on purpose (React hooks, DOM APIs) and
+    // are exempted one by one: a new file has to be added deliberately.
+    name: "no-dom-globals-in-workers",
+    files: ["app/**/route.ts", "app/**/inbox/route.ts", "src/**/*.ts", "proxy.ts", "lib/**/*.{ts,tsx}"],
+    ignores: [
+      "lib/audio-visualizer.ts",
+      "lib/client-api.ts",
+      "lib/i18n.tsx",
+      "lib/media/player-preferences.ts",
+      "lib/mls/keypackage.ts",
+      "lib/palettes.ts",
+      "lib/streaming/use-new-statuses.ts",
+      "lib/streaming/use-timeline-cache.ts",
+      "lib/streaming/use-timeline-stream.ts",
+      "lib/webrtc/use-call.ts",
+      "lib/**/__tests__/**",
+    ],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        "status", "name", "origin", "top", "event", "location", "document", "window",
+        "self", "parent", "frames", "history", "screen", "navigator", "alert", "confirm",
+        "prompt", "addEventListener", "removeEventListener", "localStorage", "sessionStorage",
+        "requestAnimationFrame", "cancelAnimationFrame", "innerWidth", "innerHeight",
+        "scrollY", "scrollX", "scrollTo", "customElements", "matchMedia", "getComputedStyle",
+        "XMLHttpRequest", "WebSocket", "FileReader", "IntersectionObserver", "ResizeObserver",
+      ],
+    },
+  },
+  {
     // Decorators must never reach a bundle: Vite 8 transforms with Oxc, which
     // keeps decorator syntax at any target, and workerd's V8 cannot parse it —
     // a decorated class took the whole deployed Worker down at startup with

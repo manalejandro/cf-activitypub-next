@@ -22,7 +22,8 @@
     "worker-configuration.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.mts"
+    "**/*.mts",
+    "app/.well-known/**/*.ts"
   ],
   "exclude": ["node_modules", "src/worker.ts"]
 }
