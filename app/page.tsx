@@ -209,6 +209,7 @@ export default function Home() {
         <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
           <span>© {new Date().getFullYear()} {brand} — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
           <div className="flex gap-5">
+            <Link href="/status" style={{ color: "var(--text-muted)" }}>{t.landing_status}</Link>
             <Link href="/graph" style={{ color: "var(--text-muted)" }}>{t.graph_link}</Link>
             <a href="/docs" style={{ color: "var(--text-muted)" }}>API Docs</a>
             <a href="/.well-known/nodeinfo" style={{ color: "var(--text-muted)" }}>NodeInfo</a>

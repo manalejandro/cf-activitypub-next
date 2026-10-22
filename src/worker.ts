@@ -1391,6 +1391,17 @@ async function executeScheduled(env: Env): Promise<void> {
   } catch (err) {
     console.error("[cron] executeScheduled failed", err);
   } finally {
+    // Liveness marker for the status page (`lib/instance-stats.ts`): a run that
+    // reached its end, whatever individual stages may have logged as failed.
+    // The TTL is longer than any reasonable outage so the page can tell "cron
+    // stopped three days ago" from "this instance never ran the cron".
+    await env.KV
+      .put(
+        "cron:last",
+        JSON.stringify({ at: new Date().toISOString(), duration_ms: Date.now() - runStartedAt }),
+        { expirationTtl: 172800 }
+      )
+      .catch(() => {});
     await env.KV.delete("cron:lock").catch(() => {});
   }
 }

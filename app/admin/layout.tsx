@@ -10,6 +10,7 @@ import { Loading } from "@/components/Loading";
 
 const navItems: { key: keyof Translations; href: string; icon: string }[] = [
   { key: "admin_dashboard", href: "/admin", icon: "bar-chart" },
+  { key: "admin_stats", href: "/admin/stats", icon: "heartbeat" },
   { key: "admin_accounts", href: "/admin/accounts", icon: "users" },
   { key: "admin_suspended", href: "/admin/suspended", icon: "ban" },
   { key: "admin_blocked", href: "/admin/blocked", icon: "lock" },

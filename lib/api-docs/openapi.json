@@ -180,6 +180,10 @@
       "description": "Scheduled Statuses endpoints."
     },
     {
+      "name": "Status",
+      "description": "Status endpoints."
+    },
+    {
       "name": "Statuses",
       "description": "Statuses endpoints."
     },
@@ -5721,6 +5725,36 @@
         }
       }
     },
+    "/api/v1/admin/stats": {
+      "get": {
+        "summary": "Get /api/v1/admin/stats",
+        "description": "Instance statistics for the admin panel: the same public status (components plus counters) and the operator's view on top — database size and row counts, storage retention, the federation registry, delivery failures, the media cache with its effective limits, moderation counters, the cron's last run",
+        "operationId": "get_api_v1_admin_stats",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/storage": {
       "get": {
         "summary": "Get /api/v1/admin/storage",
@@ -10876,6 +10910,22 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "Get /api/v1/status",
+        "description": "Instance status: the state of this server's components (web, database, federation, delivery, media cache, streaming, maintenance) plus the public counters. Everything here is already public elsewhere — the instance endpoint exposes the same kind of figures — and the payload is cached in KV for a min",
+        "operationId": "get_api_v1_status",
+        "tags": [
+          "Status"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
           }
         }
       }

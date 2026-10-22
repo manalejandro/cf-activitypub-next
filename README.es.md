@@ -299,6 +299,11 @@ Credenciales en [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime 
 ### Caché del frontend
 - Los shells HTML se cachean en la Cache API de Workers: 60 s frescos y hasta 10 min sirviendo copia obsoleta mientras se revalida en segundo plano (`PAGE_CACHE_TTL` / `PAGE_CACHE_SWR`, `0` lo desactiva). Nunca se cachea nada personalizado — payloads RSC, `/api/*`, peticiones autenticadas y respuestas con `Set-Cookie` se renderizan siempre — y los estáticos con hash mantienen el año inmutable de Cloudflare
 
+### Estado de la instancia
+- Página de estado pública en `/status` (enlazada desde el pie del landing): estado de los componentes (web, base de datos, federación, entrega, caché de medios, streaming, mantenimiento), cifras públicas y actualización automática cada minuto, servida por `GET /api/v1/status`
+- Estadísticas de administración en `/admin/stats`: el mismo estado más tamaño y filas de la base de datos, retención del histórico, registro de federación, fallos de entrega, la caché de medios con sus límites efectivos, contadores de moderación y qué funciones opcionales están configuradas
+- Nada inventado: cada cifra es algo que la instancia mide por sí misma, y un componente sin datos dice «desconocido» en lugar de un verde ficticio
+
 ### Tareas programadas
 - Trigger cron cada minuto para encuestas, auto-borrado y otras tareas de mantenimiento
 - Incluye el ciclo de patrulla del Guardian (barridos de spam/abuso con revisión de IA)

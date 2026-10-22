@@ -298,6 +298,11 @@ Credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime �
 ### Frontend caching
 - HTML shells are cached in the Workers Cache API: 60 s fresh and up to 10 min served stale while revalidating in the background (`PAGE_CACHE_TTL` / `PAGE_CACHE_SWR`, `0` disables). Nothing personalised is cached — RSC payloads, `/api/*`, authenticated requests and `Set-Cookie` responses always render fresh — and content-hashed static assets keep Cloudflare's immutable one-year caching
 
+### Instance status
+- Public status page at `/status` (linked from the landing footer): component states (web, database, federation, delivery, media cache, streaming, maintenance), public counters and an automatic refresh every minute, served by `GET /api/v1/status`
+- Admin statistics at `/admin/stats`: the same status plus database size and row counts, storage retention, the federation registry, delivery failures, the media cache with its effective limits, moderation counters and which optional features are configured
+- Nothing is invented: every figure is something the instance measures itself, and a component without data says "unknown" instead of a made-up green
+
 ### Scheduled tasks
 - Cron trigger runs every minute for polling, auto-delete, and other maintenance tasks
 - Includes the Guardian patrol cycle (spam/abuse sweeps with AI review)

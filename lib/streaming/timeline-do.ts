@@ -93,6 +93,15 @@ export class TimelineStreamDO extends CFDurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/health") {
+      // Liveness probe for the instance status page (admin panel and the public
+      // `/status` page): a plain request wakes a hibernating object just long
+      // enough to report how many streams are open. Never reachable from the
+      // internet — only through the worker's Durable Object binding.
+      const body = JSON.stringify({ status: "ok", connections: this.state.getWebSockets().length });
+      return new Response(body, { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
     if (url.pathname === "/connect") {
       return this.handleConnect(request, url);
     }
