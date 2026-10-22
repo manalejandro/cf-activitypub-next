@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Version",
   "admin_stats_approval": "avec approbation",
   "landing_footer_links": "Liens de pied de page",
-  "media_document": "Fichier"
+  "media_document": "Fichier",
+  "a11y_document_viewer": "Visionneuse de documents",
+  "document_view": "Voir",
+  "document_open_new_tab": "Ouvrir dans un nouvel onglet",
+  "document_preview_unavailable": "Pas d'aperçu pour ce type de fichier. Vous pouvez le télécharger.",
+  "document_preview_truncated": "Aperçu tronqué : les premiers {size} sont affichés."
 }

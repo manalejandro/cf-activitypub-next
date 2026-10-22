@@ -197,8 +197,11 @@ function AvatarBubble({ account, size = 42 }: { account: { display_name: string;
 
 
 // Flat media grid with global lightbox (for profile media tab)
-function ProfileMediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
+function ProfileMediaGrid({ attachments: allAttachments }: { attachments: MediaAttachment[] }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  // A gallery of media: documents live on the post itself (its card opens the
+  // document viewer), not as broken tiles here.
+  const attachments = allAttachments.filter((att) => att.type !== "unknown");
 
   return (
     <>

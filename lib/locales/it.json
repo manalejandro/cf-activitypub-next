@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Versione",
   "admin_stats_approval": "con approvazione",
   "landing_footer_links": "Link del piè di pagina",
-  "media_document": "File"
+  "media_document": "File",
+  "a11y_document_viewer": "Visualizzatore di documenti",
+  "document_view": "Apri",
+  "document_open_new_tab": "Apri in una nuova scheda",
+  "document_preview_unavailable": "Nessuna anteprima per questo tipo di file. Puoi scaricarlo.",
+  "document_preview_truncated": "Anteprima ridotta: vengono mostrati i primi {size}."
 }

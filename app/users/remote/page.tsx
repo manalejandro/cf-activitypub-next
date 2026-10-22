@@ -169,8 +169,11 @@ function AccountRow({ account }: { account: Account }) {
 }
 
 // Flat media grid with global lightbox (media tab)
-function ProfileMediaGrid({ attachments }: { attachments: MediaAttachment[] }) {
+function ProfileMediaGrid({ attachments: allAttachments }: { attachments: MediaAttachment[] }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  // A gallery of media: documents live on the post itself (its card opens the
+  // document viewer), not as broken tiles here.
+  const attachments = allAttachments.filter((att) => att.type !== "unknown");
 
   return (
     <>

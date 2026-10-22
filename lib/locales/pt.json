@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Versão",
   "admin_stats_approval": "com aprovação",
   "landing_footer_links": "Ligações do rodapé",
-  "media_document": "Ficheiro"
+  "media_document": "Ficheiro",
+  "a11y_document_viewer": "Visualizador de documentos",
+  "document_view": "Ver",
+  "document_open_new_tab": "Abrir num novo separador",
+  "document_preview_unavailable": "Sem pré-visualização para este tipo de ficheiro. Podes transferi-lo.",
+  "document_preview_truncated": "Pré-visualização truncada: mostram-se os primeiros {size}."
 }

@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "版本",
   "admin_stats_approval": "需审批",
   "landing_footer_links": "页脚链接",
-  "media_document": "文件"
+  "media_document": "文件",
+  "a11y_document_viewer": "文档查看器",
+  "document_view": "查看",
+  "document_open_new_tab": "在新标签页中打开",
+  "document_preview_unavailable": "此类文件无法预览，但可以下载。",
+  "document_preview_truncated": "预览已截断：仅显示前 {size}。"
 }

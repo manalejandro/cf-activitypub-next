@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Version",
   "admin_stats_approval": "with approval",
   "landing_footer_links": "Footer links",
-  "media_document": "File"
+  "media_document": "File",
+  "a11y_document_viewer": "Document viewer",
+  "document_view": "View",
+  "document_open_new_tab": "Open in a new tab",
+  "document_preview_unavailable": "No preview for this file type. You can download it.",
+  "document_preview_truncated": "Preview truncated: showing the first {size}."
 }

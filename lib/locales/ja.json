@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "バージョン",
   "admin_stats_approval": "承認制",
   "landing_footer_links": "フッターのリンク",
-  "media_document": "ファイル"
+  "media_document": "ファイル",
+  "a11y_document_viewer": "ドキュメントビューア",
+  "document_view": "表示",
+  "document_open_new_tab": "新しいタブで開く",
+  "document_preview_unavailable": "この種類のファイルはプレビューできません。ダウンロードできます。",
+  "document_preview_truncated": "プレビューは先頭の {size} のみ表示しています。"
 }

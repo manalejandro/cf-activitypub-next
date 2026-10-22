@@ -22,6 +22,7 @@ import { useLicenseInfo } from "@/lib/license-client";
 import LocationPreview from "./LocationPreview";
 import { RelativeTime } from "./RelativeTime";
 import { mediaDownloadName } from "@/lib/media/filename";
+import { DocumentViewer } from "@/components/DocumentViewer";
 import { documentIcon, formatBytes, mediaFileName } from "@/lib/media/upload-client";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
@@ -179,6 +180,8 @@ export function AvatarBubble({ account, size = 42 }: { account: Account; size?: 
 
 export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: { attachments: MediaAttachment[]; sensitive?: boolean; defaultRevealed?: boolean }) {
   const [lbIdx, setLbIdx] = useState<number | null>(null);
+  // Document attachments open the document viewer instead of the media lightbox.
+  const [docIdx, setDocIdx] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(defaultRevealed);
   // Attachment URLs that failed to load (dead/expired origin, evicted cache
   // entry) render as a labelled placeholder instead of the browser's broken
@@ -388,43 +391,61 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
           }
           if (att.type === "unknown") {
             // A PDF or a text file is not media: Mastodon's `unknown` type, and
-            // every client renders it as the file it is. Ours is a card with the
-            // icon, the name (alt text when the author wrote one) and a download.
+            // every client renders it as the file it is. Ours is a card that
+            // opens the document viewer, plus a direct download.
             const size = Number(att.meta?.original?.size ?? "");
             const name = att.description || mediaFileName(att.url) || t.media_document;
             const meta = [name === att.description ? mediaFileName(att.url) : null, Number.isFinite(size) && size > 0 ? formatBytes(size) : null]
               .filter(Boolean)
               .join(" · ");
+            const cardStyle = {
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.85rem 1rem",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              color: "var(--text-primary)",
+            } as const;
             return (
-              <a
+              <div
                 key={att.id}
-                href={att.url}
-                download={mediaDownloadName(att)}
-                rel="noopener noreferrer"
                 style={{
                   gridColumn: attachments.length === 1 ? "auto" : "1 / -1",
                   display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  padding: "0.85rem 1rem",
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  color: "var(--text-primary)",
-                  textDecoration: "none",
+                  alignItems: "stretch",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
                   filter: blurred ? "blur(12px)" : undefined,
                   pointerEvents: blurred ? "none" : undefined,
                 }}
               >
-                <Icon name={documentIcon(att.url)} size="1.6rem" />
-                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: "0.1rem" }}>
-                  <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</strong>
-                  {meta ? <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{meta}</span> : null}
-                </span>
-                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem", color: "var(--accent)", whiteSpace: "nowrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setDocIdx(i)}
+                  aria-label={`${t.document_view}: ${name}`}
+                  style={{ ...cardStyle, flex: "1 1 12rem", cursor: "pointer", textAlign: "left" }}
+                >
+                  <Icon name={documentIcon(att.url)} size="1.6rem" />
+                  <span style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: "0.1rem" }}>
+                    <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</strong>
+                    {meta ? <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{meta}</span> : null}
+                  </span>
+                  <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem", color: "var(--accent)", whiteSpace: "nowrap" }}>
+                    <Icon name="eye" size="0.95rem" /> {t.document_view}
+                  </span>
+                </button>
+                <a
+                  href={att.url}
+                  download={mediaDownloadName(att)}
+                  rel="noopener noreferrer"
+                  aria-label={`${t.media_download}: ${name}`}
+                  style={{ ...cardStyle, justifyContent: "center", gap: "0.4rem", textDecoration: "none", whiteSpace: "nowrap", fontSize: "0.85rem" }}
+                >
                   <Icon name="download" size="0.95rem" /> {t.media_download}
-                </span>
-              </a>
+                </a>
+              </div>
             );
           }
           return null;
@@ -432,6 +453,9 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
         {blurred && revealBtn}
         {!blurred && hasSensitive && hideBtn}
       </div>
+      {docIdx !== null && attachments[docIdx]?.type === "unknown" && (
+        <DocumentViewer attachment={attachments[docIdx]} onClose={() => setDocIdx(null)} />
+      )}
       {!blurred && lbIdx !== null && (
         <Lightbox
           media={lightboxItems.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}

@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Version",
   "admin_stats_approval": "mit Genehmigung",
   "landing_footer_links": "Fußzeilen-Links",
-  "media_document": "Datei"
+  "media_document": "Datei",
+  "a11y_document_viewer": "Dokumentbetrachter",
+  "document_view": "Ansehen",
+  "document_open_new_tab": "In neuem Tab öffnen",
+  "document_preview_unavailable": "Für diesen Dateityp gibt es keine Vorschau. Du kannst die Datei herunterladen.",
+  "document_preview_truncated": "Vorschau gekürzt: die ersten {size} werden angezeigt."
 }

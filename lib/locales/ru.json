@@ -1342,5 +1342,10 @@
   "admin_stats_feature_version": "Версия",
   "admin_stats_approval": "с одобрением",
   "landing_footer_links": "Ссылки в подвале",
-  "media_document": "Файл"
+  "media_document": "Файл",
+  "a11y_document_viewer": "Просмотр документов",
+  "document_view": "Открыть",
+  "document_open_new_tab": "Открыть в новой вкладке",
+  "document_preview_unavailable": "Для этого типа файлов нет предпросмотра, но его можно скачать.",
+  "document_preview_truncated": "Предпросмотр обрезан: показаны первые {size}."
 }
