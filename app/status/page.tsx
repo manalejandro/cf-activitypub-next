@@ -65,8 +65,20 @@ export default function InstanceStatusPage() {
   const since = parseDbDate(metrics.running_since);
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <header style={{ borderBottom: "1px solid var(--border)" }}>
+    // Same forced-light surface as the landing: `.force-light` + the palette's
+    // `--bg` painted on the page. `globals.css` zeroes the mobile body
+    // paddings for it (they exist for the app's fixed bar, which this page does
+    // not render), so the surface reaches both edges with no palette band.
+    <main className="force-light flex flex-col flex-1" style={{ background: "var(--bg)" }}>
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 40,
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-surface)",
+        }}
+      >
         <div className="container-wide flex items-center justify-between gap-4 py-4">
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700 }}>
             <Icon name="arrow-left" /> {brand}

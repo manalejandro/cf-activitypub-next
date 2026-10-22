@@ -51,7 +51,7 @@ export default function Home() {
   ];
 
   return (
-    <main className="force-light flex flex-col flex-1 -mt-14 md:mt-0" style={{ background: "var(--bg)" }}>
+    <main className="force-light flex flex-col flex-1" style={{ background: "var(--bg)" }}>
       {/* Nav */}
       <nav style={{ position: "sticky", top: 0, zIndex: 40, borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
         <div className="container-wide flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-4">
@@ -205,16 +205,24 @@ export default function Home() {
       ) : null}
 
       {/* Footer */}
-      <footer style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-        <div className="container-wide flex flex-wrap items-center justify-between gap-4 py-6">
-          <span>© {new Date().getFullYear()} {brand} — {t.landing_footer}{version ? ` · v${version}` : ""}</span>
-          <div className="flex gap-5">
+      <footer
+        className="mt-auto"
+        style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "0.85rem" }}
+      >
+        <div className="container-wide flex flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between md:gap-6">
+          <p className="order-2 md:order-none" style={{ margin: 0 }}>
+            © {new Date().getFullYear()} {brand} — {t.landing_footer}{version ? ` · v${version}` : ""}
+          </p>
+          <nav
+            aria-label={t.landing_footer_links}
+            className="order-1 grid grid-cols-2 gap-x-4 gap-y-2 md:order-none md:flex md:flex-wrap md:items-center md:justify-end md:gap-x-5"
+          >
             <Link href="/status" style={{ color: "var(--text-muted)" }}>{t.landing_status}</Link>
             <Link href="/graph" style={{ color: "var(--text-muted)" }}>{t.graph_link}</Link>
             <a href="/docs" style={{ color: "var(--text-muted)" }}>API Docs</a>
             <a href="/.well-known/nodeinfo" style={{ color: "var(--text-muted)" }}>NodeInfo</a>
             <a href="https://github.com/manalejandro/cf-activitypub-next" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)" }}>GitHub</a>
-          </div>
+          </nav>
         </div>
       </footer>
     </main>

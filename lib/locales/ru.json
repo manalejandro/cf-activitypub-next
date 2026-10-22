@@ -1340,5 +1340,6 @@
   "admin_stats_feature_registrations": "Регистрация",
   "admin_stats_feature_anonymous": "Анонимные ленты",
   "admin_stats_feature_version": "Версия",
-  "admin_stats_approval": "с одобрением"
+  "admin_stats_approval": "с одобрением",
+  "landing_footer_links": "Ссылки в подвале"
 }

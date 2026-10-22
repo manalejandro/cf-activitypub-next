@@ -39,9 +39,14 @@
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
 }
 
-/* Pages that must always render in day mode (landing, auth flows) regardless
-   of the global night/day toggle. */
+/* Pages that must always render in day mode (landing, auth flows, status)
+   regardless of the global night/day toggle. The `color` matters as much as
+   the variables: `body` sets its own colour from the installed palette, and a
+   descendant only sees the overridden variables if it asks for them — text
+   that simply inherits kept the palette's (dark-theme) colour and rendered
+   nearly invisible on the forced-light surface. */
 .force-light {
+  color: var(--text-primary);
   --bg: #f4f4ff;
   --bg-surface: #ffffff;
   --bg-elevated: #f0f0fa;
@@ -102,6 +107,18 @@ pre, code, kbd, samp {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* Public day-mode pages (the landing, the status page, the docs and the auth
+   screens) wear the instance's default light theme, but the viewport scrollbar
+   is painted from the ROOT's variables — the palette the visitor installed —
+   so it kept their colours around a light page. Only the webkit
+   pseudo-elements are used, on purpose: declaring the standard
+   `scrollbar-width`/`scrollbar-color` makes Chromium ignore the 6px rules
+   above and render the bar at its default (thick) width. Colours mirror the
+   day palette in `.force-light`. */
+:root:has(.force-light)::-webkit-scrollbar-track { background: #f4f4ff; }
+:root:has(.force-light)::-webkit-scrollbar-thumb { background: #d0d0e8; }
+:root:has(.force-light)::-webkit-scrollbar-thumb:hover { background: #a0a0d0; }
 
 /* Sidebar scrollbar — thinner and in the logo/brand colour */
 .sidebar-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -290,9 +307,15 @@ img.emojione { display: inline; vertical-align: middle; }
   .page-inner { grid-column: 1; min-width: 0; }
   .page-sidebar { display: none; }
   .page-main { border-right: none; }
-  /* The federation graph page is full-bleed with its OWN in-flow nav — the
-     fixed Sidebar nav (and its body paddings) must not offset it. */
-  body:has(> main.graph-page) {
+  /* Pages with their own in-flow chrome — the federation graph page, the
+     landing, the status page, the auth screens — are full-bleed: the fixed
+     Sidebar bar's body paddings must not offset them. Without this the page's
+     own surface (forced light, or its own dark hero) left a palette-coloured
+     band above and below it on mobile: the reservation is 56px on BOTH sides,
+     which is why compensating with a negative margin only ever moved the band
+     from one edge to the other. */
+  body:has(> main.graph-page),
+  body:has(> .force-light) {
     padding-top: 0;
     padding-bottom: 0;
   }

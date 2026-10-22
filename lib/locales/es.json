@@ -1340,5 +1340,6 @@
   "admin_stats_feature_registrations": "Registro",
   "admin_stats_feature_anonymous": "Timelines anónimas",
   "admin_stats_feature_version": "Versión",
-  "admin_stats_approval": "con aprobación"
+  "admin_stats_approval": "con aprobación",
+  "landing_footer_links": "Enlaces del pie"
 }

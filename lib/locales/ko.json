@@ -1340,5 +1340,6 @@
   "admin_stats_feature_registrations": "가입",
   "admin_stats_feature_anonymous": "익명 타임라인",
   "admin_stats_feature_version": "버전",
-  "admin_stats_approval": "승인 필요"
+  "admin_stats_approval": "승인 필요",
+  "landing_footer_links": "바닥글 링크"
 }

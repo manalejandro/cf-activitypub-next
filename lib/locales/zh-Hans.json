@@ -1340,5 +1340,6 @@
   "admin_stats_feature_registrations": "注册",
   "admin_stats_feature_anonymous": "匿名时间线",
   "admin_stats_feature_version": "版本",
-  "admin_stats_approval": "需审批"
+  "admin_stats_approval": "需审批",
+  "landing_footer_links": "页脚链接"
 }

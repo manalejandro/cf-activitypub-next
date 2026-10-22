@@ -1340,5 +1340,6 @@
   "admin_stats_feature_registrations": "登録",
   "admin_stats_feature_anonymous": "匿名タイムライン",
   "admin_stats_feature_version": "バージョン",
-  "admin_stats_approval": "承認制"
+  "admin_stats_approval": "承認制",
+  "landing_footer_links": "フッターのリンク"
 }
