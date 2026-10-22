@@ -719,7 +719,7 @@ async function storeObjectAttachments(
       await createAttachment(db, {
         id: att.id || generateId(),
         objectId,
-        type: apAttachmentType(att.type, att.mediaType),
+        type: apAttachmentType(att.type, att.mediaType, att.url),
         url: att.url,
         remoteUrl: att.url,
         description: att.name ?? null,
@@ -905,7 +905,7 @@ export async function fetchAndCacheRemoteActorFeatured(
             const localAttachment: LocalAttachment = {
               id: attachment.id || generateId(),
               objectId: oid,
-              type: apAttachmentType(attachment.type, attachment.mediaType),
+              type: apAttachmentType(attachment.type, attachment.mediaType, attachment.url),
               url: attachment.url,
               remoteUrl: attachment.url,
               description: attachment.name ?? null,

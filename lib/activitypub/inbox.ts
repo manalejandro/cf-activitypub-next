@@ -578,7 +578,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       const localAttachment: LocalAttachment = {
         id: attachment.id || generateId(),
         objectId: obj.id,
-        type: apAttachmentType(attachment.type, attachment.mediaType),
+        type: apAttachmentType(attachment.type, attachment.mediaType, attachment.url),
         url: attachment.url,
         remoteUrl: attachment.url,
         description: attachment.name ?? null,
@@ -2737,7 +2737,7 @@ async function saveObjectAttachments(
       await createAttachment(db, {
         id: att.id || generateId(),
         objectId,
-        type: apAttachmentType(att.type, att.mediaType),
+        type: apAttachmentType(att.type, att.mediaType, att.url),
         url: att.url,
         remoteUrl: att.url,
         description: att.name ?? null,

@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "Fils anonymes",
   "admin_stats_feature_version": "Version",
   "admin_stats_approval": "avec approbation",
-  "landing_footer_links": "Liens de pied de page"
+  "landing_footer_links": "Liens de pied de page",
+  "media_document": "Fichier"
 }

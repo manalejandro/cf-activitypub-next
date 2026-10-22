@@ -19,7 +19,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { resolveLimits, type InstanceLimits } from "@/lib/constants";
+import { DOCUMENT_MIME_TYPES, resolveLimits, type InstanceLimits } from "@/lib/constants";
 import { metadataStripKind, metadataStripTransform, stripMetadataBytes } from "@/lib/media/strip-metadata";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
@@ -192,11 +192,16 @@ function normalizeLimits(limits: MediaCacheLimits): NormalizedMediaCacheLimits {
 /**
  * Mastodon's per-type remote media limits: video/GIF/audio (its
  * `larger_media_format?`) get VIDEO_LIMIT, anything else IMAGE_LIMIT; the
- * absolute `maxObjectBytes` ceiling still applies to every type.
+ * absolute `maxObjectBytes` ceiling still applies to every type. PDFs and
+ * plain text ride with the large bucket — the image limit is an image limit.
  */
 function mediaCacheSizeLimit(contentType: string, limits: NormalizedMediaCacheLimits): number {
   const type = (contentType || "").toLowerCase();
-  const isLarge = type.startsWith("video/") || type.startsWith("audio/") || type === "image/gif";
+  const isLarge =
+    type.startsWith("video/") ||
+    type.startsWith("audio/") ||
+    type === "image/gif" ||
+    DOCUMENT_MIME_TYPES.includes(type);
   return isLarge ? limits.maxObjectBytes : Math.min(limits.maxObjectBytes, limits.maxImageBytes);
 }
 
@@ -240,11 +245,21 @@ async function withBufferedSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 const RETRY_HOURS = 6;
 
-/** Media types worth caching (SVG is excluded: it can execute when opened). */
+/**
+ * Media types worth caching (SVG is excluded: it can execute when opened).
+ * Documents are cached like media — a remote PDF keeps working after its origin
+ * drops it, and clients stop hotlinking the peer — under the same size caps.
+ */
 function isCacheableType(contentType: string): boolean {
   if (!contentType) return false;
-  if (contentType === "image/svg+xml") return false;
-  return contentType.startsWith("image/") || contentType.startsWith("video/") || contentType.startsWith("audio/");
+  const type = contentType.toLowerCase().split(";")[0].trim();
+  if (type === "image/svg+xml") return false;
+  return (
+    type.startsWith("image/") ||
+    type.startsWith("video/") ||
+    type.startsWith("audio/") ||
+    DOCUMENT_MIME_TYPES.includes(type)
+  );
 }
 
 const EXTENSIONS: Record<string, string> = {
@@ -267,6 +282,8 @@ const EXTENSIONS: Record<string, string> = {
   "audio/flac": "flac",
   "audio/mp4": "m4a",
   "audio/aac": "aac",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
 };
 
 function extensionFor(contentType: string, url: string): string {

@@ -157,9 +157,18 @@ export const INSTANCE_DORMANT_DAYS = 30; // no activity → stop refreshing, the
 
 export const MAX_IMAGE_SIZE = 16 * 1024 * 1024; // 16 MB
 export const MAX_VIDEO_SIZE = 103_809_024; // ~99 MB
+export const MAX_DOCUMENT_SIZE = 32 * 1024 * 1024; // 32 MB — PDFs and plain text
 export const IMAGE_MATRIX_LIMIT = 33_177_600;
 export const VIDEO_FRAME_RATE_LIMIT = 120;
 export const VIDEO_MATRIX_LIMIT = 2_304_000;
+/**
+ * Documents a status may carry. Mastodon has no `document` attachment type: it
+ * keeps them as `unknown` and its clients render them as a download link, so
+ * that is what we store and serialize too (AP sends a `Document` with the real
+ * `mediaType`).
+ */
+export const DOCUMENT_MIME_TYPES = ["application/pdf", "text/plain"];
+
 export const SUPPORTED_MEDIA_MIME_TYPES = [
   "image/jpeg",
   "image/png",
@@ -169,7 +178,37 @@ export const SUPPORTED_MEDIA_MIME_TYPES = [
   "video/webm",
   "audio/mpeg",
   "audio/ogg",
+  ...DOCUMENT_MIME_TYPES,
 ];
+
+/**
+ * Upload cap per MIME type: images the image limit, video and audio the video
+ * one, documents their own. Takes the subset so the client (which only holds
+ * these three) can compute the same cap the server enforces.
+ */
+export function mediaLimitFor(
+  mimeType: string,
+  limits: Pick<InstanceLimits, "maxImageSize" | "maxVideoSize" | "maxDocumentSize">
+): number {
+  const mime = (mimeType || "").toLowerCase();
+  if (mime.startsWith("video/")) return limits.maxVideoSize;
+  if (mime.startsWith("audio/")) return limits.maxVideoSize;
+  if (DOCUMENT_MIME_TYPES.includes(mime)) return limits.maxDocumentSize;
+  return limits.maxImageSize;
+}
+
+/**
+ * The attachment family stored for an upload. Anything that is not
+ * image/video/audio is `unknown` — Mastodon's own vocabulary, and the value its
+ * clients (and ours) use to render a file chip instead of a player.
+ */
+export function localAttachmentType(mimeType: string): "image" | "video" | "audio" | "unknown" {
+  const mime = (mimeType || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "unknown";
+}
 
 export const INSTANCE_LANGUAGES = ["en", "es", "fr", "de", "it", "ja", "ko", "pt", "ru", "zh-Hans"];
 export const MASTODON_COMPAT_VERSION = "4.7.0";
@@ -216,6 +255,8 @@ export interface InstanceLimits {
   maxAvatarSize: number;
   maxHeaderSize: number;
   maxVideoSize: number;
+  /** Cap for PDF/plain-text attachments. */
+  maxDocumentSize: number;
   imageMatrixLimit: number;
   sharedInboxBatch: number;
   mediaCacheEnabled: boolean;
@@ -292,6 +333,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxAvatarSize: MAX_AVATAR_SIZE,
   maxHeaderSize: MAX_HEADER_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
+  maxDocumentSize: MAX_DOCUMENT_SIZE,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
   sharedInboxBatch: SHARED_INBOX_BATCH,
   mediaCacheEnabled: MEDIA_CACHE_ENABLED,
@@ -398,6 +440,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     maxAvatarSize: num(env, "MAX_AVATAR_SIZE", DEFAULT_LIMITS.maxAvatarSize),
     maxHeaderSize: num(env, "MAX_HEADER_SIZE", DEFAULT_LIMITS.maxHeaderSize),
     maxVideoSize: num(env, "MAX_VIDEO_SIZE", DEFAULT_LIMITS.maxVideoSize),
+    maxDocumentSize: num(env, "MAX_DOCUMENT_SIZE", DEFAULT_LIMITS.maxDocumentSize),
     imageMatrixLimit: num(env, "IMAGE_MATRIX_LIMIT", DEFAULT_LIMITS.imageMatrixLimit),
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
     videoMatrixLimit: num(env, "VIDEO_MATRIX_LIMIT", DEFAULT_LIMITS.videoMatrixLimit),

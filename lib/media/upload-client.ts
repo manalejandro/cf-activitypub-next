@@ -1,5 +1,6 @@
 "use client";
 
+import { mediaLimitFor, type InstanceLimits } from "@/lib/constants";
 import { translateKey, type Translations } from "@/lib/i18n";
 import type { MediaAttachment } from "@/components/StatusCard";
 
@@ -22,8 +23,12 @@ export interface MediaUploadOptions {
   remaining: number;
   /** Attachment cap shown in the "too many files" message. */
   maxAttachments: number;
-  /** Instance upload limit in bytes (`limits.maxImageSize`). */
-  maxBytes: number;
+  /**
+   * The instance's media limits. The cap that applies to a file is derived from
+   * its MIME type (`mediaLimitFor`), so a 40 MB video no longer gets an image
+   * limit's error message and a PDF gets the document cap.
+   */
+  limits: Pick<InstanceLimits, "maxImageSize" | "maxVideoSize" | "maxDocumentSize">;
   t: Translations;
 }
 
@@ -38,6 +43,37 @@ export function formatBytes(bytes: number): string {
   const mb = bytes / (1024 * 1024);
   if (mb >= 1) return `${Math.round(mb)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * Icon for a media chip or attachment card: audio keeps its note, video and
+ * images the film/photo icon, and a document gets a file icon picked from the
+ * URL extension (a PDF is recognizable at a glance).
+ */
+export function mediaChipIcon(att: Pick<MediaAttachment, "type" | "url">): string {
+  if (att.type === "audio") return "music";
+  if (att.type === "unknown") return documentIcon(att.url);
+  return "film";
+}
+
+/** `file-pdf-o` for a PDF, `file-text-o` for any other document (txt, md…). */
+export function documentIcon(url: string | null | undefined): string {
+  return /\.pdf([?#]|$)/i.test(url ?? "") ? "file-pdf-o" : "file-text-o";
+}
+
+/**
+ * The uploaded file's name, when the storage key kept it (`<uuid>-report.pdf`) —
+ * the older keys are `<id>.<ext>` only, and then the extension is all there is.
+ */
+export function mediaFileName(url: string | null | undefined): string | null {
+  const segment = (url ?? "").split(/[?#]/)[0].split("/").pop();
+  if (!segment) return null;
+  const decoded = decodeURIComponent(segment);
+  const named = decoded.match(/^(?:[0-9a-f]{32}|[0-9a-f-]{36})-(.+)$/i);
+  if (named) return named[1];
+  const extension = decoded.match(/\.([a-z0-9]{1,5})$/i);
+  if (/^(?:[0-9a-f]{32}|[0-9a-f-]{36})\./i.test(decoded) && extension) return extension[1].toUpperCase();
+  return decoded;
 }
 
 /** Server error → localized message (`error_code` first, English text as fallback). */
@@ -57,7 +93,7 @@ export async function uploadMediaFiles(
   files: File[],
   options: MediaUploadOptions
 ): Promise<MediaUploadResult> {
-  const { token, locale, sensitive, remaining, maxAttachments, maxBytes, t } = options;
+  const { token, locale, sensitive, remaining, maxAttachments, limits, t } = options;
   const accepted = files.slice(0, Math.max(0, remaining));
   const limitMessage = t.composer_upload_limit.replace("{value}", String(maxAttachments));
   if (accepted.length === 0) {
@@ -87,7 +123,7 @@ export async function uploadMediaFiles(
         continue;
       }
       const payload = (await res.json().catch(() => null)) as { error?: string; error_code?: string } | null;
-      if (!error) error = mediaUploadError(payload, t, maxBytes);
+      if (!error) error = mediaUploadError(payload, t, mediaLimitFor(file.type, limits));
     } catch {
       if (!error) error = t.compose_upload_error;
     }

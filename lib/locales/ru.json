@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "Анонимные ленты",
   "admin_stats_feature_version": "Версия",
   "admin_stats_approval": "с одобрением",
-  "landing_footer_links": "Ссылки в подвале"
+  "landing_footer_links": "Ссылки в подвале",
+  "media_document": "Файл"
 }

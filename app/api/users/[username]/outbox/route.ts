@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, getObjectById, getPollsByObjectIds, countActorPublicStatuses } from "@/lib/db";
 import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI, conversationFromRaw } from "@/lib/activitypub/utils";
+import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { applyPollToNote } from "@/lib/activitypub/polls";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -15,7 +16,7 @@ import {
   deleteMlsMessagesByObjectId,
   insertMlsMessage,
 } from "@/lib/db";
-import type { APAttachment, APTag, LocalAttachment, APActor, APActivity } from "@/lib/types";
+import type { APTag, APActor, APActivity } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
 interface MlsOutboxObject {
@@ -32,24 +33,6 @@ interface MlsOutboxObject {
   to?: unknown;
   cc?: unknown;
   published?: string;
-}
-
-function toAPAttachment(att: LocalAttachment): APAttachment {
-  const mimeType = att.mimeType ?? "application/octet-stream";
-  let type: APAttachment["type"] = "Document";
-  if (mimeType.startsWith("image/")) type = "Image";
-  else if (mimeType.startsWith("video/")) type = "Video";
-  else if (mimeType.startsWith("audio/")) type = "Audio";
-  return {
-    id: att.url,
-    type,
-    mediaType: mimeType,
-    url: att.url,
-    ...(att.description ? { name: att.description } : {}),
-    ...(att.blurhash ? { blurhash: att.blurhash } : {}),
-    ...(att.width != null ? { width: att.width } : {}),
-    ...(att.height != null ? { height: att.height } : {}),
-  };
 }
 
 // GET /users/:username/outbox

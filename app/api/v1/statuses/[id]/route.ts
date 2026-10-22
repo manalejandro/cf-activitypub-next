@@ -9,6 +9,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
+import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { withRelayInboxes } from "@/lib/activitypub/relays";
@@ -20,29 +21,11 @@ import { eventFromRaw } from "@/lib/event";
 import { refreshRemotePoll, applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
 import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
-import type { APActor, APAttachment, APTag, LocalAttachment } from "@/lib/types";
+import type { APActor, APTag } from "@/lib/types";
 import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
-
-function toAPAttachment(att: LocalAttachment): APAttachment {
-  const mimeType = att.mimeType ?? "application/octet-stream";
-  let type: APAttachment["type"] = "Document";
-  if (mimeType.startsWith("image/")) type = "Image";
-  else if (mimeType.startsWith("video/")) type = "Video";
-  else if (mimeType.startsWith("audio/")) type = "Audio";
-  return {
-    id: att.url,
-    type,
-    mediaType: mimeType,
-    url: att.url,
-    ...(att.description ? { name: att.description } : {}),
-    ...(att.blurhash ? { blurhash: att.blurhash } : {}),
-    ...(att.width != null ? { width: att.width } : {}),
-    ...(att.height != null ? { height: att.height } : {}),
-  };
-}
 
 // GET /api/v1/statuses/:id
 /** `media_ids` as an array: `media_ids[]`, a JSON array, or a single id. */

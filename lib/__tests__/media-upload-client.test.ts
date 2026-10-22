@@ -1,9 +1,17 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import en from "@/lib/locales/en.json";
-import { uploadMediaFiles, mediaUploadError } from "@/lib/media/upload-client";
+import {
+  uploadMediaFiles,
+  mediaUploadError,
+  mediaChipIcon,
+  mediaFileName,
+  documentIcon,
+} from "@/lib/media/upload-client";
 
-const MAX_BYTES = 16 * 1024 * 1024;
+const IMAGE_BYTES = 16 * 1024 * 1024;
+const VIDEO_BYTES = 99 * 1024 * 1024;
+const DOCUMENT_BYTES = 32 * 1024 * 1024;
 
 function options(overrides: Partial<Parameters<typeof uploadMediaFiles>[1]> = {}) {
   return {
@@ -11,7 +19,7 @@ function options(overrides: Partial<Parameters<typeof uploadMediaFiles>[1]> = {}
     locale: "en",
     remaining: 4,
     maxAttachments: 4,
-    maxBytes: MAX_BYTES,
+    limits: { maxImageSize: IMAGE_BYTES, maxVideoSize: VIDEO_BYTES, maxDocumentSize: DOCUMENT_BYTES },
     t: en,
     ...overrides,
   };
@@ -45,22 +53,28 @@ describe("client media upload", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({ error: "Unsupported file type", error_code: "media_error_type" }), { status: 422 })
     ));
-    const result = await uploadMediaFiles([new File(["x"], "notes.txt", { type: "text/plain" })], options());
+    const result = await uploadMediaFiles([new File(["x"], "archive.zip", { type: "application/zip" })], options());
     expect(result.attachments).toEqual([]);
     expect(result.error).toBe(en.media_error_type);
   });
 
-  it("fills the instance limit into the too-large message", async () => {
+  it("uses the per-type cap in the too-large message", async () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
-      new Response(JSON.stringify({ error: "File too large (max 16 MB)", error_code: "media_error_too_large" }), { status: 422 })
+      new Response(JSON.stringify({ error: "File too large", error_code: "media_error_too_large" }), { status: 413 })
     ));
-    const result = await uploadMediaFiles([new File(["x"], "big.mp4", { type: "video/mp4" })], options());
-    expect(result.error).toBe("The file is too large (max 16 MB)");
+
+    // A video is judged against the video limit, not the image one…
+    const video = await uploadMediaFiles([new File(["x"], "big.mp4", { type: "video/mp4" })], options());
+    expect(video.error).toBe("The file is too large (max 99 MB)");
+
+    // …and a document against the document limit.
+    const document = await uploadMediaFiles([new File(["x"], "big.pdf", { type: "application/pdf" })], options());
+    expect(document.error).toBe("The file is too large (max 32 MB)");
   });
 
   it("falls back to the server text or the generic message", async () => {
-    expect(mediaUploadError({ error: "Something specific" }, en, MAX_BYTES)).toBe("Something specific");
-    expect(mediaUploadError(null, en, MAX_BYTES)).toBe(en.compose_upload_error);
+    expect(mediaUploadError({ error: "Something specific" }, en, IMAGE_BYTES)).toBe("Something specific");
+    expect(mediaUploadError(null, en, IMAGE_BYTES)).toBe(en.compose_upload_error);
 
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new Error("offline");
@@ -84,17 +98,39 @@ describe("client media upload", () => {
   it("keeps the successful files when one is rejected", async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const name = (init.body as FormData).get("file") as File;
-      if (name.name === "bad.txt") {
+      if (name.name === "bad.zip") {
         return new Response(JSON.stringify({ error: "Unsupported file type", error_code: "media_error_type" }), { status: 422 });
       }
       return new Response(JSON.stringify(attachment), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
     const result = await uploadMediaFiles(
-      [new File(["a"], "bad.txt", { type: "text/plain" }), new File(["b"], "ok.png", { type: "image/png" })],
+      [new File(["a"], "bad.zip", { type: "application/zip" }), new File(["b"], "ok.png", { type: "image/png" })],
       options()
     );
     expect(result.attachments).toEqual([attachment]);
     expect(result.error).toBe(en.media_error_type);
+  });
+});
+
+describe("attachment presentation helpers", () => {
+  it("picks the chip icon from the attachment type", () => {
+    expect(mediaChipIcon({ type: "audio", url: "https://x.test/a.mp3" })).toBe("music");
+    expect(mediaChipIcon({ type: "video", url: "https://x.test/a.mp4" })).toBe("film");
+    expect(mediaChipIcon({ type: "image", url: "https://x.test/a.png" })).toBe("film");
+    // Documents get a file icon, and a PDF is recognizable at a glance.
+    expect(mediaChipIcon({ type: "unknown", url: "https://x.test/media/u/report.pdf" })).toBe("file-pdf-o");
+    expect(mediaChipIcon({ type: "unknown", url: "https://x.test/media/u/notes.txt" })).toBe("file-text-o");
+    expect(documentIcon("https://x.test/a.pdf?v=2")).toBe("file-pdf-o");
+    expect(documentIcon(null)).toBe("file-text-o");
+  });
+
+  it("recovers the uploaded file name from the storage key", () => {
+    // Modern keys keep the original name after the uuid…
+    expect(mediaFileName("https://cf-ap.com/api/media/media/ana/6f1c1d5a-0f3e-4a77-9d5f-3a1d6f9c6a2b-informe.pdf")).toBe("informe.pdf");
+    // …old ones only have the id, so the extension is all there is.
+    expect(mediaFileName("https://cf-ap.com/api/media/media/ana/6f1c1d5a0f3e4a779d5f3a1d6f9c6a2b.pdf")).toBe("PDF");
+    expect(mediaFileName("https://cf-ap.com/api/media/media/ana/notas.txt")).toBe("notas.txt");
+    expect(mediaFileName(null)).toBeNull();
   });
 });

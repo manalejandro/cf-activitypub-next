@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "Anonymous timelines",
   "admin_stats_feature_version": "Version",
   "admin_stats_approval": "with approval",
-  "landing_footer_links": "Footer links"
+  "landing_footer_links": "Footer links",
+  "media_document": "File"
 }

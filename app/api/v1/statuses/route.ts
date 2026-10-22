@@ -27,6 +27,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
+import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { parseEventInput } from "@/lib/event";
 import { applyPollToNote } from "@/lib/activitypub/polls";
 import {
@@ -53,27 +54,8 @@ import { resolveLimits, MIN_POLL_OPTIONS, POLL_DEFAULT_EXPIRATION } from "@/lib/
 import { broadcastPublicStatus, broadcastHomeStatus, broadcastStatusInteraction, broadcastStatusInteractionToLists, actorExclusion, eligibleLocalRecipients } from "@/lib/streaming/broadcast";
 import { notify } from "@/lib/notify";
 import { screenStatus } from "@/lib/moderation/pipeline";
-import type { APActor, APAttachment, APTag, LocalActor, LocalAttachment } from "@/lib/types";
+import type { APActor, APTag, LocalActor } from "@/lib/types";
 import { env } from "cloudflare:workers";
-
-function toAPAttachment(att: LocalAttachment): APAttachment {
-  const mimeType = att.mimeType ?? "application/octet-stream";
-  let type: APAttachment["type"] = "Document";
-  if (mimeType.startsWith("image/")) type = "Image";
-  else if (mimeType.startsWith("video/")) type = "Video";
-  else if (mimeType.startsWith("audio/")) type = "Audio";
-  return {
-    id: att.url,
-    type,
-    mediaType: mimeType,
-    url: att.url,
-    ...(att.description ? { name: att.description } : {}),
-    ...(att.blurhash ? { blurhash: att.blurhash } : {}),
-    ...(att.width != null ? { width: att.width } : {}),
-    ...(att.height != null ? { height: att.height } : {}),
-    ...(att.sensitive ? { sensitive: true } : {}),
-  };
-}
 
 /** Fetch a remote status that is being replied to but isn't cached locally. */
 async function fetchReplyParent(actor: LocalActor, iri: string): Promise<ThreadNode | null> {

@@ -250,7 +250,7 @@ Ejecuta el runtime de Cloudflare Workers localmente vía `vite preview` (binding
 - Crear/eliminar estados, favoritos, impulsar, encuestas, citas, marcadores
 - Líneas de tiempo principal y públicas, líneas de tiempo por hashtag, listas, notificaciones filtradas
 - Notificaciones (seguir, mención, favorito, impulso, encuesta, edición, moderación)
-- Subida de archivos multimedia (respaldado por R2) con alt-text automático
+- Subida de archivos multimedia (respaldado por R2) con alt-text automático, más documentos PDF y de texto plano (el tipo `unknown` de Mastodon, federados como `Document` de AP)
 - Bloqueos, bloqueos por dominio, solicitudes de seguimiento, silenciados, recomendaciones, notas privadas
 - Estados programados, mensajería E2EE (MLS), llamadas WebRTC
 

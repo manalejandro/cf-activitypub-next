@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "Timeline anonime",
   "admin_stats_feature_version": "Versione",
   "admin_stats_approval": "con approvazione",
-  "landing_footer_links": "Link del piè di pagina"
+  "landing_footer_links": "Link del piè di pagina",
+  "media_document": "File"
 }

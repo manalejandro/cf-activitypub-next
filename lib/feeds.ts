@@ -19,6 +19,7 @@ import {
   getInstanceSetting,
 } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { DOCUMENT_MIME_TYPES } from "@/lib/constants";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalAttachment } from "@/lib/types";
 import en from "@/lib/locales/en.json";
@@ -153,6 +154,9 @@ function attachmentKind(att: LocalAttachment): string {
   const mime = att.mimeType ?? "";
   if (att.type === "audio" || mime.startsWith("audio/")) return "audio";
   if (att.type === "video" || mime.startsWith("video/")) return "video";
+  // Documents are a Media RSS medium of their own ("document"); calling a PDF an
+  // image made readers try to render it as one.
+  if (att.type === "unknown" || DOCUMENT_MIME_TYPES.includes(mime)) return "document";
   return "image";
 }
 

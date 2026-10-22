@@ -22,7 +22,7 @@ import type { APMeta } from "@/components/APTypeBlock";
 import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { clipboardFiles } from "@/lib/clipboard-media";
-import { uploadMediaFiles } from "@/lib/media/upload-client";
+import { mediaChipIcon, uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { mergeStatusUpdate, purgeStatusFromCache } from "@/lib/streaming/timeline-cache";
 import { useLimits } from "@/lib/limits-client";
@@ -248,7 +248,7 @@ function ReplyBox({
       sensitive: showCw || defaultSensitive,
       remaining,
       maxAttachments: limits.maxMediaAttachments,
-      maxBytes: limits.maxImageSize,
+      limits,
       t,
     });
     setMediaFiles((prev) => [...prev, ...attachments]);
@@ -467,7 +467,7 @@ function ReplyBox({
                     {f.type === "image" || f.type === "gifv" ? (
                       <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                     ) : (
-                      <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.4rem" /></div>
+                      <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={mediaChipIcon(f)} size="1.4rem" /></div>
                     )}
                     <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))} aria-label={t.action_delete} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="times" color="#fff" /></button>
                     <button
@@ -515,7 +515,7 @@ function ReplyBox({
                 />
               </div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem" }} onClick={() => fileInputRef.current?.click()} disabled={mediaFiles.length >= limits.maxMediaAttachments || uploadingMedia || pollMode} title={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))} aria-label={t.composer_attach.replace("{value}", String(limits.maxMediaAttachments))}>{uploadingMedia ? <Icon name="hourglass" spin size="1.05rem" /> : <Icon name="paperclip" size="1.05rem" />}</button>
-              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,application/pdf,text/plain,.pdf,.txt" multiple style={{ display: "none" }} onChange={handleFileChange} />
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: showCw ? "var(--accent-bg)" : undefined }} onClick={() => setShowCw((v) => !v)} title={t.cw_placeholder} aria-label={t.cw_placeholder} aria-pressed={showCw}><Icon name="exclamation-triangle" size="1.05rem" /></button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: "1.05rem", padding: "0.2rem 0.35rem", background: pollMode ? "var(--accent-bg)" : undefined }} onClick={() => setPollMode((v) => !v)} disabled={mediaFiles.length > 0} title={t.composer_poll} aria-label={t.composer_poll} aria-pressed={pollMode}><Icon name="bar-chart" size="1.05rem" /></button>
               <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />

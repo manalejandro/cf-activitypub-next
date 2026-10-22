@@ -22,6 +22,7 @@ import { useLicenseInfo } from "@/lib/license-client";
 import LocationPreview from "./LocationPreview";
 import { RelativeTime } from "./RelativeTime";
 import { mediaDownloadName } from "@/lib/media/filename";
+import { documentIcon, formatBytes, mediaFileName } from "@/lib/media/upload-client";
 import { MediaPlayer } from "./MediaPlayer";
 import { MAX_LANG_CODE_CHARS } from "@/lib/constants";
 import { avatarInitial } from "@/lib/avatar";
@@ -46,6 +47,8 @@ export interface MediaAttachment {
   description: string | null;
   blurhash?: string | null;
   sensitive?: boolean;
+  /** Mastodon entity meta: `original.size` is how documents and audio report their size. */
+  meta?: { original?: { size?: string } };
 }
 
 export interface LinkPreviewCardData {
@@ -192,6 +195,9 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
   const hasSensitive = sensitive === true || attachments.some((a) => a.sensitive);
   const blurred = !revealed && hasSensitive;
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
+  // The lightbox only walks what it can display; `lbIdx` stays an index into
+  // `attachments` (documents are links, they never set it).
+  const lightboxItems = attachments.filter((a) => a.type !== "unknown");
   const revealBtn = (
     <button
       type="button"
@@ -380,6 +386,47 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
               </div>
             );
           }
+          if (att.type === "unknown") {
+            // A PDF or a text file is not media: Mastodon's `unknown` type, and
+            // every client renders it as the file it is. Ours is a card with the
+            // icon, the name (alt text when the author wrote one) and a download.
+            const size = Number(att.meta?.original?.size ?? "");
+            const name = att.description || mediaFileName(att.url) || t.media_document;
+            const meta = [name === att.description ? mediaFileName(att.url) : null, Number.isFinite(size) && size > 0 ? formatBytes(size) : null]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <a
+                key={att.id}
+                href={att.url}
+                download={mediaDownloadName(att)}
+                rel="noopener noreferrer"
+                style={{
+                  gridColumn: attachments.length === 1 ? "auto" : "1 / -1",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  padding: "0.85rem 1rem",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                  color: "var(--text-primary)",
+                  textDecoration: "none",
+                  filter: blurred ? "blur(12px)" : undefined,
+                  pointerEvents: blurred ? "none" : undefined,
+                }}
+              >
+                <Icon name={documentIcon(att.url)} size="1.6rem" />
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: "0.1rem" }}>
+                  <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</strong>
+                  {meta ? <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{meta}</span> : null}
+                </span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem", color: "var(--accent)", whiteSpace: "nowrap" }}>
+                  <Icon name="download" size="0.95rem" /> {t.media_download}
+                </span>
+              </a>
+            );
+          }
           return null;
         })}
         {blurred && revealBtn}
@@ -387,10 +434,13 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
       </div>
       {!blurred && lbIdx !== null && (
         <Lightbox
-          media={attachments.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
-          index={lbIdx}
+          media={lightboxItems.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
+          index={Math.max(0, lightboxItems.findIndex((a) => a.id === attachments[lbIdx]?.id))}
           onClose={closeLb}
-          onNav={setLbIdx}
+          onNav={(index) => {
+            const target = lightboxItems[index];
+            setLbIdx(target ? attachments.findIndex((a) => a.id === target.id) : null);
+          }}
         />
       )}
     </>

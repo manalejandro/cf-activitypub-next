@@ -1040,13 +1040,17 @@ export function serializeAttachment(att: LocalAttachment): MastodonAttachment {
         ? (att.type.toLowerCase() as MastodonAttachment["type"])
         : "unknown")
     : mimeToType(att.mimeType);
+  // Dimensions when we have them (images/videos); `size` for everything —
+  // documents and audio have no aspect ratio but clients still show the size.
   const meta: MastodonAttachmentMeta | undefined =
     att.width && att.height
       ? {
-          original: { width: att.width, height: att.height, aspect: att.width / att.height },
+          original: { width: att.width, height: att.height, aspect: att.width / att.height, ...(att.fileSize != null ? { size: String(att.fileSize) } : {}) },
           small: { width: att.width, height: att.height, aspect: att.width / att.height },
         }
-      : undefined;
+      : att.fileSize != null
+        ? { original: { size: String(att.fileSize) } }
+        : undefined;
 
   return {
     id: att.id,

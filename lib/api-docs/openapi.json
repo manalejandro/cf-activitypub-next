@@ -16604,6 +16604,10 @@
           "maxVideoSize": {
             "type": "number"
           },
+          "maxDocumentSize": {
+            "type": "number",
+            "description": "Cap for PDF/plain-text attachments."
+          },
           "imageMatrixLimit": {
             "type": "number"
           },

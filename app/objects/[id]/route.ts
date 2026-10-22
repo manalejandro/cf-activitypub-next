@@ -2,27 +2,10 @@ import { type NextRequest } from "next/server";
 import { notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
 import { buildNote, conversationFromRaw, parseLocationJson } from "@/lib/activitypub/utils";
+import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { applyPollToNoteFromDb } from "@/lib/activitypub/polls";
-import type { APAttachment, APTag, LocalAttachment } from "@/lib/types";
+import type { APTag } from "@/lib/types";
 import { env } from "cloudflare:workers";
-
-function toAPAttachment(att: LocalAttachment): APAttachment {
-  const mimeType = att.mimeType ?? "application/octet-stream";
-  let type: APAttachment["type"] = "Document";
-  if (mimeType.startsWith("image/")) type = "Image";
-  else if (mimeType.startsWith("video/")) type = "Video";
-  else if (mimeType.startsWith("audio/")) type = "Audio";
-  return {
-    id: att.url,
-    type,
-    mediaType: mimeType,
-    url: att.url,
-    ...(att.description ? { name: att.description } : {}),
-    ...(att.blurhash ? { blurhash: att.blurhash } : {}),
-    ...(att.width != null ? { width: att.width } : {}),
-    ...(att.height != null ? { height: att.height } : {}),
-  };
-}
 
 // GET /objects/:id — serve a local AP Note to remote servers
 // For browser requests (HTML), redirect to the human-readable /statuses/:id page.

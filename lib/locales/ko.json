@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "익명 타임라인",
   "admin_stats_feature_version": "버전",
   "admin_stats_approval": "승인 필요",
-  "landing_footer_links": "바닥글 링크"
+  "landing_footer_links": "바닥글 링크",
+  "media_document": "파일"
 }

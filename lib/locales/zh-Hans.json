@@ -1341,5 +1341,6 @@
   "admin_stats_feature_anonymous": "匿名时间线",
   "admin_stats_feature_version": "版本",
   "admin_stats_approval": "需审批",
-  "landing_footer_links": "页脚链接"
+  "landing_footer_links": "页脚链接",
+  "media_document": "文件"
 }

@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { chargeGlobalAI, AI_UNITS_VISION } from "@/lib/moderation/budget";
-import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
+import { localAttachmentType, mediaLimitFor, resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 import { putMediaObject } from "@/lib/media/r2-put";
 import { env } from "cloudflare:workers";
 
@@ -36,7 +36,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: "Unsupported file type", error_code: "media_error_type" }, 422);
   }
 
-  const MAX_SIZE = limits.maxImageSize; // images/uploads capped at the instance image limit
+  // Per-type caps: images (and audio) the image limit, video the video one and
+  // documents their own — a 40 MB video used to be rejected by the image limit.
+  const MAX_SIZE = mediaLimitFor(file.type, limits);
   if (file.size > MAX_SIZE) {
     return json(
       { error: `File too large (max ${Math.floor(MAX_SIZE / (1024 * 1024))} MB)`, error_code: "media_error_too_large" },
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const att = {
     id,
     objectId: "", // will be updated when attached to a status
-    type: file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "image",
+    type: localAttachmentType(file.type),
     url,
     remoteUrl: null,
     description: finalDescription,

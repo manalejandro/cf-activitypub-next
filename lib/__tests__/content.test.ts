@@ -165,6 +165,22 @@ describe("apAttachmentType", () => {
     expect(apAttachmentType("Document", "audio/mpeg")).toBe("audio");
   });
 
+  it("maps document MIME types to Mastodon's unknown", () => {
+    // A PDF used to become an "image": every client then tried to render it as one.
+    expect(apAttachmentType("Document", "application/pdf")).toBe("unknown");
+    expect(apAttachmentType("Document", "text/plain")).toBe("unknown");
+    expect(apAttachmentType("Document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).toBe("unknown");
+    // `application/octet-stream` is what peers send for photos too: not a document.
+    expect(apAttachmentType("Image", "application/octet-stream")).toBe("image");
+  });
+
+  it("uses the URL extension when the peer sends no mediaType", () => {
+    expect(apAttachmentType("Document", undefined, "https://remote.example/files/acta.pdf")).toBe("unknown");
+    expect(apAttachmentType("Document", undefined, "https://remote.example/files/notas.txt?v=2")).toBe("unknown");
+    // No hint and no MIME: the historical Mastodon shape (an untyped Document is an image).
+    expect(apAttachmentType("Document", undefined, "https://remote.example/files/img_1234")).toBe("image");
+  });
+
   it("falls back to the AP type lowercased", () => {
     expect(apAttachmentType("Image", undefined)).toBe("image");
     expect(apAttachmentType("Audio", null)).toBe("audio");

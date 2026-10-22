@@ -337,20 +337,30 @@ function decodeHtmlEscapes(text: string): string {
 }
 
 /**
- * Derive the local media type (image/gifv/video/audio) for a federated
- * attachment. Mastodon sends every attachment as AP type "Document" and only
- * distinguishes the media kind via `mediaType` (a MIME string), so the MIME
- * wins when present. Falls back to the AP type lowercased, defaulting an
- * untyped/"Document" attachment to "image".
+ * Derive the local attachment type (image/gifv/video/audio/unknown) for a
+ * federated attachment. Mastodon sends every attachment as AP type "Document"
+ * and only distinguishes the media kind via `mediaType` (a MIME string), so the
+ * MIME wins when present. A document MIME (PDF, plain text, office files…) is
+ * the `unknown` type Mastodon clients render as a download link — never an
+ * image, which is what a PDF used to become. `application/octet-stream` is
+ * excluded from that rule because peers send it for photos too; without a
+ * useful MIME the AP type is the fallback (an untyped "Document" is an image,
+ * the historical Mastodon shape) after a last hint from the URL extension.
  */
 export function apAttachmentType(
   apType: string | null | undefined,
-  mediaType: string | null | undefined
+  mediaType: string | null | undefined,
+  url?: string | null
 ): string {
   const mt = (mediaType ?? "").toLowerCase();
   if (mt.startsWith("image/")) return mt === "image/gif" ? "gifv" : "image";
   if (mt.startsWith("video/")) return "video";
   if (mt.startsWith("audio/")) return "audio";
+  if (mt && mt !== "application/octet-stream" && (mt.startsWith("application/") || mt.startsWith("text/"))) {
+    return "unknown";
+  }
+  const path = (url ?? "").toLowerCase().split(/[?#]/)[0];
+  if (/\.(pdf|txt|md|csv|zip|docx?|xlsx?|pptx?|odt|ods|epub)$/.test(path)) return "unknown";
   const t = (apType ?? "").toLowerCase();
   if (!t || t === "document") return "image";
   return t;

@@ -8,7 +8,7 @@ import { PageLayout } from "@/components/PageLayout";
 import { translateKey, useLocale } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { clipboardFiles } from "@/lib/clipboard-media";
-import { uploadMediaFiles } from "@/lib/media/upload-client";
+import { mediaChipIcon, uploadMediaFiles } from "@/lib/media/upload-client";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { purgeStatusFromCache, clearAllTimelineCaches, applyStatusInFeed } from "@/lib/streaming/timeline-cache";
@@ -385,7 +385,7 @@ export default function HomePage() {
       sensitive: showCw || defaultSensitive,
       remaining,
       maxAttachments: limits.maxMediaAttachments,
-      maxBytes: limits.maxImageSize,
+      limits,
       t,
     });
     setMediaFiles((prev) => [...prev, ...attachments]);
@@ -620,7 +620,7 @@ export default function HomePage() {
                       {f.type === "image" || f.type === "gifv" ? (
                         <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={72} height={72} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                       ) : (
-                        <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}><Icon name={f.type === "audio" ? "music" : "film"} size="1.5rem" /></div>
+                        <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}><Icon name={mediaChipIcon(f)} size="1.5rem" /></div>
                       )}
                       <button type="button" onClick={() => setMediaFiles((prev) => prev.filter((x) => x.id !== f.id))}
                         aria-label={t.action_delete}
@@ -690,7 +690,7 @@ export default function HomePage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*,video/*,audio/*"
+                  accept="image/*,video/*,audio/*,application/pdf,text/plain,.pdf,.txt"
                   multiple
                   style={{ display: "none" }}
                   onChange={handleFileChange}

@@ -249,7 +249,7 @@ Runs the Cloudflare Workers runtime locally via `vite preview` (Miniflare bindin
 - Status create/delete, favourite, reblog, polls, quotes, bookmarks
 - Home and public timelines, hashtag timelines, lists, filtered notifications
 - Notifications (follow, mention, favourite, reblog, poll, update, moderation)
-- Media uploads (R2-backed) with automatic alt-text
+- Media uploads (R2-backed) with automatic alt-text, plus PDF and plain-text documents (Mastodon's `unknown` attachment type, federated as an AP `Document`)
 - Blocks, domain blocks, follow requests, mutes, endorsements, private notes
 - Scheduled statuses, E2EE (MLS) messaging, WebRTC calls
 

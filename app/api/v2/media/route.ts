@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
-import { resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
+import { localAttachmentType, mediaLimitFor, resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 import { putMediaObject } from "@/lib/media/r2-put";
 import { env } from "cloudflare:workers";
 
@@ -13,8 +13,16 @@ export async function POST(request: NextRequest): Promise<Response> {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   if (!file) return json({ error: "File is required" }, 400);
-  if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) return json({ error: "Unsupported media type" }, 400);
-  if (file.size > limits.maxImageSize) return json({ error: "File too large" }, 413);
+  if (!SUPPORTED_MEDIA_MIME_TYPES.includes(file.type)) {
+    return json({ error: "Unsupported media type", error_code: "media_error_type" }, 400);
+  }
+  const maxSize = mediaLimitFor(file.type, limits);
+  if (file.size > maxSize) {
+    return json(
+      { error: `File too large (max ${Math.floor(maxSize / (1024 * 1024))} MB)`, error_code: "media_error_too_large" },
+      413
+    );
+  }
   const description = (formData.get("description") as string | null) ?? null;
   if (description && description.length > limits.maxAltTextChars) {
     return json({ error: `description is too long (max ${limits.maxAltTextChars} chars)` }, 422);
@@ -27,7 +35,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const att = {
     id,
     objectId: "",
-    type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "audio",
+    type: localAttachmentType(file.type),
     url,
     remoteUrl: null,
     description,

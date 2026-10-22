@@ -12,7 +12,7 @@ import { EmojiPicker } from "@/components/EmojiPicker";
 import { Icon } from "@/components/Icon";
 import type { Status, MediaAttachment } from "@/components/StatusCard";
 import { useLimits } from "@/lib/limits-client";
-import { uploadMediaFiles } from "@/lib/media/upload-client";
+import { mediaChipIcon, uploadMediaFiles } from "@/lib/media/upload-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 
@@ -135,7 +135,7 @@ export function EditStatusModal({
         sensitive: Boolean(spoiler && showCw),
         remaining,
         maxAttachments: limits.maxMediaAttachments,
-        maxBytes: limits.maxImageSize,
+        limits,
         t,
       });
       setMedia((prev) => [...prev, ...attachments]);
@@ -266,7 +266,7 @@ export function EditStatusModal({
                   {m.type === "image" || m.type === "gifv" ? (
                     <Image src={m.preview_url ?? m.url} alt={m.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: m.sensitive ? "blur(8px)" : undefined }} />
                   ) : (
-                    <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={m.type === "audio" ? "music" : "film"} size="1.4rem" /></div>
+                    <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={mediaChipIcon(m)} size="1.4rem" /></div>
                   )}
                 </div>
                 <span style={{ flex: 1, fontSize: "0.85rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -324,7 +324,7 @@ export function EditStatusModal({
           >
             {uploading ? <Icon name="hourglass" spin size="1rem" /> : <Icon name="paperclip" size="1rem" />}
           </button>
-          <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" multiple style={{ display: "none" }} onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
+          <input ref={fileRef} type="file" accept="image/*,video/*,audio/*,application/pdf,text/plain,.pdf,.txt" multiple style={{ display: "none" }} onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
           <button
             type="button"
             className="btn btn-ghost btn-sm"
