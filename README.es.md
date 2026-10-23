@@ -305,7 +305,7 @@ Credenciales en [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime 
 - Nada inventado: cada cifra es algo que la instancia mide por sí misma, y un componente sin datos dice «desconocido» en lugar de un verde ficticio
 
 ### Tareas programadas
-- Trigger cron cada minuto para encuestas, auto-borrado y otras tareas de mantenimiento
+- El cron dispara cada minuto para que los estados programados salgan puntuales; el mantenimiento de fondo se reparte en intervalos de 2 a 30 minutos (cadencia por etapa, una lectura de KV por tick)
 - Incluye el ciclo de patrulla del Guardian (barridos de spam/abuso con revisión de IA)
 - Mantenimiento de la caché de medios (retención en R2, expulsión, limpieza de huérfanos), rastreo de previews de enlaces y refresco del registro de instancias
 - Retención de histórico federado (opcional): borra estados remotos públicos/no listados con más de N días y/o mantiene la base por debajo de un presupuesto de bytes (`DB_RETENTION_*`)

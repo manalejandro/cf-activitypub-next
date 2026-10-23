@@ -304,7 +304,7 @@ Credentials at [dash.cloudflare.com](https://dash.cloudflare.com) → Realtime �
 - Nothing is invented: every figure is something the instance measures itself, and a component without data says "unknown" instead of a made-up green
 
 ### Scheduled tasks
-- Cron trigger runs every minute for polling, auto-delete, and other maintenance tasks
+- Cron trigger runs every minute so scheduled posts go out on time; background maintenance is spread over 2–30 minute intervals (per-stage cadence, one KV read per tick)
 - Includes the Guardian patrol cycle (spam/abuse sweeps with AI review)
 - Media cache maintenance (R2 retention, eviction, orphan cleanup), link-preview crawling and instance-registry refreshes
 - Opt-in federated-history retention: delete remote public/unlisted statuses older than N days and/or keep the database under a byte budget (`DB_RETENTION_*`)

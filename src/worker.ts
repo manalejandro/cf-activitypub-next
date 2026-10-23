@@ -56,6 +56,7 @@ import { runModerationCycle } from "../lib/moderation/cycle";
 import { runAccountExpiration } from "../lib/moderation/account-expiration";
 import { refreshFollowRecommendations, RECOMMENDATIONS_REFRESH_HOURS } from "../lib/follow-recommendations";
 import { maintainStorageRetention, storageRetentionLimitsFrom } from "../lib/storage-retention";
+import { createCronSchedule } from "../lib/cron-schedule";
 import { pageCacheLimitsFrom, withPageCache } from "../lib/page-cache";
 import type { APActor } from "../lib/types";
 
@@ -916,6 +917,13 @@ async function executeScheduled(env: Env): Promise<void> {
       })
       .catch(() => {});
   };
+
+  // Per-stage cadence (`lib/cron-schedule.ts`): the trigger stays at one minute
+  // because a scheduled status must go out on time, but only the stages that
+  // need that resolution run every tick. One KV read per tick, one write per
+  // stage that is due.
+  const schedule = createCronSchedule(env.KV);
+
   await setStage("scheduled");
 
   try {
@@ -926,154 +934,14 @@ async function executeScheduled(env: Env): Promise<void> {
     }
     await setStage("auto-delete");
 
-  const actors = await env.DB
-    .prepare(
-      "SELECT id, auto_delete_after FROM actors WHERE is_local = 1 AND auto_delete_after IS NOT NULL AND auto_delete_after > 0"
-    )
-    .all<{ id: string; auto_delete_after: number }>();
-
-  for (const actor of actors.results) {
-    const cutoff = new Date(Date.now() - actor.auto_delete_after * 1000).toISOString();
-
-    // Every status type the API exposes (Notes, polls/Questions, events…) is
-    // auto-deleted; the old `type = 'Note'` filter left polls and other
-    // objects behind forever.
-    // Bounded batch: `raw` holds the full AP document, so loading every old
-    // status of a prolific account could exhaust Worker memory. The cron keeps
-    // deleting in the following ticks.
-    const objects = await env.DB
-      .prepare(
-        `SELECT id, visibility, raw, in_reply_to_id FROM objects
-         WHERE actor_id = ? AND published < ? AND is_local = 1
-           AND type IN (${PUBLIC_STATUS_TYPE_SQL})
-         LIMIT 500`
-      )
-      .bind(actor.id, cutoff)
-      .all<{ id: string; visibility: string; raw: string | null; in_reply_to_id: string | null }>();
-
-    if (objects.results.length === 0) continue;
-
-    const localActor = await getActorById(env.DB, actor.id);
-    if (!localActor) continue;
-
-    if (localActor.privateKeyPem) {
-      const baseUrl = `https://${localActor.domain}`;
-
-      const followers = await env.DB
-        .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-        .bind(actor.id)
-        .all<{ actor_id: string }>();
-
-      const followerIds = followers.results.map((r) => r.actor_id);
-
-      if (followerIds.length > 0) {
-        const fetchActor = async (id: string): Promise<APActor | null> => {
-          const cached = await getActorById(env.DB, id);
-          return cached as unknown as APActor | null;
-        };
-        const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-        // Public auto-deleted statuses are also removed from the relays.
-        const relayInboxes = await acceptedRelayInboxes(env.DB);
-
-        for (const obj of objects.results) {
-          const targets = obj.visibility === "public" ? [...inboxes, ...relayInboxes] : inboxes;
-          if (targets.length === 0) continue;
-          const deleteActivity = buildDelete(baseUrl, localActor.id, obj.id, generateId());
-          await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(deleteActivity), localActor.id, `${localActor.id}#main-key`, localActor.privateKeyPem);
-        }
-      }
+  // Auto-delete: nothing here needs minute resolution, and the stage walks
+  // the accounts with a configured window plus their status fan-out.
+  if (await schedule.every("auto-delete", 5)) {
+    try {
+      await runAutoDelete(env);
+    } catch (err) {
+      console.error("[cron] auto-delete failed", err);
     }
-
-    // Same delete fan-out as a manual deletion: public channels, the home
-    // feeds of local followers, hashtag timelines and every list containing
-    // the author. The old bespoke fan-out only covered public/home, so
-    // auto-deleted statuses stayed in hashtag and list timelines.
-    if (env.TIMELINE_STREAM) {
-      // Audience computed once per account: two queries instead of 2×N.
-      const [localFollowerRows, listRows] = await Promise.all([
-        env.DB
-          .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-          .bind(actor.id)
-          .all<{ id: string }>(),
-        env.DB
-          .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
-          .bind(actor.id)
-          .all<{ list_id: string }>(),
-      ]);
-      const audience = {
-        followers: localFollowerRows.results.map((r) => r.id),
-        lists: listRows.results.map((r) => r.list_id),
-      };
-      for (const obj of objects.results) {
-        await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, {
-          id: obj.id,
-          local: true,
-          visibility: obj.visibility,
-          actorId: actor.id,
-          raw: obj.raw,
-        }, audience);
-      }
-    }
-
-    const ids = objects.results.map((o) => o.id);
-
-    // Reply parents must lose one reply/engagement point each (the manual
-    // delete path does this per object; here it is aggregated per parent).
-    const parentDecrements = new Map<string, number>();
-    for (const obj of objects.results) {
-      if (!obj.in_reply_to_id) continue;
-      parentDecrements.set(obj.in_reply_to_id, (parentDecrements.get(obj.in_reply_to_id) ?? 0) + 1);
-    }
-    for (const [parentId, count] of parentDecrements) {
-      await env.DB
-        .prepare(
-          `UPDATE objects
-           SET replies_count = MAX(COALESCE(replies_count, 0) - ?, 0),
-               engagement = MAX(COALESCE(engagement, 0) - ?, 0)
-           WHERE id = ?`
-        )
-        .bind(count, count, parentId)
-        .run();
-    }
-
-    // Delete dependents + objects in chunked batches (D1 caps batch size).
-    // Tables without an FK to objects must be cleaned explicitly, exactly like
-    // `deleteObject`: status_pins, custom_filter_statuses, notifications and
-    // conversations.last_status_id (dangling rows showed up as empty
-    // notifications and dead conversation pointers). Likes, announces,
-    // bookmarks, attachments and polls cascade via their FKs.
-    for (let i = 0; i < ids.length; i += 30) {
-      const chunk = ids.slice(i, i + 30);
-      await env.DB.batch([
-        ...chunk.map((id) => env.DB.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id)),
-        ...chunk.map((id) => env.DB.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id)),
-        ...chunk.map((id) => env.DB.prepare("DELETE FROM notifications WHERE object_id = ?").bind(id)),
-        ...chunk.map((id) => env.DB.prepare("UPDATE conversations SET last_status_id = NULL WHERE last_status_id = ?").bind(id)),
-        ...chunk.map((id) => env.DB.prepare("DELETE FROM objects WHERE id = ?").bind(id)),
-      ]);
-    }
-
-    // Keep the profile status counter accurate (matches the manual delete path).
-    await env.DB
-      .prepare("UPDATE actors SET statuses_count = MAX(COALESCE(statuses_count, 0) - ?, 0) WHERE id = ?")
-      .bind(ids.length, actor.id)
-      .run();
-
-    // Recompute the directory rank from the remaining statuses: the old code
-    // set `last_status_at = NULL` unconditionally, which wrongly unranked
-    // accounts that still had recent posts after their old ones were purged.
-    await env.DB
-      .prepare(
-        `UPDATE actors SET last_status_at = NULLIF((
-           SELECT MAX(substr(o.published, 1, 10)) FROM objects o
-           WHERE o.actor_id = actors.id
-             AND o.visibility IN ('public', 'unlisted')
-             AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
-         ), '')
-         WHERE id = ?`
-      )
-      .bind(actor.id)
-      .run();
   }
 
   // Repair sweep (daily): purge legacy dangling rows left by older deletes.
@@ -1102,6 +970,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // spam domains. Runs after the routine tasks; each run is idempotent via KV
   // markers so overlapping cron invocations stay cheap.
   await setStage("guardian");
+  if (await schedule.every("guardian", 5))
   try {
     await runModerationCycle(env as unknown as Parameters<typeof runModerationCycle>[0]);
   } catch (err) {
@@ -1113,6 +982,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // suspended for a month. Throttled internally; a failure never blocks the
   // rest of the cron.
   await setStage("expiration");
+  if (await schedule.every("expiration", 15))
   try {
     await runAccountExpiration(env as unknown as Parameters<typeof runAccountExpiration>[0]);
   } catch (err) {
@@ -1124,6 +994,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // suggestion pool so a small instance — or a viewer who already follows
   // everyone the live pools know — still gets a full list.
   await setStage("suggestions");
+  if (await schedule.every("suggestions", 30))
   try {
     const lastRun = await env.KV.get("cron:suggestions:last").catch(() => null);
     if (!lastRun || Date.now() - Number(lastRun) > RECOMMENDATIONS_REFRESH_HOURS * 3_600_000) {
@@ -1139,13 +1010,15 @@ async function executeScheduled(env: Env): Promise<void> {
   // tick, staggered via next_refresh_at) and, once a day, expire the cached
   // metadata of dormant instances so the registry doesn't accumulate stale data.
   await setStage("instances");
+  // NodeInfo refreshes are background work: a handful every 5 minutes.
+  const instancesDue = await schedule.every("instances", 5);
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
 
   // Each federation stage is isolated: a failure in one (a broken remote, a
   // D1 hiccup) must never skip the others — the media cache and shared-inbox
   // stages were previously nested behind the instance refresh and silently
   // stopped running when that stage threw.
-  try {
+  if (instancesDue) try {
     const due = await listInstancesDueForRefresh(env.DB, limits.instanceRefreshBatch);
     for (const domain of due) {
       try {
@@ -1171,6 +1044,7 @@ async function executeScheduled(env: Env): Promise<void> {
 
   // Shared inboxes: deliver to endpoints.sharedInbox when the actor has one.
   await setStage("shared-inbox");
+  if (await schedule.every("shared-inbox", 5))
   try {
     await backfillRemoteSharedInboxes(env.DB, env.KV, limits.sharedInboxBatch);
   } catch (err) {
@@ -1181,6 +1055,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // active polls from their origin each tick (throttled per poll in
   // `refreshRemotePoll`) to keep timeline/vote totals reasonably fresh.
   await setStage("polls");
+  if (await schedule.every("polls", 3))
   try {
     const duePolls = await listRemotePollsForRefresh(env.DB, 10);
     const pollQueue = duePolls.slice();
@@ -1221,6 +1096,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // media-cache stage so a newly found preview image is queued and picked up
   // in the same tick.
   await setStage("link-preview");
+  if (await schedule.every("link-preview", 2))
   try {
     const ownDomain = (() => {
       try {
@@ -1250,6 +1126,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // estimate fresh. Runs before the media-cache stage so the cache maintenance
   // sees the deletions and drops the R2 copies they orphan in the same tick.
   await setStage("storage-retention");
+  if (await schedule.every("storage-retention", 10))
   try {
     const retention = await maintainStorageRetention(env, storageRetentionLimitsFrom(limits));
     if (retention.objectsDeleted > 0 || retention.activitiesDeleted > 0) {
@@ -1310,7 +1187,7 @@ async function executeScheduled(env: Env): Promise<void> {
     // whole stage and the queue appeared stalled for minutes).
     //
     // 1) Byte budget + orphan cleanup (least served evicted first) before new fetches.
-    try {
+    if (await schedule.every("media-maintenance", 5)) try {
       // The orphan selection scans every cache entry; entries only become
       // orphans when a status/actor is deleted, so once an hour is plenty.
       const orphanKey = "cron:media:orphans";
@@ -1325,7 +1202,7 @@ async function executeScheduled(env: Env): Promise<void> {
     // 1b) License icons (FEP-6757): catalogue entries and remote lookups put
     // their image in R2 like any other cached resource, so clients never
     // hotlink licensebuttons.net or a peer's instance. Bounded per tick.
-    try {
+    if (await schedule.every("media-licenses", 10)) try {
       for (const license of await listLicensesMissingIconCache(env.DB, 20)) {
         await enqueueMediaCache(env.DB, license.icon, "license", license.id);
       }
@@ -1333,13 +1210,13 @@ async function executeScheduled(env: Env): Promise<void> {
       console.error("[cron] license icon enqueue failed", err);
     }
     // 2) Drain the queue (fresh media first) so held statuses can be released.
-    try {
+    if (await schedule.every("media-queue", 2)) try {
       await processMediaCacheQueue(bindings, mediaLimits, instanceBaseUrl, mediaLimits.fetchBatch);
     } catch (err) {
       console.error("[cron] media cache fetch failed", err);
     }
     // 3) Optional backlog: only meaningful once the queue above is empty.
-    try {
+    if (await schedule.every("media-backfill", 10)) try {
       await backfillMediaCache(bindings, mediaLimits, mediaLimits.fetchBatch);
     } catch (err) {
       console.error("[cron] media cache backfill failed", err);
@@ -1347,7 +1224,7 @@ async function executeScheduled(env: Env): Promise<void> {
     // 4) One-shot repair (marker-guarded, throttled): references left dead by
     // the old eviction code. The attachment scan is expensive, so it runs at
     // most every 10 minutes until a pass fixes nothing.
-    try {
+    if (await schedule.every("media-repair", 10)) try {
       if (!(await getInstanceSetting(env.DB, "media_cache_refs_repaired"))) {
         const throttled = await env.KV.get("cron:repair:media-refs").catch(() => null);
         if (!throttled) {
@@ -1369,6 +1246,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // Account verification — periodically re-check rel="me" backlinks so the
   // verified badge stays accurate when an external site changes its markup.
   await setStage("verify");
+  if (await schedule.every("verify", 15))
   try {
     await verifyAccountFieldsCron(env);
   } catch (err) {
@@ -1380,6 +1258,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // client_credentials token; drop those tokens and the apps that never got a
   // token for a registered local user.
   await setStage("oauth");
+  if (await schedule.every("oauth", 10))
   try {
     const cleaned = await cleanupUnusedOAuthApps(env.DB);
     if (cleaned.apps > 0 || cleaned.tokens > 0) {
@@ -1411,6 +1290,164 @@ async function executeScheduled(env: Env): Promise<void> {
  * link-valued profile field. The external fetch is SSRF-guarded and each field
  * check is cached in actor_fields.verified_at.
  */
+/**
+ * Auto-delete: statuses older than each account's `auto_delete_after` window
+ * are removed (federated `Delete`, stream fan-out, reply counters, counters
+ * and directory rank). Extracted from the cron body so its cadence — five
+ * minutes, not one — reads as one line, like every other stage.
+ */
+async function runAutoDelete(env: Env): Promise<void> {
+    const actors = await env.DB
+      .prepare(
+        "SELECT id, auto_delete_after FROM actors WHERE is_local = 1 AND auto_delete_after IS NOT NULL AND auto_delete_after > 0"
+      )
+      .all<{ id: string; auto_delete_after: number }>();
+
+    for (const actor of actors.results) {
+      const cutoff = new Date(Date.now() - actor.auto_delete_after * 1000).toISOString();
+
+      // Every status type the API exposes (Notes, polls/Questions, events…) is
+      // auto-deleted; the old `type = 'Note'` filter left polls and other
+      // objects behind forever.
+      // Bounded batch: `raw` holds the full AP document, so loading every old
+      // status of a prolific account could exhaust Worker memory. The cron keeps
+      // deleting in the following ticks.
+      const objects = await env.DB
+        .prepare(
+          `SELECT id, visibility, raw, in_reply_to_id FROM objects
+           WHERE actor_id = ? AND published < ? AND is_local = 1
+             AND type IN (${PUBLIC_STATUS_TYPE_SQL})
+           LIMIT 500`
+        )
+        .bind(actor.id, cutoff)
+        .all<{ id: string; visibility: string; raw: string | null; in_reply_to_id: string | null }>();
+
+      if (objects.results.length === 0) continue;
+
+      const localActor = await getActorById(env.DB, actor.id);
+      if (!localActor) continue;
+
+      if (localActor.privateKeyPem) {
+        const baseUrl = `https://${localActor.domain}`;
+
+        const followers = await env.DB
+          .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
+          .bind(actor.id)
+          .all<{ actor_id: string }>();
+
+        const followerIds = followers.results.map((r) => r.actor_id);
+
+        if (followerIds.length > 0) {
+          const fetchActor = async (id: string): Promise<APActor | null> => {
+            const cached = await getActorById(env.DB, id);
+            return cached as unknown as APActor | null;
+          };
+          const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
+          // Public auto-deleted statuses are also removed from the relays.
+          const relayInboxes = await acceptedRelayInboxes(env.DB);
+
+          for (const obj of objects.results) {
+            const targets = obj.visibility === "public" ? [...inboxes, ...relayInboxes] : inboxes;
+            if (targets.length === 0) continue;
+            const deleteActivity = buildDelete(baseUrl, localActor.id, obj.id, generateId());
+            await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(deleteActivity), localActor.id, `${localActor.id}#main-key`, localActor.privateKeyPem);
+          }
+        }
+      }
+
+      // Same delete fan-out as a manual deletion: public channels, the home
+      // feeds of local followers, hashtag timelines and every list containing
+      // the author. The old bespoke fan-out only covered public/home, so
+      // auto-deleted statuses stayed in hashtag and list timelines.
+      if (env.TIMELINE_STREAM) {
+        // Audience computed once per account: two queries instead of 2×N.
+        const [localFollowerRows, listRows] = await Promise.all([
+          env.DB
+            .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+            .bind(actor.id)
+            .all<{ id: string }>(),
+          env.DB
+            .prepare("SELECT DISTINCT la.list_id FROM list_accounts la WHERE la.actor_id = ?")
+            .bind(actor.id)
+            .all<{ list_id: string }>(),
+        ]);
+        const audience = {
+          followers: localFollowerRows.results.map((r) => r.id),
+          lists: listRows.results.map((r) => r.list_id),
+        };
+        for (const obj of objects.results) {
+          await broadcastObjectDelete(env.TIMELINE_STREAM, env.DB, {
+            id: obj.id,
+            local: true,
+            visibility: obj.visibility,
+            actorId: actor.id,
+            raw: obj.raw,
+          }, audience);
+        }
+      }
+
+      const ids = objects.results.map((o) => o.id);
+
+      // Reply parents must lose one reply/engagement point each (the manual
+      // delete path does this per object; here it is aggregated per parent).
+      const parentDecrements = new Map<string, number>();
+      for (const obj of objects.results) {
+        if (!obj.in_reply_to_id) continue;
+        parentDecrements.set(obj.in_reply_to_id, (parentDecrements.get(obj.in_reply_to_id) ?? 0) + 1);
+      }
+      for (const [parentId, count] of parentDecrements) {
+        await env.DB
+          .prepare(
+            `UPDATE objects
+             SET replies_count = MAX(COALESCE(replies_count, 0) - ?, 0),
+                 engagement = MAX(COALESCE(engagement, 0) - ?, 0)
+             WHERE id = ?`
+          )
+          .bind(count, count, parentId)
+          .run();
+      }
+
+      // Delete dependents + objects in chunked batches (D1 caps batch size).
+      // Tables without an FK to objects must be cleaned explicitly, exactly like
+      // `deleteObject`: status_pins, custom_filter_statuses, notifications and
+      // conversations.last_status_id (dangling rows showed up as empty
+      // notifications and dead conversation pointers). Likes, announces,
+      // bookmarks, attachments and polls cascade via their FKs.
+      for (let i = 0; i < ids.length; i += 30) {
+        const chunk = ids.slice(i, i + 30);
+        await env.DB.batch([
+          ...chunk.map((id) => env.DB.prepare("DELETE FROM status_pins WHERE status_id = ?").bind(id)),
+          ...chunk.map((id) => env.DB.prepare("DELETE FROM custom_filter_statuses WHERE status_id = ?").bind(id)),
+          ...chunk.map((id) => env.DB.prepare("DELETE FROM notifications WHERE object_id = ?").bind(id)),
+          ...chunk.map((id) => env.DB.prepare("UPDATE conversations SET last_status_id = NULL WHERE last_status_id = ?").bind(id)),
+          ...chunk.map((id) => env.DB.prepare("DELETE FROM objects WHERE id = ?").bind(id)),
+        ]);
+      }
+
+      // Keep the profile status counter accurate (matches the manual delete path).
+      await env.DB
+        .prepare("UPDATE actors SET statuses_count = MAX(COALESCE(statuses_count, 0) - ?, 0) WHERE id = ?")
+        .bind(ids.length, actor.id)
+        .run();
+
+      // Recompute the directory rank from the remaining statuses: the old code
+      // set `last_status_at = NULL` unconditionally, which wrongly unranked
+      // accounts that still had recent posts after their old ones were purged.
+      await env.DB
+        .prepare(
+          `UPDATE actors SET last_status_at = NULLIF((
+             SELECT MAX(substr(o.published, 1, 10)) FROM objects o
+             WHERE o.actor_id = actors.id
+               AND o.visibility IN ('public', 'unlisted')
+               AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+           ), '')
+           WHERE id = ?`
+        )
+        .bind(actor.id)
+        .run();
+    }
+}
+
 async function verifyAccountFieldsCron(env: Env): Promise<void> {
   try {
     // Throttled: each check fetches an external page, so running every cron
