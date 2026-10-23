@@ -17,6 +17,8 @@
  *    styles directly (no React state per frame); this module only samples bytes.
  */
 
+import { isSameOriginUrl } from "@/lib/media/remote-playback";
+
 /** FFT size: 128 bins is plenty for ~44 bars and keeps the per-frame copy small. */
 const FFT_SIZE = 256;
 /** Time-domain smoothing (0..1): higher = calmer bars. */
@@ -37,11 +39,7 @@ function audioContextCtor(): (new () => AudioContext) | null {
 /** Whether `src` can be analysed without risking Web Audio's CORS silencing. */
 export function canAnalyseSource(src: string): boolean {
   if (typeof window === "undefined" || !src) return false;
-  try {
-    return new URL(src, window.location.href).origin === window.location.origin;
-  } catch {
-    return false;
-  }
+  return isSameOriginUrl(src);
 }
 
 /**

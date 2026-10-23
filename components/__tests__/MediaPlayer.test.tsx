@@ -92,6 +92,34 @@ describe("MediaPlayer", () => {
     expect(container.querySelector("audio")).not.toBeNull();
   });
 
+  it("plays cross-origin audio through the same-origin relay", () => {
+    const { container } = render(<MediaPlayer src="https://remote.example/media/song.mp3" kind="audio" />);
+    expect(container.querySelector("audio")).toHaveAttribute(
+      "src",
+      `/api/media/remote?url=${encodeURIComponent("https://remote.example/media/song.mp3")}`
+    );
+    // The download link keeps pointing at the file itself.
+    expect(container.querySelector("a[download]")).toHaveAttribute("href", "https://remote.example/media/song.mp3");
+  });
+
+  it("leaves same-origin audio (local uploads, the cache) on its own URL", () => {
+    const { container } = render(<MediaPlayer src="/api/media/media/user/song.mp3" kind="audio" />);
+    expect(container.querySelector("audio")).toHaveAttribute("src", "/api/media/media/user/song.mp3");
+  });
+
+  it("falls back to the origin URL — on a fresh element — when the relay fails", () => {
+    const { container } = render(<MediaPlayer src="https://remote.example/media/song.mp3" kind="audio" />);
+    const relayed = container.querySelector("audio")!;
+
+    fireEvent.error(relayed);
+
+    const fallback = container.querySelector("audio")!;
+    // A remounted element matters: one that already went through Web Audio
+    // stays silenced on a cross-origin resource.
+    expect(fallback).not.toBe(relayed);
+    expect(fallback).toHaveAttribute("src", "https://remote.example/media/song.mp3");
+  });
+
   it("autoplays GIFVs inline without player controls", () => {
     const { container } = render(
       <MediaPlayer src="https://local.example/media/cat.gif" kind="gifv" autoPlay loop muted />

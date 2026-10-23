@@ -181,6 +181,7 @@ const eslintConfig = defineConfig([
       "lib/client-api.ts",
       "lib/i18n.tsx",
       "lib/media/player-preferences.ts",
+      "lib/media/remote-playback.ts",
       "lib/mls/keypackage.ts",
       "lib/palettes.ts",
       "lib/streaming/use-new-statuses.ts",

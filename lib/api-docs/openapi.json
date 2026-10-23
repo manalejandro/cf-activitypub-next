@@ -1014,6 +1014,30 @@
         }
       }
     },
+    "/api/media/remote": {
+      "get": {
+        "summary": "Get /api/media/remote",
+        "operationId": "get_api_media_remote",
+        "tags": [
+          "Media"
+        ],
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response."
+          }
+        }
+      }
+    },
     "/api/nodeinfo/{version}": {
       "get": {
         "summary": "Get /api/nodeinfo/{version}",

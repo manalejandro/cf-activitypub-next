@@ -34,6 +34,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { serveMediaObject } from "../lib/media/serve";
+import { MEDIA_RELAY_PATH } from "../lib/media/remote-playback";
 import { recordMediaHit, flushMediaHits, mediaHitWindowDays } from "../lib/media/hits";
 import { getAnonymousTimelineAccess } from "../lib/db";
 import { anonymousTimelineAllowed } from "../lib/anonymous-timelines";
@@ -1588,7 +1589,10 @@ const worker = {
     // caches the object and answers later ranges from the edge.
     if (
       (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") &&
-      url.pathname.startsWith("/api/media/")
+      url.pathname.startsWith("/api/media/") &&
+      // The audio relay is a vinext route (it streams a federated origin), not
+      // an R2 key: without this it would be served as the key "remote".
+      url.pathname !== MEDIA_RELAY_PATH
     ) {
       try {
         const key = url.pathname

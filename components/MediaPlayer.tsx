@@ -15,6 +15,7 @@ import {
   setMediaPreference,
   subscribeMediaPreference,
 } from "@/lib/media/player-preferences";
+import { audioPlaybackUrl } from "@/lib/media/remote-playback";
 
 export type MediaPlayerKind = "video" | "audio" | "gifv";
 
@@ -339,6 +340,13 @@ export function MediaPlayer({
   const [buffered, setBuffered] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Remote audio plays through the same-origin relay (`/api/media/remote`) so
+  // the waveform can be analysed. When the relay cannot serve the file the
+  // element falls back to the origin URL — and is remounted for it, because a
+  // media element that already went through Web Audio stays silenced on a
+  // cross-origin resource.
+  const [relayFailed, setRelayFailed] = useState(false);
+  const playbackSrc = isAudio && !relayFailed ? audioPlaybackUrl(src) : src;
 
   const canUseControls = !isGifv || variant === "lightbox";
   const showControls = canUseControls && (controlsVisible || !playing);
@@ -473,7 +481,7 @@ export function MediaPlayer({
       el.removeEventListener("durationchange", sync);
       el.removeEventListener("canplay", sync);
     };
-  }, [src, syncDuration, probeInfiniteDuration]);
+  }, [playbackSrc, syncDuration, probeInfiniteDuration]);
 
 
   const toggleFullscreen = useCallback(() => {
@@ -593,12 +601,16 @@ export function MediaPlayer({
         }}
       >
         <audio
+          key={relayFailed ? "origin" : "relay"}
           ref={mediaRef as React.RefObject<HTMLAudioElement>}
-          src={src}
+          src={playbackSrc}
           autoPlay={autoPlay}
           loop={loop}
           preload="metadata"
           aria-label={description ?? t.media_play}
+          onError={() => {
+            if (playbackSrc !== src) setRelayFailed(true);
+          }}
           {...mediaEvents}
         />
         <button
@@ -625,6 +637,7 @@ export function MediaPlayer({
         </button>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           <AudioWaveform
+            key={relayFailed ? "origin" : "relay"}
             mediaRef={mediaRef as RefObject<HTMLMediaElement | null>}
             playing={playing}
             onSeek={seekTo}

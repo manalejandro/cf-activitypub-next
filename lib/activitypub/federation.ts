@@ -149,6 +149,12 @@ export interface TrackedFetchResult {
  * `safeFetch` variant that reports the final URL so callers can detect
  * cross-host redirects (instance moves) instead of silently following them.
  */
+/**
+ * SSRF-guarded fetch that follows redirects by hand, validating every hop.
+ * `timeoutMs <= 0` disables the abort: the media relay streams a body that
+ * legitimately outlives any fixed timeout (an hour-long podcast), while every
+ * other caller keeps the 10 s guard.
+ */
 export async function safeFetchTracked(
   url: string,
   init: RequestInit = {},
@@ -173,7 +179,7 @@ export async function safeFetchTracked(
         ...init,
         headers,
         redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined,
       });
     } catch (err) {
       // DNS/TLS failures and the timeout abort throw here; callers only handle
