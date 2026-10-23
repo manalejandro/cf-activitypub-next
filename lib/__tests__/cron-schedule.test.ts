@@ -114,9 +114,13 @@ describe("cron wiring in the worker", () => {
   const source = readFileSync(new URL("../../src/worker.ts", import.meta.url), "utf8");
 
   const CADENCE: Record<string, number> = {
-    // Punctual: a scheduled status must go out on time, and held statuses must
-    // be released as soon as their media lands.
-    // (they call setStage without `schedule.every`)
+    // Throughput: each pass is bounded by its batch budget, so a slower cadence
+    // only drops throughput (remote media must land in R2 before the timeline
+    // renders it, and a retention backlog must drain).
+    "link-preview": 1,
+    "storage-retention": 1,
+    "media-queue": 1,
+    // Redundant re-scans: they answer the same after a few minutes.
     "auto-delete": 5,
     guardian: 5,
     expiration: 15,
@@ -124,14 +128,11 @@ describe("cron wiring in the worker", () => {
     instances: 5,
     "shared-inbox": 5,
     polls: 3,
-    "link-preview": 2,
-    "storage-retention": 10,
     quotes: 10,
     verify: 15,
     oauth: 10,
     "media-maintenance": 5,
     "media-licenses": 10,
-    "media-queue": 2,
     "media-backfill": 10,
     "media-repair": 10,
   };

@@ -2289,9 +2289,16 @@ export async function getReplyToAccountIdMap(
     return result;
   }
   const parentActors = new Map<string, string>();
-  for (const pid of parentIds) {
-    const parent = await db.prepare("SELECT actor_id FROM objects WHERE id = ?").bind(pid).first<{ actor_id: string }>();
-    if (parent) parentActors.set(pid, parent.actor_id);
+  // One query per chunk of parents: a round trip per parent cost a round trip
+  // per reply in the page (measured on cf-ap).
+  for (let i = 0; i < parentIds.length; i += 900) {
+    const chunk = parentIds.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT id, actor_id FROM objects WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ id: string; actor_id: string }>();
+    for (const r of rows.results ?? []) parentActors.set(r.id, r.actor_id);
   }
   for (const o of objects) {
     result.set(o.id, o.inReplyToId ? (parentActors.get(o.inReplyToId) ?? null) : null);
@@ -4803,6 +4810,30 @@ export async function getDomainCallsSupport(db: D1Database, domain: string): Pro
     .bind(domain)
     .first<{ supports_calls: number }>();
   return row !== null && row.supports_calls === 1;
+}
+
+/**
+ * Batch variant of getDomainCallsSupport — one query for many domains. A
+ * federated timeline page carries statuses from as many instances, and a
+ * round trip per domain cost ~60 ms per status (measured on cf-ap).
+ */
+export async function getDomainCallsSupportMap(
+  db: D1Database,
+  domains: string[]
+): Promise<Map<string, boolean>> {
+  const map = new Map<string, boolean>();
+  const unique = [...new Set(domains)].filter(Boolean);
+  if (unique.length === 0) return map;
+  for (let i = 0; i < unique.length; i += 900) {
+    const chunk = unique.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT domain, supports_calls FROM domain_capabilities WHERE domain IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ domain: string; supports_calls: number }>();
+    for (const r of rows.results ?? []) map.set(r.domain, r.supports_calls === 1);
+  }
+  return map;
 }
 
 export async function setDomainCallsSupport(db: D1Database, domain: string, supportsCalls: boolean): Promise<void> {

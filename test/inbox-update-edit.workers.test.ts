@@ -223,8 +223,14 @@ describe("an Update that adds a quote", () => {
     expect(quoteRow?.quote_id).toBe(QUOTED);
     expect(after?.updated_at).toBe(before?.updated_at);
     expect(await editRows()).toBe(0);
-    // The quoted post is fetched so the card can render here too.
-    expect(remote.fetchAndCacheRemoteStatus).toHaveBeenCalledWith(db, QUOTED);
+    // The quoted post is fetched so the card can render here too. Asserted by
+    // hand: chai would inspect the D1 binding while rendering the call log and
+    // the binding cannot be serialized inside workerd.
+    expect(
+      (remote.fetchAndCacheRemoteStatus.mock.calls as unknown as Array<[unknown, string]>).some(
+        ([d, url]) => d === db && url === QUOTED
+      )
+    ).toBe(true);
   });
 });
 

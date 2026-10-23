@@ -46,8 +46,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     getActorsByIds(env.DB, [...objects.map((o) => o.actorId), ...boosterIds]),
   ]);
 
-  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
-  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
+  const [authorExtras, authorFieldsMap] = await Promise.all([
+    getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain),
+    getActorFieldsMap(env.DB, objects.map((o) => o.actorId)),
+  ]);
 
   const statuses = await Promise.all(
     entries.map(async (entry) => {

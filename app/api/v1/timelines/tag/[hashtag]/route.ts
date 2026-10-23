@@ -47,10 +47,13 @@ export async function GET(
     getActorsByIds(env.DB, objects.map((o) => o.actorId)),
   ]);
 
+  const [authorExtras, authorFieldsMap] = await Promise.all([
+    getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain),
+    getActorFieldsMap(env.DB, objects.map((o) => o.actorId)),
+  ]);
+
   const statuses = await Promise.all(
     objects.map(async (obj) => {
-  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
-  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
       let author = authorMap.get(obj.actorId) ?? null;
       if (!author && obj.actorId.startsWith("https://")) {
         try {

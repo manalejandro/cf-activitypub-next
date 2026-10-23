@@ -1111,7 +1111,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // media-cache stage so a newly found preview image is queued and picked up
   // in the same tick.
   await setStage("link-preview");
-  if (await schedule.every("link-preview", 2))
+  if (await schedule.every("link-preview", 1))
   try {
     const ownDomain = (() => {
       try {
@@ -1141,7 +1141,7 @@ async function executeScheduled(env: Env): Promise<void> {
   // estimate fresh. Runs before the media-cache stage so the cache maintenance
   // sees the deletions and drops the R2 copies they orphan in the same tick.
   await setStage("storage-retention");
-  if (await schedule.every("storage-retention", 10))
+  if (await schedule.every("storage-retention", 1))
   try {
     const retention = await maintainStorageRetention(env, storageRetentionLimitsFrom(limits));
     if (retention.objectsDeleted > 0 || retention.activitiesDeleted > 0) {
@@ -1225,7 +1225,9 @@ async function executeScheduled(env: Env): Promise<void> {
       console.error("[cron] license icon enqueue failed", err);
     }
     // 2) Drain the queue (fresh media first) so held statuses can be released.
-    if (await schedule.every("media-queue", 2)) try {
+    // Every tick: the batch is bounded, so a slower cadence only delays the
+    // copy of a just-ingested status (origin URLs are slow on first render).
+    if (await schedule.every("media-queue", 1)) try {
       await processMediaCacheQueue(bindings, mediaLimits, instanceBaseUrl, mediaLimits.fetchBatch);
     } catch (err) {
       console.error("[cron] media cache fetch failed", err);

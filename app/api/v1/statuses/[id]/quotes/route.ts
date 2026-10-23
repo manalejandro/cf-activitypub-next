@@ -35,8 +35,10 @@ export async function GET(
   const lastStatusAtMap = await getLastStatusAtMap(env.DB, objects.map((o) => o.actorId));
   const bookmarkedIds = await getBookmarkedObjectIds(env.DB, authActor.id, objects.map((o) => o.id));
   const mutedIds = new Set(await getMutedActorIds(env.DB, authActor.id));
-  const authorExtras = await getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain);
-  const authorFieldsMap = await getActorFieldsMap(env.DB, objects.map((o) => o.actorId));
+  const [authorExtras, authorFieldsMap] = await Promise.all([
+    getStatusAuthorExtras(env.DB, objects.map((o) => o.actorId), domain),
+    getActorFieldsMap(env.DB, objects.map((o) => o.actorId)),
+  ]);
 
   const statuses = await Promise.all(
     objects.map(async (o) => {

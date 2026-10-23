@@ -36,8 +36,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     getMutedActorIds(env.DB, me.id).then((ids) => new Set(ids)),
     getActorsByIds(env.DB, objs.map((o) => o.actorId)),
   ]);
-  const authorExtras = await getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain);
-  const authorFieldsMap = await getActorFieldsMap(env.DB, objs.map((o) => o.actorId));
+  const [authorExtras, authorFieldsMap] = await Promise.all([
+    getStatusAuthorExtras(env.DB, objs.map((o) => o.actorId), domain),
+    getActorFieldsMap(env.DB, objs.map((o) => o.actorId)),
+  ]);
   const statuses = await Promise.all(
     objs.map(async (obj) => {
       const author = authorMap.get(obj.actorId) ?? null;
