@@ -43,6 +43,26 @@ function streamUpdate(id: string, createdAt: string) {
   });
 }
 
+/** Same buffer, but the feed identity can change (the local/federated tabs). */
+function KeyedHarness({ feedKey }: { feedKey: string }) {
+  const [items, setItems] = useState<Item[]>([]);
+  const seen = useRef(new Set<string>());
+  const api = useNewStatusesBuffer<Item>(setItems, seen, feedKey);
+  useEffect(() => {
+    buffer = api;
+  });
+  return (
+    <div>
+      <span data-testid="count">{api.pendingCount}</span>
+      <ul>
+        {items.map((item) => (
+          <li key={item.id}>{item.id}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function setScroll(y: number) {
   Object.defineProperty(window, "scrollY", { value: y, writable: true, configurable: true });
   act(() => {
@@ -137,6 +157,22 @@ describe("useNewStatusesBuffer", () => {
     streamUpdate("s1", "2026-09-30T10:00:00Z");
     streamUpdate("s1", "2026-09-30T10:00:00Z");
     expect(screen.getByTestId("count").textContent).toBe("1");
+  });
+
+  it("drops the queue when the feed changes (local ↔ federated)", () => {
+    const { rerender } = render(<KeyedHarness feedKey="local" />);
+    setScroll(600);
+    streamUpdate("local-1", "2026-09-30T10:00:00Z");
+    expect(screen.getByTestId("count").textContent).toBe("1");
+
+    rerender(<KeyedHarness feedKey="federated" />);
+
+    // The statuses queued for one feed must never be revealed in another: that
+    // is how the local and federated timelines got mixed when the pill was
+    // pressed (or the reader scrolled back to the top) after a tab switch.
+    expect(screen.getByTestId("count").textContent).toBe("0");
+    act(() => buffer!.reveal());
+    expect(screen.queryByText("local-1")).toBeNull();
   });
 
   it("drops streamed statuses from blocked accounts and replies to them", async () => {

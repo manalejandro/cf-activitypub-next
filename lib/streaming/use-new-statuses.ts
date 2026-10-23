@@ -32,13 +32,22 @@ export interface NewStatusesBuffer<T = TimelineItem> {
  * scrolled away they queue behind an "N new statuses" pill so the feed never
  * jumps under their finger. Pressing the pill — or scrolling back to the top —
  * flushes the queue through `mergeTimelineItems`.
+ *
+ * The queue belongs to **one feed**: `resetKey` (the same key the timeline
+ * cache uses) drops it the moment the reader switches feeds, so the local and
+ * federated tabs can never reveal each other's statuses.
  */
 export function useNewStatusesBuffer<T extends TimelineItem>(
   setItems: Dispatch<SetStateAction<T[]>>,
-  seenIdsRef: MutableRefObject<Set<string>>
+  seenIdsRef: MutableRefObject<Set<string>>,
+  resetKey?: string
 ): NewStatusesBuffer<T> {
   const [pendingCount, setPendingCount] = useState(0);
+  // Which feed the counter belongs to: after a tab switch the display derives
+  // to 0 without a state write from an effect (state must not be set there).
+  const [pendingFeed, setPendingFeed] = useState<string | undefined>(resetKey);
   const pendingRef = useRef<T[]>([]);
+  const pendingFeedRef = useRef<string | undefined>(resetKey);
   const atTopRef = useRef(true);
   // Shared channels (public/hashtag) are one payload for every subscriber, so
   // the viewer's blocks are applied here: a blocked author — or a reply to one
@@ -53,36 +62,54 @@ export function useNewStatusesBuffer<T extends TimelineItem>(
     return () => { alive = false; };
   }, []);
 
+  /** Drop a queue that belongs to a feed the reader has left. */
+  const ensureFeed = useCallback((): boolean => {
+    if (pendingFeedRef.current === resetKey) return false;
+    pendingFeedRef.current = resetKey;
+    pendingRef.current = [];
+    return true;
+  }, [resetKey]);
+
   /** Queue statuses not in the feed yet (dedup by id). */
   const queue = useCallback(
     (items: T[]) => {
+      ensureFeed();
       const seenIds = seenIdsRef.current;
       const fresh = items.filter((item) => !seenIds.has(item.id));
-      if (fresh.length === 0) return;
+      if (fresh.length === 0 && pendingRef.current.length === 0) {
+        setPendingFeed(resetKey);
+        setPendingCount(0);
+        return;
+      }
       for (const item of fresh) seenIds.add(item.id);
       pendingRef.current = [...pendingRef.current, ...fresh];
+      setPendingFeed(resetKey);
       setPendingCount(pendingRef.current.length);
     },
-    [seenIdsRef]
+    [ensureFeed, resetKey, seenIdsRef]
   );
 
   const flush = useCallback(() => {
-    const items = pendingRef.current;
-    if (items.length === 0) return;
+    const stale = ensureFeed();
+    const items = stale ? [] : pendingRef.current;
     pendingRef.current = [];
+    setPendingFeed(resetKey);
     setPendingCount(0);
+    if (items.length === 0) return;
     setItems((prev) => mergeTimelineItems(items, prev));
-  }, [setItems]);
+  }, [ensureFeed, resetKey, setItems]);
 
   const reveal = useCallback(() => {
-    if (pendingRef.current.length === 0) return;
+    // A stale queue is not the current feed's: pressing the pill after a tab
+    // switch must not pour the previous feed's statuses into the new one.
+    if (pendingFeedRef.current !== resetKey || pendingRef.current.length === 0) return;
     flush();
     try {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       /* jsdom / older browsers */
     }
-  }, [flush]);
+  }, [flush, resetKey]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -122,5 +149,10 @@ export function useNewStatusesBuffer<T extends TimelineItem>(
     [setItems, seenIdsRef, queue]
   );
 
-  return { pendingCount, reveal, queueItems: queue, handleStreamEvent };
+  return {
+    pendingCount: pendingFeed === resetKey ? pendingCount : 0,
+    reveal,
+    queueItems: queue,
+    handleStreamEvent,
+  };
 }

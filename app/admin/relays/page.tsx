@@ -4,6 +4,7 @@ import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
+import { parseDbDate } from "@/lib/format";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 
@@ -138,9 +139,9 @@ export default function AdminRelaysPage() {
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleString(i18next.language || "en", {
+    return parseDbDate(dateStr)?.toLocaleString(i18next.language || "en", {
       year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-    });
+    }) ?? "—";
   }
 
   function stateOf(state: AdminRelay["state"]): { key: string; hint: string; color: string; bg: string } {

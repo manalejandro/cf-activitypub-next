@@ -7,7 +7,7 @@ import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
 import { InstanceStatusPanel, OverallBanner, type StatusComponentDTO } from "@/components/InstanceStatusPanel";
-import { formatBytes, formatCount } from "@/lib/format";
+import { formatBytes, formatCount, parseDbDate } from "@/lib/format";
 
 interface StatsSnapshot {
   status: {
@@ -82,13 +82,6 @@ interface StatsSnapshot {
   };
 }
 
-/** SQLite writes `datetime('now')` without a zone: parse it as UTC. */
-function parseDbDate(value: unknown): Date | null {
-  if (typeof value !== "string" || !value) return null;
-  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 export default function AdminStatsPage() {
   const router = useRouter();

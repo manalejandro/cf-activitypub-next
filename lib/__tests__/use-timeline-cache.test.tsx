@@ -159,3 +159,81 @@ describe("useTimelineCache pagination after a catch-up", () => {
     await waitFor(() => expect(getTimelineCache<Item>("test-feed")?.cursor).toBe("21"));
   });
 });
+
+/**
+ * One component, two feeds: exactly what the local/federated tabs are. Both
+ * regressions below were reported as "the local and federated timelines got
+ * mixed".
+ */
+function KeyedHarness({ feedKey, fetchPage }: { feedKey: string; fetchPage: (maxId?: string) => Promise<{ items: Item[]; hasMore: boolean }> }) {
+  const hook = useTimelineCache<Item>(feedKey, fetchPage, {});
+  useEffect(() => {
+    api = hook;
+  });
+  return <div data-testid="count">{hook.statuses.length}</div>;
+}
+
+function cachedFeed(key: string, items: Item[], cursor: string) {
+  setTimelineCache<Item>(key, { items, hasMore: true, scrollY: 0, fetchedAt: Date.now(), ready: true, cursor });
+}
+
+describe("useTimelineCache feed switches", () => {
+  it("paginates the new feed from its own cursor, never from the one it replaced", async () => {
+    cachedFeed("feed-a", range(1000, 981), "981");
+    cachedFeed("feed-b", range(500, 481), "481");
+
+    const calls: (string | undefined)[] = [];
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      calls.push(maxId);
+      if (maxId === "481") return { items: range(480, 461), hasMore: true };
+      return { items: [], hasMore: true };
+    });
+
+    const { rerender } = render(<KeyedHarness feedKey="feed-a" fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    rerender(<KeyedHarness feedKey="feed-b" fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.statuses[0]?.id).toBe("500"));
+
+    await act(async () => {
+      api!.loadMore();
+    });
+    await waitFor(() => expect(calls).toContain("481"));
+    expect(calls).not.toContain("981");
+    // The new page joined the feed the reader is actually looking at.
+    await waitFor(() => expect(api?.statuses.some((s) => s.id === "480")).toBe(true));
+  });
+
+  it("never merges a page that lands after the reader switched feeds", async () => {
+    cachedFeed("feed-a", range(1000, 981), "981");
+    cachedFeed("feed-b", range(500, 481), "481");
+
+    let releaseA: ((page: { items: Item[]; hasMore: boolean }) => void) | null = null;
+    const fetchPage = vi.fn(async (maxId?: string) => {
+      if (maxId === "981") {
+        return await new Promise<{ items: Item[]; hasMore: boolean }>((resolve) => {
+          releaseA = resolve;
+        });
+      }
+      return { items: [], hasMore: true };
+    });
+
+    const { rerender } = render(<KeyedHarness feedKey="feed-a" fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.loading).toBe(false));
+
+    act(() => {
+      void api!.loadMore();
+    });
+    rerender(<KeyedHarness feedKey="feed-b" fetchPage={fetchPage} />);
+    await waitFor(() => expect(api?.statuses[0]?.id).toBe("500"));
+
+    // The page requested for feed-a resolves late: it belongs to the feed that
+    // was left behind and must be dropped instead of mixing into feed-b.
+    await act(async () => {
+      releaseA?.({ items: range(980, 961), hasMore: true });
+      await Promise.resolve();
+    });
+    expect(api?.statuses.some((s) => s.id === "980")).toBe(false);
+    expect(api?.statuses.map((s) => s.id)).toEqual(range(500, 481).map((s) => s.id));
+  });
+});

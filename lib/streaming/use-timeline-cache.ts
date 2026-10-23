@@ -236,6 +236,10 @@ export function useTimelineCache<T extends { id: string; created_at?: string }>(
       }
       prevKeyRef.current = key;
       const cached = getTimelineCache<T>(key);
+      // The pagination cursor belongs to the feed: without this re-init a tab
+      // switch kept paginating from the *other* feed's status, so the window in
+      // between was skipped and the two timelines looked mixed.
+      cursorRef.current = cached?.cursor ?? cached?.items[cached.items.length - 1]?.id ?? null;
       // A history traversal restores the feed that actually has cached content.
       // Only that feed consumes the flag, so a feed mounting during the
       // transition with nothing to restore (e.g. a fresh tag/other page) can't
@@ -459,8 +463,12 @@ useIsomorphicLayoutEffect(() => {
     // scrolling fired several overlapping pages before the guard caught up.
     loadingMoreRef.current = true;
     setLoadingMore(true);
+    // A tab switch while the page is in flight: the result belongs to the feed
+    // we are leaving and must never be merged into the new one.
+    const keyAtStart = keyRef.current;
     try {
       const result = await fetchPageRef.current(cursor);
+      if (keyRef.current !== keyAtStart) return;
       if (result.items.length === 0) {
         // Only stop paginating when the page truly has no more items. A
         // transient fetch error (empty items + hasMore=true) must keep the
@@ -500,8 +508,10 @@ useIsomorphicLayoutEffect(() => {
   }, [setLoadingMore, setStatuses, setHasMore]);
 
   const refresh = useCallback(async () => {
+    const keyAtStart = keyRef.current;
     try {
       const result = await fetchPageRef.current();
+      if (keyRef.current !== keyAtStart) return;
       setStatuses(result.items);
       setHasMore(result.hasMore);
       setLoading(false);
@@ -524,8 +534,10 @@ useIsomorphicLayoutEffect(() => {
   // WebSocket reconnect gap without the disruptive full replace that `refresh`
   // performs.
   const catchUp = useCallback(async () => {
+    const keyAtStart = keyRef.current;
     try {
       const result = await fetchPageRef.current();
+      if (keyRef.current !== keyAtStart) return;
       // Same gap rule as the mount fetch: a page whose oldest status is not in
       // the feed means the statuses in between were never downloaded, so
       // pagination resumes from the fetched page.

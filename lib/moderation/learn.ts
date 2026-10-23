@@ -70,6 +70,20 @@ export async function forgetSuspension(env: LearnEnv, actorId: string): Promise<
  * there was nothing to remember or the memory is unavailable).
  */
 export async function learnFromSuspension(env: LearnEnv, lesson: SuspensionLesson): Promise<SuspensionLessonResult | null> {
+  // Never throws: the callers suspend an account and *then* record the audit
+  // entry, so an exception here left the action applied with no trace in
+  // `moderation_log` (measured on cf-ap: nine suspensions applied that way).
+  // The promise this module documents — a failed embed never breaks a
+  // moderation action — is enforced here instead of at every call site.
+  try {
+    return await learnOrNull(env, lesson);
+  } catch (err) {
+    console.error("[moderation] learn failed:", err);
+    return null;
+  }
+}
+
+async function learnOrNull(env: LearnEnv, lesson: SuspensionLesson): Promise<SuspensionLessonResult | null> {
   if (!env.AI || !env.VECTORIZE) return null;
 
   const actor = await getActorById(env.DB, lesson.actorId).catch(() => null);

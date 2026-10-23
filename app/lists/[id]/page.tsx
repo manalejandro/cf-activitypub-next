@@ -78,7 +78,7 @@ export default function ListDetailPage() {
   const { statuses, setStatuses, loading: timelineLoading, loadingMore, hasMore, seenIdsRef, loadMore, catchUp } = useTimelineCache(`list:${listId}`, fetchPage, {
     onDeferredItems: (items) => bufferRef.current?.queueItems(items),
   });
-  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef, listId);
   useEffect(() => {
     bufferRef.current = { queueItems };
   }, [queueItems]);

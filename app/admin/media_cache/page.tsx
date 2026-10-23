@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
+import { parseDbDate } from "@/lib/format";
 
 interface TopServedEntry {
   r2_key: string | null;
@@ -53,13 +54,6 @@ function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
-/** D1 stores `datetime('now')` as UTC without a zone: parse it as UTC. */
-function parseDbDate(value: string | null): Date | null {
-  if (!value) return null;
-  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 export default function AdminMediaCachePage() {
   const router = useRouter();

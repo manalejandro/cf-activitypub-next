@@ -4,6 +4,7 @@ import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
+import { parseDbDate } from "@/lib/format";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";
@@ -144,7 +145,7 @@ export default function AdminModerationLogPage() {
 
   function formatDate(dateStr: string) {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return parseDbDate(dateStr)?.toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) ?? "—";
   }
 
   function label(key: string, fallback: string): string {

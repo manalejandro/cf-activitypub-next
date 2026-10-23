@@ -69,7 +69,7 @@ export default function TimelinesPage() {
     refetchOnMount: true,
     onDeferredItems: (items) => bufferRef.current?.queueItems(items),
   });
-  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef);
+  const { pendingCount, reveal, queueItems, handleStreamEvent } = useNewStatusesBuffer(setStatuses, seenIdsRef, view);
   useEffect(() => {
     bufferRef.current = { queueItems };
   }, [queueItems]);

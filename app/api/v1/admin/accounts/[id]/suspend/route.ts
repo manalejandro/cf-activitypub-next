@@ -6,7 +6,7 @@ import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
-import { learnFromSuspension } from "@/lib/moderation/learn";
+import { learnFromSuspension, type SuspensionLessonResult } from "@/lib/moderation/learn";
 import { broadcastAccountUpdate } from "@/lib/streaming/broadcast";
 import { env } from "cloudflare:workers";
 
@@ -40,12 +40,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // A moderator's suspension is a confirmed abuse decision: the Guardian
   // remembers the account (its posts and profile) so its next incarnation is
-  // caught without a fresh model call.
-  const lesson = await learnFromSuspension(env, {
-    actorId: id,
-    reason: "Account suspended by an administrator.",
-    model: "admin",
-  });
+  // caught without a fresh model call. Best-effort: `learnFromSuspension`
+  // never throws, and the audit entry below must not depend on it either (this
+  // route once applied a suspension and lost the entry when the vector call
+  // failed — the account stayed suspended with no trace).
+  let lesson: SuspensionLessonResult | null = null;
+  try {
+    lesson = await learnFromSuspension(env, {
+      actorId: id,
+      reason: "Account suspended by an administrator.",
+      model: "admin",
+    });
+  } catch { /* the audit entry records learned: null */ }
 
   await recordModeration(env, {
     id: generateId(),
