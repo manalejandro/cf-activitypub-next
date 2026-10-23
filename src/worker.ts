@@ -407,6 +407,19 @@ function forwardToTimelineDO(env: Env, request: Request, channel: string, authed
 /** Permanent HTTP failure codes — don't retry, just ack. */
 const PERMANENT_ERRORS = new Set([400, 401, 403, 404, 410, 422]);
 
+/**
+ * Liveness for the status page: when *any* delivery last succeeded. Throttled
+ * on read (one write per two minutes at most) — the page only needs the age of
+ * the last success, and a per-delivery KV write would be pure overhead on the
+ * hot path. The key is read by `lib/instance-stats.ts` (`delivery:last_ok`).
+ */
+const DELIVERY_LAST_OK_KEY = "delivery:last_ok";
+async function markDeliverySuccess(env: Env): Promise<void> {
+  const existing = await env.KV.get(DELIVERY_LAST_OK_KEY).catch(() => null);
+  if (existing && Date.now() - Number(existing) < 2 * 60_000) return;
+  await env.KV.put(DELIVERY_LAST_OK_KEY, String(Date.now()), { expirationTtl: 30 * 86_400 }).catch(() => {});
+}
+
 async function deliverOne(
   inboxUrl: string,
   activityJson: string,
@@ -461,6 +474,7 @@ async function deliverOne(
         .catch(() => {});
       // Federation engine: a success clears the host's failure days / marker.
       await recordInstanceDeliverySuccess(env.DB, env.KV, inboxDomain);
+      await markDeliverySuccess(env);
       return { ok: true, permanent: false, status: res.status };
     }
     // Federation engine: Mastodon's DeliveryFailureTracker counts any failure

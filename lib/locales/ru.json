@@ -1347,5 +1347,7 @@
   "document_view": "Открыть",
   "document_open_new_tab": "Открыть в новой вкладке",
   "document_preview_unavailable": "Для этого типа файлов нет предпросмотра, но его можно скачать.",
-  "document_preview_truncated": "Предпросмотр обрезан: показаны первые {size}."
+  "document_preview_truncated": "Предпросмотр обрезан: показаны первые {size}.",
+  "status_metric_delivery_domains": "{n} доменов с ошибками",
+  "status_metric_last_ok": "последняя доставка {value}"
 }

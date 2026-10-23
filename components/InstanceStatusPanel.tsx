@@ -91,8 +91,15 @@ export function componentMetricLine(t: Translations, component: StatusComponentD
       return parts.join(" · ");
     }
     case "delivery": {
-      const failures = number(m.failures_24h) ?? 0;
-      return t.status_metric_failures_24h.replace("{n}", formatCount(failures));
+      // What the instance can actually measure: how many peers are failing right
+      // now, how long since the last successful delivery, and the severe tail
+      // (deliveries that exhausted every retry).
+      const parts = [t.status_metric_delivery_domains.replace("{n}", formatCount(number(m.failing_domains) ?? 0))];
+      const lastOk = number(m.last_ok_minutes);
+      if (lastOk !== null) parts.push(t.status_metric_last_ok.replace("{value}", formatAgo(t, lastOk)));
+      const dlq = number(m.dlq_24h) ?? 0;
+      if (dlq > 0) parts.push(t.status_metric_failures_24h.replace("{n}", formatCount(dlq)));
+      return parts.join(" · ");
     }
     case "media": {
       if (component.state === "disabled") return null;

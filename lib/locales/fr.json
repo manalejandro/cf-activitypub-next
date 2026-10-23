@@ -1347,5 +1347,7 @@
   "document_view": "Voir",
   "document_open_new_tab": "Ouvrir dans un nouvel onglet",
   "document_preview_unavailable": "Pas d'aperçu pour ce type de fichier. Vous pouvez le télécharger.",
-  "document_preview_truncated": "Aperçu tronqué : les premiers {size} sont affichés."
+  "document_preview_truncated": "Aperçu tronqué : les premiers {size} sont affichés.",
+  "status_metric_delivery_domains": "{n} domaines en échec",
+  "status_metric_last_ok": "dernière livraison {value}"
 }

@@ -1347,5 +1347,7 @@
   "document_view": "查看",
   "document_open_new_tab": "在新标签页中打开",
   "document_preview_unavailable": "此类文件无法预览，但可以下载。",
-  "document_preview_truncated": "预览已截断：仅显示前 {size}。"
+  "document_preview_truncated": "预览已截断：仅显示前 {size}。",
+  "status_metric_delivery_domains": "{n} 个域名失败",
+  "status_metric_last_ok": "上次投递 {value}"
 }

@@ -6,6 +6,7 @@ import { applyTestSchema, resetTestStorage } from "./helpers/db";
 import {
   CRON_LAST_KEY,
   DLQ_PREFIX,
+  DELIVERY_NO_SUCCESS_HOURS,
   MEDIA_BACKLOG_FACTOR,
   getInstanceStatsSnapshot,
   getInstanceStatus,
@@ -171,19 +172,50 @@ describe("instance status", () => {
     expect(down.overall).toBe("down");
   });
 
-  it("derives delivery health from the dead-letter log, ignoring old failures", async () => {
-    await recordDeliveryFailures(2, new Date(NOW - 3600_000));
-    // A failure from last month is history, not a current problem.
-    await recordDeliveryFailures(1, new Date(NOW - 40 * 86400_000));
+  it("reads delivery health from delivery_rejections and the last successful delivery", async () => {
+    // Failing peers: a failure with no later success. A handful is normal.
+    await db
+      .prepare(
+        `INSERT INTO delivery_rejections (domain, status, attempts, last_at, last_ok_at)
+         VALUES ('gone.example', 0, 3, datetime('now'), NULL),
+                ('blocked.example', 403, 4, datetime('now'), NULL),
+                ('recovered.example', 0, 2, datetime('now', '-2 day'), datetime('now', '-1 day'))`
+      )
+      .run();
+
+    const relaxed = await getInstanceStatus(env, NOW);
+    expect(stateOf(relaxed, "delivery")).toBe("operational");
+    const relaxedMetrics = relaxed.components.find((component) => component.key === "delivery")?.metrics;
+    // The recovered host is not failing (its success is newer) but is tracked.
+    expect(relaxedMetrics?.failing_domains).toBe(2);
+    expect(relaxedMetrics?.tracked_domains).toBe(3);
+    expect(relaxedMetrics?.permanent_rejections).toBe(1);
+    // Both network failures are counted (the recovered one included): the metric
+    // reports what has been seen, the state is what judges.
+    expect(relaxedMetrics?.unreachable_domains).toBe(2);
+    expect(relaxedMetrics?.last_ok_minutes).toBeNull();
+
+    // Failures for hours with no successful delivery in between → degraded.
+    await db
+      .prepare(
+        `INSERT INTO delivery_rejections (domain, status, attempts, last_at, last_ok_at)
+         VALUES ('a.example', 0, 1, datetime('now'), NULL),
+                ('b.example', 0, 1, datetime('now'), NULL),
+                ('c.example', 0, 1, datetime('now'), NULL),
+                ('d.example', 0, 1, datetime('now'), NULL)`
+      )
+      .run();
+    await env.KV.put("delivery:last_ok", String(NOW - (DELIVERY_NO_SUCCESS_HOURS + 1) * 3600_000));
+    expect(stateOf(await getInstanceStatus(env, NOW), "delivery")).toBe("degraded");
+
+    // A fresh success clears it…
+    await env.KV.put("delivery:last_ok", String(NOW - 60_000));
     expect(stateOf(await getInstanceStatus(env, NOW), "delivery")).toBe("operational");
 
+    // …while the dead-letter log (retries exhausted) is the severe signal.
     await recordDeliveryFailures(3, new Date(NOW - 60_000));
-    const degraded = await getInstanceStatus(env, NOW);
-    expect(stateOf(degraded, "delivery")).toBe("degraded");
-    const delivery = degraded.components.find((component) => component.key === "delivery");
-    expect(delivery?.metrics.failures_24h).toBe(5);
-
-    await recordDeliveryFailures(5, new Date(NOW - 30_000));
+    expect(stateOf(await getInstanceStatus(env, NOW), "delivery")).toBe("degraded");
+    await recordDeliveryFailures(7, new Date(NOW - 30_000));
     expect(stateOf(await getInstanceStatus(env, NOW), "delivery")).toBe("down");
   });
 

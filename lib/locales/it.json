@@ -1347,5 +1347,7 @@
   "document_view": "Apri",
   "document_open_new_tab": "Apri in una nuova scheda",
   "document_preview_unavailable": "Nessuna anteprima per questo tipo di file. Puoi scaricarlo.",
-  "document_preview_truncated": "Anteprima ridotta: vengono mostrati i primi {size}."
+  "document_preview_truncated": "Anteprima ridotta: vengono mostrati i primi {size}.",
+  "status_metric_delivery_domains": "{n} domini in errore",
+  "status_metric_last_ok": "ultima consegna {value}"
 }

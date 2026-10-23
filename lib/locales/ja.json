@@ -1347,5 +1347,7 @@
   "document_view": "表示",
   "document_open_new_tab": "新しいタブで開く",
   "document_preview_unavailable": "この種類のファイルはプレビューできません。ダウンロードできます。",
-  "document_preview_truncated": "プレビューは先頭の {size} のみ表示しています。"
+  "document_preview_truncated": "プレビューは先頭の {size} のみ表示しています。",
+  "status_metric_delivery_domains": "{n} 件の配信失敗ドメイン",
+  "status_metric_last_ok": "最終配信 {value}"
 }

@@ -1347,5 +1347,7 @@
   "document_view": "Ansehen",
   "document_open_new_tab": "In neuem Tab öffnen",
   "document_preview_unavailable": "Für diesen Dateityp gibt es keine Vorschau. Du kannst die Datei herunterladen.",
-  "document_preview_truncated": "Vorschau gekürzt: die ersten {size} werden angezeigt."
+  "document_preview_truncated": "Vorschau gekürzt: die ersten {size} werden angezeigt.",
+  "status_metric_delivery_domains": "{n} fehlgeschlagene Domains",
+  "status_metric_last_ok": "letzte Zustellung {value}"
 }

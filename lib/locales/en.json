@@ -1347,5 +1347,7 @@
   "document_view": "View",
   "document_open_new_tab": "Open in a new tab",
   "document_preview_unavailable": "No preview for this file type. You can download it.",
-  "document_preview_truncated": "Preview truncated: showing the first {size}."
+  "document_preview_truncated": "Preview truncated: showing the first {size}.",
+  "status_metric_delivery_domains": "{n} failing domains",
+  "status_metric_last_ok": "last delivery {value}"
 }

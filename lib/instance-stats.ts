@@ -49,10 +49,18 @@ export const FEDERATION_STALE_HOURS = 48;
 export const MAINTENANCE_OK_MINUTES = 10;
 /** A completed run older than this means maintenance is not running. */
 export const MAINTENANCE_STALE_MINUTES = 60;
-/** Delivery failures recorded in 24h: at least this many is degraded. */
+/**
+ * Dead-letter records in 24 h (deliveries that exhausted every retry): the
+ * severe signal. "Currently failing domains" — the number `delivery_rejections`
+ * keeps — is informational: a handful of dead hosts is the normal state of the
+ * fediverse (cf-ap sits at 7 of ~2500 known domains).
+ */
 export const DELIVERY_DEGRADED_FAILURES = 3;
-/** Delivery failures recorded in 24h: at least this many is down. */
 export const DELIVERY_DOWN_FAILURES = 10;
+/** Failing domains in 24 h that make "no success in a while" suspicious. */
+export const DELIVERY_FAILURE_ALERT_COUNT = 5;
+/** …and how long without a single successful delivery before it is degraded. */
+export const DELIVERY_NO_SUCCESS_HOURS = 6;
 /**
  * A media-cache backlog over this many cron batches is degraded: the drain runs
  * `MEDIA_CACHE_FETCH_BATCH` per pass, so this is roughly an hour of work ahead
@@ -75,6 +83,13 @@ export const CRON_LAST_KEY = "cron:last";
 export const CRON_LOCK_KEY = "cron:lock";
 /** Prefix of the delivery dead-letter records (the key carries the timestamp). */
 export const DLQ_PREFIX = "dlq:delivery:";
+/**
+ * When any delivery last succeeded (epoch ms, written by the queue consumer —
+ * `markDeliverySuccess` in `src/worker.ts` — and throttled to one write per two
+ * minutes). "No success in hours while failures pile up" is the softer of the
+ * two delivery alarms; the dead-letter log is the severe one.
+ */
+export const DELIVERY_LAST_OK_KEY = "delivery:last_ok";
 
 const SEVERITY: Record<ComponentState, number> = {
   down: 3,
@@ -113,10 +128,24 @@ export function federationState(activityMinutes: number | null, remoteFollows: n
   return "operational";
 }
 
-export function deliveryState(failures24h: number): ComponentState {
-  if (failures24h >= DELIVERY_DOWN_FAILURES) return "down";
-  if (failures24h >= DELIVERY_DEGRADED_FAILURES) return "degraded";
-  return "operational";
+/**
+ * Delivery health from what the instance can measure: the dead-letter log
+ * (exhausted retries — severe) and, as a softer signal, a run of failures over
+ * hours with **no** successful delivery in between. "Currently failing domains"
+ * alone is not a fault: peers go down, block us or disappear all the time.
+ */
+export function deliveryState(input: {
+  dlq24h: number;
+  failures24h: number;
+  lastOkMinutes: number | null;
+}): ComponentState {
+  if (input.dlq24h >= DELIVERY_DOWN_FAILURES) return "down";
+  if (input.dlq24h >= DELIVERY_DEGRADED_FAILURES) return "degraded";
+  const stalled =
+    input.lastOkMinutes !== null &&
+    input.lastOkMinutes > DELIVERY_NO_SUCCESS_HOURS * 60 &&
+    input.failures24h >= DELIVERY_FAILURE_ALERT_COUNT;
+  return stalled ? "degraded" : "operational";
 }
 
 export function mediaState(input: {
@@ -215,6 +244,46 @@ interface StreamingHealth {
   connections: number | null;
 }
 
+/**
+ * What `delivery_rejections` says about outbound delivery. A row is "active"
+ * (failing) while its last failure is newer than its last success, exactly as
+ * the federation graph reads it; `permanent` are the peers rejecting us
+ * (403/410…) and `unreachable` the ones answering nothing at all.
+ */
+interface DeliverySummary {
+  total: number;
+  failing: number;
+  recent: number;
+  permanent: number;
+  unreachable: number;
+  lastOkMinutes: number | null;
+}
+
+async function readDeliverySummary(db: D1Database, kv: KvBinding, now: number): Promise<DeliverySummary> {
+  const row = await db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN last_ok_at IS NULL OR last_at > last_ok_at THEN 1 ELSE 0 END) AS failing,
+         SUM(CASE WHEN last_at >= datetime('now', '-1 day') THEN 1 ELSE 0 END) AS recent,
+         SUM(CASE WHEN status <> 0 THEN 1 ELSE 0 END) AS permanent,
+         SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS unreachable
+       FROM delivery_rejections`
+    )
+    .first<Record<string, number | null>>()
+    .catch(() => null);
+  const lastOkRaw = await kv.get(DELIVERY_LAST_OK_KEY).catch(() => null);
+  const lastOkMs = Number(lastOkRaw);
+  return {
+    total: num(row?.total),
+    failing: num(row?.failing),
+    recent: num(row?.recent),
+    permanent: num(row?.permanent),
+    unreachable: num(row?.unreachable),
+    lastOkMinutes: Number.isFinite(lastOkMs) && lastOkMs > 0 ? minutesSince(lastOkMs, now) : null,
+  };
+}
+
 interface InstanceCore {
   actors: ActorSummary;
   objects: ObjectSummary;
@@ -223,6 +292,7 @@ interface InstanceCore {
   media: MediaSummary | null;
   cron: CronHealth;
   dlq: { recent: number; total: number };
+  delivery: DeliverySummary;
   probeMs: number | null;
   streaming: StreamingHealth;
   durationMs: number;
@@ -415,7 +485,7 @@ function minutesSince(instant: number | null, now: number): number | null {
 /** Every source both views need, gathered in one round of parallel reads. */
 async function collectCore(env: StatsEnv, now: number): Promise<InstanceCore> {
   const started = Date.now();
-  const [actors, objects, federation, moderation, media, cron, dlq, probeMs, streaming] = await Promise.all([
+  const [actors, objects, federation, moderation, media, cron, dlq, delivery, probeMs, streaming] = await Promise.all([
     readActorSummary(env.DB),
     readObjectSummary(env.DB),
     readFederationSummary(env.DB),
@@ -423,6 +493,7 @@ async function collectCore(env: StatsEnv, now: number): Promise<InstanceCore> {
     readMediaSummary(env.DB),
     readCronHealth(env),
     countRecentDeliveryFailures(env, 24 * 3600_000, now),
+    readDeliverySummary(env.DB, env.KV, now),
     probeDatabase(env.DB),
     probeStreaming(env),
   ]);
@@ -434,6 +505,7 @@ async function collectCore(env: StatsEnv, now: number): Promise<InstanceCore> {
     media,
     cron,
     dlq,
+    delivery,
     probeMs,
     streaming,
     durationMs: Math.max(0, Date.now() - started),
@@ -443,7 +515,7 @@ async function collectCore(env: StatsEnv, now: number): Promise<InstanceCore> {
 /** Turn the collected data into the component list both surfaces render. */
 function buildStatus(env: StatsEnv, now: number, core: InstanceCore): InstanceStatusSnapshot {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  const { actors, federation, media, cron, dlq, probeMs, streaming } = core;
+  const { actors, federation, media, cron, dlq, delivery, probeMs, streaming } = core;
 
   const activityMinutes = minutesSince(parseDbDate(federation.lastActivityAt), now);
   const lastRunAt = cron.lastRunAt ? Date.parse(cron.lastRunAt) : Number.NaN;
@@ -471,8 +543,16 @@ function buildStatus(env: StatsEnv, now: number, core: InstanceCore): InstanceSt
     },
     {
       key: "delivery",
-      state: deliveryState(dlq.recent),
-      metrics: { failures_24h: dlq.recent, failures_recorded: dlq.total },
+      state: deliveryState({ dlq24h: dlq.recent, failures24h: delivery.recent, lastOkMinutes: delivery.lastOkMinutes }),
+      metrics: {
+        failing_domains: delivery.failing,
+        tracked_domains: delivery.total,
+        failures_24h: delivery.recent,
+        permanent_rejections: delivery.permanent,
+        unreachable_domains: delivery.unreachable,
+        last_ok_minutes: delivery.lastOkMinutes,
+        dlq_24h: dlq.recent,
+      },
     },
     {
       key: "media",
@@ -670,11 +750,11 @@ export async function getInstanceStatsSnapshot(env: StatsEnv, now = Date.now()):
       },
     },
     delivery: {
-      permanent_failures: num(delivery?.permanent),
-      unreachable: num(delivery?.unreachable),
+      permanent_failures: core.delivery.permanent,
+      unreachable: core.delivery.unreachable,
       last_ok_at: typeof delivery?.last_ok_at === "string" ? delivery.last_ok_at : null,
-      failures_24h: core.dlq.recent,
-      failures_recorded: core.dlq.total,
+      failures_24h: core.delivery.recent,
+      failures_recorded: core.delivery.total,
     },
     media: {
       enabled: limits.mediaCacheEnabled,

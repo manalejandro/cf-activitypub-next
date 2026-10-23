@@ -1347,5 +1347,7 @@
   "document_view": "Ver",
   "document_open_new_tab": "Abrir en una pestaña nueva",
   "document_preview_unavailable": "Sin vista previa para este tipo de archivo. Puedes descargarlo.",
-  "document_preview_truncated": "Vista previa recortada: se muestran los primeros {size}."
+  "document_preview_truncated": "Vista previa recortada: se muestran los primeros {size}.",
+  "status_metric_delivery_domains": "{n} dominios con fallos",
+  "status_metric_last_ok": "última entrega {value}"
 }

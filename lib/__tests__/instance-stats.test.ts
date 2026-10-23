@@ -4,6 +4,8 @@ import {
   DB_SLOW_MS,
   DELIVERY_DEGRADED_FAILURES,
   DELIVERY_DOWN_FAILURES,
+  DELIVERY_FAILURE_ALERT_COUNT,
+  DELIVERY_NO_SUCCESS_HOURS,
   FEDERATION_STALE_HOURS,
   MAINTENANCE_OK_MINUTES,
   MAINTENANCE_STALE_MINUTES,
@@ -32,11 +34,21 @@ describe("component state thresholds", () => {
     expect(federationState(FEDERATION_STALE_HOURS * 60 + 1, 42)).toBe("degraded");
   });
 
-  it("scales delivery failures from degraded to down", () => {
-    expect(deliveryState(0)).toBe("operational");
-    expect(deliveryState(DELIVERY_DEGRADED_FAILURES - 1)).toBe("operational");
-    expect(deliveryState(DELIVERY_DEGRADED_FAILURES)).toBe("degraded");
-    expect(deliveryState(DELIVERY_DOWN_FAILURES)).toBe("down");
+  it("judges delivery on the severe signal and on a stalled one", () => {
+    const ok = { dlq24h: 0, failures24h: 0, lastOkMinutes: 1 };
+    // A few dead/blocked hosts is the normal state of the fediverse…
+    expect(deliveryState(ok)).toBe("operational");
+    expect(deliveryState({ ...ok, failures24h: 40 })).toBe("operational");
+    // …exhausted retries (the dead-letter log) are not.
+    expect(deliveryState({ ...ok, dlq24h: DELIVERY_DEGRADED_FAILURES - 1 })).toBe("operational");
+    expect(deliveryState({ ...ok, dlq24h: DELIVERY_DEGRADED_FAILURES })).toBe("degraded");
+    expect(deliveryState({ ...ok, dlq24h: DELIVERY_DOWN_FAILURES })).toBe("down");
+    // Failures piling up for hours without a single successful delivery.
+    const stalled = { dlq24h: 0, failures24h: DELIVERY_FAILURE_ALERT_COUNT, lastOkMinutes: DELIVERY_NO_SUCCESS_HOURS * 60 };
+    expect(deliveryState(stalled)).toBe("operational");
+    expect(deliveryState({ ...stalled, lastOkMinutes: DELIVERY_NO_SUCCESS_HOURS * 60 + 1 })).toBe("degraded");
+    // Never delivered (fresh instance): unknown, not degraded.
+    expect(deliveryState({ ...stalled, lastOkMinutes: null })).toBe("operational");
   });
 
   it("reports the media cache as disabled, degraded or operational", () => {
