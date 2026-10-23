@@ -124,8 +124,12 @@ describe("instance status", () => {
 
   it("counts the public metrics and the oldest local account", async () => {
     await seedActors();
-    await seedLocalObject("https://local.example/objects/1", new Date(NOW - 3600_000));
-    await seedLocalObject("https://local.example/objects/old", new Date(NOW - 10 * 86400_000));
+    // The "last 24 h" counts run in SQL against the database clock
+    // (`datetime('now')`), not against the fixed NOW the component thresholds
+    // use, so these fixtures must be relative to the real clock — a hard-coded
+    // date silently ages out of the window a day later.
+    await seedLocalObject("https://local.example/objects/1", new Date(Date.now() - 3600_000));
+    await seedLocalObject("https://local.example/objects/old", new Date(Date.now() - 10 * 86400_000));
 
     const snapshot = await getInstanceStatus(env, NOW);
     expect(snapshot.metrics.local_accounts).toBe(1);

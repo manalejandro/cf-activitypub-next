@@ -43,9 +43,14 @@ describe("component state thresholds", () => {
     const base = { enabled: true, bytes: 0, pending: 0, maxBytes: 1000, fetchBatch: 10 };
     expect(mediaState({ ...base, enabled: false })).toBe("disabled");
     expect(mediaState(base)).toBe("operational");
-    // Over budget.
-    expect(mediaState({ ...base, bytes: 1001 })).toBe("degraded");
-    // Backlog above a reasonable number of cron batches.
+    // A full cache is the designed steady state (production sits at ~101% of
+    // its budget): only a runaway overage, past the maintenance's own pause
+    // point, is degraded.
+    expect(mediaState({ ...base, bytes: 1000 })).toBe("operational");
+    expect(mediaState({ ...base, bytes: 1500 })).toBe("operational");
+    expect(mediaState({ ...base, bytes: 2000 })).toBe("operational");
+    expect(mediaState({ ...base, bytes: 2001 })).toBe("degraded");
+    // Backlog above roughly an hour of draining.
     expect(mediaState({ ...base, pending: 10 * MEDIA_BACKLOG_FACTOR })).toBe("operational");
     expect(mediaState({ ...base, pending: 10 * MEDIA_BACKLOG_FACTOR + 1 })).toBe("degraded");
   });

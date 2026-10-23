@@ -53,8 +53,21 @@ export const MAINTENANCE_STALE_MINUTES = 60;
 export const DELIVERY_DEGRADED_FAILURES = 3;
 /** Delivery failures recorded in 24h: at least this many is down. */
 export const DELIVERY_DOWN_FAILURES = 10;
-/** A media-cache backlog over this many cron batches is degraded. */
-export const MEDIA_BACKLOG_FACTOR = 10;
+/**
+ * A media-cache backlog over this many cron batches is degraded: the drain runs
+ * `MEDIA_CACHE_FETCH_BATCH` per pass, so this is roughly an hour of work ahead
+ * (a burst of federated posts is normal, a day-long queue is not).
+ */
+export const MEDIA_BACKLOG_FACTOR = 30;
+/**
+ * Overage (×the byte budget) that makes the cache degraded. A full cache is the
+ * **designed steady state** — the maintenance evicts in bounded batches while
+ * new media keeps arriving — so "at the budget" must never read as trouble.
+ * This factor mirrors the maintenance's own pause point (`maintainMediaCache`
+ * stops fetching above 2× the budget), which is the point where the cache is
+ * genuinely out of control.
+ */
+export const MEDIA_OVERAGE_FACTOR = 2;
 
 /** Key the cron writes at the end of every completed run (2-day TTL). */
 export const CRON_LAST_KEY = "cron:last";
@@ -114,8 +127,10 @@ export function mediaState(input: {
   fetchBatch: number;
 }): ComponentState {
   if (!input.enabled) return "disabled";
-  const backlogLimit = input.fetchBatch * MEDIA_BACKLOG_FACTOR;
-  if (input.bytes > input.maxBytes || input.pending > backlogLimit) return "degraded";
+  // Sitting at the byte budget is normal (the cache exists to be full): only a
+  // runaway overage, past the maintenance's own pause point, is degraded.
+  if (input.bytes > input.maxBytes * MEDIA_OVERAGE_FACTOR) return "degraded";
+  if (input.pending > input.fetchBatch * MEDIA_BACKLOG_FACTOR) return "degraded";
   return "operational";
 }
 
