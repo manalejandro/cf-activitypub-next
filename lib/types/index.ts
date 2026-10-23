@@ -286,6 +286,8 @@ export interface LocalObject {
   favouritesCount: number;
   published: string;
   updatedAt: string;
+  /** FEP-044f approval URI issued by the quoted post's server, when we have one. */
+  quoteAuthorizationUri?: string | null;
   local: boolean;
   raw: string; // JSON
   /** Shared preview card row id (preview_cards.id), null until crawled. */

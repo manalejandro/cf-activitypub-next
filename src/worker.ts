@@ -57,6 +57,7 @@ import { runAccountExpiration } from "../lib/moderation/account-expiration";
 import { refreshFollowRecommendations, RECOMMENDATIONS_REFRESH_HOURS } from "../lib/follow-recommendations";
 import { maintainStorageRetention, storageRetentionLimitsFrom } from "../lib/storage-retention";
 import { createCronSchedule } from "../lib/cron-schedule";
+import { repairMissingQuotedObjects } from "../lib/activitypub/quotes";
 import { pageCacheLimitsFrom, withPageCache } from "../lib/page-cache";
 import type { APActor } from "../lib/types";
 
@@ -1242,6 +1243,18 @@ async function executeScheduled(env: Env): Promise<void> {
   } catch (err) {
     console.error("[cron] media cache stage failed", err);
   }
+
+  // Quotes whose quoted post never made it here: the card is rendered from the
+  // local copy, so fetch the missing ones (a few per pass, skipped for a week
+  // after a failure). Heals the rows stored before the ingest fetched them.
+  await setStage("quotes");
+  if (await schedule.every("quotes", 10))
+    try {
+      const fetchedQuotes = await repairMissingQuotedObjects({ DB: env.DB, KV: env.KV }, 5);
+      if (fetchedQuotes > 0) console.log(`[cron] fetched ${fetchedQuotes} quoted post(s)`);
+    } catch (err) {
+      console.error("[cron] quoted-post repair failed", err);
+    }
 
   // Account verification — periodically re-check rel="me" backlinks so the
   // verified badge stays accurate when an external site changes its markup.

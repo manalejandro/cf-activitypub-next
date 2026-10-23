@@ -30,6 +30,7 @@ import {
 import { generateId, objectIRI } from "@/lib/activitypub/utils";
 import { QUOTE_AUTHORIZATION_CONTEXT } from "@/lib/activitypub/vocab";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
+import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import type { APActivity, APActor, APObject, LocalObject } from "@/lib/types";
@@ -230,6 +231,48 @@ export async function sendQuoteRequest(
  * the relays) that already stored the post only accept the quote when the note
  * carries the authorization.
  */
+/** Failed fetches are parked so the pass does not retry the same dead quote forever. */
+const QUOTE_FETCH_SKIP_PREFIX = "quote:missing:";
+const QUOTE_FETCH_SKIP_TTL = 7 * 24 * 60 * 60;
+
+/**
+ * Fetch the quoted posts this instance is missing, a few per cron pass.
+ *
+ * A quote is rendered from the **local** copy of the quoted status, and nothing
+ * guarantees this instance ever saw it (the account followed is the one that
+ * quotes). New ingests fetch it (`ensureQuotedObjectCached`); this heals the
+ * rows stored before that, and the ones whose fetch failed — the same repair
+ * Mastodon's `RefetchAndVerifyQuoteWorker` does.
+ */
+export async function repairMissingQuotedObjects(env: QuoteEnv, limit = 5): Promise<number> {
+  const rows = await env.DB
+    .prepare(
+      `SELECT o.quote_id AS quote_id FROM objects o
+         LEFT JOIN objects q ON q.id = o.quote_id
+        WHERE o.quote_id IS NOT NULL AND q.id IS NULL
+        LIMIT ?`
+    )
+    .bind(limit)
+    .all<{ quote_id: string }>()
+    .catch(() => null);
+
+  let fetched = 0;
+  for (const row of rows?.results ?? []) {
+    const quoteId = row.quote_id;
+    if (!quoteId) continue;
+    const skipKey = `${QUOTE_FETCH_SKIP_PREFIX}${quoteId}`;
+    if (env.KV && (await env.KV.get(skipKey).catch(() => null))) continue;
+    try {
+      const result = await fetchAndCacheRemoteStatus(env.DB, quoteId);
+      if (result.object) fetched += 1;
+      else if (env.KV) await env.KV.put(skipKey, "1", { expirationTtl: QUOTE_FETCH_SKIP_TTL }).catch(() => {});
+    } catch {
+      if (env.KV) await env.KV.put(skipKey, "1", { expirationTtl: QUOTE_FETCH_SKIP_TTL }).catch(() => {});
+    }
+  }
+  return fetched;
+}
+
 export async function redistributeQuoteAuthorization(
   env: QuoteEnv,
   opts: { baseUrl: string; object: LocalObject; authorizationUri: string }

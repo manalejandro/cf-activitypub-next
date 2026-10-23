@@ -30,6 +30,12 @@ vi.mock("@/lib/streaming/broadcast", () => ({
 
 vi.mock("@/lib/push", () => ({ deliverPushSafe: vi.fn().mockResolvedValue(undefined) }));
 
+const remote = vi.hoisted(() => ({ fetchAndCacheRemoteStatus: vi.fn(async () => ({ object: null, actor: null })) }));
+vi.mock("@/lib/activitypub/remote", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/activitypub/remote")>()),
+  fetchAndCacheRemoteStatus: remote.fetchAndCacheRemoteStatus,
+}));
+
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { createObject } from "@/lib/db";
 
@@ -195,6 +201,30 @@ describe("a real edit", () => {
     expect(after?.updated_at).not.toBe(before?.updated_at);
     expect(after?.updated_at).not.toBe(after?.published);
     expect(await editRows()).toBe(1);
+  });
+});
+
+describe("an Update that adds a quote", () => {
+  it("stores the quote without stamping edited_at, and fetches the quoted post", async () => {
+    const before = await stored();
+
+    await sendUpdate({
+      quote: QUOTED,
+      quoteAuthorization: "https://quoted.example/quote_authorizations/abc",
+    });
+
+    const after = await stored();
+    // The quote is what the peers render the card from; it used to stay NULL
+    // when it only arrived with the Update (the redistribution).
+    const quoteRow = await db
+      .prepare("SELECT quote_id FROM objects WHERE id = ?")
+      .bind(NOTE)
+      .first<{ quote_id: string | null }>();
+    expect(quoteRow?.quote_id).toBe(QUOTED);
+    expect(after?.updated_at).toBe(before?.updated_at);
+    expect(await editRows()).toBe(0);
+    // The quoted post is fetched so the card can render here too.
+    expect(remote.fetchAndCacheRemoteStatus).toHaveBeenCalledWith(db, QUOTED);
   });
 });
 

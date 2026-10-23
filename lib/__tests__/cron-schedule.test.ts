@@ -126,6 +126,7 @@ describe("cron wiring in the worker", () => {
     polls: 3,
     "link-preview": 2,
     "storage-retention": 10,
+    quotes: 10,
     verify: 15,
     oauth: 10,
     "media-maintenance": 5,

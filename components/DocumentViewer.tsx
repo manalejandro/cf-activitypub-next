@@ -86,7 +86,7 @@ export function DocumentViewer({ attachment, onClose }: { attachment: ViewableDo
     return () => {
       cancelled = true;
     };
-  }, [attachment.url, kind]);
+  }, [href, kind]);
 
   const notice = (icon: string, message: string) => (
     <div

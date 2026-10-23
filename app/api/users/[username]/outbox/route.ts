@@ -130,6 +130,7 @@ export async function GET(
           to,
           cc,
           conversation: conversationFromRaw(s.raw) ?? undefined,
+          quoteAuthorization: s.quoteAuthorizationUri ?? undefined,
           favouritesCount: s.favouritesCount,
           reblogsCount: s.reblogsCount,
         });

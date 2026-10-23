@@ -66,6 +66,10 @@ export async function GET(
     cc,
     location: parseLocationJson(obj.locationJson),
     conversation: conversationFromRaw(obj.raw) ?? undefined,
+    // FEP-044f: the approval issued by the quoted post's server, so a peer
+    // that *fetches* the note can verify the quote (not only those that got the
+    // redistribution Update).
+    quoteAuthorization: obj.quoteAuthorizationUri ?? undefined,
     favouritesCount: obj.favouritesCount,
     reblogsCount: obj.reblogsCount,
   });

@@ -147,6 +147,7 @@ function rowToObject(r: Row): LocalObject {
     favouritesCount: r.favourites_count ?? 0,
     published: r.published,
     updatedAt: r.updated_at,
+    quoteAuthorizationUri: (r.quote_authorization_uri as string | null) ?? null,
     local: Boolean(r.is_local),
     raw: r.raw ?? "{}",
     cardId: (r.card_id as string | null) ?? null,
@@ -2483,6 +2484,15 @@ export async function refreshObjectRaw(db: D1Database, objectId: string, raw: st
   await db.prepare("UPDATE objects SET raw = ? WHERE id = ?").bind(raw, objectId).run();
 }
 
+/**
+ * Point an object at the post it quotes **without** touching `updated_at`: an
+ * inbound `Update` that only adds a quote (the FEP-044f redistribution) must not
+ * make the status read as edited.
+ */
+export async function setObjectQuoteId(db: D1Database, objectId: string, quoteId: string | null): Promise<void> {
+  await db.prepare("UPDATE objects SET quote_id = ? WHERE id = ?").bind(quoteId, objectId).run();
+}
+
 export async function setObjectQuoteAuthorizationUri(
   db: D1Database,
   objectId: string,
@@ -3001,7 +3011,7 @@ export async function getActorBoosts(
 export async function updateObject(
   db: D1Database,
   id: string,
-  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null; licenseUrl?: string | null }
+  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null; licenseUrl?: string | null; quoteId?: string | null }
 ): Promise<void> {
   const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
@@ -3024,6 +3034,7 @@ export async function updateObject(
   if ("sensitive" in fields) { setClauses.push("sensitive = ?"); values.push(fields.sensitive ? 1 : 0); }
   if ("language" in fields) { setClauses.push("language = ?"); values.push(fields.language ?? null); }
   if ("raw" in fields) { setClauses.push("raw = ?"); values.push(fields.raw); }
+  if ("quoteId" in fields) { setClauses.push("quote_id = ?"); values.push(fields.quoteId ?? null); }
   if ("locationJson" in fields) { setClauses.push("location_json = ?"); values.push(fields.locationJson ?? null); }
   if ("licenseUrl" in fields) { setClauses.push("license_url = ?"); values.push(fields.licenseUrl ?? null); }
 

@@ -51,7 +51,7 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { refreshObjectRaw, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
+import { refreshObjectRaw, setObjectQuoteId, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
@@ -82,6 +82,7 @@ import { DEFAULT_CONTEXT, isContentObjectType, mlsObjectTypeFromType } from "./v
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLicenseUrl } from "@/lib/licenses";
 import { extractQuoteAuthorizationUri, extractLocationJson } from "@/lib/activitypub/utils";
+import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
@@ -419,6 +420,23 @@ async function resolveLocalMentionedActor(ctx: InboxContext, href: string): Prom
   }
 }
 
+/**
+ * Make sure the quoted post is stored. Every serializer renders the quote card
+ * from the **local** copy (`getQuotesByIds`), and nothing guarantees that this
+ * instance has ever seen the quoted post — the account being followed is the
+ * one that quotes, not necessarily the quoted one. Mastodon solves it by
+ * fetching the quoted status while verifying the quote (`VerifyQuoteService`);
+ * `fetchAndCacheRemoteStatus` is SSRF-guarded and best-effort, so a failure
+ * leaves the status readable without the card.
+ */
+async function ensureQuotedObjectCached(ctx: InboxContext, quoteId: string | null): Promise<void> {
+  if (!quoteId) return;
+  try {
+    if (await getObjectById(ctx.db, quoteId)) return;
+    await fetchAndCacheRemoteStatus(ctx.db, quoteId);
+  } catch { /* best-effort: the quote renders once a later pass fetches it */ }
+}
+
 async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<void> {
   const obj = activity.object as APNote | undefined;
   if (!obj || typeof obj !== "object") return;
@@ -599,6 +617,10 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       } catch { /* ignore */ }
     }
   }
+
+  // The quoted post may be unknown here: fetch it before the status is
+  // serialized for the stream, or the card would be missing until a reload.
+  await ensureQuotedObjectCached(ctx, extractQuoteId(obj as Record<string, unknown>));
 
   // Link preview: crawl the first external link asynchronously, like a local
   // status. Mastodon skips statuses that carry media or a quote.
@@ -2063,18 +2085,32 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       // own quote by rewriting the note.
       const authorizationUri = extractQuoteAuthorizationUri(note as unknown as Record<string, unknown>);
       if (authorizationUri) await setObjectQuoteAuthorizationUri(ctx.db, note.id, authorizationUri);
+      // The quote itself: the FEP-044f redistribution announces it in the raw
+      // (`quote` + `quoteAuthorization`) and the column must follow — without
+      // stamping `updated_at`, which is what made these statuses look edited.
+      const quoteId = extractQuoteId(note as unknown as Record<string, unknown>);
+      if (quoteId !== (existing.quoteId ?? null)) {
+        await setObjectQuoteId(ctx.db, note.id, quoteId);
+        await ensureQuotedObjectCached(ctx, quoteId);
+        // The status was streamed without the card the first time around.
+        await broadcastRemoteStatusRefresh(ctx, note.id);
+      }
       // Serializers read `raw`: keep the document fresh, the row otherwise intact.
       await refreshObjectRaw(ctx.db, note.id, JSON.stringify(note));
       return;
     }
+    const nextQuoteId = extractQuoteId(note as Record<string, unknown>);
     await updateObject(ctx.db, note.id, {
       content: content ?? undefined,
       contentWarning,
       sensitive: note.sensitive ?? false,
       language: note.contentMap ? Object.keys(note.contentMap)[0] : undefined,
       raw: JSON.stringify(note),
-      locationJson: extractLocationJson(note as unknown as Record<string, unknown>),
+      locationJson: nextLocationJson,
+      // A note without `quote` drops the quote (Mastodon's `update_quote!`).
+      quoteId: nextQuoteId,
     });
+    if (nextQuoteId !== (existing.quoteId ?? null)) await ensureQuotedObjectCached(ctx, nextQuoteId);
     await ensurePollRowsForQuestion(ctx, note);
     // An edited Question carries the current per-choice counts: apply them so
     // remote votes show up without reopening the poll.
