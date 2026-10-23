@@ -3046,7 +3046,10 @@ export async function updateObject(
   if ("licenseUrl" in fields) { setClauses.push("license_url = ?"); values.push(fields.licenseUrl ?? null); }
 
   if (setClauses.length === 0) return;
-  setClauses.push("updated_at = datetime('now')");
+  // ISO, like `published`: the column is compared against it (and
+  // `datetime('now')`'s space format sorted an edit below the status it edited).
+  setClauses.push("updated_at = ?");
+  values.push(new Date().toISOString());
   values.push(id);
 
   await db

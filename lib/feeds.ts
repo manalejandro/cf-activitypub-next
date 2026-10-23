@@ -19,6 +19,7 @@ import {
   getInstanceSetting,
 } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
+import { isoTimestamp } from "@/lib/dates";
 import { DOCUMENT_MIME_TYPES } from "@/lib/constants";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalAttachment } from "@/lib/types";
@@ -117,8 +118,7 @@ function escapeXml(value: string): string {
 }
 
 function toIso(value: string): string {
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return `${value.replace(" ", "T")}Z`;
-  return value;
+  return isoTimestamp(value);
 }
 
 /** Plain text for Atom's required entry title (tags stripped, entities decoded). */

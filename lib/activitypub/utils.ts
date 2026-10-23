@@ -1,6 +1,7 @@
 import { DEFAULT_CONTEXT, FEP_6757_CONTEXT, OSTATUS_CONVERSATION_CONTEXT, PUBLIC_ADDRESS, QUOTE_AUTHORIZATION_CONTEXT } from "./vocab";
 import { emojiImgsToShortcodes, fieldValueForVerification } from "./content";
 import { locationLabel, locationPageUrl, safeLocationUrl, type GeoLocation } from "@/lib/location";
+import { isoTimestamp } from "@/lib/dates";
 import type { APActor, APNote, APActivity, APCollection, APCollectionPage, APTag } from "@/lib/types";
 
 // ─────────────────────────────────────────
@@ -95,13 +96,12 @@ export function likedIRI(baseUrl: string, username: string): string {
  * `time` crate rejects it and relays built on `activitystreams` (aoderelay)
  * fail to parse our actor document entirely — their `Accept{Follow}` never
  * arrives and the subscription stays pending forever.
+ *
+ * The conversion itself lives in `lib/dates.ts` (one home for every date
+ * shape); re-exported here because the ActivityPub builders are its main
+ * consumers.
  */
-export function isoTimestamp(value: string | null | undefined): string {
-  if (!value) return new Date().toISOString();
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return `${value.replace(" ", "T")}Z`;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
+export { isoTimestamp };
 
 /**
  * `updated` (ISO) for a stored object that was really edited, else `null`.

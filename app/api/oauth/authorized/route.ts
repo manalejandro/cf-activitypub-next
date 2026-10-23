@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor, extractBearerToken } from "@/lib/auth";
 import { listOAuthTokensForActor, getTokenByAccessToken } from "@/lib/db";
 import { env } from "cloudflare:workers";
@@ -20,8 +21,8 @@ export async function GET(request: NextRequest): Promise<Response> {
       appName: c.appName,
       appWebsite: c.appWebsite,
       scope: c.scope,
-      createdAt: c.createdAt,
-      expiresAt: c.expiresAt,
+      createdAt: toIsoOrNull(c.createdAt) ?? new Date().toISOString(),
+      expiresAt: toIsoOrNull(c.expiresAt),
       isWebSession: c.appId === null,
       isCurrent: currentTokenRow !== null && c.id === currentTokenRow.id,
     })),

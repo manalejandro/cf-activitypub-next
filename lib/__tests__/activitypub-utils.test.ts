@@ -280,7 +280,10 @@ describe("ActivityStreams timestamps", () => {
   // actor document, so their Accept{Follow} never arrived and the subscription
   // stayed pending forever.
   it("normalizes the SQLite format everywhere we federate it", () => {
-    expect(isoTimestamp("2026-08-07 12:51:03")).toBe("2026-08-07T12:51:03Z");
+    // Canonical RFC 3339, milliseconds included: the conversion re-serializes
+    // through `toISOString()` so two normalized values never disagree on the
+    // "same second, different text" shape.
+    expect(isoTimestamp("2026-08-07 12:51:03")).toBe("2026-08-07T12:51:03.000Z");
     expect(isoTimestamp("2026-10-17T12:47:18.990Z")).toBe("2026-10-17T12:47:18.990Z");
     expect(isoTimestamp(null)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(isoTimestamp("")).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -289,7 +292,7 @@ describe("ActivityStreams timestamps", () => {
       publicKeyPem: "pem",
       published: "2026-08-07 12:51:03",
     }) as unknown as { published: string };
-    expect(actor.published).toBe("2026-08-07T12:51:03Z");
+    expect(actor.published).toBe("2026-08-07T12:51:03.000Z");
 
     const note = buildNote(BASE, "obj1", {
       actorUsername: "me",
@@ -297,6 +300,6 @@ describe("ActivityStreams timestamps", () => {
       published: "2026-08-07 12:51:03",
       visibility: "public",
     }) as unknown as { published: string };
-    expect(note.published).toBe("2026-08-07T12:51:03Z");
+    expect(note.published).toBe("2026-08-07T12:51:03.000Z");
   });
 });

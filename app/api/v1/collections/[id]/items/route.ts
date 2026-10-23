@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound, badRequest } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getCollectionById, addAccountToCollection } from "@/lib/db";
 import { deliverCollectionUpdate } from "@/lib/activitypub/collections";
@@ -40,7 +41,7 @@ export async function POST(
       id: item.id,
       account_id: item.accountId,
       state: item.state,
-      created_at: item.createdAt,
+      created_at: toIsoOrNull(item.createdAt) ?? new Date().toISOString(),
     },
   });
 }

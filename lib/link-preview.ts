@@ -18,6 +18,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { youTubeOEmbedEndpoint, youTubeThumbnailUrl, youTubeVideoId } from "@/lib/youtube";
+import { dbTimestamp } from "@/lib/dates";
 // Re-exported for callers/tests that imported it from this module.
 export { youTubeVideoId } from "@/lib/youtube";
 import type { LocalObject } from "@/lib/types";
@@ -549,7 +550,8 @@ function isHtmlType(contentType: string): boolean {
 }
 
 function plusHours(hours: number, from = Date.now()): string {
-  return new Date(from + hours * 3_600_000).toISOString();
+  // The negative-cache column is the database shape, like the media cache's.
+  return dbTimestamp(from + hours * 3_600_000);
 }
 
 /**

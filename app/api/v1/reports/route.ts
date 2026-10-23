@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { createReport, getActorById, getReportsByActor, getObjectById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         category: r.category,
         comment: r.comment,
         forwarded: r.forwarded,
-        created_at: r.created_at,
+        created_at: toIsoOrNull(r.created_at) ?? new Date().toISOString(),
         status_ids: statusIds,
         statuses,
         rule_ids: r.rule_ids ? JSON.parse(r.rule_ids) : [],

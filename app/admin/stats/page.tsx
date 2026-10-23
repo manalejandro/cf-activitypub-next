@@ -7,7 +7,8 @@ import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
 import { InstanceStatusPanel, OverallBanner, type StatusComponentDTO } from "@/components/InstanceStatusPanel";
-import { formatBytes, formatCount, parseDbDate } from "@/lib/format";
+import { formatBytes, formatCount } from "@/lib/format";
+import { parseDbDate } from "@/lib/dates";
 
 interface StatsSnapshot {
   status: {

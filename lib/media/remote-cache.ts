@@ -20,6 +20,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { DOCUMENT_MIME_TYPES, resolveLimits, type InstanceLimits } from "@/lib/constants";
+import { dbTimestamp } from "@/lib/dates";
 import { metadataStripKind, metadataStripTransform, stripMetadataBytes } from "@/lib/media/strip-metadata";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
@@ -295,7 +296,10 @@ function extensionFor(contentType: string, url: string): string {
 }
 
 function plusHours(hours: number, from = Date.now()): string {
-  return new Date(from + hours * 3_600_000).toISOString();
+  // A `*_next_attempt_at` column holds the database shape (`datetime('now')`),
+  // and the queue compares it raw: writing an ISO string here made a retry
+  // sort after (or before) every stored value of the same day.
+  return dbTimestamp(from + hours * 3_600_000);
 }
 
 /** Download one queued resource and point its target at the cached copy. */

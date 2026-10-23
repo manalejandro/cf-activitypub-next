@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatusById, updateScheduledStatus, deleteScheduledStatus } from "@/lib/db";
 import { env } from "cloudflare:workers";
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   return json({
     id: s.id,
-    scheduled_at: s.scheduled_at,
+    scheduled_at: toIsoOrNull(s.scheduled_at) ?? new Date().toISOString(),
     params: (() => { try { return JSON.parse(s.params); } catch { return {}; } })(),
     media_attachments: [],
   });
@@ -51,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const updated = await getScheduledStatusById(env.DB, id);
   return json({
     id: updated!.id,
-    scheduled_at: updated!.scheduled_at,
+    scheduled_at: toIsoOrNull(updated!.scheduled_at) ?? new Date().toISOString(),
     params: (() => { try { return JSON.parse(updated!.params); } catch { return {}; } })(),
     media_attachments: [],
   });

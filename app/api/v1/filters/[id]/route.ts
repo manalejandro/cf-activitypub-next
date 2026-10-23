@@ -5,6 +5,7 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
 import { json, badRequest, unauthorized, notFound } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getFilterKeywordById, getFilterById, updateFilterKeyword, deleteFilterKeyword } from "@/lib/db";
 import { broadcastFiltersChanged } from "@/lib/streaming/broadcast";
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
     phrase: keyword.keyword,
     context: parseFilterContexts(filter.context),
     whole_word: keyword.wholeWord,
-    expires_at: filter.expiresAt,
+    expires_at: toIsoOrNull(filter.expiresAt),
     irreversible: filter.action === "hide",
   };
   return json(v1);
@@ -71,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
     phrase: phrase.slice(0, MAX_FILTER_KEYWORD_CHARS),
     context: parseFilterContexts(filter.context),
     whole_word: wholeWord,
-    expires_at: filter.expiresAt,
+    expires_at: toIsoOrNull(filter.expiresAt),
     irreversible: filter.action === "hide",
   };
   return json(v1);

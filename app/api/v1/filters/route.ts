@@ -4,6 +4,7 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
 import { json, badRequest, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAllFiltersForAccount, getFilterKeywords, insertFilter, insertFilterKeyword } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         phrase: k.keyword,
         context: parseFilterContexts(f.context),
         whole_word: k.wholeWord,
-        expires_at: f.expiresAt,
+        expires_at: toIsoOrNull(f.expiresAt),
         irreversible: f.action === "hide",
       });
     }

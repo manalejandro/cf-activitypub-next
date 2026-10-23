@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatuses } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const result = statuses.map((s) => ({
     id: s.id,
-    scheduled_at: s.scheduled_at,
+    scheduled_at: toIsoOrNull(s.scheduled_at) ?? new Date().toISOString(),
     params: (() => { try { return JSON.parse(s.params); } catch { return {}; } })(),
     media_attachments: [],
   }));

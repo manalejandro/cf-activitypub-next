@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { env } from "cloudflare:workers";
 
@@ -26,7 +27,7 @@ export async function GET(
     title: r.title as string,
     replies_policy: r.replies_policy as string,
     exclusive: Boolean(r.exclusive),
-    created_at: r.created_at as string,
-    updated_at: r.updated_at as string,
+    created_at: toIsoOrNull(r.created_at) ?? new Date().toISOString(),
+    updated_at: toIsoOrNull(r.updated_at) ?? new Date().toISOString(),
   })));
 }

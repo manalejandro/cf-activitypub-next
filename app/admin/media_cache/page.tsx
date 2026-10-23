@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
-import { parseDbDate } from "@/lib/format";
+import { parseDbDate } from "@/lib/dates";
 
 interface TopServedEntry {
   r2_key: string | null;

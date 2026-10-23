@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getObjectById, getObjectEditHistory, getActorById, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -30,7 +31,7 @@ export async function GET(
       content: e.content ?? "",
       spoiler_text: e.contentWarning ?? "",
       sensitive: e.sensitive,
-      created_at: e.createdAt,
+      created_at: toIsoOrNull(e.createdAt) ?? new Date().toISOString(),
       account,
     }))
   );

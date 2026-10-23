@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
+import { parseDbDate } from "@/lib/dates";
 import { useLocale } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Pagination } from "@/components/Pagination";
@@ -90,7 +91,7 @@ export default function AdminSuspendedPage() {
   }
 
   function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return parseDbDate(dateStr)?.toLocaleString((i18next.language || "en"), { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) ?? "—";
   }
 
   return (

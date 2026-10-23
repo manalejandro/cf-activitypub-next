@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { resolveLimits } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAdminRole } from "@/lib/admin-auth";
@@ -57,11 +58,11 @@ export async function GET(request: NextRequest): Promise<Response> {
     rows.results.map(async (r) => ({
       id: r.id,
       content: await renderAnnouncementContent(r.content, domain),
-      starts_at: r.starts_at,
-      ends_at: r.ends_at,
+      starts_at: toIsoOrNull(r.starts_at),
+      ends_at: toIsoOrNull(r.ends_at),
       all_day: Boolean(r.all_day),
-      published_at: r.published_at,
-      updated_at: r.updated_at,
+      published_at: toIsoOrNull(r.published_at) ?? new Date().toISOString(),
+      updated_at: toIsoOrNull(r.updated_at) ?? new Date().toISOString(),
       read: Boolean(r.is_read),
     }))
   );

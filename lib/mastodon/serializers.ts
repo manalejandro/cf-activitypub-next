@@ -3,6 +3,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { toIsoOrNull } from "@/lib/dates";
 import { getInstanceTitle } from "@/lib/cf";
 import type {
   LocalActor,
@@ -51,21 +52,6 @@ import {
 
 const DEFAULT_AVATAR = "/default-avatar.png";
 const DEFAULT_HEADER = "/default-header.png";
-
-/**
- * Normalize any stored timestamp to RFC 3339 (ISO 8601 with Z).
- * SQLite's `datetime('now')` produces "YYYY-MM-DD HH:MM:SS" which JS `new Date()`
- * parses inconsistently across engines — Mastodon clients require ISO.
- */
-function toIso(s: string | null | undefined): string | null {
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return `${s.replace(" ", "T")}Z`;
-  try {
-    return new Date(s).toISOString();
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The fields a status/account emoji list needs. Interaction routes, POST
@@ -170,7 +156,7 @@ export function serializeAccount(
     discoverable: actor.discoverable,
     indexable: actor.discoverable,
     noindex: !actor.discoverable,
-    created_at: toIso(actor.createdAt) ?? new Date().toISOString(),
+    created_at: toIsoOrNull(actor.createdAt) ?? new Date().toISOString(),
     note,
     // Mastodon's `url` is the human profile, `uri` the ActivityPub id: a remote
     // account's web profile is its `@handle` URL (the actor id returns JSON on
@@ -299,10 +285,10 @@ export function serializeCollection(
       id: i.id,
       account_id: i.accountId,
       state: i.state,
-      created_at: toIso(i.createdAt) ?? i.createdAt,
+      created_at: toIsoOrNull(i.createdAt) ?? new Date().toISOString(),
     })),
-    created_at: toIso(col.created_at) ?? col.created_at,
-    updated_at: toIso(col.updated_at) ?? col.updated_at,
+    created_at: toIsoOrNull(col.created_at) ?? new Date().toISOString(),
+    updated_at: toIsoOrNull(col.updated_at) ?? new Date().toISOString(),
   };
 }
 
@@ -443,7 +429,7 @@ export function serializeStatus(
 
   return {
     id: encodeStatusId(obj.id, obj.local),
-    created_at: toIso(obj.published) ?? new Date().toISOString(),
+    created_at: toIsoOrNull(obj.published) ?? new Date().toISOString(),
     in_reply_to_id: obj.inReplyToId
       ? encodeStatusId(
           obj.inReplyToId,
@@ -460,7 +446,7 @@ export function serializeStatus(
     replies_count: obj.repliesCount,
     reblogs_count: obj.reblogsCount,
     favourites_count: obj.favouritesCount,
-    edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIso(obj.updatedAt) : null,
+    edited_at: obj.updatedAt && obj.updatedAt !== obj.published ? toIsoOrNull(obj.updatedAt) : null,
     license_url: obj.licenseUrl ?? null,
     content: rewriteProfileLinks(
       renderRemoteContent(obj.content, localDomain, emojis, mentionLinksFromRaw(obj.raw, localDomain)),
@@ -516,7 +502,7 @@ export function serializeReblog(
 ): MastodonStatus {
   return {
     id: opts.id,
-    created_at: toIso(opts.createdAt) ?? reblog.created_at,
+    created_at: toIsoOrNull(opts.createdAt) ?? reblog.created_at,
     in_reply_to_id: null,
     in_reply_to_account_id: null,
     sensitive: reblog.sensitive,
@@ -887,7 +873,7 @@ export function serializePoll(
   const expired = now > new Date(poll.expiresAt);
   return {
     id: poll.id,
-    expires_at: toIso(poll.expiresAt) ?? poll.expiresAt,
+    expires_at: toIsoOrNull(poll.expiresAt) ?? poll.expiresAt,
     expired,
     multiple: poll.multiple,
     votes_count: poll.votesCount,
@@ -922,7 +908,7 @@ export function serializeNotification(
   const result: MastodonNotification = {
     id: notif.id,
     type: notif.type,
-    created_at: toIso(notif.createdAt) ?? new Date().toISOString(),
+    created_at: toIsoOrNull(notif.createdAt) ?? new Date().toISOString(),
     account: serializeAccount(account, localDomain),
   };
   // Mastodon exposes `filtered` only when the notification is filtered.

@@ -4,7 +4,7 @@ import i18next from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
-import { parseDbDate } from "@/lib/format";
+import { parseDbDate } from "@/lib/dates";
 import { useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { useLimits } from "@/lib/limits-client";

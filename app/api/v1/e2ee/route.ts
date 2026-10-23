@@ -1,4 +1,5 @@
 import { json, getBaseUrl } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import {
   getActorById,
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       encoding: kp.encoding,
       content: kp.content,
       isActive: kp.isActive,
-      createdAt: kp.createdAt,
+      createdAt: toIsoOrNull(kp.createdAt) ?? new Date().toISOString(),
     })),
     conversations,
   });

@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/client-api";
-import { parseDbDate } from "@/lib/format";
+import { parseDbDate } from "@/lib/dates";
 import { translateKey, useLocale, type Translations } from "@/lib/i18n";
 import { Icon } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";

@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getActorById, getFeaturedTags } from "@/lib/db";
 import { env } from "cloudflare:workers";
 
@@ -15,7 +16,7 @@ export async function GET(
   return json(tags.map((t) => ({
     id: t.id,
     name: t.tag_name,
-    created_at: t.created_at,
+    created_at: toIsoOrNull(t.created_at) ?? new Date().toISOString(),
     statuses_count: 0,
     last_status_at: null,
   })));

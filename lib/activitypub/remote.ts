@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { discardBody } from "@/lib/http";
+import { isoTimestamp, toIsoOrNull } from "@/lib/dates";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
 import { extractQuoteId } from "@/lib/activitypub/utils";
@@ -651,7 +652,7 @@ export async function fetchAndCacheRemoteActorStatuses(
       obj.sensitive === true
     );
 
-    const published = toIso(obj.published);
+    const published = toIsoOrNull(obj.published);
     // A historical outbox item without a parseable date can't be placed in the
     // federated timeline correctly — skip it rather than backdating it to the
     // resolution time (which would surface old posts at the top of the feed).
@@ -801,7 +802,7 @@ export async function fetchAndCacheRemoteStatus(
       repliesCount: 0,
       reblogsCount: 0,
       favouritesCount: 0,
-      published: toIso(obj.published) ?? new Date().toISOString(),
+      published: toIsoOrNull(obj.published) ?? new Date().toISOString(),
       local: false,
       locationJson: extractLocationJson(obj as Record<string, unknown>),
       licenseUrl: extractLicenseUrl(obj as Record<string, unknown>),
@@ -891,7 +892,7 @@ export async function fetchAndCacheRemoteActorFeatured(
           repliesCount: 0,
           reblogsCount: 0,
           favouritesCount: 0,
-          published: toIso(item.published) ?? new Date().toISOString(),
+          published: toIsoOrNull(item.published) ?? new Date().toISOString(),
           local: false,
           locationJson: extractLocationJson(item as Record<string, unknown>),
           licenseUrl: extractLicenseUrl(item as Record<string, unknown>),
@@ -949,17 +950,6 @@ export async function fetchAndCacheRemoteActorFeatured(
   return pinned;
 }
 
-function toIso(dateStr: unknown): string | null {
-  if (typeof dateStr === "string") {
-    try { return new Date(dateStr).toISOString(); } catch { /* fallthrough */ }
-  }
-  return null;
-}
-
-function safe(dateStr: unknown): string {
-  try { return new Date(String(dateStr)).toISOString(); } catch { return new Date().toISOString(); }
-}
-
 /** Create poll rows for a Question ingested from a remote outbox. */
 async function ensureOutboxPollRows(db: D1Database, obj: APNote): Promise<void> {
   if (await getPollByObjectId(db, obj.id)) return;
@@ -968,7 +958,7 @@ async function ensureOutboxPollRows(db: D1Database, obj: APNote): Promise<void> 
   const choices = single.length > 0 ? single : multi;
   if (choices.length === 0) return;
   const expiresAt = typeof obj.endTime === "string"
-    ? safe(obj.endTime)
+    ? isoTimestamp(obj.endTime)
     : new Date(Date.now() + 24 * 36e5).toISOString();
   await createPoll(db, {
     id: generateId(),

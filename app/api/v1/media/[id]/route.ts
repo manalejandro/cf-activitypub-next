@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, notFound, unauthorized } from "@/lib/cf";
+import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAttachment } from "@/lib/mastodon/serializers";
 import { env } from "cloudflare:workers";
@@ -56,7 +57,7 @@ function fromRow(att: Record<string, unknown>) {
     fileSize: (att.file_size as number | null) ?? null,
     mimeType: (att.mime_type as string | null) ?? null,
     sensitive: Boolean(att.sensitive),
-    createdAt: att.created_at as string,
+    createdAt: toIsoOrNull(att.created_at) ?? new Date().toISOString(),
   };
 }
 
@@ -88,7 +89,7 @@ export async function GET(
         fileSize: (pending.fileSize as number | null) ?? null,
         mimeType: (pending.mimeType as string | null) ?? null,
         sensitive: pending.sensitive === true,
-        createdAt: pending.createdAt as string,
+        createdAt: toIsoOrNull(pending.createdAt) ?? new Date().toISOString(),
       }));
     } catch { /* fall through to 404 */ }
   }
