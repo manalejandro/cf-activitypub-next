@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActor, buildActorDelete, buildAnnounce, buildDelete, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, isoTimestamp, normalizeAttributionDomains } from "@/lib/activitypub/utils";
+import { buildActor, buildActorDelete, buildAnnounce, buildDelete, buildFollow, buildLike, buildMove, buildNote, buildRelayFollow, buildUndo, conversationFromRaw, conversationUri, isoTimestamp, normalizeAttributionDomains, editedAtIso, extractQuoteAuthorizationUri } from "@/lib/activitypub/utils";
 
 const BASE = "https://local.example";
 const ACTOR = "https://local.example/users/me";
@@ -71,6 +71,44 @@ describe("buildMove", () => {
     expect(move.object).toBe(ACTOR);
     expect(move.target).toBe(TARGET);
     expect("to" in move).toBe(false);
+  });
+});
+
+describe("editedAtIso", () => {
+  const base = { published: "2026-10-22T10:00:00.000Z" };
+
+  it("stays silent for a fresh row (updated_at = published)", () => {
+    expect(editedAtIso({ ...base, updatedAt: base.published })).toBeNull();
+    // A second of slack: the two stamps come from different clocks.
+    expect(editedAtIso({ ...base, updatedAt: "2026-10-22T10:00:00.400Z" })).toBeNull();
+    expect(editedAtIso({ ...base, updatedAt: null })).toBeNull();
+  });
+
+  it("reports the edit in ISO-8601, whatever the stored format is", () => {
+    // `updateObject` writes SQLite's `datetime('now')` (space, no zone).
+    expect(editedAtIso({ ...base, updatedAt: "2026-10-23 12:34:56" })).toBe("2026-10-23T12:34:56.000Z");
+    expect(editedAtIso({ ...base, updatedAt: "2026-10-23T12:34:56.000Z" })).toBe("2026-10-23T12:34:56.000Z");
+  });
+});
+
+describe("extractQuoteAuthorizationUri", () => {
+  const quoted = "https://quoted.example/users/bob/statuses/9";
+
+  it("keeps an authorization from the quoted post's server", () => {
+    expect(
+      extractQuoteAuthorizationUri({ quote: quoted, quoteAuthorization: "https://quoted.example/quote_authorizations/abc" })
+    ).toBe("https://quoted.example/quote_authorizations/abc");
+  });
+
+  it("refuses another host and plain http", () => {
+    // A peer cannot approve its own quote by rewriting the note.
+    expect(
+      extractQuoteAuthorizationUri({ quote: quoted, quoteAuthorization: "https://attacker.example/quote_authorizations/abc" })
+    ).toBeNull();
+    expect(
+      extractQuoteAuthorizationUri({ quote: quoted, quoteAuthorization: "http://quoted.example/quote_authorizations/abc" })
+    ).toBeNull();
+    expect(extractQuoteAuthorizationUri({ quoteAuthorization: "https://quoted.example/quote_authorizations/abc" })).toBeNull();
   });
 });
 

@@ -51,7 +51,7 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
+import { refreshObjectRaw, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
@@ -81,7 +81,7 @@ import {
 import { DEFAULT_CONTEXT, isContentObjectType, mlsObjectTypeFromType } from "./vocab";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLicenseUrl } from "@/lib/licenses";
-import { extractLocationJson } from "@/lib/activitypub/utils";
+import { extractQuoteAuthorizationUri, extractLocationJson } from "@/lib/activitypub/utils";
 import { refreshPollFromQuestion } from "@/lib/activitypub/polls";
 import { storePublicMlsEnvelope } from "./mlsEnvelope";
 import {
@@ -2036,21 +2036,35 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       note.content, note.summary, note.sensitive ?? false
     );
     const isQuestion = String(note.type ?? "").split("/").pop() === "Question";
-    // A poll vote update arrives as Update{Question} with the same body: only
-    // the counts change. Going through `updateObject` would stamp `updated_at`
-    // (the status reads as "edited") and record an empty edit-history row, so
-    // the poll is refreshed on its own and the body is left untouched.
+    const nextLocationJson = extractLocationJson(note as unknown as Record<string, unknown>);
+    // Nothing a reader sees changed: an Update like this exists to hand over a
+    // poll's counts, a FEP-044f quote authorization or a re-serialized document.
+    // Going through `updateObject` would stamp `updated_at` — every peer showed
+    // the status as "edited" (an approved quote arrived looking like an edit)
+    // and an empty edit-history row was recorded. Mastodon's rule is exactly
+    // this one: `edited_at` only moves when the text, the CW, the media, the
+    // poll or the quote actually changed.
     const bodyUnchanged =
       (content ?? "") === (existing.content ?? "") &&
       (contentWarning ?? null) === (existing.contentWarning ?? null) &&
-      (note.sensitive ?? false) === existing.sensitive;
-    if (isQuestion && bodyUnchanged) {
-      await ensurePollRowsForQuestion(ctx, note);
-      try {
-        await refreshPollFromQuestion(ctx.db, note as unknown as Record<string, unknown>);
-      } catch { /* best-effort */ }
-      // Push the new counts to open timelines (no "edited" notification).
-      await broadcastRemoteStatusRefresh(ctx, note.id);
+      (note.sensitive ?? false) === existing.sensitive &&
+      (nextLocationJson ?? null) === (existing.locationJson ?? null);
+    if (bodyUnchanged) {
+      if (isQuestion) {
+        await ensurePollRowsForQuestion(ctx, note);
+        try {
+          await refreshPollFromQuestion(ctx.db, note as unknown as Record<string, unknown>);
+        } catch { /* best-effort */ }
+        // Push the new counts to open timelines (no "edited" notification).
+        await broadcastRemoteStatusRefresh(ctx, note.id);
+      }
+      // A quote authorization only counts when it comes from the quoted post's
+      // server (same rule as the `Accept` path), so a peer cannot approve its
+      // own quote by rewriting the note.
+      const authorizationUri = extractQuoteAuthorizationUri(note as unknown as Record<string, unknown>);
+      if (authorizationUri) await setObjectQuoteAuthorizationUri(ctx.db, note.id, authorizationUri);
+      // Serializers read `raw`: keep the document fresh, the row otherwise intact.
+      await refreshObjectRaw(ctx.db, note.id, JSON.stringify(note));
       return;
     }
     await updateObject(ctx.db, note.id, {

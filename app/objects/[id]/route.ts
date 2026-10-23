@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { notFound } from "@/lib/cf";
 import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
-import { buildNote, conversationFromRaw, parseLocationJson } from "@/lib/activitypub/utils";
+import { buildNote, conversationFromRaw, editedAtIso, parseLocationJson } from "@/lib/activitypub/utils";
 import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import type { APTag } from "@/lib/types";
@@ -69,6 +69,11 @@ export async function GET(
     favouritesCount: obj.favouritesCount,
     reblogsCount: obj.reblogsCount,
   });
+
+  // Mastodon sends `updated` only for edited statuses (its peers key the
+  // "edited" mark off it); a fetched copy has to say the same.
+  const editedAt = editedAtIso(obj);
+  if (editedAt) note.updated = editedAt;
 
   // FEP-044f: expose the quoted post so remote instances can verify the quote
   // (Mastodon fetches this object as the QuoteRequest `instrument`).

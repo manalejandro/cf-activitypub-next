@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { activityJson, notFound } from "@/lib/cf";
 import { getActorByUsername, getActorStatuses, getAttachmentsByObjectIds, getActorById, getObjectById, getPollsByObjectIds, countActorPublicStatuses } from "@/lib/db";
-import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI, conversationFromRaw } from "@/lib/activitypub/utils";
+import { buildNote, buildCreate, buildOrderedCollection, buildOrderedCollectionPage, actorIRI, conversationFromRaw, editedAtIso } from "@/lib/activitypub/utils";
 import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { applyPollToNote } from "@/lib/activitypub/polls";
 import { fetchRemoteObject } from "@/lib/activitypub/federation";
@@ -136,6 +136,10 @@ export async function GET(
         if (attachments.length > 0) {
           note.attachment = attachments;
         }
+        // Mastodon sends `updated` only for edited statuses; the outbox is how a
+        // peer fetches the thread, so it has to say the same.
+        const editedAt = editedAtIso(s);
+        if (editedAt) note.updated = editedAt;
         const poll = pollMap.get(s.id);
         if (poll) applyPollToNote(note, poll.poll, poll.options);
         return buildCreate(baseUrl, actorIRI(baseUrl, username), note, objectUuid + "-create");

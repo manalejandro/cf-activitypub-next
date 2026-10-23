@@ -2473,6 +2473,16 @@ export async function getQuoteAuthorizationByInteractingObject(
  * that records an edit-history row and stamps `updated_at`, which would mark the
  * status as edited just because its quote was approved.
  */
+/**
+ * Replace an object's stored AP document **without** touching `updated_at`:
+ * serializers read `raw`, so a peer's Update that carries only a re-serialized
+ * document (quote authorization, counters) must refresh it without making the
+ * status read as "edited" or recording a history row.
+ */
+export async function refreshObjectRaw(db: D1Database, objectId: string, raw: string): Promise<void> {
+  await db.prepare("UPDATE objects SET raw = ? WHERE id = ?").bind(raw, objectId).run();
+}
+
 export async function setObjectQuoteAuthorizationUri(
   db: D1Database,
   objectId: string,

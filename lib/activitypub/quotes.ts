@@ -244,6 +244,11 @@ export async function redistributeQuoteAuthorization(
     return 0;
   }
   note.quoteAuthorization = opts.authorizationUri;
+  // Mastodon only refreshes a quote on the *explicit* update path, which it
+  // enters when the note carries `updated`; it does not mark the status as
+  // edited unless the text, CW, media, poll or quote really changed, so this is
+  // how the pending quote becomes approved without a false "edited" badge.
+  note.updated = new Date().toISOString();
   const context = note["@context"];
   if (Array.isArray(context)) {
     if (!context.some((c) => typeof c === "object" && c && "quoteAuthorization" in (c as Record<string, unknown>))) {

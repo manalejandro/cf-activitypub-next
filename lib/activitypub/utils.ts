@@ -16,6 +16,23 @@ export function generateId(): string {
  * possibly an inlined object), plus the legacy `quoteUrl` / `quoteUri` and
  * Misskey's `_misskey_quote`. Mirrors Mastodon's StatusParser#quote_uri.
  */
+/**
+ * FEP-044f: the `quoteAuthorization` a note advertises, kept only when it is an
+ * https URI on the same host as the quoted post — the authorization is issued by
+ * the *quoted* server, so anything else is a peer approving its own quote.
+ */
+export function extractQuoteAuthorizationUri(obj: Record<string, unknown>): string | null {
+  const value = obj.quoteAuthorization;
+  if (typeof value !== "string" || !value.startsWith("https://")) return null;
+  const quoted = extractQuoteId(obj);
+  if (!quoted) return null;
+  try {
+    return new URL(value).hostname === new URL(quoted).hostname ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractQuoteId(obj: Record<string, unknown>): string | null {
   const asId = (v: unknown): string | null => {
     if (typeof v === "string" && v.startsWith("http")) return v;
@@ -84,6 +101,24 @@ export function isoTimestamp(value: string | null | undefined): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return `${value.replace(" ", "T")}Z`;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+/**
+ * `updated` (ISO) for a stored object that was really edited, else `null`.
+ * Mastodon's NoteSerializer sends `updated` only for edited statuses and its
+ * Update service only takes the explicit path when the note carries it, so this
+ * is what tells a peer "the author changed something" — a fresh row stores
+ * `updated_at = published` and must stay silent.
+ */
+export function editedAtIso(obj: { published: string; updatedAt?: string | null }): string | null {
+  if (!obj.updatedAt) return null;
+  const updatedMs = Date.parse(isoTimestamp(obj.updatedAt));
+  if (!Number.isFinite(updatedMs)) return null;
+  const publishedMs = Date.parse(isoTimestamp(obj.published));
+  // A second of slack: the two timestamps come from different clocks (the row's
+  // `published` is ours, `updated_at` is SQLite's).
+  if (Number.isFinite(publishedMs) && updatedMs <= publishedMs + 1000) return null;
+  return new Date(updatedMs).toISOString();
 }
 
 export function keyIRI(baseUrl: string, username: string): string {
