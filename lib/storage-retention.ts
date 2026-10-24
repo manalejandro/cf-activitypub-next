@@ -13,8 +13,16 @@
  *                           the oldest federated history first.
  *
  * The pass runs from the cron, bounded per tick (`DB_RETENTION_PRUNE_BATCH`
- * rows deleted, `DB_RETENTION_SIZE_BATCH` rows measured), so a large backlog
- * drains over several runs instead of blowing the Worker's CPU budget.
+ * rows deleted), so a large backlog drains over several runs instead of blowing
+ * the Worker's CPU budget.
+ *
+ * Measuring the prunable payload used to read **every** row of `objects` and
+ * `activities` in rowid windows to sum `LENGTH(raw)` — 10k payloads per call,
+ * 1.8k calls a day, and 78% of the database's execution time between the two
+ * walks. It is now a **sample**: eight rowid probes spread across each table,
+ * `DB_RETENTION_SIZE_BATCH` payloads each, whose average is multiplied by an
+ * index-only row count. ±3% of the figure the exhaustive walk produced, for
+ * ~0.2% of its cost, and the count is exact.
  *
  * What retention never touches:
  *   - local accounts' own statuses (your data, not a cache);
@@ -38,9 +46,9 @@
  * since the file last shrank (`freedBytes`) and budgets `size - freed`: that is
  * the number that decides whether the database will keep growing. A runtime
  * that does not report the size (Miniflare in tests, local dev) falls back to
- * the incremental payload walk: the bytes of `objects.raw`/`content`/
+ * the sampled payload estimate: the average bytes of `objects.raw`/`content`/
  * `card_json` and `activities.raw` — the columns that hold the federated
- * documents — counted in rowid windows and published when a pass completes.
+ * documents — times their row counts.
  */
 
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
@@ -58,7 +66,11 @@ export interface StorageRetentionLimits {
   maxBytes: number;
   /** Rows deleted per pass. */
   pruneBatch: number;
-  /** Rows measured per pass while estimating the stored payload. */
+  /**
+   * Payloads read **per probe** while sampling the stored payload (the estimate
+   * reads `SAMPLE_POINTS` probes spread across each table, so the total rows read
+   * is `sizeBatch × SAMPLE_POINTS × 2`).
+   */
   sizeBatch: number;
 }
 
@@ -66,8 +78,17 @@ export const DEFAULT_STORAGE_RETENTION: StorageRetentionLimits = {
   days: 0,
   maxBytes: 0,
   pruneBatch: 500,
-  sizeBatch: 2000,
+  sizeBatch: 1000,
 };
+
+/**
+ * Probes spread across each table's rowid range, and the ceiling a single probe
+ * may read (`DB_RETENTION_SIZE_BATCH` is clamped to it: the old meaning of that
+ * variable was thousands of rows per window, which is exactly the cost the
+ * sampling replaced).
+ */
+const SAMPLE_POINTS = 8;
+const MAX_SAMPLE_ROWS = 1000;
 
 /**
  * How many prune batches one pass may run while the instance is over its byte
@@ -88,60 +109,41 @@ const PRUNABLE_VISIBILITIES = ["public", "unlisted"] as const;
 const NO_CUTOFF = "9999-12-31T00:00:00.000Z";
 
 interface RetentionState {
-  /** State format. 1 (no `version`) is the first walk, which could not finish. */
+  /** State format (an older one is restarted, keeping the size bookkeeping). */
   version: number;
-  /** Last completed payload pass: bytes and rows of the prunable payload, and when it finished. */
+  /** Last measurement: bytes and rows of the prunable payload, and when it was taken. */
   bytes: number;
   rows: number;
   at: string | null;
-  /** In-progress pass: rowid cursors, what has been counted and which tables finished. */
-  objectsCursor: number;
-  activitiesCursor: number;
-  objectsTotal: number;
-  activitiesTotal: number;
-  objectsRows: number;
-  activitiesRows: number;
-  objectsDone: boolean;
-  activitiesDone: boolean;
   /** Last database size the binding reported (0 when it does not report one). */
   lastSize: number;
   /** Bytes freed since the file last shrank (SQLite reuses those pages). */
   freedBytes: number;
 }
 
-/** Bumped when the walk's state shape changes (an older one is restarted). */
-const STATE_VERSION = 2;
+/** Bumped when the state shape changes (an older one is restarted). */
+const STATE_VERSION = 3;
 
 const EMPTY_STATE: RetentionState = {
   version: STATE_VERSION,
   bytes: 0,
   rows: 0,
   at: null,
-  objectsCursor: 0,
-  activitiesCursor: 0,
-  objectsTotal: 0,
-  activitiesTotal: 0,
-  objectsRows: 0,
-  activitiesRows: 0,
-  objectsDone: false,
-  activitiesDone: false,
   lastSize: 0,
   freedBytes: 0,
 };
 
 export interface StorageRetentionEstimate {
-  /** Bytes of prunable payload counted by the last completed pass. */
+  /** Bytes of prunable payload estimated by the last sample. */
   bytes: number;
-  /** Rows counted by that pass. */
+  /** Exact number of prunable rows. */
   rows: number;
-  /** When that pass finished (null until the first one completes). */
+  /** When the last sample was taken (null until the first one). */
   measuredAt: string | null;
-  /** True when this call walked the last window — the estimate is now fresh. */
+  /** True when this call took a fresh sample. */
   completed: boolean;
-  /** True while a pass is still walking (the first estimate is not ready yet). */
+  /** True until the first sample lands (the panel shows "measuring"). */
   measuring: boolean;
-  /** Rows counted by the pass in progress. */
-  pendingRows: number;
   /** Database size reported by D1 (null when the runtime does not report one). */
   databaseBytes: number | null;
   /** What the byte budget is compared against: `size - freed`, or the payload estimate. */
@@ -158,7 +160,7 @@ export interface StorageRetentionRun {
   effectiveBytes: number;
   /** Database size reported by D1 during the pass (null when unavailable). */
   databaseBytes: number | null;
-  /** True when the payload walk reached the end of both tables. */
+  /** True when the pass took a fresh payload sample (the estimate is fresh). */
   measured: boolean;
 }
 
@@ -213,22 +215,9 @@ async function readState(env: RetentionEnv): Promise<RetentionState> {
     const parsed = JSON.parse(raw) as Partial<RetentionState>;
     const state = { ...EMPTY_STATE, ...parsed };
     if (parsed.version !== STATE_VERSION) {
-      // The first walk could never publish (it restarted the table that had
-      // finished while the other was still running, so a pass never completed):
-      // keep the published numbers and the file-size bookkeeping, restart the
-      // pass.
-      return {
-        ...state,
-        version: STATE_VERSION,
-        objectsCursor: 0,
-        activitiesCursor: 0,
-        objectsTotal: 0,
-        activitiesTotal: 0,
-        objectsRows: 0,
-        activitiesRows: 0,
-        objectsDone: false,
-        activitiesDone: false,
-      };
+      // An older state carried the cursor-based walk: keep what still means
+      // something (the size bookkeeping) and take a fresh sample.
+      return { ...EMPTY_STATE, lastSize: state.lastSize, freedBytes: state.freedBytes };
     }
     return state;
   } catch {
@@ -240,83 +229,114 @@ async function writeState(env: RetentionEnv, state: RetentionState): Promise<voi
   await setInstanceSetting(env.DB, STATE_KEY, JSON.stringify(state));
 }
 
-/**
- * Advance the payload walk by one bounded window of `objects` and one of
- * `activities`, and note the database size D1 reports. A full pass costs a few
- * reads per tick instead of one full-table scan; the previous complete total
- * stays in place until a new pass finishes.
- */
-async function walkPayload(env: RetentionEnv, state: RetentionState, sizeBatch: number, now: Date): Promise<void> {
-  // `NOT INDEXED` pins the rowid scan: with the visibility filter present the
-  // planner prefers idx_objects_vis_local_pub and then sorts every matching row
-  // (half a million of them) to honour `ORDER BY rowid`.
-  const objectsWindow = state.objectsDone
-    ? null
-    : await env.DB.prepare(
-        `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid,
-                COALESCE(SUM(LENGTH(raw) + COALESCE(LENGTH(content), 0) + COALESCE(LENGTH(card_json), 0)), 0) AS bytes
-           FROM (SELECT rowid, raw, content, card_json FROM objects NOT INDEXED
-                  WHERE rowid > ? AND is_local = 0 AND visibility IN ('public', 'unlisted')
-                  ORDER BY rowid LIMIT ?)`
-      )
-        .bind(state.objectsCursor, sizeBatch)
-        .all<{ n: number; last_rowid: number; bytes: number }>();
+interface PayloadSample {
+  /** Exact number of matching rows (index-only count: no payload is read). */
+  total: number;
+  sampledRows: number;
+  sampledBytes: number;
+  /** The size D1 reported for one of the probes (0 when it reports none). */
+  sizeAfter: number;
+}
 
-  const reportedSize = Number(objectsWindow?.meta?.size_after ?? 0);
+/**
+ * Rowid starting points spread across the table, jittered inside each step:
+ * a fixed grid samples the same neighbourhoods on every measure, so a
+ * positional pattern in the payload sizes biases every result the same way
+ * (measured on cf-ap: two fixed grids landed 4.6% and 2.9% below the
+ * exhaustive walk). The jitter averages that out over the following measures.
+ */
+function sampleStarts(maxRowid: number): number[] {
+  const step = Math.max(1, Math.floor(maxRowid / SAMPLE_POINTS));
+  return Array.from({ length: SAMPLE_POINTS }, (_, i) => i * step + Math.floor(Math.random() * step));
+}
+
+/** The walk's row count comes from an index-only count, never from the payload. */
+async function countObjectsPayloadRows(env: RetentionEnv): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM objects INDEXED BY idx_objects_vis_local_pub
+      WHERE visibility IN ('public', 'unlisted') AND is_local = 0`
+  ).first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+async function sampleObjectsPayload(env: RetentionEnv, probeRows: number): Promise<PayloadSample> {
+  const max = Number(
+    (await env.DB.prepare("SELECT COALESCE(MAX(rowid), 0) AS max FROM objects").first<{ max: number }>())?.max ?? 0
+  );
+  const total = await countObjectsPayloadRows(env);
+  let sampledRows = 0;
+  let sampledBytes = 0;
+  let sizeAfter = 0;
+  for (const from of sampleStarts(max)) {
+    // A rowid seek (the primary key): SQLite starts at `from` and stops after
+    // `probeRows` matches, instead of reading the whole table to sum it.
+    const result = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS n,
+                COALESCE(SUM(LENGTH(raw) + COALESCE(LENGTH(content), 0) + COALESCE(LENGTH(card_json), 0)), 0) AS bytes
+           FROM (SELECT raw, content, card_json FROM objects
+                  WHERE rowid > ? AND is_local = 0 AND visibility IN ('public', 'unlisted')
+                  LIMIT ?)`
+      )
+      .bind(from, probeRows)
+      .all<{ n: number; bytes: number }>();
+    sampledRows += Number(result.results?.[0]?.n ?? 0);
+    sampledBytes += Number(result.results?.[0]?.bytes ?? 0);
+    if (!sizeAfter) sizeAfter = Number(result.meta?.size_after ?? 0);
+  }
+  return { total, sampledRows, sampledBytes, sizeAfter };
+}
+
+async function sampleActivitiesPayload(env: RetentionEnv, probeRows: number): Promise<PayloadSample> {
+  const max = Number(
+    (await env.DB.prepare("SELECT COALESCE(MAX(rowid), 0) AS max FROM activities").first<{ max: number }>())?.max ?? 0
+  );
+  // The count rides the smallest index (`idx_activities_published`): one entry
+  // per row and no payload read.
+  const total = Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM activities").first<{ n: number }>())?.n ?? 0);
+  let sampledRows = 0;
+  let sampledBytes = 0;
+  let sizeAfter = 0;
+  for (const from of sampleStarts(max)) {
+    const result = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(raw)), 0) AS bytes
+           FROM (SELECT raw FROM activities WHERE rowid > ? LIMIT ?)`
+      )
+      .bind(from, probeRows)
+      .all<{ n: number; bytes: number }>();
+    sampledRows += Number(result.results?.[0]?.n ?? 0);
+    sampledBytes += Number(result.results?.[0]?.bytes ?? 0);
+    if (!sizeAfter) sizeAfter = Number(result.meta?.size_after ?? 0);
+  }
+  return { total, sampledRows, sampledBytes, sizeAfter };
+}
+
+/** Extrapolate a probe's average to the table's exact row count. */
+function estimateSample(sample: PayloadSample): number {
+  if (sample.sampledRows === 0) return 0;
+  return Math.round((sample.sampledBytes / sample.sampledRows) * sample.total);
+}
+
+/**
+ * Measure the stored payload: `SAMPLE_POINTS` probes per table (a rowid seek
+ * each, `sizeBatch` payloads) whose average is extrapolated to the exact row
+ * count, plus the database size D1 reports. The previous estimate stays in
+ * place until this finishes.
+ */
+async function measurePayload(env: RetentionEnv, state: RetentionState, sizeBatch: number, now: Date): Promise<void> {
+  const probeRows = Math.min(Math.max(50, Math.floor(sizeBatch)), MAX_SAMPLE_ROWS);
+  const objects = await sampleObjectsPayload(env, probeRows);
+  const activities = await sampleActivitiesPayload(env, probeRows);
+
+  state.bytes = estimateSample(objects) + estimateSample(activities);
+  state.rows = objects.total + activities.total;
+  state.at = now.toISOString();
+
+  const reportedSize = objects.sizeAfter || activities.sizeAfter;
   if (reportedSize > 0) {
     state.freedBytes = nextFreedBytes({ size: state.lastSize, freed: state.freedBytes }, reportedSize);
     state.lastSize = reportedSize;
-  }
-
-  const objectsRow = objectsWindow?.results?.[0];
-  if (objectsWindow) {
-    state.objectsTotal += Number(objectsRow?.bytes ?? 0);
-    state.objectsRows += Number(objectsRow?.n ?? 0);
-    if (Number(objectsRow?.n ?? 0) < sizeBatch) {
-      state.objectsCursor = 0;
-      state.objectsDone = true;
-    } else {
-      state.objectsCursor = Number(objectsRow?.last_rowid ?? 0);
-    }
-  }
-
-  const activitiesWindow = state.activitiesDone
-    ? null
-    : await env.DB.prepare(
-        `SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS last_rowid, COALESCE(SUM(LENGTH(raw)), 0) AS bytes
-           FROM (SELECT rowid, raw FROM activities NOT INDEXED WHERE rowid > ? ORDER BY rowid LIMIT ?)`
-      )
-        .bind(state.activitiesCursor, sizeBatch)
-        .all<{ n: number; last_rowid: number; bytes: number }>();
-
-  const activitiesRow = activitiesWindow?.results?.[0];
-  if (activitiesWindow) {
-    state.activitiesTotal += Number(activitiesRow?.bytes ?? 0);
-    state.activitiesRows += Number(activitiesRow?.n ?? 0);
-    if (Number(activitiesRow?.n ?? 0) < sizeBatch) {
-      state.activitiesCursor = 0;
-      state.activitiesDone = true;
-    } else {
-      state.activitiesCursor = Number(activitiesRow?.last_rowid ?? 0);
-    }
-  }
-
-  // A table that finished keeps its totals (and its `done` flag) and is not
-  // walked again while the other one catches up; the pass publishes when both
-  // have been walked end to end. A single "is anything still open" flag never
-  // published: the table that finished restarted from rowid 0 while the other
-  // was mid-scan, so a pass only completed if both windows happened to be short
-  // in the same call (never, on a busy instance).
-  if (state.objectsDone && state.activitiesDone) {
-    state.bytes = state.objectsTotal + state.activitiesTotal;
-    state.rows = state.objectsRows + state.activitiesRows;
-    state.at = now.toISOString();
-    state.objectsTotal = 0;
-    state.activitiesTotal = 0;
-    state.objectsRows = 0;
-    state.activitiesRows = 0;
-    state.objectsDone = false;
-    state.activitiesDone = false;
   }
 }
 
@@ -326,24 +346,24 @@ function toEstimate(state: RetentionState, completed: boolean): StorageRetention
     rows: state.rows,
     measuredAt: state.at,
     completed,
-    measuring: state.at === null || state.objectsCursor > 0 || state.activitiesCursor > 0,
-    pendingRows: state.objectsRows + state.activitiesRows,
+    // No measurement has been taken yet: the panel shows "measuring" until the
+    // first sample lands (the first cron tick after deploy).
+    measuring: state.at === null,
     databaseBytes: state.lastSize > 0 ? state.lastSize : null,
     effectiveBytes: effectiveBytes(state),
   };
 }
 
-/** Measure the stored payload (one bounded window) and report the current estimate. */
+/** Take a fresh payload sample and report the current estimate. */
 export async function measureStoredPayload(
   env: RetentionEnv,
-  sizeBatch: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  sizeBatch: number = DEFAULT_STORAGE_RETENTION.sizeBatch
 ): Promise<StorageRetentionEstimate> {
   const state = await readState(env);
-  const before = state.at;
-  await walkPayload(env, state, sizeBatch, now);
+  await measurePayload(env, state, sizeBatch, now);
   await writeState(env, state);
-  return toEstimate(state, state.at !== before);
+  return toEstimate(state, true);
 }
 
 function objectBranch(visibility: string): string {
@@ -455,7 +475,8 @@ function isoBefore(now: Date, days: number): string {
 export async function maintainStorageRetention(
   env: RetentionEnv,
   limits: StorageRetentionLimits,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options: { measure?: boolean } = {}
 ): Promise<StorageRetentionRun> {
   const run: StorageRetentionRun = {
     enabled: isStorageRetentionEnabled(limits),
@@ -467,13 +488,21 @@ export async function maintainStorageRetention(
     measured: false,
   };
 
-  // The payload walk runs even with retention disabled: the admin panel shows
-  // the federated history it measures, and it is bounded (one window of each
-  // table per call). Only the deletions are gated on the variables.
+  // The sample runs even with retention disabled (the admin panel shows the
+  // federated history it measures), but not on every pass: the cron asks for it
+  // a few times a day, while **every** pass refreshes the database size — the
+  // number the byte budget is compared against.
   const state = await readState(env);
-  const before = state.at;
-  await walkPayload(env, state, limits.sizeBatch, now);
-  run.measured = state.at !== before;
+  if (options.measure !== false) {
+    await measurePayload(env, state, limits.sizeBatch, now);
+    run.measured = true;
+  } else {
+    const reported = await currentDatabaseBytes(env).catch(() => 0);
+    if (reported > 0) {
+      state.freedBytes = nextFreedBytes({ size: state.lastSize, freed: state.freedBytes }, reported);
+      state.lastSize = reported;
+    }
+  }
   run.databaseBytes = state.lastSize > 0 ? state.lastSize : null;
   run.effectiveBytes = effectiveBytes(state);
 

@@ -29,7 +29,6 @@ interface StorageSummary {
     rows: number;
     measuredAt: string | null;
     measuring: boolean;
-    pendingRows: number;
     databaseBytes: number | null;
     effectiveBytes: number;
   };
@@ -155,11 +154,11 @@ export default function AdminDashboard() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <span style={{ color: "var(--text-secondary)" }}>{t.admin_storage_prunable}</span>
               <strong>
-                {/* The walk is bounded per cron tick: until a pass finishes
-                    there is no number yet, and "0 B" would be a lie. */}
+                {/* The sample lands on the first cron tick after deploy: until
+                    then there is no number and "0 B" would be a lie. */}
                 {storage.estimate.bytes > 0 || !storage.estimate.measuring
                   ? formatBytes(storage.estimate.bytes)
-                  : `${t.admin_storage_measuring} (${storage.estimate.pendingRows.toLocaleString()})`}
+                  : t.admin_storage_measuring}
               </strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>

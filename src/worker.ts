@@ -1141,10 +1141,15 @@ async function executeScheduled(env: Env): Promise<void> {
   // declared expired (by age and/or by byte budget) and keep the payload
   // estimate fresh. Runs before the media-cache stage so the cache maintenance
   // sees the deletions and drops the R2 copies they orphan in the same tick.
+  // The **payload sample** is not a per-pass need: the deletes are bounded and
+  // the estimate only feeds the panel (and the fallback when D1 does not report
+  // a size), so it is taken a few times a day — its old exhaustive walk was 78%
+  // of the database's execution time on cf-ap.
   await setStage("storage-retention");
-  if (await schedule.every("storage-retention", 1))
+  if (await schedule.every("storage-retention", 10))
   try {
-    const retention = await maintainStorageRetention(env, storageRetentionLimitsFrom(limits));
+    const measure = await schedule.every("retention-measure", 360);
+    const retention = await maintainStorageRetention(env, storageRetentionLimitsFrom(limits), new Date(), { measure });
     if (retention.objectsDeleted > 0 || retention.activitiesDeleted > 0) {
       console.log(
         `[retention] pruned ${retention.objectsDeleted} status(es) and ${retention.activitiesDeleted} activit(ies), ` +

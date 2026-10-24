@@ -352,7 +352,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   dbRetentionDays: 0,
   dbRetentionMaxBytes: 0,
   dbRetentionPruneBatch: 500,
-  dbRetentionSizeBatch: 10000,
+  dbRetentionSizeBatch: 1000,
   linkPreviewEnabled: true,
   linkPreviewFetchBatch: 5,
   linkPreviewDays: 14,

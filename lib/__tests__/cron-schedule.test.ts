@@ -116,11 +116,11 @@ describe("cron wiring in the worker", () => {
   const CADENCE: Record<string, number> = {
     // Throughput: each pass is bounded by its batch budget, so a slower cadence
     // only drops throughput (remote media must land in R2 before the timeline
-    // renders it, and a retention backlog must drain).
+    // renders it).
     "link-preview": 1,
-    "storage-retention": 1,
     "media-queue": 1,
     // Redundant re-scans: they answer the same after a few minutes.
+    "storage-retention": 10,
     "auto-delete": 5,
     guardian: 5,
     expiration: 15,
@@ -141,6 +141,9 @@ describe("cron wiring in the worker", () => {
     for (const [stage, minutes] of Object.entries(CADENCE)) {
       expect(source, `${stage} should run every ${minutes} min`).toContain(`schedule.every("${stage}", ${minutes})`);
     }
+    // The payload sample rides its own, slower cadence inside the retention
+    // pass: eight probes per table a few times a day, not every prune.
+    expect(source).toContain('schedule.every("retention-measure", 360)');
   });
 
   it("keeps the punctual stages punctual", () => {

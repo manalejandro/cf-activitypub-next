@@ -126,11 +126,10 @@ describe("storage retention", () => {
     expect(stats.estimate.measuring).toBe(false);
   });
 
-  it("publishes the estimate as soon as each table has been walked once", async () => {
-    // Different sizes on purpose: the old walk only published when both windows
-    // happened to be short in the same call, so a busy instance never got an
-    // estimate (the table that finished restarted from rowid 0 while the other
-    // was still mid-scan, and its totals piled up).
+  it("estimates the payload from probes, in a single pass", async () => {
+    // The old cursor walk only published when both windows happened to be short
+    // in the same call, so a busy instance never got an estimate; the sample is
+    // atomic (one call) and reads a couple of probes per table.
     for (let i = 0; i < 3; i++) {
       await seedObject({ id: `https://remote.example/objects/w${i}`, raw: "a".repeat(900) });
     }
@@ -139,13 +138,10 @@ describe("storage retention", () => {
       await db.prepare("UPDATE activities SET raw = ? WHERE id = ?").bind("b".repeat(900), `act-w${i}`).run();
     }
 
-    let estimate = await measureStoredPayload(env, 2, NOW);
-    for (let i = 0; i < 10 && !estimate.completed; i++) {
-      estimate = await measureStoredPayload(env, 2, NOW);
-    }
+    const estimate = await measureStoredPayload(env, NOW);
 
     expect(estimate.completed).toBe(true);
-    // 3 objects + 5 activities of ~900 bytes each: counted once each.
+    // 3 objects + 5 activities of ~900 bytes each, extrapolated from the probes.
     expect(estimate.bytes).toBeGreaterThan(7000);
     expect(estimate.bytes).toBeLessThan(7500);
     expect(estimate.rows).toBe(8);
@@ -261,27 +257,50 @@ describe("storage retention", () => {
     expect((remaining.results ?? []).map((r) => r.id)).toContain("https://remote.example/objects/replied");
   });
 
-  it("measures the prunable payload in bounded windows", async () => {
+  it("lands within a few percent of the real payload on a skewed table", async () => {
+    // 10k remote rows with a heavy tail (90% ~300 B, 9% ~4 KB, 1% ~40 KB): the
+    // sample reads 8×1000 of them, so the estimate has to extrapolate across a
+    // distribution where 40% of the bytes sit in 1% of the rows.
+    await db
+      .prepare(
+        `WITH RECURSIVE seq(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM seq WHERE i < 10000)
+         INSERT INTO objects (id, actor_id, content, visibility, url, published, raw, updated_at)
+         SELECT 'https://remote.example/objects/bulk-' || i, ?,
+                NULL, 'public', 'https://remote.example/objects/bulk-' || i,
+                '2025-01-01T00:00:00.000Z',
+                substr(hex(zeroblob(CASE WHEN i % 100 = 0 THEN 20000 WHEN i % 10 = 0 THEN 2000 ELSE 150 END)), 1,
+                       CASE WHEN i % 100 = 0 THEN 40000 WHEN i % 10 = 0 THEN 4000 ELSE 300 END),
+                '2025-01-01T00:00:00.000Z'
+           FROM seq`
+      )
+      .bind(REMOTE)
+      .run();
+
+    const real = await count(
+      `SELECT SUM(LENGTH(raw) + COALESCE(LENGTH(content), 0) + COALESCE(LENGTH(card_json), 0)) AS n
+         FROM objects WHERE is_local = 0 AND visibility IN ('public', 'unlisted')`
+    );
+    const estimate = await measureStoredPayload(env, NOW);
+
+    expect(estimate.rows).toBe(10_000);
+    expect(Math.abs(estimate.bytes - real) / real).toBeLessThan(0.1);
+  });
+
+  it("samples the prunable payload and never counts local statuses", async () => {
     await seedObject({ id: "https://remote.example/objects/1", raw: "x".repeat(1000) });
     await seedObject({ id: "https://remote.example/objects/2", raw: "y".repeat(500) });
     await seedObject({ id: "https://local.example/objects/mine", actorId: LOCAL, isLocal: true, raw: "z".repeat(4000) });
     await seedActivity("act-1", OLD);
 
-    // A window smaller than the row count leaves the pass open (the estimate
-    // stays at 0 until a pass reaches the end of both tables).
-    const partial = await measureStoredPayload(env, 1, NOW);
-    expect(partial.completed).toBe(false);
-    expect(partial.bytes).toBe(0);
+    const estimate = await measureStoredPayload(env, NOW);
 
-    let estimate = partial;
-    for (let i = 0; i < 10 && !estimate.completed; i++) {
-      estimate = await measureStoredPayload(env, 2, NOW);
-    }
     expect(estimate.completed).toBe(true);
-    // Remote payload only: the local status is never counted.
-    expect(estimate.bytes).toBeGreaterThan(1400);
-    expect(estimate.bytes).toBeLessThan(1800);
-    // Two statuses plus one activity (the pass counts both tables).
+    // Remote payload only: the local status is never counted — neither in the
+    // sample's average (its 4 KB of `raw` would push the estimate past the
+    // bound) nor in the exact row count.
+    expect(estimate.bytes).toBeGreaterThan(1000);
+    expect(estimate.bytes).toBeLessThan(2000);
+    // Two statuses plus one activity (both tables are sampled).
     expect(estimate.rows).toBe(3);
     expect(estimate.measuredAt).toBe(NOW.toISOString());
   });
@@ -291,7 +310,7 @@ describe("storage retention", () => {
     await seedObject({ id: "https://remote.example/objects/middle", published: "2025-01-01T00:00:00.000Z", raw: "b".repeat(900) });
     await seedObject({ id: "https://remote.example/objects/newest", published: "2026-01-01T00:00:00.000Z", raw: "c".repeat(900) });
 
-    const measured = await measureStoredPayload(env, 50, NOW);
+    const measured = await measureStoredPayload(env, NOW);
     expect(measured.bytes).toBeGreaterThan(2700);
     expect(measured.completed).toBe(true);
 
