@@ -131,3 +131,37 @@ describe("media route byte ranges", () => {
     expect(res.headers.get("access-control-expose-headers")).toContain("Content-Range");
   });
 });
+
+describe("media key policy", () => {
+  it("rejects keys outside the servable prefix allowlist", async () => {
+    const res = await serveMediaObject(
+      { method: "GET", headers: new Headers() } as unknown as Request,
+      r2 as never,
+      "private/secrets.json"
+    );
+    expect(res.status).toBe(404);
+    expect(r2.head).not.toHaveBeenCalled();
+  });
+
+  it("serves mutable profile-image keys with a short revalidating TTL", async () => {
+    const res = await serveMediaObject(
+      { method: "GET", headers: new Headers() } as unknown as Request,
+      r2 as never,
+      "avatars/alice.png"
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300, must-revalidate");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("keeps content-addressed cache keys immutable and sets nosniff", async () => {
+    const res = await serveMediaObject(
+      { method: "GET", headers: new Headers() } as unknown as Request,
+      r2 as never,
+      "cache/media/clip.mp4"
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});

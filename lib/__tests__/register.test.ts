@@ -59,6 +59,7 @@ vi.mock("@/lib/moderation/log", () => ({ recordModeration: vi.fn(async () => {})
 vi.mock("@/lib/auth", () => ({
   hashPassword: mocks.hashPassword,
   generateSecureToken: mocks.generateSecureToken,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
 }));
 vi.mock("@/lib/turnstile", () => ({
   verifyTurnstileToken: mocks.verifyTurnstileToken,

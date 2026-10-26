@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { SettingsHeader } from "@/components/SettingsHeader";
 import { useLocale } from "@/lib/i18n";
-import { getToken } from "@/lib/client-api";
+import { getToken, clearToken } from "@/lib/client-api";
 
 interface Me {
   id: string;
@@ -51,6 +51,9 @@ export default function DeleteAccountPage() {
       if (res.ok) {
         setResult({ ok: true, message: t.settings_delete_done });
         await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+        // Drop the localStorage API-token copy (the cookie is expired by the
+        // delete/logout endpoints themselves).
+        clearToken();
         setTimeout(() => { window.location.href = "/login"; }, 1500);
       } else {
         const data = await res.json() as { error?: string };

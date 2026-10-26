@@ -146,7 +146,7 @@ export default function CollectionsPage() {
             {t.collections_discoverable}
           </label>
           <div className="flex gap-2">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim() || busy}><Icon name="check" color="#fff" /></button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim() || busy} aria-label={t.save}><Icon name="check" color="#fff" /></button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(false)}>{t.profile_cancel}</button>
           </div>
         </form>

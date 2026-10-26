@@ -3,7 +3,7 @@
  */
 
 import { signRequest, signRequestRfc9421 } from "./security";
-import { discardBody } from "@/lib/http";
+import { discardBody, readBoundedJson, readBoundedText } from "@/lib/http";
 import { federationUserAgent } from "@/lib/user-agent";
 import type { APActivity, APActor, APObject } from "@/lib/types";
 import { env } from "cloudflare:workers";
@@ -331,11 +331,12 @@ export async function fetchRemoteObject(
     }
 
     // The timeout signal stays armed while the body is read, so a slow body
-    // can't hang the request past REQUEST_TIMEOUT_MS. Read as text first and
-    // cap the size: res.json() on a malicious multi-hundred-MB body would
-    // exhaust the Worker's memory before any check could run.
-    const text = await res.text();
-    if (!text || text.length > 2_000_000) return null;
+    // can't hang the request past REQUEST_TIMEOUT_MS. The read itself is
+    // bounded: a malicious multi-hundred-MB body is cut at the cap while
+    // streaming, before it can exhaust the Worker's memory (readBoundedText
+    // cancels the reader on overflow, releasing the fetch slot).
+    const text = await readBoundedText(res, 2_000_000);
+    if (!text) return null;
     try {
       return JSON.parse(text) as APActor | APObject | APActivity;
     } catch {
@@ -400,7 +401,10 @@ export async function resolveWebFinger(
       await discardBody(res);
       return null;
     }
-    const data = await res.json() as { links?: { rel: string; href: string }[] };
+    // WebFinger documents are tiny; bound the read so a hostile origin cannot
+    // stream an arbitrarily large body into the isolate.
+    const data = await readBoundedJson<{ links?: { rel: string; href: string }[] }>(res, 256_000);
+    if (!data) return null;
     const selfLink = data.links?.find((l) => l.rel === "self");
     return selfLink?.href ?? null;
   } catch {

@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { discardBody } from "@/lib/http";
+import { discardBody, readBoundedJson, readBoundedText } from "@/lib/http";
+import { MAX_REMOTE_ATTACHMENTS } from "@/lib/constants";
 import { isoTimestamp, toIsoOrNull } from "@/lib/dates";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary, sanitizeRemoteNoteContent } from "@/lib/activitypub/sanitize";
 import { apAttachmentType } from "@/lib/activitypub/content";
@@ -122,8 +123,8 @@ async function resolveCollectionCount(field: unknown): Promise<number> {
         Accept: 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
       }, 3000);
       if (r?.ok) {
-        const col = await r.json() as Record<string, unknown>;
-        if (typeof col.totalItems === "number") return col.totalItems;
+        const col = await readBoundedJson<Record<string, unknown>>(r, 512_000);
+        if (col && typeof col.totalItems === "number") return col.totalItems;
       }
     } catch { /* ignore */ }
   }
@@ -144,8 +145,8 @@ async function probeDomainCallsSupport(db: D1Database, domain: string): Promise<
     try {
       const res = await remoteFetch(url, { Accept: "application/json" }, 3000);
       if (!res?.ok) return false;
-      const data = await res.json() as Record<string, unknown>;
-      const config = data.configuration as Record<string, unknown> | undefined;
+      const data = await readBoundedJson<Record<string, unknown>>(res, 1_000_000);
+      const config = data?.configuration as Record<string, unknown> | undefined;
       return config?.calls !== undefined;
     } catch {
       return false;
@@ -236,7 +237,10 @@ export async function fetchAndCacheRemoteActor(
       return null;
     }
     actorFetchStatus.delete(actorUrl);
-    let p = await res.json() as Record<string, unknown>;
+    // Bounded read: a hostile origin streaming a huge actor document must not
+    // exhaust the isolate before any check runs (null = oversized/invalid).
+    let p = await readBoundedJson<Record<string, unknown>>(res, 2_000_000);
+    if (!p) return null;
     // Cache-poisoning guard: the document fetched from `actorUrl` must claim
     // exactly that id. A host answering with another actor's id (key/inbox
     // swap) is rejected, never cached.
@@ -269,9 +273,9 @@ export async function fetchAndCacheRemoteActor(
         actorFetchStatus.set(id, canonical?.status ?? 0);
         return null;
       }
-      const doc = await canonical.json() as Record<string, unknown>;
-      if (doc.id !== id) {
-        console.warn(`[remote] Refusing canonical actor document: fetched ${id} claims id ${String(doc.id ?? "(none)")}`);
+      const doc = await readBoundedJson<Record<string, unknown>>(canonical, 2_000_000);
+      if (!doc || doc.id !== id) {
+        console.warn(`[remote] Refusing canonical actor document: fetched ${id} claims id ${String(doc?.id ?? "(none)")}`);
         return null;
       }
       p = doc;
@@ -714,7 +718,8 @@ async function storeObjectAttachments(
   sensitive = false
 ): Promise<void> {
   if (!Array.isArray(attachment)) return;
-  for (const att of attachment) {
+  // Bounded: every attachment queues a media-cache fetch (see MAX_REMOTE_ATTACHMENTS).
+  for (const att of attachment.slice(0, MAX_REMOTE_ATTACHMENTS)) {
     if (!att?.url || typeof att.url !== "string") continue;
     try {
       await createAttachment(db, {
@@ -1000,8 +1005,8 @@ export async function fetchProfileHtmlFallback(
       await discardBody(res);
       return {};
     }
-    const html = await res.text();
-    if (html.length > 2_000_000) return {};
+    const html = await readBoundedText(res, 2_000_000);
+    if (!html) return {};
 
     const out: { avatar?: string; summary?: string } = {};
 

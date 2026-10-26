@@ -73,3 +73,27 @@ export function mediaDownloadName(media: DownloadableMedia): string | undefined 
 
   return served || undefined;
 }
+
+/**
+ * Basename safe to embed in an R2 upload key (`media/<user>/<uuid>-<name>`).
+ * The name is client-controlled and travels inside URLs (the serve path and
+ * `uploadedName` above): path separators, control characters and whitespace
+ * are stripped, a conservative charset is enforced and the length bounded.
+ */
+export function safeUploadName(rawName: string | null | undefined, fallback = "upload.bin"): string {
+  const base = (rawName ?? "").split(/[\\/]/).pop() ?? "";
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 100);
+  return cleaned || fallback;
+}
+
+/** Extension for an R2 key, derived from the upload's file name: `[a-z0-9]{1,10}`. */
+export function safeUploadExt(rawName: string | null | undefined, fallback = "bin"): string {
+  const base = (rawName ?? "").split(/[\\/]/).pop() ?? "";
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".") + 1) : "";
+  const cleaned = ext.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10);
+  return cleaned || fallback;
+}

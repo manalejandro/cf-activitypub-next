@@ -716,7 +716,7 @@ export default function E2EEPage() {
               onChange={(e) => setRecipient(e.target.value)}
               style={{ flex: 1, minWidth: 160 }}
             />
-            <button type="button" className="btn btn-outline btn-sm" onClick={handleResolve} disabled={!recipient.trim()}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={handleResolve} disabled={!recipient.trim()} aria-label={t.a11y_search}>
               <Icon name="search" />
             </button>
           </div>

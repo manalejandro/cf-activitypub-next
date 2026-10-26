@@ -3,6 +3,7 @@ import { json } from "@/lib/cf";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getActorById, getAttachmentsByObjectId, getAllCustomEmojis, getObjectById, getReportNotes } from "@/lib/db";
 import { renderEmojiInHtml } from "@/lib/emoji";
+import { sanitizeFediverseHtml } from "@/lib/activitypub/sanitize";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { env } from "cloudflare:workers";
@@ -98,7 +99,10 @@ async function getReportStatuses(db: D1Database, statusIdsRaw: string | null, do
       if (!content) {
         try {
           const raw = JSON.parse(obj.raw) as { content?: string; tag?: { type?: string; icon?: { url?: string }; name?: string }[] };
-          if (typeof raw.content === "string") content = raw.content;
+          // The stored AP document is raw remote HTML: sanitize it here rather
+          // than relying on the single client-side parser (defence in depth
+          // against a deliberately hostile reported status).
+          if (typeof raw.content === "string") content = sanitizeFediverseHtml(raw.content) ?? "";
           const rawEmojis = (raw.tag ?? [])
             .filter((t) => t.type === "Emoji" && typeof t.name === "string" && t.icon?.url)
             .map((t) => ({

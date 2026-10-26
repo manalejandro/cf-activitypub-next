@@ -132,7 +132,7 @@ describe("MLS over ActivityPub inbox handling", () => {
     expect(msgs).toHaveLength(0);
   });
 
-  it("surfaces a Create(PublicMessage) on the public timeline as an encrypted envelope", async () => {
+  it("stores a remote Create(PublicMessage) as an unlisted envelope (never on the public timeline)", async () => {
     const activity = {
       "@context": [
         "https://www.w3.org/ns/activitystreams",
@@ -160,7 +160,9 @@ describe("MLS over ActivityPub inbox handling", () => {
       .first<{ id: string; type: string; visibility: string; content: string; is_local: number }>();
     expect(obj).toBeDefined();
     expect(obj!.type).toBe("PublicMessage");
-    expect(obj!.visibility).toBe("public");
+    // A third-party instance's MLS traffic must not populate our public
+    // timeline: remote envelopes are stored unlisted (reachable by id).
+    expect(obj!.visibility).toBe("unlisted");
     expect(obj!.is_local).toBe(0);
     expect(obj!.content).toContain("MLS/PublicMessage");
     expect(obj!.content).toContain("ZW5jcnlwdGVkLXB1YmxpYy1tZXNzYWdl");
@@ -168,6 +170,29 @@ describe("MLS over ActivityPub inbox handling", () => {
     // private envelopes still never become statuses
     const rows = await db.prepare("SELECT id FROM objects WHERE type = 'PrivateMessage' LIMIT 1").first<{ id: string }>();
     expect(rows).toBeNull();
+  });
+
+  it("refuses a remote PublicMessage squatting an IRI on our own domain", async () => {
+    const activity = {
+      "@context": ["https://www.w3.org/ns/activitystreams", "https://purl.archive.org/socialweb/mls"],
+      id: `${REMOTE_ACTOR}/activities/pub-2`,
+      type: "Create",
+      actor: REMOTE_ACTOR,
+      published: "2026-01-01T00:00:00Z",
+      object: {
+        id: `${BASE}/objects/squat-1`,
+        type: "PublicMessage",
+        mediaType: "application/mls+json",
+        encoding: "base64",
+        content: "ZW5jcnlwdGVk",
+      },
+    };
+    await processInboxActivity(activity as never, { db, baseUrl: BASE } as never);
+    const obj = await db
+      .prepare("SELECT id FROM objects WHERE id = ?")
+      .bind(`${BASE}/objects/squat-1`)
+      .first();
+    expect(obj).toBeNull();
   });
 
   it("toggles key package active state via Add/Remove and cleans up on Delete", async () => {

@@ -162,9 +162,26 @@ export async function verifyIncomingSignature(
   }
 
   const marker = `sig:refresh:${params.signingKeyId}`;
-  const recentlyRefreshed = kv ? await kv.get(marker).catch(() => null) : null;
-  if (recentlyRefreshed) return { ok: false, reason: "invalid" };
-  if (kv) await kv.put(marker, "1", { expirationTtl: 300 }).catch(() => {});
+  // The refresh is throttled per signer AND per actor: the keyId fragment is
+  // attacker-chosen, so a per-key marker alone let a spoofed delivery trigger
+  // one origin fetch per fragment against the claimed signer (~7 outbound
+  // fetches per invalid POST, aimed at a victim host). A forced refresh
+  // re-fetches the whole actor document (every current key), so one refresh
+  // per actor per window is all the rotation case ever needs.
+  const actorMarker = `sig:refresh-actor:${actorId}`;
+  const [keyRefreshed, actorRefreshed] = kv
+    ? await Promise.all([
+        kv.get(marker).catch(() => null),
+        kv.get(actorMarker).catch(() => null),
+      ])
+    : [null, null];
+  if (keyRefreshed || actorRefreshed) return { ok: false, reason: "invalid" };
+  if (kv) {
+    await Promise.all([
+      kv.put(marker, "1", { expirationTtl: 300 }).catch(() => {}),
+      kv.put(actorMarker, "1", { expirationTtl: 300 }).catch(() => {}),
+    ]);
+  }
 
   signer = await resolveSignerKey(db, kv, params.signingKeyId, { forceRefresh: true });
   if (!signer.ok) return failure(signer);

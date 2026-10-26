@@ -34,6 +34,7 @@ import { youTubeEmbedUrl } from "@/lib/youtube";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { getPollsByObjectIds, getPollVotesByObjectIds } from "@/lib/db";
 import { sanitizeFediverseHtml, sanitizeFediversePlain } from "@/lib/activitypub/sanitize";
+import { safeHttpUrl, safeMediaUrl } from "@/lib/safe-url";
 import { isRenderableObjectType } from "@/lib/activitypub/vocab";
 import { linkifyHtmlText, linkifyInline, localSummaryToPlain, processStatusContent, type MentionsMap } from "@/lib/activitypub/content";
 import { parseLocationJson } from "@/lib/activitypub/utils";
@@ -90,7 +91,11 @@ function emojisFromRaw(raw: string | null | undefined): StatusEmoji[] {
       if (t.type !== "Emoji" || typeof t.name !== "string" || !t.icon?.url) continue;
       const shortcode = t.name.replace(/^:/, "").replace(/:$/, "");
       if (!shortcode) continue;
-      emojis.push({ shortcode, url: t.icon.url, staticUrl: t.icon.url, visibleInPicker: true, category: null });
+      // The raw document is remote-controlled and these URLs are rendered into
+      // `<img src>` by clients (ours and third-party Mastodon apps).
+      const url = safeMediaUrl(t.icon.url);
+      if (!url) continue;
+      emojis.push({ shortcode, url, staticUrl: url, visibleInPicker: true, category: null });
     }
     return emojis;
   } catch {
@@ -696,11 +701,17 @@ export function extractAPMeta(obj: LocalObject): APObjectMeta | null {
   const rawUrl = raw.url;
   const urlEntries: { href: string; mediaType?: string }[] = [];
   const collectUrl = (u: unknown): void => {
-    if (typeof u === "string") { urlEntries.push({ href: u }); return; }
+    // Remote-controlled: it becomes an `<a href>` / `<Link href>` in the client.
+    if (typeof u === "string") {
+      const href = safeHttpUrl(u);
+      if (href) urlEntries.push({ href });
+      return;
+    }
     if (u && typeof u === "object") {
       const rec = u as Record<string, unknown>;
-      if (typeof rec.href === "string") {
-        urlEntries.push({ href: rec.href, mediaType: typeof rec.mediaType === "string" ? rec.mediaType : undefined });
+      const href = safeHttpUrl(rec.href);
+      if (href) {
+        urlEntries.push({ href, mediaType: typeof rec.mediaType === "string" ? rec.mediaType : undefined });
       }
     }
   };
@@ -1038,12 +1049,18 @@ export function serializeAttachment(att: LocalAttachment): MastodonAttachment {
         ? { original: { size: String(att.fileSize) } }
         : undefined;
 
+  // A remote server chose these URLs; they end up in `href`/`src` and in an
+  // `<iframe>` on clients, so only http(s) (or our own relative media path) is
+  // served. An unsafe URL degrades to `null`, which clients render as a label.
+  const safeUrl = safeMediaUrl(att.url);
+  const safeRemote = att.remoteUrl ? safeMediaUrl(att.remoteUrl) : null;
+
   return {
     id: att.id,
     type,
-    url: att.url,
-    preview_url: att.url,
-    remote_url: att.remoteUrl ?? null,
+    url: safeUrl,
+    preview_url: safeUrl,
+    remote_url: safeRemote,
     text_url: null,
     description: att.description ?? null,
     blurhash: att.blurhash ?? null,

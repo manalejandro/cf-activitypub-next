@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
-import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
+import { getBaseUrl, json } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import {
   getActorByEmail,
   getActorByCanonicalEmailHash,
@@ -67,9 +68,10 @@ export async function POST(request: NextRequest): Promise<Response> {
     return json({ error: `You must be at least ${regs.minAge} years old to register`, error_code: "register_age_required" }, 422);
   }
 
-  // Rate limit: 5 registration attempts per IP per 60s window
+  // Rate limit: 5 registration attempts per IP per 60s window (atomic DO
+  // counter when configured: a parallel burst must not slip past).
   const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const { allowed, remaining } = await checkRateLimit(env.KV, `register:${remoteIp}`, 5, 60);
+  const { allowed, remaining } = await atomicRateLimit(env, `register:${remoteIp}`, 5, 60);
   if (!allowed) {
     return json({ error: "Too many registration attempts. Please try again later.", error_code: "register_error_rate_limited" }, 429);
   }

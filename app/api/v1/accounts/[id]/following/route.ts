@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
 import { getActorById, getFollowing, getLastStatusAtMap, getAllCustomEmojis } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/accounts/:id/following
@@ -18,9 +18,11 @@ export async function GET(
   const actor = await getActorById(env.DB, rawId);
   if (!actor) return notFound("Account not found");
 
-  const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize));
-  const page = parseInt(request.nextUrl.searchParams.get("page") ?? "0");
-  const following = await getFollowing(env.DB, actor.id, Math.min(limit, limits.maxPageSize), page * limit);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxPageSize);
+  // A negative/NaN page used to produce a negative OFFSET (SQLite reads it as
+  // no offset at all); pages never go below zero.
+  const page = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("page") ?? "0", 10) || 0);
+  const following = await getFollowing(env.DB, actor.id, limit, page * limit);
 
   // The bio (note) must render custom emojis, so the serializer needs the
   // emoji catalogue — same as the account route passes it. The last-status

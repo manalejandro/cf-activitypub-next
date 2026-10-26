@@ -46,12 +46,28 @@ export async function GET(
 
   // Remote instances fetch the outbox when resolving an account; a burst of
   // resolutions must not hammer D1. Cache the collection header and each page
-  // in KV with a short TTL (new posts appear within ~2 minutes).
+  // in KV with a short TTL (new posts appear within ~2 minutes). Only
+  // well-known page shapes are cached: `page` is client-controlled, and
+  // caching every value would let a caller mint unbounded KV keys (write-quota
+  // flooding) that never re-hit. `min_id` is part of the key — the oldest-page
+  // link (`?page=true&min_id=0`) and the newest page (`?page=true`) used to
+  // collide on one entry.
   const pageParam = request.nextUrl.searchParams.get("page");
-  const cacheKey = `ap:outbox:${username.toLowerCase()}${pageParam ? `:${pageParam.slice(0, 80)}` : ""}`;
-  const cached = await env.KV.get(cacheKey).catch(() => null);
-  if (cached) {
-    return activityJson(JSON.parse(cached) as Record<string, unknown>);
+  const minIdParam = request.nextUrl.searchParams.get("min_id");
+  const pageIsOwnObjectIri =
+    pageParam !== null &&
+    pageParam.length <= 200 &&
+    pageParam.startsWith(`${baseUrl}/objects/`);
+  const cacheable =
+    pageParam === null ||
+    (pageParam === "true" && (minIdParam === null || minIdParam === "0")) ||
+    pageIsOwnObjectIri;
+  const cacheKey = `ap:outbox:${username.toLowerCase()}${pageParam ? `:${pageParam.slice(0, 80)}${minIdParam === "0" ? ":min0" : ""}` : ""}`;
+  if (cacheable) {
+    const cached = await env.KV.get(cacheKey).catch(() => null);
+    if (cached) {
+      return activityJson(JSON.parse(cached) as Record<string, unknown>);
+    }
   }
 
   const actor = await getActorByUsername(env.DB, username, domain);
@@ -162,7 +178,9 @@ export async function GET(
     );
   }
 
-  await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 120 }).catch(() => {});
+  if (cacheable) {
+    await env.KV.put(cacheKey, JSON.stringify(response), { expirationTtl: 120 }).catch(() => {});
+  }
   return activityJson(response);
 }
 

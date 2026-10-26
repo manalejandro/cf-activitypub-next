@@ -106,7 +106,7 @@ export default function MessagesPage() {
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "0.15rem" }}>
                       {conv.last_status?.content ? (
                         <span className="text-ellipsis">{htmlToText(conv.last_status.content).slice(0, 120)}</span>
-                      ) : "(sin mensajes)"}
+                      ) : t.messages_empty_conversation}
                     </div>
                   </div>
                 </Link>

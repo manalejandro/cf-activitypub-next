@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { serializeTag } from "@/lib/mastodon/tags";
 import { env } from "cloudflare:workers";
 
@@ -13,10 +13,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const url = new URL(request.url);
   const domain = url.hostname;
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  const limit = Math.min(
-    parseInt(url.searchParams.get("limit") ?? "6") || 6,
-    limits.maxPageSize
-  );
+  const limit = clampLimit(url.searchParams.get("limit"), 6, limits.maxPageSize);
 
   // The client sends what was typed after `#`; tolerate a leading `#` too.
   const query = (url.searchParams.get("q") ?? "").trim().replace(/^#+/, "").toLowerCase();

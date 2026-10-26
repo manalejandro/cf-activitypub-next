@@ -8,6 +8,8 @@
  * the remote instance.
  */
 
+import { safeHttpUrl } from "@/lib/safe-url";
+
 export interface GeoLocation {
   name: string | null;
   latitude: number;
@@ -34,14 +36,7 @@ function locationQuery(location: GeoLocation): string {
 
 /** Keep a `Place`'s page URL only when it is an absolute http(s) URL. */
 export function safeLocationUrl(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  try {
-    const parsed = new URL(value.trim());
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-    return parsed.toString().slice(0, 500);
-  } catch {
-    return null;
-  }
+  return safeHttpUrl(value, 500);
 }
 
 /** Path of the public location page, relative to the instance serving it. */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useFocusTrap } from "@/components/useFocusTrap";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n";
 import { MediaPlayer } from "@/components/MediaPlayer";
@@ -48,6 +49,10 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
   const onCloseRef = useRef(onClose);
   const onNavRef = useRef(onNav);
   const indexRef = useRef(index);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Called unconditionally (before any early return) so the hook order is
+  // stable; the trap activates while the dialog is mounted.
+  useFocusTrap(dialogRef, true);
 
   // Reset the loading indicator whenever the displayed item changes
   const [prevImgIndex, setPrevImgIndex] = useState(index);
@@ -83,6 +88,7 @@ export function Lightbox({ media, index, onClose, onNav }: LightboxProps) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t.a11y_media_viewer}

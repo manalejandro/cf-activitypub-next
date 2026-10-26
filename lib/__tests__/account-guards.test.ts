@@ -12,7 +12,9 @@ vi.mock("@/lib/cf", () => ({
     new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } }),
 }));
 vi.mock("@/lib/admin-auth", () => ({ getAdminRole: mocks.getAdminRole }));
-vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor }));
+vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
+}));
 vi.mock("@/lib/db", () => ({ countUsableAdmins: mocks.countUsableAdmins }));
 
 import { accountActionGuard } from "@/lib/admin/account-guards";

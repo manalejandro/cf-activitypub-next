@@ -3,7 +3,7 @@ import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getMutedActorIds, getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxCollectionPage);
   const mutedIds = await getMutedActorIds(env.DB, actor.id);
   const sliced = mutedIds.slice(0, limit);
 

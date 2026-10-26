@@ -9,6 +9,7 @@
  */
 export { TimelineStreamDO } from "../lib/streaming/timeline-do";
 export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
+export { RateLimitDO } from "../lib/rate-limit-do";
 export { GuardianAgentDO } from "../lib/guardian/agent";
 
 const worker = {

@@ -10,6 +10,11 @@
 
 import { safeFetch } from "@/lib/activitypub/federation";
 
+// Bounded body reads live in lib/http.ts (shared with the federation fetchers,
+// which cannot import from here without a cycle); re-exported for callers of
+// the media client.
+export { readBoundedBytes } from "@/lib/http";
+
 export interface FetchWithUserAgentsOptions {
   userAgents: string[];
   accept: string;
@@ -93,35 +98,4 @@ export async function fetchWithUserAgents(
   }
 
   return { ok: false, error: lastError, permanent: false };
-}
-
-/** Read at most `max` bytes of a response body (bounded memory). */
-export async function readBoundedBytes(res: Response, max: number): Promise<Uint8Array | null> {
-  const reader = res.body?.getReader();
-  if (!reader) {
-    const buffer = await res.arrayBuffer().catch(() => null);
-    if (!buffer || buffer.byteLength > max) return null;
-    return new Uint8Array(buffer);
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > max) return null;
-      chunks.push(value);
-    }
-  } finally {
-    try { await reader.cancel(); } catch { /* already closed */ }
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
 }

@@ -8,6 +8,7 @@ import {
   deletePushSubscription,
 } from "@/lib/db";
 import { generateId } from "@/lib/activitypub/utils";
+import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/push/subscription
@@ -88,6 +89,13 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   if (!endpoint || !p256dh || !auth) {
     return json({ error: "subscription[endpoint], subscription[keys][p256dh], and subscription[keys][auth] are required" }, 422);
+  }
+
+  // The endpoint is fetched server-side on every notification: HTTPS only and
+  // never an internal/metadata address (SSRF). Delivery revalidates each
+  // request through safeFetch; this rejects garbage at the door.
+  if (endpoint.length > 2048 || !validateOutboundUrl(endpoint).valid) {
+    return json({ error: "subscription[endpoint] must be a valid HTTPS URL", error_code: "push_error_endpoint" }, 422);
   }
 
   await upsertPushSubscription(env.DB, {

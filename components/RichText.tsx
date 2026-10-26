@@ -12,6 +12,7 @@
 
 import { memo, createElement, type ReactNode } from "react";
 import Link from "next/link";
+import { decodeCodePoint } from "@/lib/activitypub/sanitize";
 
 const ALLOWED_TAGS = new Set([
   "p", "br", "span", "a", "del", "s", "pre", "blockquote", "code",
@@ -40,8 +41,11 @@ const TAG_RE = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
 
 function decodeEntities(text: string): string {
   return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    // decodeCodePoint (shared with the server sanitizer) maps invalid scalar
+    // values to U+FFFD: a bare String.fromCodePoint throws a RangeError on
+    // `&#1114112;` and took down the whole render.
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => decodeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => decodeCodePoint(parseInt(dec, 10)))
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
@@ -59,7 +63,10 @@ function isSafeHref(href: string): boolean {
   // inside schemes, so `java\tscript:` must be treated as javascript:.
   const cleaned = href.replace(/[\u0000-\u001F\u007F]/g, "").trim();
   if (!cleaned) return false;
-  if (cleaned.startsWith("/") || cleaned.startsWith("#")) return true;
+  if (cleaned.startsWith("#")) return true;
+  // `//host` and `/\host` are protocol-relative (browsers normalize the
+  // backslash): they leave the instance, so they get the scheme check below.
+  if (cleaned.startsWith("/") && !cleaned.startsWith("//") && !cleaned.startsWith("/\\")) return true;
   const match = cleaned.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
   if (!match) return true;
   return LINK_PROTOCOLS.has(match[1].toLowerCase());
@@ -149,7 +156,8 @@ export function toReactNodes(html: string): ReactNode[] {
             closed.tag === "a" &&
             typeof closed.props.href === "string" &&
             closed.props.href.startsWith("/") &&
-            !closed.props.href.startsWith("//");
+            !closed.props.href.startsWith("//") &&
+            !closed.props.href.startsWith("/\\");
           const element = createElement(isInternalLink ? (Link as React.ElementType) : closed.tag, { ...closed.props, key: keySeq++ }, ...closed.children);
           push(element);
           break;

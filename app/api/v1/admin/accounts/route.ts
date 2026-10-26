@@ -3,7 +3,7 @@ import { json } from "@/lib/cf";
 import { rowToActor } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxCollectionPage);
   const page = parseInt(request.nextUrl.searchParams.get("page") ?? "1");
   const offset = (page - 1) * limit;
   const status = request.nextUrl.searchParams.get("status") ?? "all";

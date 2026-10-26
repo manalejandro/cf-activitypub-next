@@ -5,7 +5,7 @@ import { getObjectById, getActorById, getAttachmentsByObjectId, getAllCustomEmoj
 import { serializeStatus } from "@/lib/mastodon/serializers";
 import { serializeQuote } from "@/lib/mastodon/quote";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
@@ -25,7 +25,7 @@ export async function GET(
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   const maxIdRaw = request.nextUrl.searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
 

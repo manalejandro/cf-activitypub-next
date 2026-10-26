@@ -3,7 +3,7 @@ import { json } from "@/lib/cf";
 import { getActorById, getActorByUsername, getAllCustomEmojis, getLastStatusAt } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { parseAccountQuery } from "@/lib/account-search";
 import { resolveWebFinger } from "@/lib/activitypub/federation";
 import { fetchAndCacheRemoteActor } from "@/lib/activitypub/remote";
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
   const query = parseAccountQuery(request.nextUrl.searchParams.get("q") ?? "");
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   if (!query.text) return json([]);
 
   // Cached remote accounts are only exposed to authenticated callers (same

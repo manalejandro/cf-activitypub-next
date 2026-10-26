@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { getOAuthAppByClientId } from "@/lib/db";
+import TurnstileFormWidget from "@/components/TurnstileFormWidget";
 import { env } from "cloudflare:workers";
 
 interface Props {
@@ -126,6 +127,10 @@ export default async function OAuthAuthorizePage({ searchParams }: Props) {
               placeholder="••••••••"
             />
           </div>
+
+          {/* The consent form verifies passwords: with Turnstile configured the
+              instance requires the same challenge as the web login. */}
+          <TurnstileFormWidget siteKey={env.TURNSTILE_SITE_KEY ?? ""} action="login" />
 
           <div style={{ display: "flex", gap: "0.625rem" }}>
             <button

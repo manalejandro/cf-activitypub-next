@@ -835,6 +835,49 @@
         }
       }
     },
+    "/api/auth/rotate": {
+      "post": {
+        "summary": "Create /api/auth/rotate",
+        "operationId": "post_api_auth_rotate",
+        "tags": [
+          "Auth"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {},
+                    "token_type": {
+                      "type": "string"
+                    },
+                    "expires_at": {}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized. Missing or invalid access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/status": {
       "get": {
         "summary": "Get /api/auth/status",
@@ -902,23 +945,6 @@
           "ActivityPub"
         ],
         "security": [],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
         "responses": {
           "202": {
             "description": "Successful response.",
@@ -931,16 +957,6 @@
                       "type": "string"
                     }
                   }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -1419,23 +1435,6 @@
           }
         ],
         "security": [],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
         "responses": {
           "202": {
             "description": "Successful response.",
@@ -1443,16 +1442,6 @@
               "application/json": {
                 "schema": {
                   "type": "object"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -13697,23 +13686,6 @@
           "ActivityPub"
         ],
         "security": [],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
         "responses": {
           "202": {
             "description": "Successful response.",
@@ -13726,16 +13698,6 @@
                       "type": "string"
                     }
                   }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -14432,23 +14394,6 @@
           }
         ],
         "security": [],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          }
-        },
         "responses": {
           "202": {
             "description": "Successful response.",
@@ -14456,16 +14401,6 @@
               "application/json": {
                 "schema": {
                   "type": "object"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -14964,7 +14899,9 @@
             ]
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "Null when the stored URL is not a safe http(s)/own-origin one (Mastodon's Attachment.url is nullable)."
           },
           "preview_url": {
             "type": "string",
@@ -16524,6 +16461,9 @@
             "type": "number"
           },
           "maxMediaAttachments": {
+            "type": "number"
+          },
+          "uploadQuotaBytes": {
             "type": "number"
           },
           "maxPollOptions": {

@@ -44,6 +44,7 @@ vi.mock("@/lib/admin-auth", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getAuthenticatedActor: mockGetAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
 }));
 
 vi.mock("@/lib/mastodon/serializers", () => ({

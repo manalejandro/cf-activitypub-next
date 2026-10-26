@@ -5,6 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { broadcastActorUpdate } from "@/lib/activitypub/actor-update";
 import { getActorById, getActorFields, setActorFields, getLastStatusAt, getAllCustomEmojis, getActorPreference } from "@/lib/db";
 import { resolveLimits } from "@/lib/constants";
+import { safeUploadExt } from "@/lib/media/filename";
 import { verifyAccountFields } from "@/lib/activitypub/verification";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
@@ -117,7 +118,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (avatarDecision.action === "clear") {
       avatarUrl = null;
     } else if (avatarDecision.action === "upload") {
-      const ext = avatarDecision.file.name.split(".").pop() ?? "bin";
+      // The extension comes from a client-controlled file name and becomes
+      // part of the R2 key (and the served URL): keep it alphanumeric.
+      const ext = safeUploadExt(avatarDecision.file.name);
       const key = `avatars/${actor.username}.${ext}`;
       await putMediaObject(env.R2, key, await avatarDecision.file.arrayBuffer(), {
         httpMetadata: { contentType: avatarDecision.file.type },
@@ -132,7 +135,7 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (headerDecision.action === "clear") {
       headerUrl = null;
     } else if (headerDecision.action === "upload") {
-      const ext = headerDecision.file.name.split(".").pop() ?? "bin";
+      const ext = safeUploadExt(headerDecision.file.name);
       const key = `headers/${actor.username}.${ext}`;
       await putMediaObject(env.R2, key, await headerDecision.file.arrayBuffer(), {
         httpMetadata: { contentType: headerDecision.file.type },

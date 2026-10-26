@@ -10,7 +10,9 @@ const getAuthenticatedActor = vi.hoisted(() => vi.fn());
 
 vi.mock("cloudflare:workers", () => ({ get env() { return { DB: db }; } }));
 vi.mock("@/lib/db", () => ({ getObjectById, getActorById }));
-vi.mock("@/lib/auth", () => ({ getAuthenticatedActor }));
+vi.mock("@/lib/auth", () => ({ getAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
+}));
 
 import { GET } from "@/app/authorize_interaction/route";
 

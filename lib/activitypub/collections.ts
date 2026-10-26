@@ -13,7 +13,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { discardBody } from "@/lib/http";
+import { discardBody, readBoundedJson } from "@/lib/http";
 import type { APActor, LocalActor, LocalCollectionItem } from "@/lib/types";
 import {
   getActorById,
@@ -253,7 +253,7 @@ async function fetchListing(url: string): Promise<CollectionListingDoc | null> {
       await discardBody(res);
       return null;
     }
-    const doc = await res.json() as CollectionListingDoc;
+    const doc = await readBoundedJson<CollectionListingDoc>(res, 1_000_000);
     return doc && typeof doc === "object" ? doc : null;
   } catch {
     return null;

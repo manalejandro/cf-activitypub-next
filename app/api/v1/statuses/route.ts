@@ -329,7 +329,10 @@ export async function POST(request: NextRequest): Promise<Response> {
         return json({ error: "Too many scheduled statuses (max 100)" }, 422);
       }
       const schedId = generateId();
-      const mediaIds = normalizeMediaIds(body.media_ids);
+      // Same attachment cap as the immediate path: each id costs two KV
+      // operations here (read + TTL extension), so an oversized array must not
+      // be walked at all.
+      const mediaIds = normalizeMediaIds(body.media_ids).slice(0, limits.maxMediaAttachments);
       const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
       await createScheduledStatus(env.DB, schedId, actor.id, normalizedScheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
       // The upload TTL is 1h, but the status may be scheduled days ahead — keep

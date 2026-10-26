@@ -5,7 +5,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
@@ -20,7 +20,7 @@ export async function GET(
   const { hashtag } = await params;
   const searchParams = request.nextUrl.searchParams;
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const sinceIdRaw = searchParams.get("since_id") ?? undefined;

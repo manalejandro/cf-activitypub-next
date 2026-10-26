@@ -4,6 +4,9 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { chargeGlobalAI, AI_UNITS_VISION } from "@/lib/moderation/budget";
 import { localAttachmentType, mediaLimitFor, resolveLimits, SUPPORTED_MEDIA_MIME_TYPES } from "@/lib/constants";
 import { putMediaObject } from "@/lib/media/r2-put";
+import { safeUploadExt } from "@/lib/media/filename";
+import { getAccountMediaUsage } from "@/lib/media/quota";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import { env } from "cloudflare:workers";
 
 // POST /api/v1/media — Upload a media attachment (stored in R2)
@@ -13,9 +16,24 @@ export async function POST(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
+  // Uploads write to R2 and may trigger an AI vision call: bound the per-account
+  // rate (atomic DO counter when configured).
+  const { allowed: canUpload } = await atomicRateLimit(env, `upload:${actor.id}`, 30, 60);
+  if (!canUpload) {
+    return json({ error: "Too many uploads. Please try again later.", error_code: "media_error_rate_limited" }, 429);
+  }
+
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
     return json({ error: "multipart/form-data required", error_code: "media_error_form" }, 422);
+  }
+
+  // Reject an oversized body before parsing it: formData() buffers the whole
+  // upload in the isolate, and the per-type caps below only fire afterwards.
+  const maxUploadBytes = Math.max(limits.maxImageSize, limits.maxVideoSize, limits.maxDocumentSize) + 1024 * 1024;
+  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > maxUploadBytes) {
+    return json({ error: "File too large", error_code: "media_error_too_large" }, 413);
   }
 
   const form = await request.formData();
@@ -46,14 +64,21 @@ export async function POST(request: NextRequest): Promise<Response> {
     );
   }
 
-  // Generate a unique key for R2
+  // Per-account storage quota (UPLOAD_QUOTA_BYTES, 0 disables).
+  if (limits.uploadQuotaBytes > 0) {
+    const usage = await getAccountMediaUsage(env.DB, actor.id);
+    if (usage + file.size > limits.uploadQuotaBytes) {
+      return json({ error: "Storage quota exceeded", error_code: "media_error_quota" }, 422);
+    }
+  }
+
+  // Generate a unique key for R2 (the extension is client-controlled: keep it
+  // alphanumeric and bounded so the key stays a well-behaved URL path).
   const id = crypto.randomUUID().replace(/-/g, "");
-  const ext = file.name.split(".").pop() ?? "bin";
+  const ext = safeUploadExt(file.name);
   const key = `media/${actor.username}/${id}.${ext}`;
 
   const buffer = await file.arrayBuffer();
-  // Capture bytes before R2.put in case the runtime detaches the underlying ArrayBuffer
-  const imageBytes = [...new Uint8Array(buffer)];
 
   await putMediaObject(env.R2, key, buffer, {
     httpMetadata: { contentType: file.type },
@@ -67,6 +92,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   let finalDescription = description;
   if (!description && file.type.startsWith("image/") && env.AI && (await chargeGlobalAI(env, AI_UNITS_VISION))) {
     try {
+      // Re-read the blob for the model instead of spreading the upload into a
+      // JS array up front: R2.put may detach the first buffer, and a whole
+      // ~99 MB video spread into array elements OOMs the isolate.
+      const imageBytes = new Uint8Array(await file.arrayBuffer());
       const aiResult = await env.AI.run(
         "@cf/meta/llama-3.2-11b-vision-instruct" as Parameters<Ai["run"]>[0],
         {

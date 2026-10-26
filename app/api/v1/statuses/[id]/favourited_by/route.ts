@@ -4,7 +4,7 @@ import { getObjectById, getActorById, isAcceptedFollower, canViewStatus } from "
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/statuses/:id/favourited_by
@@ -23,7 +23,7 @@ export async function GET(
   const isFollowing = me ? await isAcceptedFollower(env.DB, me.id, obj.actorId) : false;
   if (!canViewStatus(obj, me?.id ?? null, isFollowing)) return notFound("Status not found");
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxCollectionPage);
 
   const rows = await env.DB
     .prepare(

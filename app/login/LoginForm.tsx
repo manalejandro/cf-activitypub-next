@@ -5,7 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, translateKey } from "@/lib/i18n";
-import { useAuth } from "@/lib/client-api";
+import { useAuth, setToken } from "@/lib/client-api";
+import { sameOriginRedirect } from "@/lib/safe-url";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import TurnstileWidget, { type TurnstileHandle } from "@/components/TurnstileWidget";
 
@@ -25,11 +26,15 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   const searchParams = useSearchParams();
 
   // Same-origin redirect target (?redirect=…): after signing in go back to the
-  // interaction the visitor came for. Never follow cross-origin targets.
+  // interaction the visitor came for. Never follow cross-origin targets. The
+  // origin is only read on the client (empty during SSR → the helper falls
+  // back to /home); redirectTarget is consumed in effects/handlers, not
+  // rendered, so there is no hydration mismatch.
   const rawRedirect = searchParams.get("redirect");
-  const redirectTarget = rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
-    ? rawRedirect
-    : "/home";
+  const redirectTarget = sameOriginRedirect(
+    rawRedirect,
+    typeof window === "undefined" ? "" : window.location.origin
+  );
   // Object/actor URI from /authorize_interaction: forwarded to an external
   // instance so its user can interact from there.
   const interactionUri = searchParams.get("uri");
@@ -100,6 +105,10 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
         return;
       }
 
+      // The server set the HttpOnly session cookie on this response; keep the
+      // client-side copy for the surfaces that cannot ride the cookie
+      // (WebSocket upgrades take ?access_token=).
+      setToken(data.access_token);
       window.location.href = redirectTarget;
     } catch {
       resetTurnstile();
@@ -226,10 +235,11 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
               {error && <div style={inlineError}>{error}</div>}
 
               <div className="flex flex-col gap-2">
-                <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                <label htmlFor="login-email" style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
                   {t.login_email}
                 </label>
                 <input
+                  id="login-email"
                   type="email"
                   className="input"
                   placeholder="you@example.com"
@@ -241,10 +251,11 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                <label htmlFor="login-password" style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
                   {t.login_password}
                 </label>
                 <input
+                  id="login-password"
                   type="password"
                   className="input"
                   placeholder="••••••••"

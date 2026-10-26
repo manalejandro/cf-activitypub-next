@@ -1193,6 +1193,34 @@ CREATE TABLE IF NOT EXISTS preview_cards (
 CREATE INDEX IF NOT EXISTS idx_preview_cards_refresh ON preview_cards(status, fetched_at);
 CREATE INDEX IF NOT EXISTS idx_preview_cards_image   ON preview_cards(image_url);
 CREATE INDEX IF NOT EXISTS idx_preview_cards_image_cache ON preview_cards(image_cache_url);
+-- Bounds the orphan sweep to a recent window (a sweep over the whole table read
+-- every card ever crawled to find a handful, and the table only grows).
+CREATE INDEX IF NOT EXISTS idx_preview_cards_created ON preview_cards(created_at);
+
+-- Cards are orphaned by the write that removes their last reference (a status
+-- delete, or an edit that drops or changes its link), so that write cleans up:
+-- an index probe on `idx_objects_card_id` instead of an hourly anti-join over
+-- every card. The sweep in `cleanupOrphanPreviewCards` stays as the safety net
+-- for a card whose status vanished while it was being crawled.
+CREATE TRIGGER IF NOT EXISTS objects_card_cleanup
+AFTER DELETE ON objects
+WHEN OLD.card_id IS NOT NULL
+BEGIN
+  DELETE FROM preview_cards
+   WHERE id = OLD.card_id
+     AND NOT EXISTS (SELECT 1 FROM objects WHERE card_id = OLD.card_id)
+     AND NOT (status = 'failed' AND datetime(next_attempt_at) > datetime('now'));
+END;
+
+CREATE TRIGGER IF NOT EXISTS objects_card_cleanup_update
+AFTER UPDATE OF card_id ON objects
+WHEN OLD.card_id IS NOT NULL AND (NEW.card_id IS NULL OR NEW.card_id <> OLD.card_id)
+BEGIN
+  DELETE FROM preview_cards
+   WHERE id = OLD.card_id
+     AND NOT EXISTS (SELECT 1 FROM objects WHERE card_id = OLD.card_id)
+     AND NOT (status = 'failed' AND datetime(next_attempt_at) > datetime('now'));
+END;
 
 -- Statuses waiting for their first link to be crawled (one per object).
 CREATE TABLE IF NOT EXISTS link_preview_queue (

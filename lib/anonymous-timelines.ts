@@ -24,3 +24,19 @@ export function anonymousTimelineAllowed(access: AnonymousTimelineAccess, local:
   if (access === "none") return false;
   return local ? access === "public_local" : true;
 }
+
+/**
+ * Whether an unauthenticated streaming socket may use `channel` — the same
+ * rule the REST routes and the streaming worker enforce at connection time,
+ * shared with the Durable Object so a dynamic `subscribe` message cannot
+ * escalate an anonymous socket into a channel it was refused at the door:
+ *  - hashtag streams are session-only (their REST route is too);
+ *  - public views follow the `anonymous_timelines` setting;
+ *  - everything else (home/user/direct/list/notification) requires auth and
+ *    never resolves for an anonymous socket.
+ */
+export function anonymousStreamAllowed(channel: string, access: AnonymousTimelineAccess): boolean {
+  if (channel.startsWith("hashtag")) return false;
+  if (channel.startsWith("public")) return anonymousTimelineAllowed(access, channel !== "public");
+  return false;
+}

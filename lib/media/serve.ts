@@ -46,6 +46,34 @@ export const MEDIA_CORS_HEADERS: Record<string, string> = {
 };
 
 /**
+ * Key prefixes this endpoint may serve. The bucket only ever receives these
+ * (uploads, the remote media cache, emoji, profile images — verified against
+ * production); anything else is a 404, so a future writer that stores
+ * something private in R2 does not become publicly readable by accident.
+ */
+const SERVABLE_KEY_PREFIXES = ["media/", "cache/", "emoji/", "avatars/", "headers/"];
+
+export function isServableMediaKey(key: string): boolean {
+  return SERVABLE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/**
+ * Immutable prefixes hold keys that are never rewritten in place: per-upload
+ * UUID names and the content-addressed media cache. Profile images use a
+ * MUTABLE key (`avatars/<username>.<ext>`): the same name is overwritten on
+ * every change, so a year-long `immutable` CDN entry would keep serving the
+ * old picture (a delete cannot purge the CDN) — those get a short
+ * revalidating TTL instead.
+ */
+const IMMUTABLE_KEY_PREFIXES = ["media/", "cache/", "emoji/"];
+
+export function cacheControlForKey(key: string): string {
+  return IMMUTABLE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ? "public, max-age=31536000, immutable"
+    : "public, max-age=300, must-revalidate";
+}
+
+/**
  * Parse a single-range `Range: bytes=…` header against the object size.
  *
  * Returns `null` when the header must be ignored — absent, malformed or a
@@ -77,14 +105,18 @@ export function parseRangeHeader(header: string | null, size: number): ByteRange
   return { offset: start, length: end - start + 1 };
 }
 
-function baseHeaders(object: R2HeadLike): Headers {
+function baseHeaders(object: R2HeadLike, key: string): Headers {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  for (const [key, value] of Object.entries(MEDIA_CORS_HEADERS)) headers.set(key, value);
-  headers.set("Cache-Control", "public, max-age=31536000, immutable");
-  // Content-addressed keys and per-upload keys, both immutable; only the
-  // encoding changes the bytes, so the CDN may cache per encoding.
+  for (const [key2, value] of Object.entries(MEDIA_CORS_HEADERS)) headers.set(key2, value);
+  headers.set("Cache-Control", cacheControlForKey(key));
+  // Only the encoding changes the bytes, so the CDN may cache per encoding.
   headers.set("Vary", "Accept-Encoding");
+  // The worker intercept runs before proxy.ts, so the app's security headers
+  // never reach these responses: set the sniffing guard here. Uploaded
+  // documents (PDF/text) are served with their stored MIME type and must
+  // never be reinterpreted as HTML.
+  headers.set("X-Content-Type-Options", "nosniff");
   headers.set("ETag", object.httpEtag);
   headers.set("Accept-Ranges", "bytes");
   headers.set("Content-Length", String(object.size));
@@ -104,11 +136,17 @@ export async function serveMediaObject(
     return new Response(null, { status: 204, headers: { ...MEDIA_CORS_HEADERS } });
   }
 
+  // Prefix allowlist: the URL path is client-controlled, and the bucket must
+  // never become a generic key-value read endpoint.
+  if (!isServableMediaKey(r2Key)) {
+    return new Response("Not found", { status: 404, headers: { ...MEDIA_CORS_HEADERS } });
+  }
+
   // Metadata first: HEAD, 304 and 416 answers never touch the object body.
   const head = await bucket.head(r2Key);
   if (!head) return new Response("Not found", { status: 404, headers: { ...MEDIA_CORS_HEADERS } });
 
-  const headers = baseHeaders(head);
+  const headers = baseHeaders(head, r2Key);
 
   if (request.method === "HEAD") {
     return new Response(null, { status: 200, headers });

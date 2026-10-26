@@ -10,7 +10,7 @@ import { generateId, actorIRI } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { broadcastAccountUpdate, type DONamespace } from "@/lib/streaming/broadcast";
 import { generateKeyPair } from "@/lib/activitypub/security";
-import { createActor, getActorById, getActorByUsername, getObjectById } from "@/lib/db";
+import { createActor, getActorById, getActorByUsername, getObjectById, deleteOAuthTokensForActor } from "@/lib/db";
 import { sendModerationNoticeEmail, type ModerationNoticeAction } from "@/lib/email";
 import { notify, type NotifyEnv } from "@/lib/notify";
 import { recordModeration, hadAction, type ModerationSource } from "./log";
@@ -227,6 +227,10 @@ export async function rejectAccount(env: ModerationEnv, opts: ActionBase & { act
 
   const emailSent = await notifyAccountOwner(env, actor, "rejected", reason ?? "Su registro no cumple las normas de la instancia.");
 
+  // oauth_tokens has no FK cascade: without this delete, an issued token row
+  // would survive the actor and come back to life if the same username
+  // re-registers (actor ids are deterministic IRIs).
+  await deleteOAuthTokensForActor(env.DB, actorId);
   await env.DB.prepare("DELETE FROM actors WHERE id = ?").bind(actorId).run();
   const m = meta(opts, SYSTEM);
   await recordModeration(env, {

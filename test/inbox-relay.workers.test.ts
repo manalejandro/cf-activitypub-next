@@ -6,7 +6,8 @@ beforeAll(async () => {
   await applyTestSchema();
 });
 import { processInboxActivity } from "@/lib/activitypub/inbox";
-import { getObjectById, getRelayById } from "@/lib/db";
+import { getActorById, getObjectById, getRelayById } from "@/lib/db";
+import { fetchRemoteObject } from "@/lib/activitypub/federation";
 import { broadcastStatusCreatedToAudience } from "@/lib/streaming/broadcast";
 
 vi.mock("@/lib/streaming/broadcast", () => ({
@@ -291,5 +292,73 @@ describe("relay-forwarded activities (activity-relay sends the original Create/U
     } as never);
 
     expect(await getObjectById(db, FORWARDED_NOTE)).toBeNull();
+  });
+});
+
+describe("relay-forwarded inline actor documents", () => {
+  const VICTIM = "https://victim.example/users/vic";
+  const RELAYED_NOTE = "https://victim.example/users/vic/statuses/9";
+
+  // An activity-relay signs the third-party Create with its own key, so the
+  // anti-spoofing check lets it through. The embedded actor document is then
+  // attacker-controlled data: caching it would register attacker-chosen keys
+  // for an account that has never been seen here.
+  function relayedCreate() {
+    return {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: "https://relay.example/activities/create-spoof",
+      type: "Create",
+      actor: {
+        id: VICTIM,
+        type: "Person",
+        inbox: `${VICTIM}/inbox`,
+        publicKey: { id: `${VICTIM}#main-key`, owner: VICTIM, publicKeyPem: "ATTACKER-KEY" },
+      },
+      object: {
+        id: RELAYED_NOTE,
+        type: "Note",
+        attributedTo: VICTIM,
+        content: "<p>spoofed</p>",
+        published: "2026-10-01T00:00:00Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+      },
+    };
+  }
+
+  it("never caches the inline actor document nor stores the note when the origin is unreachable", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+    await processInboxActivity(relayedCreate() as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    expect(await getActorById(db, VICTIM)).toBeNull();
+    expect(await getObjectById(db, RELAYED_NOTE)).toBeNull();
+  });
+
+  it("caches the author fetched from its origin and stores the legitimate relayed Create", async () => {
+    await seedRelay("accepted", RELAY_ACTOR);
+    vi.mocked(fetchRemoteObject).mockResolvedValueOnce({
+      id: VICTIM,
+      type: "Person",
+      preferredUsername: "vic",
+      inbox: `${VICTIM}/inbox`,
+      publicKey: { id: `${VICTIM}#main-key`, owner: VICTIM, publicKeyPem: "REAL-KEY" },
+    } as never);
+
+    await processInboxActivity(relayedCreate() as never, {
+      db,
+      baseUrl: BASE,
+      signingActorId: RELAY_ACTOR,
+      timelineStream: fakeStream(),
+    } as never);
+
+    const victim = await getActorById(db, VICTIM);
+    expect(victim?.publicKeyPem).toBe("REAL-KEY");
+    const note = await getObjectById(db, RELAYED_NOTE);
+    expect(note?.content).toContain("spoofed");
+    expect(note?.actorId).toBe(VICTIM);
   });
 });

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import type { ExecutionContext } from "@cloudflare/workers-types";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTestSchema, resetTestStorage } from "./helpers/db";
 import { isPageCacheRequest, pageCacheLimitsFrom, withPageCache, DEFAULT_PAGE_CACHE_SWR, DEFAULT_PAGE_CACHE_TTL } from "@/lib/page-cache";

@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { discardBody } from "@/lib/http";
+import { safeFetch } from "@/lib/activitypub/federation";
 import { getPushSubscription } from "@/lib/db";
 import type { LocalNotification } from "@/lib/types";
 import en from "@/lib/locales/en.json";
@@ -98,7 +99,7 @@ export async function deliverPushNotification(
   if (!sub) return;
 
   let alerts: Record<string, boolean> = {};
-  try { alerts = JSON.parse(sub.alerts); } catch {}
+  try { alerts = JSON.parse(sub.alerts); } catch { /* malformed stored alerts: deliver everything */ }
   const ak = TYPE_MAP[notif.type];
   if (ak && alerts[ak] === false) return;
   if (sub.policy === "none") return;
@@ -107,6 +108,16 @@ export async function deliverPushNotification(
   // strongly consistent, so switching to another tab takes effect immediately.
   // The in-app streaming event already updates the UI while the user is here.
   if (sub.presentUntil && new Date(sub.presentUntil).getTime() > Date.now()) return;
+
+  // Push services are always HTTPS, and the endpoint is fetched server-side on
+  // every notification: safeFetch re-validates the host (and every redirect
+  // hop) against the SSRF guard at delivery. Rows stored before the
+  // subscription route validated endpoints are rejected here — before doing
+  // any crypto work for a fetch that must not happen.
+  if (!sub.endpoint.startsWith("https://")) {
+    console.warn(`[push] refused non-HTTPS endpoint for ${notif.targetAccountId}`);
+    return;
+  }
 
   // Build a short body: the triggering account + (for content notifications) a
   // preview of the object. The title comes from the i18n dictionaries in the
@@ -157,7 +168,7 @@ export async function deliverPushNotification(
   const origin = new URL(sub.endpoint).origin;
   const jwt = await vapidJwt(vapidKey, origin, vapidEmail);
 
-  const resp = await fetch(sub.endpoint, {
+  const resp = await safeFetch(sub.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/octet-stream",
@@ -168,6 +179,12 @@ export async function deliverPushNotification(
     },
     body: body as BodyInit,
   });
+  if (!resp) {
+    // Unreachable or blocked (SSRF guard, DNS, TLS, timeout). The subscription
+    // stays: a transient network failure must not unsubscribe the device.
+    console.warn(`[push] delivery failed (unreachable or blocked) for ${sub.endpoint.slice(0, 60)}…`);
+    return;
+  }
 
   // We only need the status: release the body so many push deliveries can't
   // stall the in-flight fetch pool.

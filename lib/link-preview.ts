@@ -1095,9 +1095,10 @@ export async function processLinkPreviewQueue(
     }
   }
 
-  // Orphan sweep: the selection scans every preview card (cf-ap reads ~19k
-  // rows per run), and cards only become orphans when a status is deleted —
-  // hourly is plenty. Running it on every cron tick was pure waste.
+  // Orphan sweep (safety net only): the `objects_card_cleanup*` triggers drop a
+  // card when its last status goes away, so this only catches a card whose
+  // status vanished mid-crawl — a two-day window, not a scan of every card ever
+  // crawled. Hourly is plenty.
   try {
     const orphanKey = "cron:lp:orphans";
     const throttled = bindings.KV ? await bindings.KV.get(orphanKey).catch(() => null) : null;

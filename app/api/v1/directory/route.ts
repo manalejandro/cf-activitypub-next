@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
 import { getActorsByIds, getLastStatusAtMap, PUBLIC_STATUS_TYPE_SQL } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/directory — public (no auth), like Mastodon.
@@ -11,19 +11,26 @@ export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
 
-  const offset = parseInt(request.nextUrl.searchParams.get("offset") ?? "0");
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
+  // A negative/NaN offset behaved like none at all; pages never start before zero.
+  const offset = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("offset") ?? "0", 10) || 0);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxCollectionPage);
   const localOnly = request.nextUrl.searchParams.get("local") === "true";
   const orderParam = request.nextUrl.searchParams.get("order") ?? "active";
   const order = orderParam === "new" || orderParam === "active" ? orderParam : "active";
 
   // The ranking is identical for every client; cache the serialized page so a
   // popular directory view doesn't re-run the ordered scan on every request.
-  const cacheKey = `directory:v1:${domain}:${order}:${localOnly ? 1 : 0}:${limit}:${offset}`;
-  try {
-    const cached = await env.KV.get(cacheKey);
-    if (cached) return json(JSON.parse(cached));
-  } catch { /* fall through to DB */ }
+  // Only the FIRST page is cached: limit/offset are client-controlled, and a
+  // key that includes them turns every crafted request into a new KV write
+  // (the free tier allows 1000/day). Deeper pages read the DB directly.
+  const cacheable = offset === 0;
+  const cacheKey = `directory:v1:${domain}:${order}:${localOnly ? 1 : 0}:${limit}`;
+  if (cacheable) {
+    try {
+      const cached = await env.KV.get(cacheKey);
+      if (cached) return json(JSON.parse(cached));
+    } catch { /* fall through to DB */ }
+  }
 
   // Mastodon: "active" = sort by most recently posted statuses (default),
   // "new" = sort by most recently created profiles. The active order reads
@@ -60,6 +67,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     })
     .filter(Boolean);
 
-  await env.KV.put(cacheKey, JSON.stringify(accounts), { expirationTtl: 300 }).catch(() => {});
+  if (cacheable) {
+    await env.KV.put(cacheKey, JSON.stringify(accounts), { expirationTtl: 300 }).catch(() => {});
+  }
   return json(accounts);
 }

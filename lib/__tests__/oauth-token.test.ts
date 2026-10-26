@@ -10,12 +10,18 @@ const mocks = vi.hoisted(() => ({
   getOAuthTokenByRefreshToken: vi.fn(),
   refreshOAuthTokenAccessToken: vi.fn(async () => {}),
   createOAuthToken: vi.fn(async () => {}),
+  updatePassword: vi.fn(async () => {}),
   mediaCacheId: vi.fn(async (v: string) => `id-${v}`),
   verifyPassword: vi.fn(async () => true),
   generateSecureToken: vi.fn(() => "tok"),
   setAuthCookie: vi.fn(() => "auth_token=x"),
+  hashPassword: vi.fn(async () => "pbkdf2:600000:aa:bb"),
+  needsPasswordRehash: vi.fn(() => false),
   enforceTurnstilePolicy: vi.fn(async () => ({ success: true })),
-  checkRateLimit: vi.fn(async () => ({ allowed: true })),
+  checkRateLimit:
+    vi.fn<(kv: unknown, key: string) => Promise<{ allowed: boolean; blocked: boolean }>>(
+      async () => ({ allowed: true, blocked: false })
+    ),
   kv: new Map<string, string>(),
 }));
 
@@ -34,12 +40,16 @@ vi.mock("@/lib/db", () => ({
   getOAuthTokenByRefreshToken: mocks.getOAuthTokenByRefreshToken,
   refreshOAuthTokenAccessToken: mocks.refreshOAuthTokenAccessToken,
   createOAuthToken: mocks.createOAuthToken,
+  updatePassword: mocks.updatePassword,
   mediaCacheId: mocks.mediaCacheId,
 }));
 vi.mock("@/lib/auth", () => ({
   verifyPassword: mocks.verifyPassword,
   generateSecureToken: mocks.generateSecureToken,
   setAuthCookie: mocks.setAuthCookie,
+  hashPassword: mocks.hashPassword,
+  needsPasswordRehash: mocks.needsPasswordRehash,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
 }));
 vi.mock("@/lib/turnstile", () => ({ enforceTurnstilePolicy: mocks.enforceTurnstilePolicy }));
 
@@ -230,5 +240,96 @@ describe("POST /oauth/token — refresh_token", () => {
     }) as never);
     expect(res.status).toBe(400);
     expect(mocks.refreshOAuthTokenAccessToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /oauth/token — account revalidation and lockout", () => {
+  const CODE_PAYLOAD = {
+    actorId: "https://cf-ap.com/users/me",
+    appId: APP.id,
+    clientId: APP.clientId,
+    scope: "read write",
+    redirectUri: APP.redirectUri,
+    codeChallenge: null,
+    codeChallengeMethod: null,
+  };
+
+  function exchange(code: string): Promise<Response> {
+    return POST(makeRequest({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: APP.redirectUri,
+      client_id: APP.clientId,
+    }) as never);
+  }
+
+  it("refuses a code exchange for an account suspended after the consent", async () => {
+    seedCode("code-sus", CODE_PAYLOAD);
+    mocks.getActorById.mockResolvedValue({
+      id: CODE_PAYLOAD.actorId, isLocal: true, emailVerified: true, approved: true, suspended: true, memorial: false,
+    });
+    const res = await exchange("code-sus");
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error_code?: string };
+    expect(body.error_code).toBe("login_error_suspended");
+    expect(mocks.createOAuthToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses a code exchange for a memorialized account", async () => {
+    seedCode("code-mem", CODE_PAYLOAD);
+    mocks.getActorById.mockResolvedValue({
+      id: CODE_PAYLOAD.actorId, isLocal: true, emailVerified: true, approved: true, suspended: false, memorial: true,
+    });
+    const res = await exchange("code-mem");
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error_code?: string };
+    expect(body.error_code).toBe("login_error_memorial");
+    expect(mocks.createOAuthToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses a code exchange for an unconfirmed account", async () => {
+    seedCode("code-unv", CODE_PAYLOAD);
+    mocks.getActorById.mockResolvedValue({
+      id: CODE_PAYLOAD.actorId, isLocal: true, emailVerified: false, approved: true, suspended: false, memorial: false,
+    });
+    const res = await exchange("code-unv");
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error_code?: string };
+    expect(body.error_code).toBe("login_error_unverified_email");
+  });
+
+  it("refuses a code exchange for a pending-approval account", async () => {
+    seedCode("code-pend", CODE_PAYLOAD);
+    mocks.getActorById.mockResolvedValue({
+      id: CODE_PAYLOAD.actorId, isLocal: true, emailVerified: true, approved: false, suspended: false, memorial: false,
+    });
+    const res = await exchange("code-pend");
+    expect(res.status).toBe(403);
+    const body = await res.json() as { error_code?: string };
+    expect(body.error_code).toBe("login_error_pending_approval");
+  });
+
+  it("checks the per-account lockout BEFORE burning a password verification", async () => {
+    mocks.getActorByEmail.mockResolvedValue({
+      id: "https://cf-ap.com/users/me",
+      passwordHash: "hash",
+      isLocal: true,
+      emailVerified: true,
+      approved: true,
+      suspended: false,
+      memorial: false,
+    });
+    mocks.checkRateLimit.mockImplementation(async (_kv: unknown, key: string) =>
+      key.startsWith("login-fail:") ? { allowed: false, blocked: false } : { allowed: true, blocked: false }
+    );
+    const res = await POST(makeRequest({
+      grant_type: "password",
+      username: "me@cf-ap.com",
+      password: "whatever",
+    }) as never);
+    expect(res.status).toBe(429);
+    const body = await res.json() as { error_code?: string };
+    expect(body.error_code).toBe("login_error_rate_limited");
+    expect(mocks.verifyPassword).not.toHaveBeenCalled();
   });
 });

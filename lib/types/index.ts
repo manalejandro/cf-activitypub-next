@@ -474,7 +474,10 @@ export interface LocalCustomEmoji {
  * content helpers accept this instead of the full catalogue row, so a status
  * can be rendered from its AP `tag` emojis without a DB read.
  */
-export type EmojiLike = Pick<LocalCustomEmoji, "shortcode" | "url" | "staticUrl" | "visibleInPicker" | "category">;
+export type EmojiLike = Pick<LocalCustomEmoji, "shortcode" | "url" | "staticUrl" | "visibleInPicker" | "category"> & {
+  /** Set on federated emoji; the instance's own emoji has none and wins a shortcode collision. */
+  domain?: string | null;
+};
 
 export interface LocalAttachment {
   id: string;
@@ -638,7 +641,8 @@ export interface MastodonPoll {
 export interface MastodonAttachment {
   id: string;
   type: "image" | "gifv" | "video" | "audio" | "unknown";
-  url: string;
+  /** Null when the stored URL is not a safe http(s)/own-origin one (Mastodon's Attachment.url is nullable). */
+  url: string | null;
   preview_url: string | null;
   remote_url: string | null;
   text_url: string | null;

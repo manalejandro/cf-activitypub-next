@@ -174,8 +174,8 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    // Also drop any legacy localStorage token: getToken() would otherwise
-    // migrate it back into a cookie and resurrect a revoked session.
+    // Drop the localStorage API-token copy too (the HttpOnly cookie is expired
+    // by the server call above).
     clearToken();
     window.location.href = "/login";
   }

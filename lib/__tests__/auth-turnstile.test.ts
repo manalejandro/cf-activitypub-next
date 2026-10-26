@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   verifyPassword: vi.fn(async () => true),
   generateSecureToken: vi.fn(() => "secure-token"),
   setAuthCookie: vi.fn(() => "auth=token; Path=/"),
+  needsPasswordRehash: vi.fn(() => false),
   // email
   sendPasswordResetEmail: vi.fn(async () => {}),
   verifyTurnstileToken: vi.fn<(token?: string | null, options?: unknown) => Promise<{ success: boolean }>>(async () => ({ success: true })),
@@ -49,6 +50,8 @@ vi.mock("@/lib/auth", () => ({
   verifyPassword: mocks.verifyPassword,
   generateSecureToken: mocks.generateSecureToken,
   setAuthCookie: mocks.setAuthCookie,
+  needsPasswordRehash: mocks.needsPasswordRehash,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
 }));
 vi.mock("@/lib/email", () => ({ sendPasswordResetEmail: mocks.sendPasswordResetEmail }));
 vi.mock("@/lib/turnstile", () => ({

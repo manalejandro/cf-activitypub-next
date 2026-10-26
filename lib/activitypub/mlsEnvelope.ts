@@ -50,9 +50,11 @@ export function buildMlsEnvelopeHtml(obj: MlsEnvelopeInput): string {
 }
 
 /**
- * Store a federated/created PublicMessage as a public status so it appears on
- * the public timeline as an "encrypted envelope" post. No-op for non-public
- * audiences and for objects that were already ingested as a status.
+ * Store a federated/created PublicMessage so it is reachable by its id.
+ * LOCAL envelopes surface on the public timeline as "encrypted envelope"
+ * posts; remote ones are stored unlisted — a third-party instance's MLS
+ * traffic must not populate our public timeline. No-op for objects that were
+ * already ingested as a status.
  */
 export async function storePublicMlsEnvelope(
   db: D1Database,
@@ -69,6 +71,15 @@ export async function storePublicMlsEnvelope(
   if (objType !== "PublicMessage") return;
   if (!obj.id) return;
 
+  // The envelope's id must live on its author's own origin: a remote server
+  // must not squat IRIs in our (or a third party's) namespace, which would
+  // pre-empt legitimate object ids and confuse permalink resolution.
+  try {
+    if (new URL(obj.id).hostname !== new URL(actorId).hostname) return;
+  } catch {
+    return;
+  }
+
   const existing = await getObjectById(db, obj.id).catch(() => null);
   if (existing) return;
 
@@ -79,7 +90,7 @@ export async function storePublicMlsEnvelope(
     content: buildMlsEnvelopeHtml(obj),
     contentWarning: null,
     sensitive: false,
-    visibility: "public",
+    visibility: local ? "public" : "unlisted",
     inReplyToId: obj.conversation ?? null,
     quoteId: null,
     language: null,

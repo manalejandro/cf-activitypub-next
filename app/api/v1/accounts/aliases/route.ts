@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { json, badRequest, unauthorized } from "@/lib/cf";
+import { json, badRequest, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { addAlias, aliasAcct, removeAlias, resolveAliasTarget } from "@/lib/activitypub/aliases";
 import { broadcastActorUpdate } from "@/lib/activitypub/actor-update";
@@ -32,6 +32,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
+  // Every alias change broadcasts an Update{Actor} to all followers: a change
+  // loop would fan out one activity per request.
+  const { allowed: canAlias } = await checkRateLimit(env.KV, `aliases:${actor.id}`, 10, 60);
+  if (!canAlias) return json({ error: "Too many requests. Please try again later." }, 429);
+
   let body: { acct?: unknown };
   try {
     body = (await request.json()) as { acct?: unknown };
@@ -60,6 +65,10 @@ export async function POST(request: NextRequest): Promise<Response> {
 export async function DELETE(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
+
+  // Removing an alias broadcasts Update{Actor} too: same budget as adding one.
+  const { allowed: canAlias } = await checkRateLimit(env.KV, `aliases:${actor.id}`, 10, 60);
+  if (!canAlias) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const uri = request.nextUrl.searchParams.get("uri")?.trim() ?? "";
   if (!uri) return badRequest("uri is required");

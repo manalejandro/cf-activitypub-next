@@ -7,7 +7,7 @@ import { getQuotesByIds } from "@/lib/mastodon/quote";
 import { decodeStatusId, encodeStatusId } from "@/lib/mastodon/statusId";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
 import { fetchAndCacheRemoteActorStatuses, fetchAndCacheRemoteActorFeatured } from "@/lib/activitypub/remote";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
@@ -22,7 +22,7 @@ export async function GET(
   const domain = new URL(request.url).hostname;
   const searchParams = request.nextUrl.searchParams;
 
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   const maxIdRaw = searchParams.get("max_id") ?? undefined;
   const maxId = maxIdRaw ? decodeStatusId(maxIdRaw, domain) : undefined;
   const onlyReplies = searchParams.get("only_replies") === "true";
@@ -77,7 +77,7 @@ export async function GET(
     : onlyReplies
       ? await getActorStatuses_withReplies(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
       : onlyReblogs
-        ? await getActorBoosts(env.DB, actor.id, limit, maxId, me?.id, isFollowing)
+        ? await getActorBoosts(env.DB, actor.id, limit, maxId, me?.id)
         : await getActorStatuses(env.DB, actor.id, limit, maxId, me?.id, isFollowing, { includeBoosts: !excludeReblogs });
 
   // If pinnedOnly, fetch objects by the status IDs we got from status_pins

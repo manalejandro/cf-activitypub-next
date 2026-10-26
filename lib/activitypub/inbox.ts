@@ -3,7 +3,8 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import type { APActivity, APNote, APActor, APAttachment, LocalAttachment, LocalActor } from "@/lib/types";
+import { MAX_REMOTE_ATTACHMENTS } from "@/lib/constants";
+import type { APActivity, APNote, APActor, APObject, APAttachment, LocalAttachment, LocalActor } from "@/lib/types";
 import type { CallSession } from "@/lib/types/call";
 import {
   getActorById,
@@ -485,31 +486,29 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
   // ────────────────────────────────────────────────────────────────────────
 
   // Ensure the remote actor is cached so we can store it as the object's author.
-  // The actor may already be cached from signature verification in the route handler;
-  // if not, try the inline actor object first (cheaper), then fall back to a fetch.
-  // Prefer signed fetches when a local signing key is available (needed for servers
-  // with authorized_fetch / Secure Mode enabled).
+  // The actor may already be cached from signature verification in the route
+  // handler; if not, fetch it from its own URL — sign the request when a local
+  // signing key is available (servers with authorized_fetch / Secure Mode).
   const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
 
   let author = await getActorById(ctx.db, actorId);
   if (!author) {
-    // Use inline actor data if the sender embedded the full actor in the activity
-    const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
-    if (inlineActor?.publicKey?.publicKeyPem) {
-      try { await upsertRemoteActor(ctx.db, inlineActor, actorId); } catch { /* ignore */ }
-    } else {
-      // Fall back to fetching from the network — sign the request when possible
-      try {
-        const fetched = await fetchRemoteObject(
-          actorId,
-          signingKey ? `${signingKey.id}#main-key` : undefined,
-          signingKey?.privateKeyPem
-        ) as APActor | null;
-        if (fetched?.publicKey?.publicKeyPem) {
-          await upsertRemoteActor(ctx.db, fetched, actorId);
-        }
-      } catch { /* ignore */ }
-    }
+    // Never trust an actor document embedded in the activity itself: an
+    // accepted relay legitimately forwards third-party Creates signed by the
+    // relay's key, so the signature does not prove authorship — an inline
+    // publicKey would let the signer register attacker-chosen keys for any
+    // uncached account. Only the document served at the actor's own URL
+    // counts (fetched here, id-bound by upsertRemoteActor).
+    try {
+      const fetched = await fetchRemoteObject(
+        actorId,
+        signingKey ? `${signingKey.id}#main-key` : undefined,
+        signingKey?.privateKeyPem
+      ) as APActor | null;
+      if (fetched?.publicKey?.publicKeyPem) {
+        await upsertRemoteActor(ctx.db, fetched, actorId);
+      }
+    } catch { /* ignore */ }
     author = await getActorById(ctx.db, actorId);
   }
   if (!author) {
@@ -1261,8 +1260,24 @@ async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void
 /** Handle an inbound Move activity (remote account migrated to a new account). */
 async function handleMove(activity: APActivity, ctx: InboxContext): Promise<void> {
   const sourceId = typeof activity.actor === "string" ? activity.actor : activity.actor.id;
-  const targetId = typeof activity.object === "string" ? activity.object : (activity.object as APActor)?.id;
+  // Mastodon's MoveSerializer puts the ORIGIN account in `object` (its handler
+  // rejects the activity unless `object` equals the actor) and the destination
+  // in `target`. Reading the destination from `object` — the old shape here —
+  // made every Mastodon Move fail its alias check against itself.
+  const objectId = typeof activity.object === "string"
+    ? activity.object
+    : (activity.object as APActor | undefined)?.id;
+  const targetField = activity.target;
+  let targetId = typeof targetField === "string"
+    ? targetField
+    : (targetField as APObject | undefined)?.id;
+  // Tolerant fallback for implementations that predate `target` and carry the
+  // destination in `object`: only when `object` is not the actor itself. The
+  // alias check below remains the real gate against follow hijacking.
+  if (!targetId && objectId && objectId !== sourceId) targetId = objectId;
   if (!targetId) return;
+  // When both are present they must agree: `object` is the account moving away.
+  if (objectId && objectId !== sourceId && targetId !== objectId) return;
 
   // The source account must be the one moving away. Only handle moves of
   // remote accounts — local accounts never issue Move to our own inbox.
@@ -1487,17 +1502,29 @@ async function persistRemoteNote(
   const noteActorId = typeof note.attributedTo === "string"
     ? note.attributedTo
     : (note.attributedTo as APActor | undefined)?.id;
-  // A boosted object must come from the same origin it claims as its author...
-  if (noteActorId && noteActorId !== fallbackActorId) {
-    let sameOrigin = false;
-    try { sameOrigin = new URL(noteActorId).host === new URL(note.id).host; } catch { return; }
-    if (!sameOrigin) return;
-    // ...and a remote actor must never be persisted as the author of a local
-    // object (the local account is the only writer of its own statuses).
-    const attributed = await getActorById(ctx.db, noteActorId);
-    if (attributed?.isLocal) return;
+  // The embedded note must name its author: without attribution the object
+  // would be stored under the announcer (squatting arbitrary IRIs, local ones
+  // included) and the ownership guard on the existing branch would be a no-op.
+  if (!noteActorId) return;
+  let authorHost = "";
+  let noteHost = "";
+  try {
+    authorHost = new URL(noteActorId).hostname;
+    noteHost = new URL(note.id).hostname;
+  } catch {
+    return;
   }
-  if (noteActorId) await ensureActorCached(ctx.db, noteActorId);
+  // A boosted object must come from the same origin it claims as its author —
+  // also when the announcer claims authorship itself: an embedded note with a
+  // local IRI could otherwise be used to rewrite our own objects.
+  if (authorHost !== noteHost) return;
+  // A remote note is authored by a remote actor: never accept an IRI on our
+  // own domain here (local accounts only write through their own routes)...
+  if (authorHost === new URL(ctx.baseUrl).hostname) return;
+  // ...and a cached actor row for the author must not be local either.
+  const attributed = await getActorById(ctx.db, noteActorId);
+  if (attributed?.isLocal) return;
+  await ensureActorCached(ctx.db, noteActorId);
   const { content, contentWarning } = sanitizeRemoteNoteContent(
     note.content,
     note.summary,
@@ -1506,8 +1533,14 @@ async function persistRemoteNote(
 
   const existing = await getObjectById(ctx.db, note.id);
   if (existing) {
-    // Never let an activity rewrite an object owned by a different actor.
-    if (noteActorId && existing.actorId !== noteActorId) return;
+    // Never let an inbox activity rewrite a local object, nor one owned by a
+    // different actor than the note claims.
+    if (existing.local || existing.actorId !== noteActorId) return;
+    // Only the author's own server may refresh an object that is already
+    // stored: a boost signed by a third party carries attacker-controlled
+    // embedded data, and a media-only post (legitimately empty content) is an
+    // easy forgery target otherwise.
+    if (noteActorId !== fallbackActorId) return;
     // Object already present but may have empty content (e.g. saved earlier
     // before the embedded content was used). Fill it in from the activity.
     if (!existing.content && content) {
@@ -1529,7 +1562,7 @@ async function persistRemoteNote(
   await createObject(ctx.db, {
     id: note.id,
     type: note.type ?? "Note",
-    actorId: noteActorId ?? fallbackActorId,
+    actorId: noteActorId,
     content,
     contentWarning,
     sensitive: note.sensitive ?? false,
@@ -1697,6 +1730,17 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
     return;
   }
 
+  // Boost visibility (Mastodon only ever boosts public/unlisted posts): an
+  // Announce claiming a direct message must not bump its counters, notify its
+  // author or surface it on any timeline, and a followers-only original is
+  // only accepted from its own author.
+  if (
+    resolvedObj.visibility === "direct" ||
+    (resolvedObj.visibility === "private" && resolvedObj.actorId !== actorId)
+  ) {
+    return;
+  }
+
   // A Question cached by a path that skipped polls (or before poll rows were
   // backfilled on reuse) has no poll to show: the embedded document carries
   // the choices, so create the rows (and apply its counts) here.
@@ -1806,15 +1850,14 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
   // Make sure the reporter (remote account) is cached.
   let reporter = await getActorById(ctx.db, reporterId);
   if (!reporter) {
-    const inlineActor = typeof activity.actor !== "string" ? activity.actor as APActor : null;
-    if (inlineActor?.publicKey?.publicKeyPem) {
-      try { await upsertRemoteActor(ctx.db, inlineActor, reporterId); } catch { /* ignore */ }
-    } else {
-      try {
-        const fetched = await fetchRemoteObject(reporterId) as APActor | null;
-        if (fetched?.publicKey?.publicKeyPem) await upsertRemoteActor(ctx.db, fetched, reporterId);
-      } catch { /* ignore */ }
-    }
+    // Same rule as handleCreate: an inline actor document embedded in the
+    // activity is attacker-controlled data (a relay-forwarded Flag proves the
+    // relay's key, not the reporter's) — only the document served at the
+    // reporter's own URL is cached.
+    try {
+      const fetched = await fetchRemoteObject(reporterId) as APActor | null;
+      if (fetched?.publicKey?.publicKeyPem) await upsertRemoteActor(ctx.db, fetched, reporterId);
+    } catch { /* ignore */ }
     reporter = await getActorById(ctx.db, reporterId);
   }
   if (!reporter) return;
@@ -2781,7 +2824,8 @@ async function saveObjectAttachments(
   sensitive = false
 ): Promise<void> {
   if (!Array.isArray(attachment)) return;
-  for (const att of attachment) {
+  // Bounded: every attachment queues a media-cache fetch (see MAX_REMOTE_ATTACHMENTS).
+  for (const att of attachment.slice(0, MAX_REMOTE_ATTACHMENTS)) {
     if (!att?.url) continue;
     try {
       await createAttachment(db, {

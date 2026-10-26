@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { json, unauthorized } from "@/lib/cf";
+import { json, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { verifyMoveTarget, performMove } from "@/lib/activitypub/migration";
 import { env } from "cloudflare:workers";
@@ -14,6 +14,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!actor) return unauthorized();
   if (!actor.privateKeyPem) return json({ error: "Account has no private key" }, 500);
   if (actor.movedTo) return json({ error: "Account has already moved elsewhere" }, 422);
+
+  // A migration re-follows every local follower from this account and fans a
+  // Move out to every remote one: a handful of attempts per hour is plenty.
+  const { allowed: canMigrate } = await checkRateLimit(env.KV, `migrate:${actor.id}`, 3, 3600);
+  if (!canMigrate) return json({ error: "Too many migration attempts. Please try again later." }, 429);
 
   const body = await request.json() as { target_acct?: string };
   const targetAcct = (body.target_acct ?? "").replace(/^@/, "").trim();

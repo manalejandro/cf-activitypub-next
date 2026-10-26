@@ -34,7 +34,9 @@ vi.mock("@/lib/db", () => ({
   canViewStatus: mocks.canViewStatus,
   isAcceptedFollower: mocks.isAcceptedFollower,
 }));
-vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor }));
+vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
+}));
 vi.mock("@/lib/activitypub/queue", () => ({ enqueueDeliveries: mocks.enqueueDeliveries }));
 vi.mock("@/lib/mastodon/serializers", () => ({
   serializePoll: (poll: { id: string }) => ({ id: poll.id, voted: true, own_votes: [0] }),

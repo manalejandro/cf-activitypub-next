@@ -37,7 +37,7 @@ const SEMANTIC_CLASSES = new Set(["mention", "hashtag", "ellipsis", "invisible",
 
 const TAG_RE = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][\w:-]*)([^>]*)>|([^<]+)/g;
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -56,7 +56,7 @@ function decodeEntities(text: string): string {
     .replace(/&#(\d+);/g, (_, dec) => decodeCodePoint(parseInt(dec, 10)));
 }
 
-function decodeCodePoint(cp: number): string {
+export function decodeCodePoint(cp: number): string {
   if (Number.isNaN(cp)) return "";
   if (cp === 0) return "\uFFFD";
   if (cp > 0x10ffff) return "\uFFFD";
@@ -95,7 +95,10 @@ function parseAttrs(raw: string): Map<string, string> {
 function sanitizeUrl(raw: string, protocols: Set<string> = LINK_PROTOCOLS): string | null {
   const cleaned = raw.replace(/[\u0000-\u001F\u007F]/g, "").trim();
   if (!cleaned) return null;
-  if (cleaned.startsWith("/") || cleaned.startsWith("#")) return cleaned;
+  if (cleaned.startsWith("#")) return cleaned;
+  // A local path never starts with `//` or `/\`: browsers normalize both into
+  // a protocol-relative navigation off the instance.
+  if (cleaned.startsWith("/") && !cleaned.startsWith("//") && !cleaned.startsWith("/\\")) return cleaned;
   const match = cleaned.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
   if (!match) return cleaned;
   return protocols.has(match[1].toLowerCase()) ? cleaned : null;

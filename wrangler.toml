@@ -79,6 +79,10 @@ class_name = "CallSignalingDO"
 name = "GuardianAgent"
 class_name = "GuardianAgentDO"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMIT"
+class_name = "RateLimitDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TimelineStreamDO"]
@@ -90,6 +94,10 @@ new_sqlite_classes = ["CallSignalingDO"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["GuardianAgentDO"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["RateLimitDO"]
 
 [triggers]
 crons = ["* * * * *"]

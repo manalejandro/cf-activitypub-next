@@ -36,7 +36,9 @@ vi.mock("@/lib/cf", () => ({
   unauthorized: () => new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
 }));
 vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
-vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor }));
+vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: mocks.getAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
+}));
 vi.mock("@/lib/db", () => ({
   getActorById: mocks.getActorById,
   getActorsByIds: mocks.getActorsByIds,

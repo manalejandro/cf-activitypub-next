@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
-import { checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, getOAuthAppByClientId } from "@/lib/db";
-import { verifyPassword, generateSecureToken } from "@/lib/auth";
+import { getBaseUrl } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
+import { getActorByEmail, getOAuthAppByClientId, mediaCacheId, updatePassword } from "@/lib/db";
+import { verifyPassword, generateSecureToken, hashPassword, needsPasswordRehash } from "@/lib/auth";
+import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { env } from "cloudflare:workers";
 
 // POST /api/oauth/authorize — processes the authorize form submission
@@ -44,9 +46,24 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Throttle credential checks: this form verifies passwords and has no captcha.
   const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const { allowed } = await checkRateLimit(env.KV, `authorize:${clientIp}`, 20, 60);
+  const { allowed } = await atomicRateLimit(env, `authorize:${clientIp}`, 20, 60);
   if (!allowed) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Too many attempts, please try again later");
+  }
+
+  // Captcha (parity with the web login and the password grant): this is a
+  // second credential-checking surface, so when the instance configures
+  // Turnstile the consent form must carry a solved challenge. The policy skips
+  // only when no secret is set, and a missing token never counts as verified.
+  const turnstile = await enforceTurnstilePolicy({
+    secret: env.TURNSTILE_SECRET,
+    token: (form.get("cf-turnstile-response") as string | null) ?? "",
+    remoteIp: clientIp,
+    expectedHostname: new URL(getBaseUrl(env)).hostname,
+    expectedAction: "login",
+  });
+  if (!turnstile.success) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Security check failed. Please try again.");
   }
 
   // Authenticate user
@@ -55,9 +72,39 @@ export async function POST(request: NextRequest): Promise<Response> {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid credentials");
   }
 
+  // Per-account lockout, shared with the /oauth/token password grant (same
+  // key) and checked BEFORE verifying: failures across both credential
+  // surfaces count together, and rotating proxies cannot mount a
+  // credential-stuffing (or PBKDF2-burning) run against one account. A
+  // success clears the counter.
+  const lockoutKey = `login-fail:${await mediaCacheId(email?.toLowerCase() ?? "")}`;
+  const lockout = await atomicRateLimit(env, lockoutKey, 10, 900);
+  if (!lockout.allowed) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Too many failed attempts. Please try again later");
+  }
+
   const valid = await verifyPassword(password, actor.passwordHash);
   if (!valid) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid credentials");
+  }
+  await env.KV.delete(lockoutKey).catch(() => {});
+
+  // Transparent rehash of legacy-cost password hashes (same as the password
+  // grant): best effort, a failed write only defers it to the next login.
+  if (needsPasswordRehash(actor.passwordHash)) {
+    try {
+      await updatePassword(env.DB, actor.id, await hashPassword(password));
+    } catch { /* keep the legacy hash for now */ }
+  }
+
+  // Suspended accounts cannot sign in (the API would reject every call with a
+  // token anyway); memorialized accounts are preserved in memoriam and cannot
+  // sign in either — same gates as the password grant.
+  if (actor.suspended) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "This account has been suspended.");
+  }
+  if (actor.memorial) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "This account is memorialized and cannot sign in.");
   }
 
   if (!actor.emailVerified) {

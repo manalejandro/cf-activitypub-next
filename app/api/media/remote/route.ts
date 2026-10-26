@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { env } from "cloudflare:workers";
 import { safeFetch } from "@/lib/activitypub/federation";
 import { MEDIA_CORS_HEADERS } from "@/lib/media/serve";
+import { atomicRateLimit } from "@/lib/rate-limit";
 
 /**
  * Same-origin relay for remote audio attachments.
@@ -24,6 +25,15 @@ import { MEDIA_CORS_HEADERS } from "@/lib/media/serve";
  * caller uses.
  */
 export async function GET(request: NextRequest): Promise<Response> {
+  // Every relayed request opens an unbounded outbound stream: cap how often
+  // one IP can start new relays (a listener plays one episode at a time; this
+  // only stops scripted flooding).
+  const relayIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { allowed: canRelay } = await atomicRateLimit(env, `audio-relay:${relayIp}`, 60, 60);
+  if (!canRelay) {
+    return new Response("Too many requests", { status: 429, headers: { ...MEDIA_CORS_HEADERS } });
+  }
+
   const raw = request.nextUrl.searchParams.get("url");
   if (!raw || !/^https:\/\//i.test(raw)) {
     return new Response("Bad request", { status: 400, headers: { ...MEDIA_CORS_HEADERS } });

@@ -4,7 +4,9 @@ import type { LocalActor } from "@/lib/types";
 
 const authMocks = vi.hoisted(() => ({ getAuthenticatedActor: vi.fn() }));
 
-vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: authMocks.getAuthenticatedActor }));
+vi.mock("@/lib/auth", () => ({ getAuthenticatedActor: authMocks.getAuthenticatedActor,
+  timingSafeEqualStr: (a: string, b: string) => a === b,
+}));
 
 import { getAdminRole, requireAdmin, requireFullAdmin } from "@/lib/admin-auth";
 

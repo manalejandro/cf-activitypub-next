@@ -28,6 +28,7 @@
  */
 
 import { DurableObject as CFDurableObject } from "cloudflare:workers";
+import { anonymousStreamAllowed, normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 
 const ANON_MAX_CONNS_PER_IP = 1;
 const AUTH_MAX_CONNS_PER_IP = 20;
@@ -74,6 +75,8 @@ type SocketAttachment = {
   socketId?: string;
   anon?: boolean;
   anonCreatedAt?: number;
+  /** The instance's anonymous-timelines level when the socket connected (worker-resolved). */
+  anonAccess?: AnonymousTimelineAccess;
 };
 
 export class TimelineStreamDO extends CFDurableObject {
@@ -128,6 +131,10 @@ export class TimelineStreamDO extends CFDurableObject {
     // connection as authenticated.
     const authed = url.searchParams.get("authed") === "1";
     const isAnon = !authed && (channel.startsWith("public") || channel.startsWith("hashtag"));
+    // The worker resolves the instance's anonymous-timelines setting before
+    // forwarding; the DO keeps it on the attachment so a dynamic subscribe
+    // cannot escalate the socket past what the connection was granted.
+    const anonAccess = normalizeAnonymousTimelineAccess(url.searchParams.get("anon"));
     // IPs are encodeURIComponent'd so the ":"-separated key stays parseable
     // even for IPv6 addresses.
     const ipKey = encodeURIComponent(ip);
@@ -148,7 +155,7 @@ export class TimelineStreamDO extends CFDurableObject {
       initialChannel: channel,
       ip,
       socketId,
-      ...(isAnon ? { anon: true, anonCreatedAt: Date.now() } : {}),
+      ...(isAnon ? { anon: true, anonCreatedAt: Date.now(), anonAccess } : {}),
     } satisfies SocketAttachment);
 
     // Post-handshake cap enforcement. Runs asynchronously so the upgrade
@@ -374,6 +381,14 @@ export class TimelineStreamDO extends CFDurableObject {
       const channels = new Set(attachment.channels ?? []);
 
       if (msg.type === "subscribe") {
+        // An anonymous socket stays inside the instance's anonymous-timeline
+        // policy: the worker gated its initial channel, and a subscribe
+        // message must not escalate it (public:local under a `public` policy,
+        // session-only hashtag streams, or anything that is not public at all).
+        if (attachment.anon && !anonymousStreamAllowed(channel, normalizeAnonymousTimelineAccess(attachment.anonAccess))) {
+          ws.send(JSON.stringify({ error: "The access token is invalid", status: 401 }));
+          return;
+        }
         channels.add(channel);
         // Merge: replacing the attachment dropped ip/socketId/anon/anonCreatedAt
         // and defeated the anonymous TTL and the per-IP connection caps.

@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, translateKey } from "@/lib/i18n";
-import { useAuth } from "@/lib/client-api";
+import { useAuth, setToken } from "@/lib/client-api";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import TurnstileWidget, { type TurnstileHandle } from "@/components/TurnstileWidget";
 
@@ -147,6 +147,9 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
       }
 
       if (data.access_token) {
+        // Same contract as the login form: the HttpOnly cookie came in this
+        // response's Set-Cookie; localStorage keeps the copy for WebSockets.
+        setToken(data.access_token);
         window.location.href = "/home";
       }
     } catch {

@@ -3,7 +3,7 @@ import { json, notFound, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, listCollectionsForAccount } from "@/lib/db";
 import { serializeCollection } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { syncRemoteCollections } from "@/lib/activitypub/collections";
 import { env } from "cloudflare:workers";
 
@@ -33,7 +33,7 @@ export async function GET(
     await syncRemoteCollections(env.DB, env.KV, actor.id);
   }
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)), limits.maxCollectionPage);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.pageSize, limits.maxCollectionPage);
   const offset = Math.max(parseInt(request.nextUrl.searchParams.get("offset") ?? "0"), 0);
 
   const collections = await listCollectionsForAccount(env.DB, actor.id, {

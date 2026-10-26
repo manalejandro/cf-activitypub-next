@@ -151,16 +151,22 @@ describe("profile boosts", () => {
     await insertObject("https://remote.example/objects/alice", ALICE, "public", "2026-01-03T00:00:00Z");
     await boost(ALICE, "https://other.example/objects/p", "ann-p", "2026-01-04T00:00:00Z");
 
-    const tab = await getActorBoosts(db, ALICE, 20, undefined, ME, false);
+    const tab = await getActorBoosts(db, ALICE, 20, undefined, ME);
     expect(tab.map((entry) => entry.object.id)).toEqual(["https://other.example/objects/p"]);
     expect(tab[0].boost).toMatchObject({ id: "ann-p", actorId: ALICE });
 
-    // The same visibility rule as the profile timeline: a followers-only
-    // original is hidden from anonymous viewers.
+    // A followers-only original is judged against the ORIGINAL's author (BOB),
+    // never against the booster (ALICE): hidden from anonymous viewers and
+    // from an account that only follows the booster.
     await db.prepare("UPDATE objects SET visibility = 'private' WHERE id = 'https://other.example/objects/p'").run();
-    expect(await getActorBoosts(db, ALICE, 20, undefined, undefined, false)).toHaveLength(0);
+    expect(await getActorBoosts(db, ALICE, 20, undefined, undefined)).toHaveLength(0);
+    await follow(ME, ALICE);
+    expect(await getActorBoosts(db, ALICE, 20, undefined, ME)).toHaveLength(0);
+    const boostedFeed = await getActorStatuses(db, ALICE, 20, undefined, ME, true, { includeBoosts: true });
+    expect(boostedFeed.map((entry) => entry.object.id)).toEqual(["https://remote.example/objects/alice"]);
+    // Following the author makes the boosted original visible again.
     await follow(ME, BOB);
-    expect(await getActorBoosts(db, ALICE, 20, undefined, ME, true)).toHaveLength(1);
+    expect(await getActorBoosts(db, ALICE, 20, undefined, ME)).toHaveLength(1);
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/lib/i18n";
+import { useFocusTrap } from "@/components/useFocusTrap";
 import { Icon } from "@/components/Icon";
 
 export interface GeoLocation {
@@ -25,6 +26,8 @@ export default function LocationPickerModal({
 }) {
   const { t, locale } = useLocale();
   const mapEl = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markerRef = useRef<import("leaflet").Marker | null>(null);
   const [lat, setLat] = useState(initial?.latitude != null ? String(initial.latitude) : "");
@@ -138,7 +141,7 @@ export default function LocationPickerModal({
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
-      <div className="card" style={{ width: "100%", maxWidth: 560, padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.location_title} className="card" style={{ width: "100%", maxWidth: 560, padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <Icon name="map-marker" />
           <strong style={{ flex: 1 }}>{t.location_title}</strong>

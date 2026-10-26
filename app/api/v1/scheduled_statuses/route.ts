@@ -3,7 +3,7 @@ import { json, unauthorized } from "@/lib/cf";
 import { toIsoOrNull } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatuses } from "@/lib/db";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(request.nextUrl.searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   const statuses = await getScheduledStatuses(env.DB, actor.id, limit);
 
   const result = statuses.map((s) => ({

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
 import { toIsoOrNull } from "@/lib/dates";
+import { MAX_REPORT_NOTE_CHARS } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { createReport, getActorById, getReportsByActor, getObjectById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
@@ -95,6 +96,19 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   if (!accountId) return json({ error: "account_id is required" }, 422);
+
+  // Bounded inputs: every status id costs DB probes (evidence caching, the
+  // forwarded Flag) and the comment travels verbatim into the Guardian's
+  // evaluation, so one report cannot carry an arbitrary payload. Non-string
+  // entries from a JSON body are dropped instead of stored as garbage.
+  statusIds = statusIds.filter((s): s is string => typeof s === "string").slice(0, 100);
+  ruleIds = ruleIds.filter((s): s is string => typeof s === "string").slice(0, 64);
+  if (comment.length > MAX_REPORT_NOTE_CHARS) {
+    return json(
+      { error: `comment is too long (max ${MAX_REPORT_NOTE_CHARS} characters)`, error_code: "report_error_comment_too_long" },
+      422
+    );
+  }
 
   const target = await getActorById(env.DB, accountId);
   if (!target) return notFound();

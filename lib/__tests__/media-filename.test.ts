@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mediaDownloadName } from "@/lib/media/filename";
+import { mediaDownloadName, safeUploadExt, safeUploadName } from "@/lib/media/filename";
 
 const CACHE = "https://cf-ap.com/api/media/cache/media/0e99cfb7a8390698012f9394b69d8043d575fe89daac9eb3d1386d069ae25529.jpg";
 const UPLOAD_V1 = "https://cf-ap.com/api/media/media/manalejandro/2637e10112db499192546501eaa03298.mp3";
@@ -34,5 +34,31 @@ describe("mediaDownloadName", () => {
 
   it("prefers the description over the upload name", () => {
     expect(mediaDownloadName({ url: UPLOAD_V2, description: "Playa al atardecer" })).toBe("Playa al atardecer.png");
+  });
+});
+
+describe("safeUploadName / safeUploadExt", () => {
+  it("neutralises path traversal and separators in the R2 key name", () => {
+    expect(safeUploadName("../../evil.php")).toBe("evil.php");
+    expect(safeUploadName("..\\..\\windows\\evil.bat")).toBe("evil.bat");
+    expect(safeUploadName("a/b/c.png")).toBe("c.png");
+    expect(safeUploadName("foto de la playa.png")).toBe("foto_de_la_playa.png");
+  });
+
+  it("bounds the length and rejects degenerate names", () => {
+    expect(safeUploadName("a".repeat(500))).toHaveLength(100);
+    expect(safeUploadName("...")).toBe("upload.bin");
+    expect(safeUploadName("")).toBe("upload.bin");
+    expect(safeUploadName(null)).toBe("upload.bin");
+    expect(safeUploadName("\u0000\u0001")).toBe("upload.bin");
+  });
+
+  it("derives a bounded alphanumeric extension", () => {
+    expect(safeUploadExt("photo.PNG")).toBe("png");
+    expect(safeUploadExt("archive.tar.gz")).toBe("gz");
+    expect(safeUploadExt("../../x.pHp7")).toBe("php7");
+    expect(safeUploadExt("noext")).toBe("bin");
+    expect(safeUploadExt("x.".repeat(1) + "e".repeat(50))).toBe("e".repeat(10));
+    expect(safeUploadExt(null)).toBe("bin");
   });
 });

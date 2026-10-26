@@ -7,7 +7,7 @@
  * when it is configured, presenting it also grants access.
  */
 
-import { getAuthenticatedActor } from "@/lib/auth";
+import { getAuthenticatedActor, timingSafeEqualStr } from "@/lib/auth";
 
 export interface AdminAuthEnv {
   ADMIN_TOKEN?: string;
@@ -26,7 +26,8 @@ export async function getAdminRole(request: Request, env: AdminAuthEnv): Promise
     const auth = request.headers.get("Authorization") ?? "";
     if (auth.startsWith("Bearer ")) {
       const token = auth.slice(7).trim();
-      if (token && token.length === expected.length && token === expected) return "admin";
+      // Constant-time: a plain === leaks how much of the secret matched.
+      if (token && timingSafeEqualStr(token, expected)) return "admin";
     }
   }
 

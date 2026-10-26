@@ -26,8 +26,18 @@
  * and anything with `Set-Cookie`.
  */
 
-import type { ExecutionContext } from "@cloudflare/workers-types";
 import { DEFAULT_LIMITS, type InstanceLimits } from "@/lib/constants";
+
+/**
+ * The slice of the Workers `ExecutionContext` this module uses, declared
+ * structurally on purpose: the ambient global type and the one exported by
+ * `@cloudflare/workers-types` drifted apart in a types release (Headers.getAll /
+ * generic RequestInfo), and a parameter typed with either import breaks the
+ * other tsconfig. Anything with `waitUntil` satisfies this.
+ */
+export interface WaitUntilContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
 
 export interface PageCacheLimits {
   /** Seconds a cached page stays fresh before it is revalidated. */
@@ -132,7 +142,7 @@ export interface PageCacheResult {
  */
 export async function withPageCache(
   request: Request,
-  ctx: ExecutionContext,
+  ctx: WaitUntilContext,
   limits: PageCacheLimits,
   render: () => Promise<Response>,
   now: number = Math.floor(Date.now() / 1000)

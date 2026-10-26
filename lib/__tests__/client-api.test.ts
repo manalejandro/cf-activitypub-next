@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getToken, apiFetch } from "@/lib/client-api";
+import { getToken, setToken, clearToken, apiFetch } from "@/lib/client-api";
 
 beforeEach(() => {
   vi.stubGlobal("document", { cookie: "" });
@@ -10,36 +10,28 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("getToken", () => {
-  it("returns null when no cookie or localStorage token exists", () => {
+describe("getToken / setToken / clearToken", () => {
+  it("returns null when no localStorage token exists", () => {
     expect(getToken()).toBeNull();
   });
 
-  it("returns token from auth_token cookie", () => {
-    Object.defineProperty(document, "cookie", {
-      value: "auth_token=abc123; other=value",
-      configurable: true,
-    });
+  it("returns the token stored in localStorage", () => {
+    setToken("abc123");
     expect(getToken()).toBe("abc123");
   });
 
-  it("decodes URI-encoded token from cookie", () => {
+  it("never reads the session cookie (it is HttpOnly now)", () => {
     Object.defineProperty(document, "cookie", {
-      value: "auth_token=abc%20123",
+      value: "auth_token=cookie-token; other=value",
       configurable: true,
     });
-    expect(getToken()).toBe("abc 123");
+    expect(getToken()).toBeNull();
   });
 
-  it("reads token from localStorage and migrates to cookie", () => {
-    localStorage.setItem("access_token", "migrated-token");
-    Object.defineProperty(document, "cookie", {
-      value: "",
-      writable: true,
-      configurable: true,
-    });
-    const token = getToken();
-    expect(token).toBe("migrated-token");
+  it("clearToken drops the localStorage copy", () => {
+    setToken("temp");
+    clearToken();
+    expect(getToken()).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
   });
 });

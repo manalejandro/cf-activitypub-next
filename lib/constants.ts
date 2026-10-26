@@ -50,6 +50,8 @@ export const MAX_STATUS_CHARS = 500;
 export const MAX_CW_CHARS = 200;
 export const MAX_ALT_TEXT_CHARS = 420;
 export const MAX_MEDIA_ATTACHMENTS = 4;
+/** Per-account total storage for attached uploads (env: UPLOAD_QUOTA_BYTES, 0 disables). */
+export const MEDIA_UPLOAD_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 GiB
 export const MAX_POLL_OPTIONS = 4;
 export const MAX_POLL_OPTION_CHARS = 50;
 export const MIN_POLL_OPTIONS = 2;
@@ -74,6 +76,12 @@ export const MAX_LANG_CODE_CHARS = 2;
 // Server-side user filters (Mastodon v2): title/keyword length limits.
 export const MAX_FILTER_TITLE_CHARS = 256;
 export const MAX_FILTER_KEYWORD_CHARS = 512;
+/** Deepest `?page=` an AP collection (followers/following) may resolve — a client-controlled OFFSET must stay bounded. */
+export const MAX_AP_COLLECTION_PAGE = 1000;
+/** Keywords a single filter group may hold (both filter routes parse into this). */
+export const MAX_FILTER_KEYWORDS = 50;
+/** Accounts one list add/remove request may name (Mastodon's list membership is bounded; D1 binds are not). */
+export const MAX_LIST_ACCOUNT_IDS = 500;
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_REPORT_NOTE_CHARS = 5000;
 // Safety caps for the thread context walk (ancestors / descendants).
@@ -158,6 +166,19 @@ export const INSTANCE_DORMANT_DAYS = 30; // no activity → stop refreshing, the
 export const MAX_IMAGE_SIZE = 16 * 1024 * 1024; // 16 MB
 export const MAX_VIDEO_SIZE = 103_809_024; // ~99 MB
 export const MAX_DOCUMENT_SIZE = 32 * 1024 * 1024; // 32 MB — PDFs and plain text
+/**
+ * Hard cap for an inbound ActivityPub payload, enforced while streaming the
+ * request body (never after buffering it): 1 MB is far above any legitimate
+ * AP activity we accept.
+ */
+export const MAX_INBOX_BODY_BYTES = 1_000_000;
+/**
+ * Attachments accepted on one inbound remote object. Each attachment queues a
+ * media-cache fetch, so a note claiming thousands of them would translate into
+ * thousands of queued downloads (and rows); Mastodon clients only ever send
+ * up to 4, so 16 is generous headroom.
+ */
+export const MAX_REMOTE_ATTACHMENTS = 16;
 export const IMAGE_MATRIX_LIMIT = 33_177_600;
 export const VIDEO_FRAME_RATE_LIMIT = 120;
 export const VIDEO_MATRIX_LIMIT = 2_304_000;
@@ -219,6 +240,7 @@ export interface InstanceLimits {
   maxCwChars: number;
   maxAltTextChars: number;
   maxMediaAttachments: number;
+  uploadQuotaBytes: number;
   maxPollOptions: number;
   maxPollOptionChars: number;
   pollMinExpiration: number;
@@ -300,6 +322,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxCwChars: MAX_CW_CHARS,
   maxAltTextChars: MAX_ALT_TEXT_CHARS,
   maxMediaAttachments: MAX_MEDIA_ATTACHMENTS,
+  uploadQuotaBytes: MEDIA_UPLOAD_QUOTA_BYTES,
   maxPollOptions: MAX_POLL_OPTIONS,
   maxPollOptionChars: MAX_POLL_OPTION_CHARS,
   pollMinExpiration: POLL_MIN_EXPIRATION,
@@ -393,6 +416,20 @@ function nonNegativeNum(env: Record<string, unknown>, name: string, fallback: nu
 }
 
 /**
+ * Pagination limit from a query string.
+ *
+ * `Math.min(parseInt(...), max)` on its own lets `?limit=-1` through, and SQLite
+ * reads a negative `LIMIT` as *no limit*: an anonymous request to the public
+ * timeline dumped every row (with its `raw` document) into the Worker. `NaN`
+ * (`?limit=abc`) is rejected the same way instead of being bound as-is.
+ */
+export function clampLimit(raw: string | null | undefined, fallback: number, max: number): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  const value = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(Math.max(1, value), Math.max(1, max));
+}
+
+/**
  * Effective limits for a given environment. Reads each limit's homonymous
  * Cloudflare var (e.g. `MAX_STATUS_CHARS`) and falls back to the default.
  */
@@ -405,6 +442,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     maxCwChars: num(env, "MAX_CW_CHARS", DEFAULT_LIMITS.maxCwChars),
     maxAltTextChars: num(env, "MAX_ALT_TEXT_CHARS", DEFAULT_LIMITS.maxAltTextChars),
     maxMediaAttachments: num(env, "MAX_MEDIA_ATTACHMENTS", DEFAULT_LIMITS.maxMediaAttachments),
+    uploadQuotaBytes: nonNegativeNum(env, "UPLOAD_QUOTA_BYTES", DEFAULT_LIMITS.uploadQuotaBytes),
     maxPollOptions: num(env, "MAX_POLL_OPTIONS", DEFAULT_LIMITS.maxPollOptions),
     maxPollOptionChars: num(env, "MAX_POLL_OPTION_CHARS", DEFAULT_LIMITS.maxPollOptionChars),
     pollMinExpiration: num(env, "POLL_MIN_EXPIRATION", DEFAULT_LIMITS.pollMinExpiration),

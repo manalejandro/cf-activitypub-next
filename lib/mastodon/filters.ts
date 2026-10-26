@@ -12,7 +12,7 @@
  * list) so clients can apply the intended action per view context.
  */
 
-import { MAX_FILTER_KEYWORD_CHARS } from "@/lib/constants";
+import { MAX_FILTER_KEYWORD_CHARS, MAX_FILTER_KEYWORDS } from "@/lib/constants";
 import type { D1Database } from "@cloudflare/workers-types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import {
@@ -256,6 +256,9 @@ export function parseKeywordsAttributes(
   const arr = raw.keywords_attributes;
   if (Array.isArray(arr)) {
     for (const item of arr) {
+      // A filter group is finite: a huge array would mean thousands of inserts
+      // (each keyword is matched against every status on every timeline).
+      if (out.length >= MAX_FILTER_KEYWORDS) break;
       const o = (item ?? {}) as { keyword?: unknown; whole_word?: unknown };
       const text = String(o.keyword ?? "").trim();
       if (!text) continue;
@@ -267,7 +270,7 @@ export function parseKeywordsAttributes(
     return out;
   }
 
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < MAX_FILTER_KEYWORDS; i++) {
     const keyword = raw[`keywords_attributes[${i}][keyword]`];
     const wholeWord = raw[`keywords_attributes[${i}][whole_word]`];
     if (keyword === undefined) continue;

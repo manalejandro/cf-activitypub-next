@@ -6,6 +6,7 @@
 import type { APTag } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
 import { maskMarkdownCode } from "@/lib/markdown-code";
+import { safeMediaUrl } from "@/lib/safe-url";
 import type { EmojiLike } from "@/lib/types";
 
 function escapeHtml(text: string): string {
@@ -87,24 +88,37 @@ function buildReplacements(
 
   // 0. Custom emoji shortcodes: :shortcode:
   if (customEmojis && customEmojis.length > 0) {
-    const emojiMap = new Map(customEmojis.map((e) => [e.shortcode, e]));
+    // The instance's own emoji wins a shortcode collision with a federated one:
+    // a remote server must not be able to shadow (or substitute) a local
+    // shortcode, and the catalogue order is not a guarantee.
+    const emojiMap = new Map<string, EmojiLike>();
+    for (const e of customEmojis) {
+      const current = emojiMap.get(e.shortcode);
+      if (current && !current.domain && e.domain) continue;
+      emojiMap.set(e.shortcode, e);
+    }
     const emojiPattern = /:([a-zA-Z0-9_]+):/g;
     for (const m of text.matchAll(emojiPattern)) {
       const [full, code] = m;
       const emoji = emojiMap.get(code);
-      if (emoji) {
+      // The URL comes from a federated document and this string is built AFTER
+      // the sanitizer ran, so it is validated and escaped here: an unescaped
+      // `"` broke out of `src` and turned a status into stored XSS.
+      const emojiUrl = emoji ? safeMediaUrl(emoji.url) : null;
+      if (emoji && emojiUrl) {
+        const escaped = escapeHtml(emojiUrl);
         // Mastodon's Emoji tag declares the real media type of the image
         // (a GIF emoji announced as image/png is rejected by stricter peers).
-        const mediaType = /\.gif(\?|$)/i.test(emoji.url)
+        const mediaType = /\.gif(\?|$)/i.test(emojiUrl)
           ? "image/gif"
-          : /\.jpe?g(\?|$)/i.test(emoji.url)
+          : /\.jpe?g(\?|$)/i.test(emojiUrl)
             ? "image/jpeg"
             : "image/png";
         add(
           m.index!,
           m.index! + full.length,
-          `<img src="${emoji.url}" alt=":${code}:" class="emojione custom-emoji" rel="emoji" title=":${code}:" width="16" height="16" />`,
-          { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emoji.url, url: emoji.url, mediaType } }
+          `<img src="${escaped}" alt=":${code}:" class="emojione custom-emoji" rel="emoji" title=":${code}:" width="16" height="16" />`,
+          { type: "Emoji", name: `:${code}:`, icon: { type: "Image", id: emojiUrl, url: emojiUrl, mediaType } }
         );
       }
     }

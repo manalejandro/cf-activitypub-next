@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
-import { json, notFound, unauthorized } from "@/lib/cf";
+import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -141,6 +141,11 @@ export async function PUT(
   if (!actor) return unauthorized();
   if (!actor.privateKeyPem) return json({ error: "Account misconfigured" }, 500);
 
+  // An edit fans an Update out to every original recipient (followers plus
+  // mention targets): bound the per-account rate like the create route does.
+  const { allowed: canEdit } = await checkRateLimit(env.KV, `edit:${actor.id}`, 20, 60);
+  if (!canEdit) return json({ error: "Too many requests. Please try again later." }, 429);
+
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
   if (!obj) return notFound("Status not found");
   if (obj.actorId !== actor.id) return json({ error: "Forbidden" }, 403);
@@ -163,6 +168,10 @@ export async function PUT(
   const pollRaw = (body.poll ?? null) as { options?: unknown; expires_in?: number; multiple?: boolean } | null;
   const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
   if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
+  // The create route enforces the character limit; an edit used to bypass it.
+  if ((content ?? "").length > limits.maxStatusChars) {
+    return json({ error: `Validation failed: Text must be ${limits.maxStatusChars} characters or less` }, 422);
+  }
 
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";

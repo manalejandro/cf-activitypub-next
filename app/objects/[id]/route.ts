@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { notFound } from "@/lib/cf";
-import { getObjectById, getActorById, getAttachmentsByObjectId } from "@/lib/db";
+import { getObjectById, getActorById, getAttachmentsByObjectId, canViewStatus, isAcceptedFollower } from "@/lib/db";
+import { getAuthenticatedActor } from "@/lib/auth";
 import { buildNote, conversationFromRaw, editedAtIso, parseLocationJson } from "@/lib/activitypub/utils";
 import { toAPAttachment } from "@/lib/activitypub/attachments";
 import { applyPollToNoteFromDb } from "@/lib/activitypub/polls";
@@ -37,6 +38,17 @@ export async function GET(
 
   const author = await getActorById(env.DB, obj.actorId);
   if (!author || !author.isLocal) return notFound("Object not found");
+
+  // Visibility gate (Mastodon's StatusPolicy#show? on the AP endpoint): an
+  // anonymous fetch only ever sees public/unlisted notes — a followers-only
+  // post or a DM was served in full to anyone who knew the id. Members of the
+  // audience keep access through their own token.
+  const isPublic = obj.visibility === "public" || obj.visibility === "unlisted";
+  if (!isPublic) {
+    const viewer = await getAuthenticatedActor(request, env.DB);
+    const following = viewer ? await isAcceptedFollower(env.DB, viewer.id, obj.actorId) : false;
+    if (!viewer || !canViewStatus(obj, viewer.id, following)) return notFound("Object not found");
+  }
 
   const rawAttachments = await getAttachmentsByObjectId(env.DB, objectId);
   const apAttachments = rawAttachments.map(toAPAttachment);
@@ -91,6 +103,10 @@ export async function GET(
   await applyPollToNoteFromDb(env.DB, note);
 
   const body = JSON.stringify(note);
-  await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});
+  // Only public notes are cached: the KV copy is served to every caller (peers
+  // included) without re-running the visibility gate above.
+  if (isPublic) {
+    await env.KV.put(cacheKey, body, { expirationTtl: 120 }).catch(() => {});
+  }
   return new Response(body, { headers: { "Content-Type": "application/activity+json; charset=utf-8" } });
 }

@@ -1,5 +1,7 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
+import { MAX_INBOX_BODY_BYTES } from "@/lib/constants";
+import { readBoundedBytes } from "@/lib/media/fetch";
 import { processInboxActivity } from "@/lib/activitypub/inbox";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
 import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
@@ -11,25 +13,26 @@ export async function POST(request: NextRequest): Promise<Response> {
   const domain = new URL(request.url).hostname;
   const baseUrl = `https://${domain}`;
 
-  // Read body as text so we can parse JSON ourselves (needed for future digest
-  // verification without a second read).
-  let rawBody: string;
-  try {
-    rawBody = await request.text();
-  } catch {
-    return json({ error: "Could not read request body" }, 400);
+  // Reject oversized payloads BEFORE buffering or parsing them: the declared
+  // length first (a cheap 413), then a bounded read of the stream — a lying or
+  // absent Content-Length must not smuggle an arbitrary body into the isolate.
+  const declaredLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_INBOX_BODY_BYTES) {
+    return json({ error: "Payload too large" }, 413);
   }
+  const bodyBytes = await readBoundedBytes(request, MAX_INBOX_BODY_BYTES).catch(() => null);
+  if (!bodyBytes) {
+    return json({ error: "Payload too large" }, 413);
+  }
+  // Text (not request.text() twice) so the exact bytes signed are the bytes
+  // parsed — needed for digest verification without a second read.
+  const rawBody = new TextDecoder().decode(bodyBytes);
 
   let body: Record<string, unknown>;
   try {
     body = JSON.parse(rawBody);
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
-  }
-  // Reject oversized payloads before any parsing work (1 MB is far above any
-  // legitimate AP activity we accept).
-  if (rawBody.length > 1_000_000) {
-    return json({ error: "Payload too large" }, 413);
   }
 
   const actorId = typeof body.actor === "string" ? body.actor : (body.actor as { id?: string })?.id;

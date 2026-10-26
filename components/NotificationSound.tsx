@@ -64,17 +64,22 @@ export function NotificationSound() {
 
     const onStreamNotification = () => onNotification(false);
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") clearBadge();
+    };
+
     navigator.serviceWorker.addEventListener("message", onSwMessage);
     window.addEventListener("cf-ap:notification-received", onStreamNotification);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") clearBadge();
-    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", clearBadge);
 
     return () => {
       navigator.serviceWorker.removeEventListener("message", onSwMessage);
       window.removeEventListener("cf-ap:notification-received", onStreamNotification);
-      document.removeEventListener("visibilitychange", clearBadge);
+      // Remove the SAME handler that was added: an inline arrow here leaked a
+      // visibilitychange listener on every mount (removing a different
+      // function reference is a no-op).
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", clearBadge);
       audio?.pause();
       audio = null;

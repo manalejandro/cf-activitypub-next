@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { discardBody } from "@/lib/http";
-import { json } from "@/lib/cf";
+import { json, checkRateLimit } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
@@ -8,7 +8,7 @@ import { safeFetch } from "@/lib/activitypub/federation";
 import { fetchAndCacheRemoteActor, fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import type { D1Database } from "@cloudflare/workers-types";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
@@ -21,13 +21,26 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const q = (sp.get("q") ?? "").trim();
   const type = sp.get("type") ?? "all";
-  const limit = Math.min(parseInt(sp.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize);
+  const limit = clampLimit(sp.get("limit"), limits.defaultTimelinePage, limits.maxPageSize);
   const offset = parseInt(sp.get("offset") ?? "0");
   const resolve = sp.get("resolve") === "true";
 
   if (!q) return json({ accounts: [], statuses: [], hashtags: [], collections: [] });
 
   const me = await getAuthenticatedActor(request, env.DB);
+
+  // A resolving search issues several signed fetches per query (WebFinger,
+  // the actor document, the canonical refetch, the pasted status URL): bound
+  // how often one account — or one IP, for anonymous URL lookups — can ask
+  // for it, so the search box cannot be turned into outbound-fetch flooding.
+  const mayResolve = resolve || /^https?:\/\/.+/i.test(q);
+  if (mayResolve) {
+    const rlKey = me
+      ? `search-resolve:${me.id}`
+      : `search-resolve:ip:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`;
+    const { allowed: canResolve } = await checkRateLimit(env.KV, rlKey, 15, 60);
+    if (!canResolve) return json({ error: "Too many requests. Please try again later." }, 429);
+  }
 
   const results: {
     accounts: unknown[];

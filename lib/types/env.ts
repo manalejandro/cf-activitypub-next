@@ -8,6 +8,12 @@ export interface CloudflareEnv {
   CALL_SIGNALING: DurableObjectNamespace;
   /** The Guardian's Cloudflare Agent (Agents SDK, `AIChatAgent`). */
   GuardianAgent: DurableObjectNamespace;
+  /**
+   * Atomic fixed-window rate limiter (lib/rate-limit-do.ts). Optional:
+   * `atomicRateLimit` falls back to the KV counter when the binding is not
+   * configured in wrangler.toml.
+   */
+  RATE_LIMIT?: DurableObjectNamespace;
   /** Cloudflare Workers AI binding for image auto-description */
   AI: Ai;
   /** Cloudflare Email Workers binding for sending emails. */

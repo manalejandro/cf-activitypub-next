@@ -96,7 +96,7 @@ export default function ScheduledPage() {
                     <Icon name="calendar" /> {new Date(s.scheduled_at + (s.scheduled_at.includes("T") || s.scheduled_at.includes("Z") ? "" : "Z")).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.params.status || s.params.text || "(sin contenido)"}
+                    {s.params.status || s.params.text || t.scheduled_no_content}
                   </div>
                   {s.params.spoiler_text && (
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>

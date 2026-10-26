@@ -1,5 +1,7 @@
 import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
+import { MAX_INBOX_BODY_BYTES } from "@/lib/constants";
+import { readBoundedBytes } from "@/lib/media/fetch";
 import { getActorByUsername } from "@/lib/db";
 import { extractSigningKeyId } from "@/lib/activitypub/security";
 import { purgeGoneSignerData, verifyIncomingSignature } from "@/lib/activitypub/signer-key";
@@ -20,22 +22,24 @@ export async function POST(
     return notFound("Actor not found");
   }
 
-  let body: string;
-  try {
-    body = await request.text();
-  } catch {
-    return json({ error: "Could not read request body" }, 400);
+  // Reject oversized payloads BEFORE buffering or parsing them: the declared
+  // length first (a cheap 413), then a bounded read of the stream — a lying or
+  // absent Content-Length must not smuggle an arbitrary body into the isolate.
+  const declaredLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_INBOX_BODY_BYTES) {
+    return json({ error: "Payload too large" }, 413);
   }
+  const bodyBytes = await readBoundedBytes(request, MAX_INBOX_BODY_BYTES).catch(() => null);
+  if (!bodyBytes) {
+    return json({ error: "Payload too large" }, 413);
+  }
+  const body = new TextDecoder().decode(bodyBytes);
 
   let activity: Record<string, unknown>;
   try {
     activity = JSON.parse(body);
   } catch {
     return json({ error: "Invalid JSON" }, 400);
-  }
-  // Reject oversized payloads before any parsing work.
-  if (body.length > 1_000_000) {
-    return json({ error: "Payload too large" }, 413);
   }
 
   // Verify HTTP signature

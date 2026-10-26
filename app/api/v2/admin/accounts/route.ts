@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
 import { requireAdmin } from "@/lib/admin-auth";
-import { resolveLimits } from "@/lib/constants";
+import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest): Promise<Response> {
        LIMIT ? OFFSET ?`
     )
     .bind(
-      Math.min(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), limits.maxPageSize),
+      clampLimit(request.nextUrl.searchParams.get("limit"), limits.defaultTimelinePage, limits.maxPageSize),
       parseInt(request.nextUrl.searchParams.get("offset") ?? "0")
     )
     .all<Record<string, unknown>>();

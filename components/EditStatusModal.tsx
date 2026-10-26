@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useLocale } from "@/lib/i18n";
+import { useFocusTrap } from "@/components/useFocusTrap";
 import { clipboardFiles } from "@/lib/clipboard-media";
 import { getToken } from "@/lib/client-api";
 import { useEmojiAutocomplete, EmojiAutocompleteDropdown } from "@/components/EmojiAutocomplete";
@@ -48,6 +49,8 @@ export function EditStatusModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
   const auto = useEmojiAutocomplete(text, setText, textareaRef);
   const accountAuto = useAccountAutocomplete(text, setText, textareaRef);
   const tagAuto = useTagAutocomplete(text, setText, textareaRef);
@@ -151,6 +154,7 @@ export function EditStatusModal({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t.edit_status_title}

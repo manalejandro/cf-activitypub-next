@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
-import { getBaseUrl, json, checkRateLimit } from "@/lib/cf";
-import { getActorByEmail, getActorById, getOAuthAppByClientId, getOAuthAppById, getOAuthTokenByRefreshToken, createOAuthToken, mediaCacheId, refreshOAuthTokenAccessToken } from "@/lib/db";
-import { verifyPassword, generateSecureToken, setAuthCookie } from "@/lib/auth";
+import { getBaseUrl, json } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
+import { getActorByEmail, getActorById, getOAuthAppByClientId, getOAuthAppById, getOAuthTokenByRefreshToken, createOAuthToken, mediaCacheId, refreshOAuthTokenAccessToken, updatePassword } from "@/lib/db";
+import { verifyPassword, generateSecureToken, setAuthCookie, hashPassword, needsPasswordRehash, timingSafeEqualStr } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { clampScope } from "@/lib/oauth-scopes";
 import { env } from "cloudflare:workers";
@@ -21,9 +22,11 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const grantType = body.grant_type;
 
-  // Rate limit: 10 attempts per IP per 60s window
+  // Rate limit: 10 attempts per IP per 60s window (atomic DO counter when the
+  // RATE_LIMIT binding exists — a parallel burst used to slip past the KV
+  // get→put window).
   const remoteIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const { allowed } = await checkRateLimit(env.KV, `token:${remoteIp}`, 10, 60);
+  const { allowed } = await atomicRateLimit(env, `token:${remoteIp}`, 10, 60);
   if (!allowed) {
     return json({ error: "invalid_grant", error_description: "Too many requests. Please try again later.", error_code: "login_error_rate_limited" }, 429);
   }
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     let apiClient = false;
     if (client_id && client_secret) {
       const app = await getOAuthAppByClientId(env.DB, client_id);
-      apiClient = Boolean(app?.clientSecret && app.clientSecret === client_secret);
+      apiClient = Boolean(app?.clientSecret && timingSafeEqualStr(app.clientSecret, client_secret));
     }
     if (!apiClient) {
       const turnstile = await enforceTurnstilePolicy({
@@ -62,17 +65,31 @@ export async function POST(request: NextRequest): Promise<Response> {
       return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
 
+    // Per-account lockout: independent of IP, so rotating proxies can't mount
+    // a credential-stuffing run against one account. Checked BEFORE verifying,
+    // so a locked account stops burning PBKDF2 work (and a correct password
+    // found by the attacker is no use while the account is locked); a success
+    // clears the counter. The /api/oauth/authorize consent form shares the key.
+    const lockoutKey = `login-fail:${await mediaCacheId(username.toLowerCase())}`;
+    const lockout = await atomicRateLimit(env, lockoutKey, 10, 900);
+    if (!lockout.allowed) {
+      return json({ error: "invalid_grant", error_description: "Too many failed attempts. Please try again later.", error_code: "login_error_rate_limited" }, 429);
+    }
+
     const valid = await verifyPassword(password, actor.passwordHash);
     if (!valid) {
-      // Per-account lockout: independent of IP, so rotating proxies can't
-      // mount a credential-stuffing run against one account.
-      const { allowed } = await checkRateLimit(env.KV, `login-fail:${await mediaCacheId(username.toLowerCase())}`, 10, 900);
-      if (!allowed) {
-        return json({ error: "invalid_grant", error_description: "Too many failed attempts. Please try again later.", error_code: "login_error_rate_limited" }, 429);
-      }
       return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
-    await env.KV.delete(`login-fail:${await mediaCacheId(username.toLowerCase())}`).catch(() => {});
+    await env.KV.delete(lockoutKey).catch(() => {});
+
+    // Transparent rehash: a hash created under the older, cheaper PBKDF2 cost
+    // is upgraded to the current iterations on a successful login (best effort
+    // — a failed write only means the next login tries again).
+    if (needsPasswordRehash(actor.passwordHash)) {
+      try {
+        await updatePassword(env.DB, actor.id, await hashPassword(password));
+      } catch { /* keep the legacy hash for now */ }
+    }
 
     // Suspended accounts cannot sign in. Without this the web UI would appear
     // to log in and then fail every API call with a 401 (the API itself
@@ -117,7 +134,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     const app = client_id ? await getOAuthAppByClientId(env.DB, client_id) : null;
 
     // Verify client_secret if app was found
-    if (app && client_secret && app.clientSecret !== client_secret) {
+    if (app && client_secret && !timingSafeEqualStr(app.clientSecret, client_secret)) {
       return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
     }
 
@@ -161,7 +178,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     const app = await getOAuthAppByClientId(env.DB, client_id);
-    if (!app || app.clientSecret !== client_secret) {
+    if (!app || !timingSafeEqualStr(app.clientSecret, client_secret)) {
       return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
     }
 
@@ -235,12 +252,33 @@ export async function POST(request: NextRequest): Promise<Response> {
         computed = btoa(String.fromCharCode(...new Uint8Array(hash)))
           .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
       }
-      if (computed !== payload.codeChallenge) {
+      if (!timingSafeEqualStr(computed, payload.codeChallenge)) {
         return json({ error: "invalid_grant", error_description: "PKCE verification failed" }, 400);
       }
     }
 
     await env.KV.delete(`oauth_code:${code}`);
+
+    // The account must still be usable at exchange time: a code issued up to
+    // 10 minutes ago must not mint a token for an account suspended,
+    // memorialized, unconfirmed or pending-approval since (same gates as the
+    // password grant and getAuthenticatedActor).
+    const codeActor = await getActorById(env.DB, payload.actorId);
+    if (!codeActor) {
+      return json({ error: "invalid_grant", error_description: "Account not found" }, 400);
+    }
+    if (codeActor.suspended) {
+      return json({ error: "invalid_grant", error_description: "This account has been suspended.", error_code: "login_error_suspended" }, 403);
+    }
+    if (codeActor.memorial) {
+      return json({ error: "invalid_grant", error_description: "This account is memorialized and cannot sign in.", error_code: "login_error_memorial" }, 403);
+    }
+    if (codeActor.isLocal && !codeActor.emailVerified) {
+      return json({ error: "invalid_grant", error_description: "Email not verified", error_code: "login_error_unverified_email" }, 403);
+    }
+    if (codeActor.approved === false) {
+      return json({ error: "invalid_grant", error_description: "Your account is pending approval", error_code: "login_error_pending_approval" }, 403);
+    }
 
     // Scopes are clamped to the app that actually owns the code: the payload
     // stores our internal row id, so look the app up by its client_id.
@@ -287,7 +325,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     // the refresh token (it is the credential).
     if (client_id || client_secret) {
       const app = row.appId ? await getOAuthAppById(env.DB, row.appId) : null;
-      if (!app || (client_id && client_id !== app.clientId) || (client_secret && app.clientSecret !== client_secret)) {
+      if (!app || (client_id && client_id !== app.clientId) || (client_secret && !timingSafeEqualStr(app.clientSecret, client_secret))) {
         return json({ error: "invalid_client", error_description: "Invalid client credentials" }, 401);
       }
     }

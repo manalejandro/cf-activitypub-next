@@ -141,14 +141,15 @@ describe("generateSecureToken", () => {
 });
 
 describe("hashPassword / verifyPassword", () => {
-  it("produces a pbkdf2-hashed string", async () => {
-    const { hashPassword } = await getAuthModule();
+  it("produces a pbkdf2-hashed string with the iteration count encoded", async () => {
+    const { hashPassword, PBKDF2_ITERATIONS } = await getAuthModule();
     const hash = await hashPassword("hunter2");
     expect(hash.startsWith("pbkdf2:")).toBe(true);
     const parts = hash.split(":");
-    expect(parts).toHaveLength(3);
-    expect(parts[1]).toHaveLength(32); // 16 bytes = 32 hex chars
-    expect(parts[2]).toHaveLength(64); // 32 bytes = 64 hex chars
+    expect(parts).toHaveLength(4);
+    expect(parts[1]).toBe(String(PBKDF2_ITERATIONS));
+    expect(parts[2]).toHaveLength(32); // 16 bytes = 32 hex chars
+    expect(parts[3]).toHaveLength(64); // 32 bytes = 64 hex chars
   });
 
   it("verifyPassword returns true for matching password", async () => {
@@ -156,6 +157,22 @@ describe("hashPassword / verifyPassword", () => {
     const hash = await hashPassword("hunter2");
     const result = await verifyPassword("hunter2", hash);
     expect(result).toBe(true);
+  });
+
+  it("still verifies a legacy 3-part hash (100k iterations, no encoded cost)", async () => {
+    const { verifyPassword } = await getAuthModule();
+    // Built with the mocked crypto: salt bytes are 01..10, derived bits 0xab×32.
+    const legacy = `pbkdf2:0102030405060708090a0b0c0d0e0f10:${"ab".repeat(32)}`;
+    expect(await verifyPassword("hunter2", legacy)).toBe(true);
+  });
+
+  it("flags legacy hashes for rehash and current ones as up to date", async () => {
+    const { hashPassword, needsPasswordRehash } = await getAuthModule();
+    const legacy = `pbkdf2:0102030405060708090a0b0c0d0e0f10:${"ab".repeat(32)}`;
+    expect(needsPasswordRehash(legacy)).toBe(true);
+    expect(needsPasswordRehash(await hashPassword("hunter2"))).toBe(false);
+    expect(needsPasswordRehash("bcrypt:whatever")).toBe(false);
+    expect(needsPasswordRehash(null)).toBe(false);
   });
 
   it("verifyPassword returns false for wrong password", async () => {

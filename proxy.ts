@@ -21,6 +21,9 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+/** Hard cap for a declared JSON/form-encoded mutation body (uploads exempt). */
+const MAX_STRUCTURED_BODY_BYTES = 2 * 1024 * 1024;
+
 // Security headers applied to all responses
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -66,6 +69,24 @@ export function proxy(request: NextRequest) {
   // Handle CORS preflight for API and nodeinfo routes
   if (method === "OPTIONS" && (pathname.startsWith("/api/") || pathname.startsWith("/nodeinfo/"))) {
     return new NextResponse(null, { status: 204, headers: { ...CORS_HEADERS, ...SECURITY_HEADERS } });
+  }
+
+  // Structured (non-upload) mutation bodies are parsed whole into memory by
+  // the route handlers: reject an oversized declared length here, at the edge,
+  // instead of after buffering. multipart/form-data is exempt — those are the
+  // media/avatar/emoji uploads, each with its own per-type caps (and the AP
+  // inboxes enforce their own stricter 1 MB bounded read).
+  if (
+    (method === "POST" || method === "PUT" || method === "PATCH") &&
+    !(request.headers.get("content-type") ?? "").includes("multipart/form-data")
+  ) {
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declared) && declared > MAX_STRUCTURED_BODY_BYTES) {
+      return new NextResponse(JSON.stringify({ error: "Payload too large" }), {
+        status: 413,
+        headers: { ...CORS_HEADERS, ...SECURITY_HEADERS, "Content-Type": "application/json" },
+      });
+    }
   }
 
   // /inbox and /users/:username/inbox are handled by direct Next.js route files

@@ -1,3 +1,6 @@
+import { escapeHtml } from "@/lib/activitypub/sanitize";
+import { safeMediaUrl } from "@/lib/safe-url";
+
 export interface EmojiData {
   shortcode: string;
   url: string;
@@ -28,7 +31,13 @@ export function renderEmojiInHtml(
     if (tag) return tag;
     const emoji = emojiMap.get(shortcode);
     if (!emoji) return match;
-    return `<img src="${emoji.url}" alt=":${shortcode}:" class="emojione custom-emoji" rel="emoji" title=":${shortcode}:" width="16" height="16" />`;
+    // The catalogue holds URLs that came from federated documents, and this
+    // string is concatenated after any sanitization: validate the scheme and
+    // escape the attribute (a `"` in the URL used to inject live event handlers).
+    const url = safeMediaUrl(emoji.url);
+    if (!url) return match;
+    const escaped = escapeHtml(url);
+    return `<img src="${escaped}" alt=":${shortcode}:" class="emojione custom-emoji" rel="emoji" title=":${shortcode}:" width="16" height="16" />`;
   });
 }
 

@@ -22,7 +22,17 @@ vi.mock("@/lib/activitypub/queue", () => ({
 import { syncRemoteCollections } from "@/lib/activitypub/collections";
 
 function jsonResponse(body: unknown): Response {
-  return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  // fetchListing reads through readBoundedJson, which streams `body` or falls
+  // back to arrayBuffer() — the fake response must provide one of them.
+  const bytes = new TextEncoder().encode(JSON.stringify(body));
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    body: undefined,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    json: async () => body,
+  } as unknown as Response;
 }
 
 const db = env.DB;

@@ -13,6 +13,8 @@
 export { TimelineStreamDO } from "../lib/streaming/timeline-do";
 // Export the call signaling Durable Object
 export { CallSignalingDO } from "../lib/streaming/call-signaling-do";
+// Atomic rate limiter DO (optional `RATE_LIMIT` binding; see lib/rate-limit.ts)
+export { RateLimitDO } from "../lib/rate-limit-do";
 
 export { GuardianAgentDO } from "../lib/guardian/agent";
 import { routeGuardianAgent } from "../lib/guardian/routing";
@@ -32,12 +34,15 @@ import { serializeStatusForStream } from "../lib/streaming/serialize";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
+import { scopesAllow } from "../lib/auth";
+import { atomicRateLimit } from "../lib/rate-limit";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
+import { sweepOrphanUploads } from "../lib/media/orphan-uploads";
 import { serveMediaObject } from "../lib/media/serve";
 import { MEDIA_RELAY_PATH } from "../lib/media/remote-playback";
 import { recordMediaHit, flushMediaHits, mediaHitWindowDays } from "../lib/media/hits";
 import { getAnonymousTimelineAccess } from "../lib/db";
-import { anonymousTimelineAllowed } from "../lib/anonymous-timelines";
+import { anonymousStreamAllowed, type AnonymousTimelineAccess } from "../lib/anonymous-timelines";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
 import { parseEventInput } from "../lib/event";
@@ -210,22 +215,20 @@ async function isWsIpBlocked(kv: KVNamespace, ip: string): Promise<boolean> {
 
 /**
  * Record a WebSocket upgrade attempt from this IP. Returns false (and blocks the
- * IP) once the IP exceeds the allowed connection-attempt rate. Uses a sliding
- * window keyed on `floor(now/window)` with a TTL slightly longer than the window
- * so the counter is always present for the whole window it covers.
+ * IP) once the IP exceeds the allowed connection-attempt rate. Counted in the
+ * atomic RateLimitDO when the binding exists (the KV get→put counter could be
+ * passed by a parallel burst of upgrades); the block marker stays in KV, a
+ * single-key read on the hot path.
  */
 async function enforceWsConnectRateLimit(
-  kv: KVNamespace,
+  env: Env,
   ip: string
 ): Promise<{ allowed: boolean; blocked: boolean }> {
-  const now = Math.floor(Date.now() / 1000);
-  const windowKey = `ws_conn:${ip}:${Math.floor(now / WS_CONNECT_WINDOW_SEC)}`;
-  const count = parseInt((await kv.get(windowKey)) ?? "0", 10);
-  if (count >= WS_MAX_CONNECTS_PER_WINDOW) {
-    await kv.put(`ws_block:${ip}`, "1", { expirationTtl: WS_BLOCK_TTL_SEC });
+  const decision = await atomicRateLimit(env, `ws_conn:${ip}`, WS_MAX_CONNECTS_PER_WINDOW, WS_CONNECT_WINDOW_SEC);
+  if (!decision.allowed) {
+    await env.KV.put(`ws_block:${ip}`, "1", { expirationTtl: WS_BLOCK_TTL_SEC });
     return { allowed: false, blocked: true };
   }
-  await kv.put(windowKey, String(count + 1), { expirationTtl: WS_CONNECT_WINDOW_SEC + 5 });
   return { allowed: true, blocked: false };
 }
 
@@ -241,7 +244,10 @@ async function resolveToken(
   // Cache in KV: every WebSocket (re)connection resolves the token, and a burst
   // of concurrent upgrades (or a client reconnecting in a loop) would hammer
   // D1. Short TTL so revoked/expired tokens stop working within ~2 minutes.
-  const cacheKey = `ws_token:${token}`;
+  // v2: the resolution gained the scope + memorial gates below, so the key is
+  // bumped — a v1 entry cached for a write-only or memorialized token must
+  // never be served again.
+  const cacheKey = `ws_token:v2:${token}`;
   const cached = await env.KV.get(cacheKey).catch(() => null);
   if (cached) {
     try {
@@ -254,20 +260,25 @@ async function resolveToken(
   const nowIso = new Date().toISOString();
   const row = await env.DB
     .prepare(
-      `SELECT t.actor_id, a.username FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id
+      `SELECT t.actor_id, a.username, t.scope, a.memorial FROM oauth_tokens t JOIN actors a ON a.id = t.actor_id
        WHERE t.access_token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)
          AND a.suspended = 0
          AND (a.is_local = 0 OR (a.email_verified = 1 AND (a.approved IS NULL OR a.approved = 1)))`
     )
     .bind(token, nowIso)
-    .first<{ actor_id: string; username: string }>();
+    .first<{ actor_id: string; username: string; scope: string | null; memorial: number | null }>();
+
+  // Streaming is a read surface: a write-only token must not receive the home
+  // feed, DMs or notifications (REST already rejects it in getAuthenticatedActor).
+  // A memorialized account cannot sign in either, so it cannot stream.
+  if (row && (!scopesAllow(row.scope, "read") || row.memorial)) return null;
 
   if (row) {
     await env.KV
       .put(cacheKey, JSON.stringify({ actor_id: row.actor_id, username: row.username }), { expirationTtl: 120 })
       .catch(() => {});
   }
-  return row ?? null;
+  return row ? { actor_id: row.actor_id, username: row.username } : null;
 }
 
 /**
@@ -301,7 +312,7 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
       headers: { "Content-Type": "application/json" },
     });
   }
-  const rl = await enforceWsConnectRateLimit(env.KV, ip);
+  const rl = await enforceWsConnectRateLimit(env, ip);
   if (!rl.allowed) {
     return new Response(
       JSON.stringify({ error: rl.blocked ? "Source IP temporarily blocked" : "Too many connection attempts" }),
@@ -321,6 +332,16 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
       if (!row) return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
       channel = `home:${row.username}`;
       authed = true;
+    }
+    // The anonymous multiplex socket starts on the public channel and can
+    // subscribe to more later: gate the connection with the instance setting
+    // and hand the level to the DO so dynamic subscribes stay inside it.
+    if (!authed) {
+      const access = await getAnonymousTimelineAccess(env.DB);
+      if (!anonymousStreamAllowed(channel, access)) {
+        return new Response(JSON.stringify({ error: "The access token is invalid" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+      return forwardToTimelineDO(env, request, channel, false, access);
     }
     return forwardToTimelineDO(env, request, channel, authed);
   }
@@ -382,23 +403,34 @@ async function handleStreamingUpgrade(request: Request, env: Env): Promise<Respo
     authed = Boolean(row);
   }
   // Anonymous timeline access (instance setting): without it an anonymous
-  // client could still stream what the REST routes refuse to serve.
-  if (!authed && channel.startsWith("public")) {
+  // client could still stream what the REST routes refuse to serve. Hashtag
+  // streams are session-only, exactly like their REST route.
+  if (!authed) {
     const access = await getAnonymousTimelineAccess(env.DB);
-    if (!anonymousTimelineAllowed(access, channel !== "public")) {
+    if (!anonymousStreamAllowed(channel, access)) {
       return new Response(JSON.stringify({ error: "The access token is invalid" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
+    return forwardToTimelineDO(env, request, channel, false, access);
   }
   return forwardToTimelineDO(env, request, channel, authed);
 }
 
-function forwardToTimelineDO(env: Env, request: Request, channel: string, authed = false): Promise<Response> | Response {
+function forwardToTimelineDO(
+  env: Env,
+  request: Request,
+  channel: string,
+  authed = false,
+  anonAccess?: AnonymousTimelineAccess
+): Promise<Response> | Response {
   const doId = env.TIMELINE_STREAM.idFromName("timeline");
   const stub = env.TIMELINE_STREAM.get(doId);
-  const doUrl = `https://timeline-do/connect?channel=${encodeURIComponent(channel)}&authed=${authed ? 1 : 0}`;
+  let doUrl = `https://timeline-do/connect?channel=${encodeURIComponent(channel)}&authed=${authed ? 1 : 0}`;
+  // Anonymous sockets carry their instance's access level so the DO can gate
+  // dynamic subscribe messages with the same rule the worker just applied.
+  if (!authed && anonAccess) doUrl += `&anon=${encodeURIComponent(anonAccess)}`;
   // Forward the upgrade request to the Durable Object. Rebuilding the request
   // from its method + headers (instead of reusing the original Request object)
   // keeps the DOM/workers-types globals from colliding in type checking.
@@ -558,7 +590,7 @@ async function handleCallSignalingUpgrade(
       headers: { "Content-Type": "application/json" },
     });
   }
-  const rl = await enforceWsConnectRateLimit(env.KV, ip);
+  const rl = await enforceWsConnectRateLimit(env, ip);
   if (!rl.allowed) {
     return new Response(
       JSON.stringify({ error: rl.blocked ? "Source IP temporarily blocked" : "Too many connection attempts" }),
@@ -689,6 +721,10 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         if (!pendingRaw) continue;
         try {
           const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+          // Only the uploader may attach a pending upload (same rule as the
+          // immediate post path): a guessed or leaked id must not let a
+          // scheduled post carry somebody else's media.
+          if (pending.actorId && pending.actorId !== actor.id) continue;
           const mimeType = (pending.mimeType as string | null) ?? null;
           const att = {
             id: mediaId,
@@ -1264,6 +1300,23 @@ async function executeScheduled(env: Env): Promise<void> {
     }
   } catch (err) {
     console.error("[cron] media cache stage failed", err);
+  }
+
+  // Abandoned user uploads: `media/<user>/…` R2 keys never attached to a
+  // status (discarded composer drafts). Cursor-bounded passes, a 31-day
+  // minimum age and the scheduled-posts guard live in the sweeper; a few runs
+  // a day is plenty. Independent of the media cache — uploads happen whether
+  // or not caching is enabled.
+  await setStage("upload-orphans");
+  if (await schedule.every("upload-orphans", 360)) {
+    try {
+      const swept = await sweepOrphanUploads({ DB: env.DB, R2: env.R2 });
+      if (swept.deleted > 0) {
+        console.log(`[cron] orphan uploads: scanned ${swept.scanned}, deleted ${swept.deleted}`);
+      }
+    } catch (err) {
+      console.error("[cron] orphan upload sweep failed", err);
+    }
   }
 
   // Quotes whose quoted post never made it here: the card is rendered from the

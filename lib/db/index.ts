@@ -1,6 +1,7 @@
 import { ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
+import { safeMediaUrl } from "@/lib/safe-url";
 import { MEDIA_CACHE_COLD_DAYS, MEDIA_CACHE_COLD_MAX_HITS } from "@/lib/constants";
 import { normalizeAttributionDomains } from "@/lib/activitypub/utils";
 import type {
@@ -34,6 +35,25 @@ import type {
   LinkPreviewQueueEntry,
   TimelineEntry,
 } from "@/lib/types";
+
+// ─────────────────────────────────────────
+// Pagination guards — defence in depth
+// ─────────────────────────────────────────
+
+/**
+ * SQLite reads a negative `LIMIT` as *no limit* and throws on a NaN bind, so
+ * every reader fed from a route normalizes its pagination once more here even
+ * though the routes already clamp (`clampLimit` in lib/constants.ts): a future
+ * caller that forgets must not be able to dump a whole table into the Worker.
+ */
+function safeLimit(limit: number, fallback: number): number {
+  return Number.isFinite(limit) && limit >= 1 ? Math.floor(limit) : fallback;
+}
+
+/** A negative OFFSET behaves like none at all; pages never start before zero. */
+function safeOffset(offset: number): number {
+  return Number.isFinite(offset) && offset >= 1 ? Math.floor(offset) : 0;
+}
 
 // ─────────────────────────────────────────
 // Row mappers — D1 returns snake_case column names; convert to camelCase
@@ -1116,19 +1136,20 @@ export async function addAccountsToList(
   actorIds: string[]
 ): Promise<void> {
   if (actorIds.length === 0) return;
-  const placeholders = actorIds.map(() => "?").join(",");
-  const existing = await db
-    .prepare(`SELECT id FROM actors WHERE id IN (${placeholders})`)
-    .bind(...actorIds)
-    .all<{ id: string }>();
-  const valid = new Set(existing.results.map((a) => a.id));
-  for (const actorId of actorIds) {
-    if (!valid.has(actorId)) continue;
-    await db
-      .prepare("INSERT OR IGNORE INTO list_accounts (id, list_id, actor_id) VALUES (?, ?, ?)")
-      .bind(crypto.randomUUID(), listId, actorId)
-      .run();
-  }
+  // One statement with a JSON array (D1's bind limit is ~100 parameters, and a
+  // per-id loop was one round trip per account): ids are generated in SQL and
+  // only existing actors are inserted.
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO list_accounts (id, list_id, actor_id)
+       SELECT lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'
+              ||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))),
+              ?, value
+         FROM json_each(?)
+        WHERE value IN (SELECT id FROM actors)`
+    )
+    .bind(listId, JSON.stringify(actorIds))
+    .run();
 }
 
 export async function removeAccountsFromList(
@@ -1137,12 +1158,13 @@ export async function removeAccountsFromList(
   actorIds: string[]
 ): Promise<void> {
   if (actorIds.length === 0) return;
-  for (const actorId of actorIds) {
-    await db
-      .prepare("DELETE FROM list_accounts WHERE list_id = ? AND actor_id = ?")
-      .bind(listId, actorId)
-      .run();
-  }
+  await db
+    .prepare(
+      `DELETE FROM list_accounts
+        WHERE list_id = ? AND actor_id IN (SELECT value FROM json_each(?))`
+    )
+    .bind(listId, JSON.stringify(actorIds))
+    .run();
 }
 
 // ─────────────────────────────────────────
@@ -1270,7 +1292,8 @@ export async function getAccountSuggestions(
   viewerId: string | null,
   opts: { limit?: number; offset?: number; rotationSeed?: number; recommendedIds?: string[] } = {}
 ): Promise<AccountSuggestion[]> {
-  const { limit = 20, offset = 0 } = opts;
+  const limit = safeLimit(opts.limit ?? 20, 20);
+  const offset = safeOffset(opts.offset ?? 0);
   const wanted = Math.min(limit + offset, 100);
   // Pools used to end with static tie-breakers (`last_status_at`,
   // `followers_count`), so on an instance full of equally-followed accounts the
@@ -1585,7 +1608,9 @@ export async function listCollectionsForAccount(
   accountId: string,
   opts: { discoverableOnly?: boolean; limit?: number; offset?: number } = {}
 ): Promise<CollectionRow[]> {
-  const { discoverableOnly = false, limit = 40, offset = 0 } = opts;
+  const { discoverableOnly = false } = opts;
+  const limit = safeLimit(opts.limit ?? 40, 40);
+  const offset = safeOffset(opts.offset ?? 0);
   const where = discoverableOnly ? "WHERE c.account_id = ? AND c.discoverable = 1" : "WHERE c.account_id = ?";
   const rows = await db
     .prepare(`${COLLECTION_SELECT} ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`)
@@ -1599,7 +1624,8 @@ export async function listCollectionsFeaturedIn(
   accountId: string,
   opts: { limit?: number; offset?: number } = {}
 ): Promise<CollectionRow[]> {
-  const { limit = 40, offset = 0 } = opts;
+  const limit = safeLimit(opts.limit ?? 40, 40);
+  const offset = safeOffset(opts.offset ?? 0);
   const rows = await db
     .prepare(
       `${COLLECTION_SELECT} JOIN collection_items ci ON ci.collection_id = c.id
@@ -1617,7 +1643,8 @@ export async function searchCollections(
   query: string,
   opts: { limit?: number; offset?: number } = {}
 ): Promise<CollectionRow[]> {
-  const { limit = 40, offset = 0 } = opts;
+  const limit = safeLimit(opts.limit ?? 40, 40);
+  const offset = safeOffset(opts.offset ?? 0);
   const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
   const tagLike = `%${query.replace(/^#/, "").replace(/[%_]/g, "\\$&")}%`;
   const rows = await db
@@ -1894,6 +1921,7 @@ export async function getConversations(
   actorId: string,
   limit: number
 ): Promise<{ id: string; last_status_id: string | null; unread: boolean; updated_at: string }[]> {
+  limit = safeLimit(limit, 20);
   const rows = await db
     .prepare("SELECT id, last_status_id, unread, updated_at FROM conversations WHERE actor_id = ? ORDER BY updated_at DESC LIMIT ?")
     .bind(actorId, limit)
@@ -2065,6 +2093,7 @@ export async function getScheduledStatuses(
   actorId: string,
   limit: number
 ): Promise<{ id: string; scheduled_at: string; params: string; media_ids: string | null }[]> {
+  limit = safeLimit(limit, 20);
   const rows = await db
     .prepare("SELECT id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE actor_id = ? ORDER BY scheduled_at ASC LIMIT ?")
     .bind(actorId, limit)
@@ -2397,6 +2426,7 @@ export async function getObjectsQuoting(
   limit = 20,
   maxId?: string
 ): Promise<LocalObject[]> {
+  limit = safeLimit(limit, 20);
   let where = "o.quote_id = ?";
   const params: unknown[] = [objectId];
   if (maxId) {
@@ -2543,6 +2573,7 @@ export async function getPublicTimeline(
   minId?: string,
   viewerId?: string
 ): Promise<LocalObject[]> {
+  limit = safeLimit(limit, 20);
   // local=true  → only statuses from this instance
   // local=false → all public statuses (federated timeline)
   // remote=true → only statuses from remote instances
@@ -2628,6 +2659,7 @@ export async function getHomeTimeline(
   maxId?: string,
   minId?: string
 ): Promise<TimelineEntry[]> {
+  limit = safeLimit(limit, 20);
   // Own posts → all visibilities (except direct).
   // Posts from followed accounts → public, unlisted, followers-only.
   // Boosts from own/followed accounts → the boosted object, with Mastodon's
@@ -2738,6 +2770,7 @@ export async function getListTimeline(
   maxId?: string,
   sinceId?: string
 ): Promise<LocalObject[]> {
+  limit = safeLimit(limit, 20);
   const memberRows = await db
     .prepare("SELECT actor_id FROM list_accounts WHERE list_id = ?")
     .bind(listId)
@@ -2814,6 +2847,7 @@ export async function getHashtagTimeline(
   sinceId?: string,
   viewerId?: string
 ): Promise<LocalObject[]> {
+  limit = safeLimit(limit, 20);
   // Indexed via object_tags (extracted at ingest time): the (tag, published)
   // index resolves tag + ordering without scanning `raw`. The recency bound
   // keeps outposts of rarely-used tags from touching the whole table.
@@ -2894,6 +2928,30 @@ export async function countActorPublicStatuses(db: D1Database, actorId: string):
   return Number(row?.c ?? 0);
 }
 
+/**
+ * Visibility predicate for a boosted original, judged against the ORIGINAL's
+ * author — never the booster's: following the booster must not expose a
+ * followers-only post they boosted, and a direct post stays visible only to
+ * its own author. With a viewer it binds three times (author check, accepted
+ * follow probe, direct-author check); anonymous callers get the plain
+ * public/unlisted filter.
+ */
+function boostedOriginalVisibilitySql(viewerId?: string): { sql: string; binds: unknown[] } {
+  if (!viewerId) {
+    return { sql: `o.visibility IN ('public', 'unlisted')`, binds: [] };
+  }
+  return {
+    sql: `(
+       o.visibility IN ('public', 'unlisted')
+       OR (o.visibility = 'private' AND (o.actor_id = ? OR EXISTS (
+             SELECT 1 FROM follows f
+              WHERE f.actor_id = ? AND f.target_id = o.actor_id AND f.state = 'accepted')))
+       OR (o.visibility = 'direct' AND o.actor_id = ?)
+     )`,
+    binds: [viewerId, viewerId, viewerId],
+  };
+}
+
 export async function getActorStatuses(
   db: D1Database,
   actorId: string,
@@ -2903,6 +2961,7 @@ export async function getActorStatuses(
   isFollowing = false,
   options: { includeBoosts?: boolean } = {}
 ): Promise<TimelineEntry[]> {
+  limit = safeLimit(limit, 20);
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
     ? "'public', 'unlisted', 'private', 'direct'"
@@ -2926,13 +2985,17 @@ export async function getActorStatuses(
   }
 
   // Profile posts include the account's boosts by default (Mastodon's
-  // "Show boosts" default), ordered by the boost time.
+  // "Show boosts" default), ordered by the boost time. The boosted original's
+  // visibility is judged against its own author, not the profile owner's.
+  const boostVis = boostedOriginalVisibilitySql(viewerId);
   const boostSql = `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
     FROM announces a JOIN objects o ON o.id = a.object_id
-    WHERE a.actor_id = ? AND o.visibility IN (${visibilities})
+    WHERE a.actor_id = ? AND ${boostVis.sql}
       ${maxId ? "AND a.created_at < ?" : ""}
     ORDER BY a.created_at DESC LIMIT ?`;
-  const boostBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
+  const boostBinds: unknown[] = maxId
+    ? [actorId, ...boostVis.binds, cursor, limit]
+    : [actorId, ...boostVis.binds, limit];
 
   const rows = await db
     .prepare(`SELECT * FROM (SELECT * FROM (${objectSql}) UNION ALL SELECT * FROM (${boostSql})) ORDER BY sort_at DESC LIMIT ?`)
@@ -2957,6 +3020,7 @@ export async function getActorFeedStatuses(
   limit = 20,
   maxId?: string
 ): Promise<LocalObject[]> {
+  limit = safeLimit(limit, 20);
   const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
   if (maxId && !cursor) return [];
   const rows = await db
@@ -2984,28 +3048,26 @@ export async function getActorBoosts(
   actorId: string,
   limit = 20,
   maxId?: string,
-  viewerId?: string,
-  isFollowing = false
+  viewerId?: string
 ): Promise<TimelineEntry[]> {
-  const isAuthor = viewerId === actorId;
-  const visibilities = isAuthor
-    ? "'public', 'unlisted', 'private', 'direct'"
-    : isFollowing
-      ? "'public', 'unlisted', 'private'"
-      : "'public', 'unlisted'";
+  limit = safeLimit(limit, 20);
 
   const cursor = maxId ? await resolveTimelineSortCursor(db, maxId) : null;
   if (maxId && !cursor) return [];
 
+  // The Boosts tab shows another account's boosts: the original's visibility
+  // is judged against its own author (boostedOriginalVisibilitySql), never
+  // against the booster whose profile this is.
+  const vis = boostedOriginalVisibilitySql(viewerId);
   const rows = await db
     .prepare(
       `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
        FROM announces a JOIN objects o ON o.id = a.object_id
-       WHERE a.actor_id = ? AND o.visibility IN (${visibilities})
+       WHERE a.actor_id = ? AND ${vis.sql}
          ${maxId ? "AND a.created_at < ?" : ""}
        ORDER BY a.created_at DESC LIMIT ?`
     )
-    .bind(...(maxId ? [actorId, cursor, limit] : [actorId, limit]))
+    .bind(actorId, ...vis.binds, ...(maxId ? [cursor] : []), limit)
     .all<Row>();
   return rows.results.map((row) => ({
     object: rowToObject(row),
@@ -3260,6 +3322,8 @@ export async function getFollowers(
   limit = 40,
   offset = 0
 ): Promise<LocalActor[]> {
+  limit = safeLimit(limit, 40);
+  offset = safeOffset(offset);
   const rows = await db
     .prepare(
       `SELECT a.* FROM actors a
@@ -3278,6 +3342,8 @@ export async function getFollowing(
   limit = 40,
   offset = 0
 ): Promise<LocalActor[]> {
+  limit = safeLimit(limit, 40);
+  offset = safeOffset(offset);
   const rows = await db
     .prepare(
       `SELECT a.* FROM actors a
@@ -3698,6 +3764,7 @@ export async function getNotifications(
   maxId?: string,
   typeFilter: { include?: string[]; exclude?: string[]; filtered?: boolean } = {}
 ): Promise<LocalNotification[]> {
+  limit = safeLimit(limit, 20);
   const conditions = ["target_account_id = ?"];
   // Limited-account policy: filtered notifications are hidden by default and
   // live in their own tab (`filtered=true`).
@@ -3891,6 +3958,12 @@ export async function deleteOAuthToken(db: D1Database, id: string): Promise<void
 // ─────────────────────────────────────────
 
 export async function createAttachment(db: D1Database, att: LocalAttachment): Promise<void> {
+  // A remote server controls this URL and it ends up in an `href`/`src` and in
+  // the Mastodon API: `javascript:`/`data:` (or a stray quote) must never be
+  // stored in the first place. Relative paths are our own `/api/media/...`.
+  const url = safeMediaUrl(att.url);
+  if (!url) return;
+  const remoteUrl = att.remoteUrl ? safeMediaUrl(att.remoteUrl) : null;
   await db
     .prepare(
       `INSERT OR IGNORE INTO attachments (id, object_id, type, url, remote_url, description, blurhash, width, height, file_size, mime_type, sensitive)
@@ -3900,8 +3973,8 @@ export async function createAttachment(db: D1Database, att: LocalAttachment): Pr
       att.id,
       att.objectId,
       att.type,
-      att.url,
-      att.remoteUrl ?? null,
+      url,
+      remoteUrl,
       att.description ?? null,
       att.blurhash ?? null,
       att.width ?? null,
@@ -4049,6 +4122,7 @@ export async function getActorStatuses_withReplies(
   viewerId?: string,
   isFollowing = false
 ): Promise<TimelineEntry[]> {
+  limit = safeLimit(limit, 20);
   const isAuthor = viewerId === actorId;
   const visibilities = isAuthor
     ? "'public', 'unlisted', 'private', 'direct'"
@@ -4131,6 +4205,8 @@ export async function getBlockedActors(
   limit = 40,
   offset = 0
 ): Promise<LocalActor[]> {
+  limit = safeLimit(limit, 40);
+  offset = safeOffset(offset);
   const rows = await db
     .prepare(
       `SELECT a.* FROM actors a
@@ -4626,6 +4702,14 @@ export async function createPasswordReset(
   token: string,
   expiresAt: string
 ): Promise<void> {
+  // One live reset link per account: requesting a new one invalidates every
+  // previous unused token, so an older link (intercepted, or forgotten in a
+  // mailbox) cannot be redeemed after the fact — the same rule the email
+  // verification flow follows.
+  await db
+    .prepare("UPDATE password_resets SET used = 1 WHERE actor_id = ? AND used = 0")
+    .bind(actorId)
+    .run();
   await db
     .prepare("INSERT INTO password_resets (id, actor_id, token, expires_at) VALUES (?,?,?,?)")
     .bind(crypto.randomUUID(), actorId, token, expiresAt)
@@ -4753,6 +4837,13 @@ export async function upsertCustomEmoji(
     actorId?: string | null;
   }
 ): Promise<void> {
+  // Federated Emoji tags carry whatever URL the remote server chose, and both
+  // renderers interpolate it into `<img src="...">`: a `javascript:`/`data:` URL
+  // — or one with a quote in it — is stored XSS. Only our own relative media
+  // paths and absolute http(s) URLs are accepted.
+  const url = safeMediaUrl(emoji.url);
+  const staticUrl = safeMediaUrl(emoji.staticUrl) ?? url;
+  if (!url || !staticUrl) return;
   await db
     .prepare(
       `INSERT INTO custom_emojis (id, shortcode, url, static_url, category, visible_in_picker, domain, actor_id)
@@ -4768,8 +4859,8 @@ export async function upsertCustomEmoji(
     .bind(
       emoji.id,
       emoji.shortcode,
-      emoji.url,
-      emoji.staticUrl,
+      url,
+      staticUrl,
       emoji.category ?? null,
       emoji.visibleInPicker !== false ? 1 : 0,
       emoji.domain ?? null,
@@ -5156,9 +5247,20 @@ export async function linkObjectPreviewCard(
   cardId: string,
   cardJson: string
 ): Promise<void> {
-  await db
+  const result = await db
     .prepare("UPDATE objects SET card_id = ?, card_json = ? WHERE id = ?")
     .bind(cardId, cardJson, objectId)
+    .run();
+  if ((result.meta?.changes ?? 0) > 0) return;
+  // The status was deleted while its link was being crawled: the card has no
+  // owner and no objects row is going away to fire the cleanup trigger.
+  await db
+    .prepare(
+      `DELETE FROM preview_cards
+        WHERE id = ?
+          AND NOT EXISTS (SELECT 1 FROM objects WHERE card_id = ?)`
+    )
+    .bind(cardId, cardId)
     .run();
 }
 
@@ -5247,13 +5349,23 @@ export async function listOrphanMediaCache(
   return rows.results ?? [];
 }
 
-/** Remove old cards no status points at (bounded per tick). */
+/**
+ * Remove old cards no status points at (bounded per tick).
+ *
+ * The triggers on `objects` (`objects_card_cleanup*`) drop a card when its last
+ * status goes away, so this is only the safety net for a card whose status
+ * vanished while it was being crawled — hence the recent window: an anti-join
+ * over the whole table read every card ever crawled (~83k rows / 1.4 s per run
+ * on cf-ap, growing forever) to find a handful. `idx_preview_cards_created`
+ * makes the window an index range.
+ */
 export async function cleanupOrphanPreviewCards(db: D1Database, limit: number): Promise<number> {
   const result = await db
     .prepare(
       `DELETE FROM preview_cards WHERE id IN (
-         SELECT pc.id FROM preview_cards pc
-         WHERE pc.created_at < datetime('now', '-1 hour')
+         SELECT pc.id FROM preview_cards pc INDEXED BY idx_preview_cards_created
+         WHERE pc.created_at >= datetime('now', '-2 days')
+           AND pc.created_at < datetime('now', '-1 hour')
            AND NOT EXISTS (SELECT 1 FROM objects o WHERE o.card_id = pc.id)
            -- A live negative cache is an orphan by definition: keep it until
            -- its window expires, or every status linking to the dead URL
@@ -6156,7 +6268,9 @@ export async function listInstances(
   db: D1Database,
   opts: { limit?: number; offset?: number; query?: string; status?: string; dormantDays?: number } = {}
 ): Promise<{ instances: InstanceListItem[]; total: number }> {
-  const { limit = 40, offset = 0, query = "", status = "all", dormantDays = 30 } = opts;
+  const { query = "", status = "all", dormantDays = 30 } = opts;
+  const limit = safeLimit(opts.limit ?? 40, 40);
+  const offset = safeOffset(opts.offset ?? 0);
   const where: string[] = [];
   const binds: unknown[] = [];
   if (query) {
@@ -6836,6 +6950,7 @@ export async function getMlsMessagesByRecipient(
   maxId?: string,
   conversation?: string
 ): Promise<LocalMlsMessage[]> {
+  limit = safeLimit(limit, 50);
   const params: (string | number)[] = [recipientId];
   let filter = "";
   if (conversation) {
