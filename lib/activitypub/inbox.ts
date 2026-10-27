@@ -72,6 +72,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
+import { isPublishedInFuture } from "@/lib/dates";
 import {
   approvalUriFrom,
   buildAcceptQuoteRequest,
@@ -733,8 +734,11 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     }
   }
 
-  // Broadcast to timeline streaming clients (fire-and-forget)
-  if (ctx.timelineStream) {
+  // Broadcast to timeline streaming clients (fire-and-forget). A status whose
+  // publish instant has not arrived yet (remote server with a skewed clock) is
+  // stored but never streamed: the timeline queries hide it until then and it
+  // surfaces naturally when its moment passes — no cron needed.
+  if (ctx.timelineStream && !isPublishedInFuture(obj.published)) {
     const statusVisibility = resolveVisibility(obj.to, obj.cc);
     // Silenced (limited) and suspended authors are hidden from the public
     // streams, but their followers still receive posts on their home feeds.
@@ -1655,6 +1659,9 @@ async function storeRelayedStatus(
   // A held status (remote media still caching) is announced by the cron.
   if (!stored || stored.mediaPending) return;
   if (stored.visibility !== "public" && stored.visibility !== "unlisted") return;
+  // Not yet due (skewed remote clock): stored, but not streamed — the timeline
+  // queries surface it when its publish instant arrives.
+  if (isPublishedInFuture(stored.published)) return;
   const author = await getActorById(ctx.db, stored.actorId);
   if (!author || author.isLocal || !ctx.timelineStream) return;
   try {
@@ -1778,7 +1785,11 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
       if (await createNotification(ctx.db, notif)) await broadcastAndPush(ctx, notif);
     }
     await broadcastRemoteStatusRefresh(ctx, objectId);
-    await broadcastNewBoostToFollowers(ctx.db, ctx.timelineStream, announcerActor, resolvedObj, announceId, announceCreatedAt, new URL(ctx.baseUrl).hostname);
+    // A boost of a not-yet-due original is stored but not streamed: the home
+    // timeline query hides it until the original's publish instant arrives.
+    if (!isPublishedInFuture(resolvedObj.published)) {
+      await broadcastNewBoostToFollowers(ctx.db, ctx.timelineStream, announcerActor, resolvedObj, announceId, announceCreatedAt, new URL(ctx.baseUrl).hostname);
+    }
   }
 }
 

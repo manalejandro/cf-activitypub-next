@@ -1,4 +1,5 @@
 import { ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
+import { isPublishedInFuture } from "@/lib/dates";
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 import { safeMediaUrl } from "@/lib/safe-url";
@@ -320,6 +321,25 @@ export const PUBLIC_STATUS_TYPE_SQL = PUBLIC_STATUS_TYPES.map((t) => `'${t}'`).j
 const PUBLIC_STATUS_TYPE_SET: ReadonlySet<string> = new Set(PUBLIC_STATUS_TYPES);
 
 /**
+ * Future-dated federation guard. A remote server with a skewed clock (a
+ * WordPress ActivityPub plugin publishing local time as UTC — measured on
+ * cf-ap, Oct 2026: two posts pinned to the top of the federated timeline for
+ * hours) can send a status whose `published` lies in the future, and ordering
+ * by published pins it above every real post until that instant arrives. The
+ * rows are stored untouched; timeline/profile/ranking readers hide them until
+ * the moment passes and they then appear naturally — no cron, no migration.
+ * The strftime shape is byte-identical to the ISO-8601-with-Z form the
+ * AP-derived columns use (`YYYY-MM-DDTHH:MM:SS.sssZ`, lib/dates.ts), so the
+ * comparison stays string-ordered and rides the published indexes; a legacy
+ * space-shaped row (should one survive) compares lower and stays visible —
+ * fail-open, never hiding a legitimate post.
+ */
+const NOT_FUTURE_NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+export function notInFutureSql(column = "o.published"): string {
+  return `${column} <= ${NOT_FUTURE_NOW_SQL}`;
+}
+
+/**
  * Last public post date of an actor (YYYY-MM-DD form, like Mastodon's
  * `last_status_at`), or null when the actor has no public statuses.
  *
@@ -358,7 +378,7 @@ export async function getLastStatusAt(db: D1Database, actorId: string): Promise<
 /** Last public post date computed from the actor's own stored objects. */
 async function computeLastStatusAtFromObjects(db: D1Database, actorId: string): Promise<string | null> {
   const row = await db
-    .prepare(`SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN (${PUBLIC_STATUS_TYPE_SQL})`)
+    .prepare(`SELECT MAX(published) AS p FROM objects WHERE actor_id = ? AND visibility IN ('public', 'unlisted') AND type IN (${PUBLIC_STATUS_TYPE_SQL}) AND published <= ${NOT_FUTURE_NOW_SQL}`)
     .bind(actorId)
     .first<{ p: string | null }>();
   if (!row?.p) return null;
@@ -400,6 +420,7 @@ export async function getLastStatusAtMap(
          WHERE actor_id IN (${lp})
            AND visibility IN ('public', 'unlisted')
            AND type IN (${PUBLIC_STATUS_TYPE_SQL})
+           AND published <= ${NOT_FUTURE_NOW_SQL}
          GROUP BY actor_id`
       )
       .bind(...unique)
@@ -441,6 +462,7 @@ export async function getLastStatusAtMap(
          WHERE actor_id IN (${lp})
            AND visibility IN ('public', 'unlisted')
            AND type IN (${PUBLIC_STATUS_TYPE_SQL})
+           AND published <= ${NOT_FUTURE_NOW_SQL}
          GROUP BY actor_id`
       )
       .bind(...computeIds)
@@ -2401,7 +2423,13 @@ export async function createObject(db: D1Database, obj: Omit<LocalObject, "updat
     ),
   ];
   // Keep the actor's directory "active" rank fresh (see idx_actors_discoverable_active).
-  if ((obj.visibility === "public" || obj.visibility === "unlisted") && PUBLIC_STATUS_TYPE_SET.has(obj.type)) {
+  // A future-dated post (skewed remote clock) must not rank the account as the
+  // most recently active before the post actually exists.
+  if (
+    !isPublishedInFuture(obj.published) &&
+    (obj.visibility === "public" || obj.visibility === "unlisted") &&
+    PUBLIC_STATUS_TYPE_SET.has(obj.type)
+  ) {
     const date = obj.published.slice(0, 10);
     statements.push(
       db
@@ -2427,7 +2455,7 @@ export async function getObjectsQuoting(
   maxId?: string
 ): Promise<LocalObject[]> {
   limit = safeLimit(limit, 20);
-  let where = "o.quote_id = ?";
+  let where = `o.quote_id = ? AND ${notInFutureSql()}`;
   const params: unknown[] = [objectId];
   if (maxId) {
     where += " AND o.published < ?";
@@ -2602,6 +2630,7 @@ export async function getPublicTimeline(
       .prepare(
         `SELECT o.* FROM objects o
          WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+           AND ${notInFutureSql()}
            AND o.published > ?
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -2614,6 +2643,7 @@ export async function getPublicTimeline(
       .prepare(
         `SELECT o.* FROM objects o
          WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+           AND ${notInFutureSql()}
            AND o.published < (SELECT published FROM objects WHERE id = ?)
          ORDER BY o.published DESC LIMIT ?`
       )
@@ -2625,6 +2655,7 @@ export async function getPublicTimeline(
     .prepare(
       `SELECT o.* FROM objects o
        WHERE o.visibility = 'public' ${localFilter} ${mediaFilter} ${stateFilter} ${blockFilter}
+         AND ${notInFutureSql()}
        ORDER BY o.published DESC LIMIT ?`
     )
     .bind(...blockBinds, limit)
@@ -2691,7 +2722,8 @@ export async function getHomeTimeline(
         AND NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = o.actor_id AND a.suspended = 1)
         AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
         AND NOT EXISTS (SELECT 1 FROM actors ba WHERE ba.id = o.actor_id AND ba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
-        AND ${REPLY_TO_BLOCKED_SQL}`;
+        AND ${REPLY_TO_BLOCKED_SQL}
+        AND ${notInFutureSql()}`;
     if (sortCursor) {
       sql += ` AND o.published ${cursorOp} ?`;
       binds.push(sortCursor);
@@ -2726,7 +2758,8 @@ export async function getHomeTimeline(
       AND a.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
       AND o.actor_id NOT IN (SELECT target_id FROM blocks WHERE actor_id = ?)
       AND NOT EXISTS (SELECT 1 FROM actors bba WHERE bba.id = o.actor_id AND bba.domain IN (SELECT domain FROM domain_blocks WHERE actor_id = ?))
-      AND ${REPLY_TO_BLOCKED_SQL}`;
+      AND ${REPLY_TO_BLOCKED_SQL}
+      AND ${notInFutureSql()}`;
   if (sortCursor) {
     boostSql += ` AND a.created_at ${cursorOp} ?`;
     boostBinds.push(sortCursor);
@@ -2821,6 +2854,7 @@ export async function getListTimeline(
     WHERE o.visibility = '${visibility}'
       AND o.actor_id IN (SELECT value FROM json_each(?))
       AND ${REPLY_TO_BLOCKED_SQL}
+      AND ${notInFutureSql()}
       ${publishedClause}
     ORDER BY o.published DESC LIMIT ?`;
   const branchBinds: unknown[] = cursorPublished
@@ -2880,6 +2914,7 @@ export async function getHashtagTimeline(
            AND o.visibility IN ('public', 'unlisted')
            AND t.published >= ?
            AND t.published > ?
+           AND t.published <= ${NOT_FUTURE_NOW_SQL}
            ${stateFilter} ${blockFilter}
          ORDER BY t.published DESC LIMIT ?`
       )
@@ -2895,6 +2930,7 @@ export async function getHashtagTimeline(
            AND o.visibility IN ('public', 'unlisted')
            AND t.published >= ?
            AND t.published < (SELECT published FROM objects WHERE id = ?)
+           AND t.published <= ${NOT_FUTURE_NOW_SQL}
            ${stateFilter} ${blockFilter}
          ORDER BY t.published DESC LIMIT ?`
       )
@@ -2908,6 +2944,7 @@ export async function getHashtagTimeline(
        WHERE t.tag = ?
          AND o.visibility IN ('public', 'unlisted')
          AND t.published >= ?
+         AND t.published <= ${NOT_FUTURE_NOW_SQL}
          ${stateFilter} ${blockFilter}
        ORDER BY t.published DESC LIMIT ?`
     )
@@ -2921,7 +2958,8 @@ export async function countActorPublicStatuses(db: D1Database, actorId: string):
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS c FROM objects
-       WHERE actor_id = ? AND visibility = 'public' AND type IN (${PUBLIC_STATUS_TYPE_SQL})`
+       WHERE actor_id = ? AND visibility = 'public' AND type IN (${PUBLIC_STATUS_TYPE_SQL})
+         AND published <= ${NOT_FUTURE_NOW_SQL}`
     )
     .bind(actorId)
     .first<{ c: number }>();
@@ -2975,6 +3013,7 @@ export async function getActorStatuses(
   const objectSql = `SELECT o.*, NULL AS boost_id, NULL AS boost_actor_id, NULL AS boost_created_at, o.published AS sort_at
     FROM objects o
     WHERE o.actor_id = ? AND o.visibility IN (${visibilities})
+      AND ${notInFutureSql()}
       ${maxId ? "AND o.published < ?" : ""}
     ORDER BY o.published DESC LIMIT ?`;
   const objectBinds: unknown[] = maxId ? [actorId, cursor, limit] : [actorId, limit];
@@ -2991,6 +3030,7 @@ export async function getActorStatuses(
   const boostSql = `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
     FROM announces a JOIN objects o ON o.id = a.object_id
     WHERE a.actor_id = ? AND ${boostVis.sql}
+      AND ${notInFutureSql()}
       ${maxId ? "AND a.created_at < ?" : ""}
     ORDER BY a.created_at DESC LIMIT ?`;
   const boostBinds: unknown[] = maxId
@@ -3030,6 +3070,7 @@ export async function getActorFeedStatuses(
          AND o.visibility IN ('public', 'unlisted')
          AND o.in_reply_to_id IS NULL
          AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+         AND ${notInFutureSql()}
          ${maxId ? "AND o.published < ?" : ""}
        ORDER BY o.published DESC LIMIT ?`
     )
@@ -3064,6 +3105,7 @@ export async function getActorBoosts(
       `SELECT o.*, a.id AS boost_id, a.actor_id AS boost_actor_id, a.created_at AS boost_created_at, a.created_at AS sort_at
        FROM announces a JOIN objects o ON o.id = a.object_id
        WHERE a.actor_id = ? AND ${vis.sql}
+         AND ${notInFutureSql()}
          ${maxId ? "AND a.created_at < ?" : ""}
        ORDER BY a.created_at DESC LIMIT ?`
     )
@@ -3197,6 +3239,7 @@ export async function deleteObject(db: D1Database, id: string): Promise<void> {
            WHERE o.actor_id = actors.id
              AND o.visibility IN ('public', 'unlisted')
              AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
+             AND ${notInFutureSql()}
          ), '')
          WHERE id = ? AND COALESCE(last_status_at, '') <= substr(?, 1, 10)`
       )
@@ -4136,7 +4179,7 @@ export async function getActorStatuses_withReplies(
   // The replies tab has no boosts: Mastodon excludes reblogs from "Posts and
   // replies" (the posts tab includes them by default).
   const query = (withPublished: boolean) => {
-    const where = `WHERE actor_id = ? AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities})`;
+    const where = `WHERE actor_id = ? AND in_reply_to_id IS NOT NULL AND visibility IN (${visibilities}) AND published <= ${NOT_FUTURE_NOW_SQL}`;
     if (withPublished) {
       return `SELECT * FROM objects ${where}
               AND published < ?

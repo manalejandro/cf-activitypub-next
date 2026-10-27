@@ -36,6 +36,7 @@ import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { scopesAllow } from "../lib/auth";
 import { atomicRateLimit } from "../lib/rate-limit";
+import { isPublishedInFuture } from "../lib/dates";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { sweepOrphanUploads } from "../lib/media/orphan-uploads";
 import { serveMediaObject } from "../lib/media/serve";
@@ -1228,6 +1229,10 @@ async function executeScheduled(env: Env): Promise<void> {
           for (const objectId of released) {
             const payload = await serializeObjectForStream(env, objectId, domain);
             if (!payload) continue;
+            // A released status whose publish instant has not arrived yet
+            // (skewed remote clock) is not announced: the timeline queries
+            // surface it when the moment passes.
+            if (isPublishedInFuture(payload.status.created_at)) continue;
             await broadcastStatusCreatedToAudience(env.DB, env.TIMELINE_STREAM, payload.status, {
               id: payload.authorId,
               isLocal: payload.isLocal,

@@ -61,6 +61,21 @@ export function isoTimestamp(value: unknown): string {
 }
 
 /**
+ * Whether an AP `published` value still lies in the future — a remote server
+ * with a skewed clock (a WordPress ActivityPub plugin publishing local time as
+ * UTC, measured on cf-ap: posts pinned to the top of every timeline for hours)
+ * can send one. Such a status is stored untouched, but timelines and streams
+ * hide it until its instant arrives (SQL side: `notInFutureSql` in lib/db).
+ * Unparseable values are NOT treated as future (fail open: a strange date
+ * must never make a legitimate post invisible).
+ */
+export function isPublishedInFuture(value: unknown, now = Date.now()): boolean {
+  const iso = toIsoOrNull(value);
+  if (!iso) return false;
+  return Date.parse(iso) > now;
+}
+
+/**
  * The database's shape for a JS date: UTC, second precision, no zone marker —
  * what `datetime('now')` writes and what a raw `column < datetime('now')`
  * comparison expects.
