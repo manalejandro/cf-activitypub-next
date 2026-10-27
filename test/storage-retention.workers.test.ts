@@ -5,6 +5,7 @@ import { applyTestSchema, resetTestStorage } from "./helpers/db";
 
 import {
   DEFAULT_STORAGE_RETENTION,
+  countIsStale,
   maintainStorageRetention,
   measureStoredPayload,
   nextFreedBytes,
@@ -344,6 +345,40 @@ describe("storage retention", () => {
     expect(nextFreedBytes({ size: 1000, freed: 300 }, 900)).toBe(0);
     // No size reported yet (first pass): nothing to fold in.
     expect(nextFreedBytes({ size: 0, freed: 0 }, 500)).toBe(0);
+  });
+
+  it("retakes the exact row counts at most once a day", async () => {
+    // A count is an index-only walk of *every* prunable row (~400k entries,
+    // 1.2 s per call on cf-ap), so between counts the stored figure is carried
+    // over while the byte sample keeps its own cadence.
+    expect(countIsStale(null, NOW)).toBe(true);
+    expect(countIsStale("not-a-date", NOW)).toBe(true);
+    expect(countIsStale(new Date(NOW.getTime() - 23 * 3_600_000).toISOString(), NOW)).toBe(false);
+    expect(countIsStale(new Date(NOW.getTime() - 25 * 3_600_000).toISOString(), NOW)).toBe(true);
+
+    await seedObject({ id: "https://remote.example/objects/1" });
+    expect((await measureStoredPayload(env, NOW)).rows).toBe(1);
+
+    await seedObject({ id: "https://remote.example/objects/2" });
+    expect((await measureStoredPayload(env, new Date(NOW.getTime() + 3_600_000))).rows).toBe(1);
+    expect((await measureStoredPayload(env, new Date(NOW.getTime() + 25 * 3_600_000))).rows).toBe(2);
+  });
+
+  it("keeps the carried-over count honest while it prunes", async () => {
+    await seedObject({ id: "https://remote.example/objects/oldest", published: OLD });
+    await seedObject({ id: "https://remote.example/objects/newest", published: RECENT });
+    expect((await measureStoredPayload(env, NOW)).rows).toBe(2);
+
+    // `measure: false`: no count is retaken, so the figure comes from the
+    // carried-over one minus what this pass pruned (the old status only).
+    const run = await maintainStorageRetention(
+      env,
+      { ...DEFAULT_STORAGE_RETENTION, days: 30 },
+      new Date(NOW.getTime() + 3_600_000),
+      { measure: false }
+    );
+    expect(run.objectsDeleted).toBe(1);
+    expect((await readStorageRetentionStats(env)).estimate.rows).toBe(1);
   });
 
   it("serves the admin endpoint and audits a manual pass", async () => {

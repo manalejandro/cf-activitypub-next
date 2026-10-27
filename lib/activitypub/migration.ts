@@ -136,18 +136,21 @@ export async function performMove(
       .first();
     await deleteFollow(db, follower.id, sourceId);
     if (!alreadyTargets) {
+      // Build the Follow first so its id lands in `activity_id`: the target's
+      // Accept{Follow} is matched by that column, and NULL left every migrated
+      // follower stuck in `pending` on our side.
+      const followActivity = buildFollow(baseUrl, follower.id, targetId, generateId());
       const state = target.manuallyApprovesFollowers ? "pending" : "accepted";
       await createFollow(db, {
         id: generateId(),
         actorId: follower.id,
         targetId,
         state,
-        activityId: null,
+        activityId: followActivity.id,
         createdAt: new Date().toISOString(),
       });
       if (state === "accepted") acceptedMoved++;
       if (target.inbox && follower.privateKeyPem) {
-        const followActivity = buildFollow(baseUrl, follower.id, targetId, generateId());
         await enqueueDeliveries(
           queue,
           [target.inbox],

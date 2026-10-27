@@ -18,6 +18,10 @@ let cached: Promise<BlockedAccounts> | null = null;
  * payload for every subscriber and cannot be filtered per viewer server-side.
  */
 export function fetchBlockedAccounts(): Promise<BlockedAccounts> {
+  // No token yet (anonymous visitor, or a cookie-only session still waiting
+  // for its rotate): answer without CACHING — a cached EMPTY here would stop
+  // the viewer's blocks from filtering shared streams for the whole session.
+  if (!getToken()) return Promise.resolve(EMPTY);
   if (!cached) {
     cached = (async () => {
       const token = getToken();
@@ -47,7 +51,10 @@ export function fetchBlockedAccounts(): Promise<BlockedAccounts> {
         }
       } catch { /* domains are best-effort */ }
       return { ids, domains };
-    })().catch(() => EMPTY);
+    })().catch(() => {
+      cached = null; // a failed walk is retryable, not a cached EMPTY
+      return EMPTY;
+    });
   }
   return cached;
 }

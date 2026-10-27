@@ -20,6 +20,7 @@ import {
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders, signedGetHeadersRfc9421 } from "@/lib/activitypub/federation";
+import { safeMediaUrl } from "@/lib/safe-url";
 import { federationUserAgent, FEDERATION_BROWSER_UA } from "@/lib/user-agent";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
@@ -602,6 +603,32 @@ async function fetchOutboxItems(
   return [];
 }
 
+/** Host of an IRI ("" when unparseable) — the outbox/featured anti-forgery gate. */
+function hostOf(iri: string): string {
+  try {
+    return new URL(iri).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * An outbox/featured item may only be stored under the profile owner when its
+ * IRI lives on the owner's host (and `attributedTo`, when declared, agrees).
+ * Without this a malicious server serves a victim's IRI with forged content:
+ * the copy is stored first and the real Create is then dropped as a
+ * "duplicate" — permanent squatting of the victim's object id.
+ */
+function outboxItemBelongsToActor(oid: string, actorId: string, obj: Record<string, unknown>): boolean {
+  const oidHost = hostOf(oid);
+  if (!oidHost || oidHost !== hostOf(actorId)) return false;
+  const attributed = typeof obj.attributedTo === "string"
+    ? obj.attributedTo
+    : (obj.attributedTo as { id?: string } | undefined)?.id;
+  if (attributed && hostOf(attributed) !== oidHost) return false;
+  return true;
+}
+
 /**
  * Poll the first page of a remote actor's outbox and ingest the public/visible
  * Notes into the local objects table so their profile pages show content even
@@ -641,6 +668,7 @@ export async function fetchAndCacheRemoteActorStatuses(
 
     const oid = obj.id as string | undefined;
     if (!oid) continue;
+    if (!outboxItemBelongsToActor(oid, actorId, obj)) continue;
 
     // Idempotency: skip anything we already have.
     if (await getObjectById(db, oid)) continue;
@@ -721,13 +749,19 @@ async function storeObjectAttachments(
   // Bounded: every attachment queues a media-cache fetch (see MAX_REMOTE_ATTACHMENTS).
   for (const att of attachment.slice(0, MAX_REMOTE_ATTACHMENTS)) {
     if (!att?.url || typeof att.url !== "string") continue;
+    // Validate BEFORE storing: createAttachment rejects unsafe URLs silently,
+    // and the cache must be enqueued with the SAME normalized URL that lands
+    // in `remote_url` or the hold/release joins never match.
+    const safeUrl = safeMediaUrl(att.url);
+    if (!safeUrl) continue;
+    const attachmentId = att.id || generateId();
     try {
       await createAttachment(db, {
-        id: att.id || generateId(),
+        id: attachmentId,
         objectId,
-        type: apAttachmentType(att.type, att.mediaType, att.url),
-        url: att.url,
-        remoteUrl: att.url,
+        type: apAttachmentType(att.type, att.mediaType, safeUrl),
+        url: safeUrl,
+        remoteUrl: safeUrl,
         description: att.name ?? null,
         blurhash: att.blurhash ?? null,
         width: att.width ?? null,
@@ -737,7 +771,7 @@ async function storeObjectAttachments(
         sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       });
-      await enqueueMediaCache(db, att.url, "attachment", att.id || "");
+      await enqueueMediaCache(db, safeUrl, "attachment", attachmentId);
     } catch { /* ignore duplicate/conflict */ }
   }
   await markObjectMediaPending(db, objectId);
@@ -868,6 +902,7 @@ export async function fetchAndCacheRemoteActorFeatured(
 
     const oid = item.id as string | undefined;
     if (!oid) continue;
+    if (!outboxItemBelongsToActor(oid, actorId, item)) continue;
 
     const objType = String(item.type ?? "").split("/").pop() ?? "";
     if (!isContentObjectType(objType)) continue;
@@ -906,14 +941,17 @@ export async function fetchAndCacheRemoteActorFeatured(
 
         // Inline attachments.
         if (Array.isArray(item.attachment)) {
-          for (const attachment of item.attachment as APAttachment[]) {
+          for (const attachment of (item.attachment as APAttachment[]).slice(0, MAX_REMOTE_ATTACHMENTS)) {
             if (!attachment?.url || typeof attachment.url !== "string") continue;
+            const safeUrl = safeMediaUrl(attachment.url);
+            if (!safeUrl) continue;
+            const attachmentId = attachment.id || generateId();
             const localAttachment: LocalAttachment = {
-              id: attachment.id || generateId(),
+              id: attachmentId,
               objectId: oid,
-              type: apAttachmentType(attachment.type, attachment.mediaType, attachment.url),
-              url: attachment.url,
-              remoteUrl: attachment.url,
+              type: apAttachmentType(attachment.type, attachment.mediaType, safeUrl),
+              url: safeUrl,
+              remoteUrl: safeUrl,
               description: attachment.name ?? null,
               blurhash: attachment.blurhash ?? null,
               width: attachment.width ?? null,
@@ -925,7 +963,7 @@ export async function fetchAndCacheRemoteActorFeatured(
             };
             try {
               await createAttachment(db, localAttachment);
-              await enqueueMediaCache(db, localAttachment.url, "attachment", localAttachment.id);
+              await enqueueMediaCache(db, safeUrl, "attachment", attachmentId);
             } catch { /* ignore */ }
           }
         }

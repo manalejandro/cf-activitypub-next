@@ -52,7 +52,7 @@ function makeKeyPackageCreateActivity() {
       "https://www.w3.org/ns/activitystreams",
       "https://purl.archive.org/socialweb/mls",
     ],
-    id: `${BASE}/activities/kp-create`,
+    id: `${REMOTE_ACTOR}/activities/kp-create`,
     type: "Create",
     actor: REMOTE_ACTOR,
     published: "2026-01-01T00:00:00Z",

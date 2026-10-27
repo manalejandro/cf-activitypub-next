@@ -96,3 +96,30 @@ export async function atomicRateLimit(
   }
   return { allowed: true, remaining: maxAttempts };
 }
+
+/**
+ * Clear a counter after a legitimate success (a verified login must not keep
+ * counting toward the lockout). Reaches BOTH backends: the DO through its
+ * `/reset` endpoint, and the KV fixed-window key `checkRateLimit` actually
+ * writes (`ratelimit:<key>:<window>` — deleting the bare key is a no-op).
+ * Never throws: a failed reset only means the window expires on its own.
+ */
+export async function resetRateLimit(
+  bindings: RateLimitBindings,
+  key: string,
+  windowSeconds: number
+): Promise<void> {
+  if (bindings.RATE_LIMIT) {
+    try {
+      const stub = bindings.RATE_LIMIT.get(bindings.RATE_LIMIT.idFromName(key));
+      const res = await stub.fetch("https://rate-limit/reset", { method: "POST" });
+      await res.body?.cancel().catch(() => {});
+    } catch { /* ignore */ }
+  }
+  if (bindings.KV) {
+    const now = Math.floor(Date.now() / 1000);
+    await bindings.KV
+      .delete(`ratelimit:${key}:${Math.floor(now / windowSeconds)}`)
+      .catch(() => {});
+  }
+}

@@ -36,7 +36,9 @@ const REMOTE_TARGET = "https://other.example/users/otro";
 function flagActivity(id: string, object: string[], actor = REPORTER) {
   return {
     "@context": "https://www.w3.org/ns/activitystreams",
-    id: `https://remote.example/activities/${id}`,
+    // Real servers mint activity ids on their OWN origin — the inbox dedup
+    // binds the id's host to the actor/signer host.
+    id: `${new URL(actor).origin}/activities/${id}`,
     type: "Flag",
     actor,
     content: "acoso en los comentarios",

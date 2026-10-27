@@ -10,12 +10,13 @@ import {
   getLastStatusAtMap,
   getBookmarkedObjectIds,
   getActorFieldsMap,
+  notInFutureSql,
 } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getBlockedActorIds, getBlockedDomains } from "@/lib/db";
 import { serializeStatus, loadSerializedPolls } from "@/lib/mastodon/serializers";
 import type { LocalObject } from "@/lib/types";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, clampLimit } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
 import { env } from "cloudflare:workers";
@@ -51,14 +52,23 @@ function rowToObject(r: Row): LocalObject {
 export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
   const domain = new URL(request.url).hostname;
-  const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)),
+  // clampLimit, never a bare parseInt: SQLite reads a negative LIMIT as *no*
+  // limit, so `?limit=-1` on this public route dumped every Note of the week
+  // into the isolate, and `?limit=abc` bound NaN (HTTP 500).
+  const limit = clampLimit(
+    request.nextUrl.searchParams.get("limit"),
+    limits.defaultTimelinePage,
     limits.maxPageSize
   );
 
   // The ranked candidate set is identical for every client; only the
   // viewer-specific enrichments (favourited/reblogged/bookmarked/filters)
-  // differ per request. Cache the object rows in KV and re-enrich on hit.
+  // differ per request. Cache the object rows in KV and re-enrich on hit. The
+  // cache always holds the FULL batch (max page size) under one constant key —
+  // a key that varies with the client's `limit` would both let a `?limit=1`
+  // request poison everyone's trends and turn crafted limits into KV writes.
+  // The response slices to the caller's limit.
+  const batch = limits.maxPageSize;
   let rows: Row[] | null = null;
   try {
     const cached = await env.KV.get("trends:statuses:v1");
@@ -71,6 +81,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     // globally sorted) and falls back to a full published-range scan plus a
     // temp b-tree over every post of the week (~85k rows). INDEXED BY forces
     // the engagement index so each branch stops at LIMIT after a few rows.
+    // notInFutureSql keeps a skewed remote clock from pinning a future-dated
+    // post to the top of the ranking.
     const dbRows = await env.DB
       .prepare(
         `SELECT * FROM (
@@ -79,6 +91,7 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'public'
                AND o.type = 'Note'
                AND o.published >= ?
+               AND ${notInFutureSql("o.published")}
                AND NOT EXISTS (
                SELECT 1 FROM actors a
                WHERE a.id = o.actor_id
@@ -96,6 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
              WHERE o.visibility = 'unlisted'
                AND o.type = 'Note'
                AND o.published >= ?
+               AND ${notInFutureSql("o.published")}
                AND NOT EXISTS (
                SELECT 1 FROM actors a
                WHERE a.id = o.actor_id
@@ -111,11 +125,12 @@ export async function GET(request: NextRequest): Promise<Response> {
          ORDER BY engagement DESC, published DESC
          LIMIT ?`
       )
-      .bind(weekCutoff, limit, weekCutoff, limit, limit)
+      .bind(weekCutoff, batch, weekCutoff, batch, batch)
       .all<Row>();
     rows = dbRows.results ?? [];
     await env.KV.put("trends:statuses:v1", JSON.stringify(rows), { expirationTtl: 300 }).catch(() => {});
   }
+  rows = rows.slice(0, limit);
 
   const authActor = await getAuthenticatedActor(request, env.DB);
 

@@ -10,6 +10,7 @@ import { Avatar } from "@/components/Avatar";
 import type { EmojiData } from "@/lib/emoji";
 import { useLocale } from "@/lib/i18n";
 import { useTimelineStream } from "@/lib/streaming/use-timeline-stream";
+import { getToken } from "@/lib/client-api";
 import { useTimelineCache } from "@/lib/streaming/use-timeline-cache";
 import { BackToTop } from "@/components/BackToTop";
 import { Icon, type IconName } from "@/components/Icon";
@@ -60,6 +61,12 @@ export default function NotificationsPage() {
   const [pendingRequests, setPendingRequests] = useState<Account[]>([]);
   const [me, setMe] = useState<Account | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  // Gate the notification socket on having a session: an anonymous visitor
+  // gets a 401 upgrade and the shared manager would retry forever.
+  const [hasToken, setHasToken] = useState(false);
+  useEffect(() => {
+    Promise.resolve().then(() => setHasToken(Boolean(getToken())));
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const limits = useLimits();
@@ -142,6 +149,7 @@ export default function NotificationsPage() {
     if (event !== "notification") return;
     void catchUp();
   }, {
+    enabled: hasToken,
     onReconnect: () => {
       // Catch up on notifications that arrived while the socket was down.
       void catchUp();

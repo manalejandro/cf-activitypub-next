@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, translateKey } from "@/lib/i18n";
-import { useAuth, setToken } from "@/lib/client-api";
+import { useAuth, setToken, ensureToken } from "@/lib/client-api";
 import { sameOriginRedirect } from "@/lib/safe-url";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import TurnstileWidget, { type TurnstileHandle } from "@/components/TurnstileWidget";
@@ -50,10 +50,19 @@ export default function LoginForm({ turnstileSiteKey }: Props) {
   const [instance, setInstance] = useState(fromInstance);
 
   // Already signed in? Send them straight to their feed. (Placed after all
-  // hooks so the early return never skips a hook call.)
+  // hooks so the early return never skips a hook call.) A cookie-only session
+  // (predating the localStorage token, or with cleared storage) heals through
+  // ensureToken() BEFORE the redirect: the target pages gate on getToken() and
+  // would bounce straight back here, and a failed rotate used to ping-pong
+  // /login↔/home forever.
   const { authenticated, loading: authLoading } = useAuth();
   useEffect(() => {
-    if (!authLoading && authenticated) router.replace(redirectTarget);
+    if (authLoading || !authenticated) return;
+    let cancelled = false;
+    void ensureToken().then(() => {
+      if (!cancelled) router.replace(redirectTarget);
+    });
+    return () => { cancelled = true; };
   }, [authLoading, authenticated, router, redirectTarget]);
 
   const turnstileHandle = useRef<TurnstileHandle>(null);

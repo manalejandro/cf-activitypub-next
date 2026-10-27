@@ -485,10 +485,14 @@ async function deliverOne(
     // timeout): draft-cavage first, retrying with RFC 9421 on 400/401.
     const res = await postToInboxSigned(inboxUrl, activityJson, keyId, privateKeyPem, 15_000);
     if (!res) {
+      // safeFetch answers null for a blocked redirect hop AND for any network
+      // failure (DNS/TLS/timeout). The URL itself was validated above, so treat
+      // this as TRANSIENT: retrying with backoff is Mastodon's behaviour, and
+      // acking here used to lose the activity forever on a single timeout.
       const domain = new URL(inboxUrl).hostname.toLowerCase();
       await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");
       await recordInstanceDeliveryFailure(env.DB, env.KV, domain, 0);
-      return { ok: false, permanent: true, status: 0, error: "Blocked redirect or unreachable" };
+      return { ok: false, permanent: false, status: 0, error: "Blocked redirect or unreachable" };
     }
     // We only need the status; cancel the body so concurrent deliveries don't
     // stall on unread responses (Cloudflare deadlock protection).
@@ -1706,7 +1710,7 @@ const worker = {
   ): Promise<void> {
     // Dead-letter queue: record undeliverable activities for inspection
     // (KV, 30 days) and ack them so the DLQ doesn't grow unbounded.
-    if (batch.queue === "cf-ap-delivery-dlq") {
+    if (batch.queue.endsWith("-dlq")) {
       type DlqLastFailure = { status?: number; error?: string | null; attempts?: number };
       for (const message of batch.messages) {
         const body = message.body as Partial<APDeliveryMessage>;

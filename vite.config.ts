@@ -52,42 +52,69 @@ const EXTRA_SECRETS = new Set(["CALLS_TURN_KEY_ID"]);
  * `wrangler secret put`.
  */
 function dotenvIntoWorkerVars(): Plugin {
-  let merged = false;
   return {
     name: "dotenv-into-worker-vars",
     apply: "build",
     enforce: "post",
-    closeBundle() {
-      if (merged || !fs.existsSync(EMITTED_CONFIG)) return;
-      loadDotenv({ root: ROOT, mode: "production" });
-      const documented = documentedVars();
-      const config = JSON.parse(fs.readFileSync(EMITTED_CONFIG, "utf8")) as {
-        vars?: Record<string, string>;
-      };
-      config.vars ??= {};
-      const applied: string[] = [];
-      const skipped: string[] = [];
-      for (const key of documented) {
-        const value = process.env[key];
-        if (typeof value !== "string" || value === "") continue;
-        if (SECRET_NAME.test(key) || EXTRA_SECRETS.has(key)) {
-          skipped.push(key);
-          continue;
+    // `buildApp` (order:post) runs ONCE after every environment's closeBundle —
+    // unlike closeBundle, which fires per environment and can run before the
+    // Cloudflare plugin has emitted `dist/server/wrangler.json` (or never run
+    // at all on an interrupted build). Merging here means the config always
+    // exists when we read it, the merge happens exactly once, and a build that
+    // never got this far ships nothing (the emit below fails loudly instead of
+    // silently leaving `vars` empty — which would deploy the worker without
+    // INSTANCE_URL and rebuild every actor IRI on http://localhost:3000).
+    buildApp: {
+      order: "post",
+      async handler() {
+        if (!fs.existsSync(EMITTED_CONFIG)) {
+          this.error(
+            `[deploy] ${EMITTED_CONFIG} was not emitted — refusing to merge .env into a missing worker config.`
+          );
+          return;
         }
-        if (config.vars[key] !== value) applied.push(key);
-        config.vars[key] = value;
-      }
-      merged = true;
-      if (applied.length === 0 && skipped.length === 0) return;
-      fs.writeFileSync(EMITTED_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
-      if (applied.length > 0) {
-        console.log(`[deploy] .env values applied to the worker vars: ${applied.sort().join(", ")}`);
-      }
-      if (skipped.length > 0) {
-        console.error(
-          `[deploy] secrets left out of the config (set them with "wrangler secret put"): ${skipped.sort().join(", ")}`
-        );
-      }
+        loadDotenv({ root: ROOT, mode: "production" });
+        const documented = documentedVars();
+        const config = JSON.parse(fs.readFileSync(EMITTED_CONFIG, "utf8")) as {
+          vars?: Record<string, string>;
+        };
+        config.vars ??= {};
+        const applied: string[] = [];
+        const skipped: string[] = [];
+        for (const key of documented) {
+          const value = process.env[key];
+          if (typeof value !== "string" || value === "") continue;
+          if (SECRET_NAME.test(key) || EXTRA_SECRETS.has(key)) {
+            skipped.push(key);
+            continue;
+          }
+          if (config.vars[key] !== value) applied.push(key);
+          config.vars[key] = value;
+        }
+        fs.writeFileSync(EMITTED_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
+
+        // Fail the build rather than deploy a worker with no base URL: without
+        // INSTANCE_URL, getBaseUrl() falls back to http://localhost:3000 and
+        // every federated IRI (actor ids, object urls, feeds) is minted wrong.
+        const instanceUrl = config.vars.INSTANCE_URL;
+        if (!instanceUrl || /^https?:\/\/localhost/i.test(instanceUrl)) {
+          this.error(
+            `[deploy] INSTANCE_URL is missing or points at localhost in the emitted config (${instanceUrl ?? "absent"}). ` +
+              `Set it in .env before deploying — a worker built without it federates as http://localhost:3000.`
+          );
+          return;
+        }
+        if (applied.length > 0) {
+          console.log(`[deploy] .env values applied to the worker vars: ${applied.sort().join(", ")}`);
+        } else {
+          console.log("[deploy] .env merge ran; every documented value already matched the emitted config.");
+        }
+        if (skipped.length > 0) {
+          console.error(
+            `[deploy] secrets left out of the config (set them with "wrangler secret put"): ${skipped.sort().join(", ")}`
+          );
+        }
+      },
     },
   };
 }

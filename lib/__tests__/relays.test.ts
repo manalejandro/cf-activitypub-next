@@ -67,10 +67,14 @@ describe("normalizeRelayInbox", () => {
 });
 
 describe("relayMatchesActor", () => {
-  it("matches by recorded actor URI, inbox URL or host", () => {
+  it("matches only by recorded actor URI or the relay's exact inbox URL", () => {
     expect(relayMatchesActor({ ...RELAY, actorUri: "https://relay.example/actor" }, { id: "https://relay.example/actor" })).toBe(true);
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", inbox: "https://relay.example/inbox" })).toBe(true);
-    expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor" })).toBe(true);
+    expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", sharedInbox: "https://relay.example/inbox" })).toBe(true);
+    // Same host but no actor-URI/inbox match no longer qualifies: a relay is
+    // often co-hosted with an open-registration server, and the old host
+    // fallback let ANY account on that host pose as the relay.
+    expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor" })).toBe(false);
     expect(relayMatchesActor(RELAY, { id: "https://evil.example/actor", inbox: "https://evil.example/inbox" })).toBe(false);
   });
 });

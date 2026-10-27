@@ -49,26 +49,35 @@ export function normalizeRelayInbox(input: string): string | null {
   return url.toString();
 }
 
-/** Host of a relay's inbox, for matching the actor that answers for it. */
-export function relayHost(relay: LocalRelay): string {
-  try {
-    return new URL(relay.inboxUrl).hostname;
-  } catch {
-    return "";
-  }
-}
-
-/** The relay that owns an answering actor: recorded actor URI, its inbox, or its host. */
+/**
+ * The relay that owns an answering actor. Matches ONLY on exact identifiers
+ * the relay itself controls: the recorded actor URI, or the relay's specific
+ * inbox URL (personal or shared). The former host-name fallback is gone — a
+ * relay is frequently co-hosted with an open-registration Mastodon, and
+ * matching "same host" let ANY account on that host pose as the relay and sign
+ * cross-actor Create/Update/Delete/Announce through `isAcceptedRelayForward`.
+ */
 export function relayMatchesActor(relay: LocalRelay, actor: { id: string; inbox?: string | null; sharedInbox?: string | null }): boolean {
   if (relay.actorUri && relay.actorUri === actor.id) return true;
   if (actor.inbox && actor.inbox === relay.inboxUrl) return true;
   if (actor.sharedInbox && actor.sharedInbox === relay.inboxUrl) return true;
-  const host = relayHost(relay);
-  if (!host) return false;
+  return false;
+}
+
+/**
+ * Strict identity for the cross-actor forward gate: the signer must be the
+ * EXACT actor URI the relay revealed when it accepted our Follow. Inbox and
+ * shared-inbox matching are too loose here — on a co-hosted relay every user
+ * shares the instance's `/inbox`, so those would re-open the hole this closes.
+ * Returns the relay only while its subscription is `accepted`.
+ */
+export async function acceptedRelayForSigner(db: D1Database, actorId: string): Promise<LocalRelay | null> {
+  if (!actorId) return null;
   try {
-    return new URL(actor.id).hostname === host;
+    const relays = await listRelays(db);
+    return relays.find((r) => r.state === "accepted" && r.actorUri && r.actorUri === actorId) ?? null;
   } catch {
-    return false;
+    return null;
   }
 }
 

@@ -1,12 +1,15 @@
 import { type NextRequest } from "next/server";
 import { json } from "@/lib/cf";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, clampLimit } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
-  const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.trendingTagsLimit)),
+  // clampLimit: a bare parseInt let `?limit=-1` through (SQLite: no limit) and
+  // NaN to the bind (500) on this anonymous route.
+  const limit = clampLimit(
+    request.nextUrl.searchParams.get("limit"),
+    limits.trendingTagsLimit,
     limits.trendingTagsMax
   );
 

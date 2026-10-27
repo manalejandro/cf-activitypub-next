@@ -140,16 +140,20 @@ function buildReplacements(
   // 2. Remote mentions: @user@domain.
   // Display only the username (@user), keeping the full handle as the link
   // target and as an accessible hover title. A handle that resolved to no
-  // account stays plain text when a resolution map is provided.
+  // account stays plain text when a resolution map is provided. The href of a
+  // resolved mention comes from the stored AP tag (remote-controlled): it is
+  // URL-validated and attribute-escaped — this runs AFTER the sanitizer, so an
+  // unescaped `"` or a `javascript:` URL would survive into `content`.
   for (const m of text.matchAll(REMOTE_MENTION_RE)) {
     const [full, user, domain] = m;
     const resolved = mentions?.get(`${user}@${domain}`.toLowerCase());
     if (mentions && !resolved) continue;
-    const href = resolved?.href ?? `https://${domain}/@${user}`;
+    const href = safeMediaUrl(resolved?.href ?? `https://${domain}/@${user}`);
+    if (!href) continue;
     add(
       m.index!,
       m.index! + full.length,
-      `<a href="${href}" class="u-url mention" rel="nofollow noopener noreferrer" title="@${escapeHtml(user)}@${escapeHtml(domain)}">@<span>${escapeHtml(user)}</span></a>`,
+      `<a href="${escapeHtml(href)}" class="u-url mention" rel="nofollow noopener noreferrer" title="@${escapeHtml(user)}@${escapeHtml(domain)}">@<span>${escapeHtml(user)}</span></a>`,
       { type: "Mention", href, name: `@${user}@${domain}` }
     );
   }
@@ -160,12 +164,13 @@ function buildReplacements(
     const [full, user] = m;
     const resolved = mentions?.get(user.toLowerCase());
     if (mentions && !resolved) continue;
-    const href = resolved?.href ?? (baseUrl ? `${baseUrl}/users/${user}` : `/users/${user}`);
+    const href = safeMediaUrl(resolved?.href ?? (baseUrl ? `${baseUrl}/users/${user}` : `/users/${user}`));
+    if (!href) continue;
     const name = localDomain ? `@${user}@${localDomain}` : `@${user}`;
     add(
       m.index!,
       m.index! + full.length,
-      `<a href="${href}" class="u-url mention">@<span>${escapeHtml(user)}</span></a>`,
+      `<a href="${escapeHtml(href)}" class="u-url mention">@<span>${escapeHtml(user)}</span></a>`,
       { type: "Mention", href, name }
     );
   }

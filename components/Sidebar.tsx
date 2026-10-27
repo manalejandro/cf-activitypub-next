@@ -34,6 +34,14 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
   const brand = useInstanceTitle();
   const version = useInstanceVersion() || null;
   const [unreadCount, setUnreadCount] = useState(0);
+  // The `user` stream answers 401 without a token and the socket manager
+  // retries forever: an anonymous visitor's tab used to attempt a WS upgrade
+  // every ≤30 s indefinitely (and each attempt counts against the per-IP WS
+  // rate limit). Gate the socket on having a session token.
+  const [hasToken, setHasToken] = useState(false);
+  useEffect(() => {
+    Promise.resolve().then(() => setHasToken(Boolean(getToken())));
+  }, []);
   const [localMe, setLocalMe] = useState<SidebarAccount | null | undefined>(propMe);
   const me = propMe ?? localMe;
   const isStaff = me?.roles?.some((r) => r.name.toLowerCase() === "admin" || r.name.toLowerCase() === "moderator") ?? false;
@@ -115,6 +123,7 @@ export function Sidebar({ me: propMe, currentPath }: SidebarProps) {
       window.dispatchEvent(new Event("cf-ap:notification-received"));
     }
   }, {
+    enabled: hasToken,
     onReconnect: () => {
       // Re-sync after a reconnect gap so the badge doesn't go stale while the
       // socket was down (increments are missed for that window).

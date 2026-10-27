@@ -3,7 +3,7 @@ import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById } from "@/lib/db";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, clampLimit } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 // GET /api/v1/follow_requests
@@ -15,8 +15,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   const actor = await getAuthenticatedActor(request, env.DB);
   if (!actor) return unauthorized();
 
-  const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.pageSize)),
+  const limit = clampLimit(
+    request.nextUrl.searchParams.get("limit"),
+    limits.pageSize,
     limits.maxCollectionPage
   );
 

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { env } from "cloudflare:workers";
 import { safeFetch } from "@/lib/activitypub/federation";
+import { discardBody } from "@/lib/http";
 import { MEDIA_CORS_HEADERS } from "@/lib/media/serve";
 import { atomicRateLimit } from "@/lib/rate-limit";
 
@@ -58,6 +59,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const upstream = await safeFetch(raw, { headers: forwarded }, 0);
   const relayable = upstream && (upstream.ok || upstream.status === 416);
   if (!relayable) {
+    // Never leave the upstream body unread: an origin that answers 5xx with an
+    // open body would pin an in-flight fetch slot indefinitely (the relay runs
+    // with the outbound timeout disabled).
+    await discardBody(upstream);
     return new Response("Upstream unavailable", { status: 502, headers: { ...MEDIA_CORS_HEADERS } });
   }
 

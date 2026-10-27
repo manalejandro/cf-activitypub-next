@@ -44,6 +44,58 @@ export function clearToken(): void {
   // endpoints (/api/auth/logout, delete-account, revoke) expire it.
 }
 
+export interface EnsureTokenResult {
+  /** The usable client-side token, or null when the session cannot hold one. */
+  token: string | null;
+  /** True when this call obtained the token via /api/auth/rotate (cookie-only session). */
+  rotated: boolean;
+}
+
+let ensurePromise: Promise<EnsureTokenResult> | null = null;
+
+/**
+ * Resolve the client-side API token, healing a cookie-only session.
+ *
+ * The session cookie is HttpOnly, so a session that predates the localStorage
+ * copy (or a browser that cleared it) has no token for the surfaces that need
+ * one (WebSocket query params, `getToken()`-gated UI). This performs the
+ * one-time `POST /api/auth/rotate` exchange — deduplicated across callers, and
+ * retryable: a failed attempt clears the cached promise so the next navigation
+ * tries again instead of leaving the app tokenless until a manual reload.
+ *
+ * `rotated` tells the caller that UI mounted before the token existed and may
+ * need a refresh to pick it up.
+ */
+export function ensureToken(): Promise<EnsureTokenResult> {
+  const existing = getToken();
+  if (existing) return Promise.resolve({ token: existing, rotated: false });
+  if (!ensurePromise) {
+    ensurePromise = (async (): Promise<EnsureTokenResult> => {
+      try {
+        const statusRes = await fetch("/api/auth/status", { credentials: "include", cache: "no-store" });
+        if (!statusRes.ok) return { token: null, rotated: false };
+        const status = (await statusRes.json()) as { authenticated?: boolean };
+        if (!status.authenticated) return { token: null, rotated: false };
+        const res = await fetch("/api/auth/rotate", { method: "POST", credentials: "include" });
+        if (!res.ok) return { token: null, rotated: false };
+        const body = (await res.json()) as { access_token?: string };
+        if (!body.access_token) return { token: null, rotated: false };
+        setToken(body.access_token);
+        // Blocked storage (strict private mode, full quota): the copy did not
+        // stick. Report failure so callers never loop expecting a token.
+        if (getToken() !== body.access_token) return { token: null, rotated: false };
+        return { token: body.access_token, rotated: true };
+      } catch {
+        return { token: null, rotated: false };
+      }
+    })();
+    ensurePromise.then((result) => {
+      if (!result.token) ensurePromise = null; // retryable on the next call
+    });
+  }
+  return ensurePromise;
+}
+
 export function useAuth(): AuthState {
   const [state, setState] = useState<AuthState>({ loading: true, authenticated: false, actor: null });
 

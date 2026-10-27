@@ -37,6 +37,9 @@ export function anonymousTimelineAllowed(access: AnonymousTimelineAccess, local:
  */
 export function anonymousStreamAllowed(channel: string, access: AnonymousTimelineAccess): boolean {
   if (channel.startsWith("hashtag")) return false;
-  if (channel.startsWith("public")) return anonymousTimelineAllowed(access, channel !== "public");
+  // `public` and `public:remote` are the federated view (REST serves both to
+  // anonymous visitors at the `public` level); only `public:local` is the
+  // local view gated behind `public_local`.
+  if (channel.startsWith("public")) return anonymousTimelineAllowed(access, channel === "public:local");
   return false;
 }

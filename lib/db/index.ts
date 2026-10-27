@@ -3122,7 +3122,7 @@ export async function getActorBoosts(
 export async function updateObject(
   db: D1Database,
   id: string,
-  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null; licenseUrl?: string | null; quoteId?: string | null }
+  fields: { content?: string; contentWarning?: string | null; sensitive?: boolean; language?: string | null; raw?: string; locationJson?: string | null; licenseUrl?: string | null; quoteId?: string | null; visibility?: "public" | "unlisted" | "private" | "direct" }
 ): Promise<void> {
   const prev = await db.prepare("SELECT content, content_warning, sensitive, raw, published, actor_id FROM objects WHERE id = ?").bind(id).first<Row>();
   if (prev) {
@@ -3148,6 +3148,10 @@ export async function updateObject(
   if ("quoteId" in fields) { setClauses.push("quote_id = ?"); values.push(fields.quoteId ?? null); }
   if ("locationJson" in fields) { setClauses.push("location_json = ?"); values.push(fields.locationJson ?? null); }
   if ("licenseUrl" in fields) { setClauses.push("license_url = ?"); values.push(fields.licenseUrl ?? null); }
+  // An edit that changes the audience must move the row too (Mastodon's
+  // ProcessStatusUpdateService updates visibility): otherwise a post narrowed
+  // to followers by its author would keep sitting in public timelines here.
+  if (fields.visibility) { setClauses.push("visibility = ?"); values.push(fields.visibility); }
 
   if (setClauses.length === 0) return;
   // ISO, like `published`: the column is compared against it (and
@@ -3590,14 +3594,20 @@ export async function getLike(db: D1Database, actorId: string, objectId: string)
 }
 
 export async function createLike(db: D1Database, like: LocalLike): Promise<void> {
-  await db
+  const result = await db
     .prepare("INSERT OR IGNORE INTO likes (id, actor_id, object_id, activity_id) VALUES (?,?,?,?)")
     .bind(like.id, like.actorId, like.objectId, like.activityId)
     .run();
-  await db
-    .prepare("UPDATE objects SET favourites_count = favourites_count + 1, engagement = engagement + 1 WHERE id = ?")
-    .bind(like.objectId)
-    .run();
+  // Count only an actual insert (UNIQUE(actor_id, object_id)): concurrent
+  // duplicate deliveries used to increment once per copy while the delete
+  // side only ever subtracts one — permanent drift, and an attacker could
+  // inflate `engagement` (which feeds the trending index) with parallel Likes.
+  if (result.meta.changes > 0) {
+    await db
+      .prepare("UPDATE objects SET favourites_count = favourites_count + 1, engagement = engagement + 1 WHERE id = ?")
+      .bind(like.objectId)
+      .run();
+  }
 }
 
 export async function deleteLike(db: D1Database, actorId: string, objectId: string): Promise<void> {
@@ -3645,14 +3655,18 @@ export async function getAnnounce(
 }
 
 export async function createAnnounce(db: D1Database, announce: LocalAnnounce): Promise<void> {
-  await db
+  const result = await db
     .prepare("INSERT OR IGNORE INTO announces (id, actor_id, object_id, activity_id, created_at) VALUES (?,?,?,?,?)")
     .bind(announce.id, announce.actorId, announce.objectId, announce.activityId, announce.createdAt)
     .run();
-  await db
-    .prepare("UPDATE objects SET reblogs_count = reblogs_count + 1, engagement = engagement + 1 WHERE id = ?")
-    .bind(announce.objectId)
-    .run();
+  // Count only an actual insert (see createLike): duplicate deliveries must
+  // not inflate reblogs_count/engagement.
+  if (result.meta.changes > 0) {
+    await db
+      .prepare("UPDATE objects SET reblogs_count = reblogs_count + 1, engagement = engagement + 1 WHERE id = ?")
+      .bind(announce.objectId)
+      .run();
+  }
 }
 
 export async function deleteAnnounce(db: D1Database, actorId: string, objectId: string): Promise<void> {

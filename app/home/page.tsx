@@ -618,7 +618,7 @@ export default function HomePage() {
                   <div key={f.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                     <div style={{ position: "relative", flexShrink: 0, width: 72, height: 72 }}>
                       {f.type === "image" || f.type === "gifv" ? (
-                        <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={72} height={72} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
+                        <Image src={f.preview_url ?? f.url ?? ""} alt={f.description ?? ""} width={72} height={72} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                       ) : (
                         <div style={{ width: 72, height: 72, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.5rem" }}><Icon name={mediaChipIcon(f)} size="1.5rem" /></div>
                       )}

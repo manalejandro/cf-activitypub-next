@@ -11,11 +11,12 @@
  */
 
 export interface DownloadableMedia {
-  url: string;
+  url: string | null;
   description?: string | null;
 }
 
-function lastSegment(url: string): string {
+function lastSegment(url: string | null): string {
+  if (!url) return "";
   const path = url.split(/[?#]/)[0];
   const segment = path.split("/").filter(Boolean).pop() ?? "";
   try {
@@ -34,7 +35,8 @@ function isRealFileName(name: string): boolean {
 }
 
 /** Our own uploads keep the file name the user chose: `media/<user>/<uuid>-<name>`. */
-function uploadedName(url: string): string | null {
+function uploadedName(url: string | null): string | null {
+  if (!url) return null;
   const match = /\/api\/media\/media\/[^/]+\/[0-9a-f-]{32,36}-([^/?#]+)/i.exec(url);
   if (!match) return null;
   let name = match[1];

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getBaseUrl } from "@/lib/cf";
-import { atomicRateLimit } from "@/lib/rate-limit";
+import { atomicRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getActorByEmail, getOAuthAppByClientId, mediaCacheId, updatePassword } from "@/lib/db";
 import { verifyPassword, generateSecureToken, hashPassword, needsPasswordRehash } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
@@ -87,7 +87,10 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!valid) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid credentials");
   }
-  await env.KV.delete(lockoutKey).catch(() => {});
+  // Clear the shared lockout counter on success (the bare `env.KV.delete` was
+  // a no-op — see the password grant). Both surfaces count together, so a
+  // success here also clears the token route's window for this account.
+  await resetRateLimit(env, lockoutKey, 900);
 
   // Transparent rehash of legacy-cost password hashes (same as the password
   // grant): best effort, a failed write only defers it to the next login.

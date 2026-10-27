@@ -52,14 +52,15 @@ import {
   buildFollow,
   generateId,
 } from "./utils";
-import { refreshObjectRaw, setObjectQuoteId, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension } from "@/lib/db";
+import { refreshObjectRaw, setObjectQuoteId, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension, canViewStatus, isAcceptedFollower } from "@/lib/db";
+import { safeMediaUrl } from "@/lib/safe-url";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
-import { relayForActor, relayMatchesActor } from "./relays";
+import { relayForActor, relayMatchesActor, acceptedRelayForSigner } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { notifyReportedAccount } from "@/lib/moderation/actions";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, broadcastAccountUpdate, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
@@ -252,6 +253,19 @@ export async function processInboxActivity(
   // attacker cannot poison ids for activities they didn't sign.
   const dedupActorId = activityActorId ?? ctx.signingActorId;
   if (typeof activity.id === "string" && activity.id && dedupActorId) {
+    // The activity id is the dedup primary key, so it must live on its actor's
+    // origin — or, for relays that forward original activities under their own
+    // key AND mint their own activity id, on the SIGNER's origin. An
+    // attacker-chosen id in a victim's namespace matches neither (signing for
+    // the victim's host is impossible) and used to pre-occupy the id, getting
+    // the victim's real activity dropped as a "replay".
+    try {
+      const idHost = new URL(activity.id).hostname;
+      const signerHost = ctx.signingActorId ? new URL(ctx.signingActorId).hostname : null;
+      if (idHost !== new URL(dedupActorId).hostname && idHost !== signerHost) return;
+    } catch {
+      return;
+    }
     try {
       const dedup = await ctx.db
         .prepare(
@@ -352,6 +366,17 @@ export async function processInboxActivity(
   } catch (err) {
     const failed = activity as { type?: unknown; id?: unknown };
     console.error("[inbox] Error processing activity:", failed?.type, failed?.id, err);
+    // Let the sender's retry try again: a transient failure mid-handler (an
+    // actor fetch, a D1 timeout) must not hide behind the dedup row forever —
+    // without this the activity is silently lost and every redelivery is
+    // skipped as a "duplicate".
+    if (typeof failed.id === "string" && failed.id) {
+      await ctx.db
+        .prepare("DELETE FROM activities WHERE id = ? AND is_local = 0")
+        .bind(failed.id)
+        .run()
+        .catch(() => {});
+    }
   }
 }
 
@@ -591,14 +616,22 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const storedAttachments: LocalAttachment[] = [];
   if (!ctx.rejectMedia && Array.isArray(obj.attachment)) {
-    for (const attachment of obj.attachment as APAttachment[]) {
+    // Bounded (MAX_REMOTE_ATTACHMENTS) and URL-validated BEFORE anything is
+    // stored, queued or pushed into the in-memory list: that list feeds the
+    // stream broadcast, and an attachment whose URL createAttachment rejects
+    // used to be serialized anyway — with `url: null`, which crashed client
+    // media renderers. The cache is enqueued with the same normalized URL that
+    // lands in `remote_url`, so the hold/release joins match.
+    for (const attachment of (obj.attachment as APAttachment[]).slice(0, MAX_REMOTE_ATTACHMENTS)) {
       if (!attachment?.url) continue;
+      const safeUrl = safeMediaUrl(attachment.url);
+      if (!safeUrl) continue;
       const localAttachment: LocalAttachment = {
         id: attachment.id || generateId(),
         objectId: obj.id,
-        type: apAttachmentType(attachment.type, attachment.mediaType, attachment.url),
-        url: attachment.url,
-        remoteUrl: attachment.url,
+        type: apAttachmentType(attachment.type, attachment.mediaType, safeUrl),
+        url: safeUrl,
+        remoteUrl: safeUrl,
         description: attachment.name ?? null,
         blurhash: attachment.blurhash ?? null,
         width: attachment.width ?? null,
@@ -613,7 +646,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
       try {
         await createAttachment(ctx.db, localAttachment);
         storedAttachments.push(localAttachment);
-        await enqueueMediaCache(ctx.db, localAttachment.url, "attachment", localAttachment.id);
+        await enqueueMediaCache(ctx.db, safeUrl, "attachment", localAttachment.id);
       } catch { /* ignore */ }
     }
   }
@@ -823,6 +856,8 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
 
   const recipient = await getActorById(ctx.db, recipientInfo.id);
   if (!recipient) return;
+  // A suspended or memorialized account does not accept new followers.
+  if (recipient.suspended || recipient.memorial) return;
 
   // A blocked (or domain-blocked) account cannot follow the recipient.
   if (await isActorBlockedBy(ctx.db, recipientInfo.id, actorId)) return;
@@ -840,7 +875,12 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
   // re-opens it (Mastodon deletes the rejected follow; we keep the row so the
   // rejection stays auditable, and reset it here).
   const reopened = existing?.state === "rejected";
-  if (reopened && existing) {
+  // A request left pending while the target was locked becomes a normal
+  // accepted follow when the target is now open: without this the remote is
+  // answered with an Accept while our row stays pending (no followers-only
+  // access, no counter) forever.
+  const promotePending = existing?.state === "pending" && !needsApproval;
+  if ((reopened || promotePending) && existing) {
     await ctx.db
       .prepare("UPDATE follows SET state = ?, activity_id = ? WHERE id = ?")
       .bind(needsApproval ? "pending" : "accepted", activity.id, existing.id)
@@ -855,9 +895,9 @@ async function handleFollow(activity: APActivity, ctx: InboxContext): Promise<vo
       createdAt: new Date().toISOString(),
     });
   }
-  // A re-opened request never counted (rejected rows never do), so it behaves
-  // like a brand-new follow for counters and notifications.
-  const isNew = !existing || reopened;
+  // A re-opened or promoted row never counted (rejected/pending rows don't),
+  // so it behaves like a brand-new follow for counters and notifications.
+  const isNew = !existing || reopened || promotePending;
 
   if (!needsApproval) {
     // Auto-accept: send Accept activity back to the remote server.
@@ -926,7 +966,7 @@ async function handleQuoteAccept(activity: APActivity, ctx: InboxContext, obj: A
   const instrument = typeof (obj as Record<string, unknown>).instrument === "string"
     ? (obj as Record<string, unknown>).instrument as string
     : null;
-  if (!approvalUri || !/^https?:\/\//i.test(approvalUri) || !quotedUri || !instrument) return true;
+  if (!approvalUri || !/^https:\/\//i.test(approvalUri) || !quotedUri || !instrument) return true;
 
   // The authorization must live on the quoted account's server, which is also
   // the signer of the Accept.
@@ -1331,13 +1371,18 @@ async function handleMove(activity: APActivity, ctx: InboxContext): Promise<void
     const existingTarget = await getFollow(ctx.db, followerId, targetId);
     if (existingTarget) continue;
 
+    // Build the Follow first so its id can be stored on the row: the target's
+    // Accept{Follow} is matched by `activity_id`, and a NULL there left every
+    // migrated follower stuck in `pending` on our side (the destination
+    // counted them, we never did).
+    const followActivity = buildFollow(ctx.baseUrl, followerId, targetId, generateId());
     const newState = target.manuallyApprovesFollowers ? "pending" : "accepted";
     await createFollow(ctx.db, {
       id: generateId(),
       actorId: followerId,
       targetId,
       state: newState,
-      activityId: null,
+      activityId: followActivity.id,
       createdAt: new Date().toISOString(),
     });
     if (newState === "accepted") addedAccepted++;
@@ -1346,7 +1391,6 @@ async function handleMove(activity: APActivity, ctx: InboxContext): Promise<void
     // the follower, so it must be signed with the FOLLOWER's key — signing with
     // the moving account's key would be rejected/misattributed by the target.
     if (target.inbox && follower.privateKeyPem) {
-      const followActivity = buildFollow(ctx.baseUrl, followerId, targetId, generateId());
       await enqueueDeliveries(ctx.deliveryQueue, [target.inbox], JSON.stringify(followActivity), followerId, `${followerId}#main-key`, follower.privateKeyPem).catch(() => {});
     }
   }
@@ -1393,18 +1437,29 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
     }
   }
   if (!likedObject && objectId.startsWith("https://")) {
-    try {
-      const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
-      let fetched = await fetchRemoteObject(
-        objectId,
-        signingKey ? `${signingKey.id}#main-key` : undefined,
-        signingKey?.privateKeyPem
-      ) as APNote | null;
-      // Retry without auth if signed fetch failed (some servers don't require it)
-      if (!fetched) {
-        fetched = await fetchRemoteObject(objectId) as APNote | null;
-      }
-      if (fetched?.id) {
+    // Throttle the on-demand fetch per object: Likes arrive signed and each one
+    // used to trigger up to two outbound fetches for an unknown id — a peer (or
+    // an attacker with any valid key) could turn Likes into fetch flooding
+    // against a chosen host. One attempt per object per 5 minutes.
+    const throttleKey = `like:fetch:${objectId.slice(0, 200)}`;
+    const throttled = ctx.kv ? await ctx.kv.get(throttleKey).catch(() => null) : null;
+    if (!throttled) {
+      if (ctx.kv) await ctx.kv.put(throttleKey, "1", { expirationTtl: 300 }).catch(() => {});
+      try {
+        const signingKey = ctx.signingKey ?? (ctx.recipient ? { id: ctx.recipient.id, privateKeyPem: ctx.recipient.privateKeyPem } : null);
+        let fetched = await fetchRemoteObject(
+          objectId,
+          signingKey ? `${signingKey.id}#main-key` : undefined,
+          signingKey?.privateKeyPem
+        ) as APNote | null;
+        // Retry without auth if signed fetch failed (some servers don't require it)
+        if (!fetched) {
+          fetched = await fetchRemoteObject(objectId) as APNote | null;
+        }
+        // The fetched document must BE the liked object: a server answering
+        // with a different id must not smuggle an unrelated object into the
+        // cache under this Like's pretext.
+        if (fetched?.id && fetched.id === objectId) {
         if (isContentObjectType((fetched.type ?? "Note") as string)) {
           const noteActorId = typeof fetched.attributedTo === "string"
             ? fetched.attributedTo
@@ -1445,14 +1500,21 @@ async function handleLike(activity: APActivity, ctx: InboxContext): Promise<void
           likedObject = await getObjectById(ctx.db, objectId);
         }
       }
-    } catch {
-      // ignore
+      } catch {
+        // ignore
+      }
     }
   }
 
   if (!likedObject) {
     return;
   }
+
+  // A Like on a post the liker cannot see must not bump its counters, notify
+  // its author or surface on any timeline: apply the same visibility rule the
+  // REST routes use (public/unlisted, or the audience of private/direct).
+  const likerIsFollower = await isAcceptedFollower(ctx.db, actorId, likedObject.actorId);
+  if (!canViewStatus(likedObject, actorId, likerIsFollower)) return;
 
   const existing = await ctx.db
     .prepare("SELECT id FROM likes WHERE actor_id = ? AND object_id = ?")
@@ -1876,10 +1938,16 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
   // `object` is an array of URIs ([targetAccount, ...statusUris]) or a single
   // string URI — coerce to an array. Embedded objects are reduced to their id.
   const rawObject = activity.object;
-  const objectUris: string[] = Array.isArray(rawObject)
+  const objectUris: string[] = (Array.isArray(rawObject)
     ? rawObject.map((o) => (typeof o === "string" ? o : (o as { id?: string })?.id)).filter((v): v is string => !!v)
-    : (typeof rawObject === "string" ? [rawObject] : (rawObject as { id?: string })?.id ? [(rawObject as { id?: string }).id as string] : []);
+    : (typeof rawObject === "string" ? [rawObject] : (rawObject as { id?: string })?.id ? [(rawObject as { id?: string }).id as string] : [])
+  // Bounded: a 1 MB Flag body fits thousands of URIs, and each unknown one
+  // used to trigger a sequential fetch inside the request.
+  ).slice(0, 100);
   if (objectUris.length === 0) return;
+  // Hard cap on evidence fetched per report (the rest is kept as a plain URI
+  // when already known): the fetches are sequential and attacker-triggered.
+  let evidenceFetches = 0;
 
   // Resolve each URI to either a target account or an evidence status.
   // Statuses are grouped by their author so each account gets its own report,
@@ -1910,6 +1978,8 @@ async function handleFlag(activity: APActivity, ctx: InboxContext): Promise<void
     }
 
     // Unknown URI — try to fetch the remote object so the evidence is cached.
+    if (evidenceFetches >= 20) continue;
+    evidenceFetches++;
     try {
       const fetched = await fetchRemoteObject(uri) as APNote | null;
       if (fetched?.id) {
@@ -2113,6 +2183,12 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     );
     const isQuestion = String(note.type ?? "").split("/").pop() === "Question";
     const nextLocationJson = extractLocationJson(note as unknown as Record<string, unknown>);
+    // Mastodon's ProcessStatusUpdateService applies an audience change: only
+    // follow it when the document explicitly declares `to`/`cc` (a partial
+    // update without audience must not silently turn the post into a DM).
+    const nextVisibility = (Array.isArray(note.to) || Array.isArray(note.cc))
+      ? resolveVisibility(note.to, note.cc)
+      : null;
     // Nothing a reader sees changed: an Update like this exists to hand over a
     // poll's counts, a FEP-044f quote authorization or a re-serialized document.
     // Going through `updateObject` would stamp `updated_at` — every peer showed
@@ -2124,7 +2200,8 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       (content ?? "") === (existing.content ?? "") &&
       (contentWarning ?? null) === (existing.contentWarning ?? null) &&
       (note.sensitive ?? false) === existing.sensitive &&
-      (nextLocationJson ?? null) === (existing.locationJson ?? null);
+      (nextLocationJson ?? null) === (existing.locationJson ?? null) &&
+      (nextVisibility === null || nextVisibility === existing.visibility);
     if (bodyUnchanged) {
       if (isQuestion) {
         await ensurePollRowsForQuestion(ctx, note);
@@ -2163,6 +2240,7 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
       locationJson: nextLocationJson,
       // A note without `quote` drops the quote (Mastodon's `update_quote!`).
       quoteId: nextQuoteId,
+      ...(nextVisibility ? { visibility: nextVisibility } : {}),
     });
     if (nextQuoteId !== (existing.quoteId ?? null)) await ensureQuotedObjectCached(ctx, nextQuoteId);
     await ensurePollRowsForQuestion(ctx, note);
@@ -2227,8 +2305,16 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     const updates: Partial<LocalActor> = {};
     if (typeof actor.name === "string") updates.displayName = sanitizeFediversePlain(actor.name);
     if (typeof actor.summary === "string") updates.summary = sanitizeRemoteActorSummary(actor.summary);
-    if (actor.icon?.url) updates.avatarUrl = actor.icon.url;
-    if (actor.image?.url) updates.headerUrl = actor.image.url;
+    // Avatar/header URLs end up in `src` attributes: only http(s) (or our own
+    // relative media paths) are stored, same rule as every federated URL.
+    if (actor.icon?.url) {
+      const iconUrl = safeMediaUrl(actor.icon.url);
+      if (iconUrl) updates.avatarUrl = iconUrl;
+    }
+    if (actor.image?.url) {
+      const imageUrl = safeMediaUrl(actor.image.url);
+      if (imageUrl) updates.headerUrl = imageUrl;
+    }
     if (typeof actor.discoverable === "boolean") updates.discoverable = actor.discoverable;
     if (typeof actor.manuallyApprovesFollowers === "boolean") updates.manuallyApprovesFollowers = actor.manuallyApprovesFollowers;
     if (actor.alsoKnownAs?.length) updates.alsoKnownAs = actor.alsoKnownAs;
@@ -2589,8 +2675,11 @@ async function isAcceptedRelayForward(ctx: InboxContext, type: string, authorId:
   } catch {
     return false;
   }
-  const relay = await relayForActor(ctx.db, { id: ctx.signingActorId });
-  return relay?.state === "accepted";
+  // Exact-actorUri match only: this gate authorizes third-party content signed
+  // by the relay, so a looser identity (inbox/host) would extend the privilege
+  // to any account co-hosted with the relay.
+  const relay = await acceptedRelayForSigner(ctx.db, ctx.signingActorId);
+  return relay !== null;
 }
 
 /** Whether an object's audience (to/cc/mentions) includes the given actor. */
@@ -2623,13 +2712,18 @@ function resolveVisibility(to: unknown = [], cc: unknown = []): "public" | "unli
   };
   const toArr = normalize(to);
   const ccArr = normalize(cc);
-  // Implementations may use the full IRI, the compact "as:Public", or just "Public".
-  // http:// and https:// variants both appear in the wild.
-  const isPublic = (v: string) =>
-    v === "https://www.w3.org/ns/activitystreams#Public" ||
-    v === "http://www.w3.org/ns/activitystreams#Public" ||
-    v === "as:Public" ||
-    v === "Public";
+  // Implementations may use the full IRI, the compact "as:Public", or just
+  // "Public", in any casing ("ActivityStreams#Public" appears in the wild).
+  // http:// and https:// variants both appear too.
+  const isPublic = (v: string) => {
+    const lower = v.toLowerCase();
+    return (
+      lower === "https://www.w3.org/ns/activitystreams#public" ||
+      lower === "http://www.w3.org/ns/activitystreams#public" ||
+      lower === "as:public" ||
+      lower === "public"
+    );
+  };
   if (toArr.some(isPublic)) return "public";
   if (ccArr.some(isPublic)) return "unlisted";
   if (toArr.some((t) => t.includes("/followers"))) return "private";
@@ -2687,6 +2781,10 @@ async function handleCallOffer(activity: APActivity, ctx: InboxContext): Promise
 
   const callerIRI = typeof activity.actor === "string" ? activity.actor : (activity.actor as APActor).id;
   const callee = ctx.recipient;
+
+  // A blocked (or domain-blocked) caller must not ring the callee's overlay
+  // nor write call sessions into KV.
+  if (await isActorBlockedBy(ctx.db, callee.id, callerIRI)) return;
 
   // Resolve display info for the caller
   const callerActor = await getActorById(ctx.db, callerIRI);

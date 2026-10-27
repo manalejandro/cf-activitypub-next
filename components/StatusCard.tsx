@@ -43,7 +43,7 @@ export interface Account {
 export interface MediaAttachment {
   id: string;
   type: string;
-  url: string;
+  url: string | null;
   preview_url: string | null;
   description: string | null;
   blurhash?: string | null;
@@ -200,7 +200,7 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
   const gridCols = attachments.length === 1 ? 1 : attachments.length === 2 ? 2 : attachments.length <= 3 ? 3 : 2;
   // The lightbox only walks what it can display; `lbIdx` stays an index into
   // `attachments` (documents are links, they never set it).
-  const lightboxItems = attachments.filter((a) => a.type !== "unknown");
+  const lightboxItems = attachments.filter((a) => a.type !== "unknown" && Boolean(a.url));
   const revealBtn = (
     <button
       type="button"
@@ -268,6 +268,32 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
         }}
       >
         {attachments.map((att, i) => {
+          // Defense in depth: a serialized attachment whose URL was rejected on
+          // ingest (`safeMediaUrl` → null) must never reach a media element or a
+          // download link — render the labelled placeholder instead of crashing
+          // the whole tree (there is no ErrorBoundary above this).
+          if (!att.url) {
+            return (
+              <div
+                key={att.id}
+                style={{
+                  position: "relative",
+                  aspectRatio: attachments.length === 1 ? "16/9" : "1/1",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  background: "var(--bg-secondary, #0002)",
+                  color: "var(--text-muted)",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <Icon name="file-image-o" size="1.4rem" />
+                <span>{t.media_unavailable}</span>
+              </div>
+            );
+          }
           if (att.type === "image") {
             if (failedIds.has(att.id)) {
               return (
@@ -453,12 +479,12 @@ export function MediaGrid({ attachments, sensitive, defaultRevealed = false }: {
         {blurred && revealBtn}
         {!blurred && hasSensitive && hideBtn}
       </div>
-      {docIdx !== null && attachments[docIdx]?.type === "unknown" && (
-        <DocumentViewer attachment={attachments[docIdx]} onClose={() => setDocIdx(null)} />
+      {docIdx !== null && attachments[docIdx]?.type === "unknown" && Boolean(attachments[docIdx]?.url) && (
+        <DocumentViewer attachment={{ url: attachments[docIdx].url ?? "", description: attachments[docIdx].description, meta: attachments[docIdx].meta }} onClose={() => setDocIdx(null)} />
       )}
       {!blurred && lbIdx !== null && (
         <Lightbox
-          media={lightboxItems.map((a) => ({ url: a.url, preview_url: a.preview_url, description: a.description, type: a.type }))}
+          media={lightboxItems.map((a) => ({ url: a.url ?? "", preview_url: a.preview_url, description: a.description, type: a.type }))}
           index={Math.max(0, lightboxItems.findIndex((a) => a.id === attachments[lbIdx]?.id))}
           onClose={closeLb}
           onNav={(index) => {
@@ -1152,7 +1178,7 @@ function StatusCardInner({
           <APTypeBlock
             apType={status.ap_type}
             apMeta={status.ap_meta}
-            mediaAttachments={status.media_attachments ?? []}
+            mediaAttachments={(status.media_attachments ?? []).map((m) => ({ id: m.id, type: m.type, url: m.url ?? "", preview_url: m.preview_url, description: m.description }))}
             isLocal={!status.account.acct?.includes("@")}
           />
         )}

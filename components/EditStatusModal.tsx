@@ -268,7 +268,7 @@ export function EditStatusModal({
               <div key={m.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                 <div style={{ position: "relative", flexShrink: 0, width: 64, height: 64 }}>
                   {m.type === "image" || m.type === "gifv" ? (
-                    <Image src={m.preview_url ?? m.url} alt={m.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: m.sensitive ? "blur(8px)" : undefined }} />
+                    <Image src={m.preview_url ?? m.url ?? ""} alt={m.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: m.sensitive ? "blur(8px)" : undefined }} />
                   ) : (
                     <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={mediaChipIcon(m)} size="1.4rem" /></div>
                   )}

@@ -20,6 +20,15 @@ import { countHit } from "@/lib/rate-limit";
 export class RateLimitDO extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    // Reset wipes the counter after a legitimate success (a verified login
+    // must stop counting toward the lockout). The DO holds only this key's
+    // window entries, so clearing storage is exactly "reset this key".
+    if (url.pathname === "/reset" && request.method === "POST") {
+      const keys = await this.ctx.storage.list<string>();
+      const names = [...keys.keys()];
+      if (names.length > 0) await this.ctx.storage.delete(names);
+      return jsonResponse({ ok: true });
+    }
     if (url.pathname !== "/hit" || request.method !== "POST") {
       return new Response("Not found", { status: 404 });
     }

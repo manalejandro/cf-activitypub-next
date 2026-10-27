@@ -49,6 +49,11 @@
  * the sampled payload estimate: the average bytes of `objects.raw`/`content`/
  * `card_json` and `activities.raw` — the columns that hold the federated
  * documents — times their row counts.
+ *
+ * The row counts are exact but retaken at most once a day (`COUNT_REFRESH_HOURS`):
+ * counting is an index-only walk of *every* prunable row (~400k entries, 1.2 s on
+ * cf-ap), so between counts the stored figure is carried over and decremented by
+ * what each pass prunes.
  */
 
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
@@ -91,6 +96,16 @@ const SAMPLE_POINTS = 8;
 const MAX_SAMPLE_ROWS = 1000;
 
 /**
+ * How often the **exact** row counts are retaken. A count is an index-only walk
+ * of every matching entry, and on cf-ap that is ~400k remote public/unlisted
+ * statuses: 1.2 s and 400k rows read per call, four times a day, for a number
+ * that only feeds the admin panel and the no-size byte fallback. The byte
+ * sample keeps its own cadence; between counts the stored figure is carried
+ * over and decremented by what retention prunes.
+ */
+const COUNT_REFRESH_HOURS = 24;
+
+/**
  * How many prune batches one pass may run while the instance is over its byte
  * budget: enough to drain a backlog in hours, bounded enough to keep the tick
  * inside its CPU budget.
@@ -115,6 +130,11 @@ interface RetentionState {
   bytes: number;
   rows: number;
   at: string | null;
+  /** Exact prunable rows per table, from the last count (`countedAt`). */
+  objectsRows: number;
+  activitiesRows: number;
+  /** When the exact counts were taken (they are not retaken every sample). */
+  countedAt: string | null;
   /** Last database size the binding reported (0 when it does not report one). */
   lastSize: number;
   /** Bytes freed since the file last shrank (SQLite reuses those pages). */
@@ -129,6 +149,9 @@ const EMPTY_STATE: RetentionState = {
   bytes: 0,
   rows: 0,
   at: null,
+  objectsRows: 0,
+  activitiesRows: 0,
+  countedAt: null,
   lastSize: 0,
   freedBytes: 0,
 };
@@ -136,7 +159,7 @@ const EMPTY_STATE: RetentionState = {
 export interface StorageRetentionEstimate {
   /** Bytes of prunable payload estimated by the last sample. */
   bytes: number;
-  /** Exact number of prunable rows. */
+  /** Prunable rows: exact at the last count, minus what retention pruned since. */
   rows: number;
   /** When the last sample was taken (null until the first one). */
   measuredAt: string | null;
@@ -208,6 +231,17 @@ function effectiveBytes(state: RetentionState): number {
   return state.bytes;
 }
 
+/**
+ * True when the exact row counts must be retaken: never counted, an unparsable
+ * stamp, or older than `COUNT_REFRESH_HOURS`.
+ */
+export function countIsStale(countedAt: string | null, now: Date): boolean {
+  if (!countedAt) return true;
+  const at = Date.parse(countedAt);
+  if (Number.isNaN(at)) return true;
+  return now.getTime() - at >= COUNT_REFRESH_HOURS * 60 * 60 * 1000;
+}
+
 async function readState(env: RetentionEnv): Promise<RetentionState> {
   const raw = await getInstanceSetting(env.DB, STATE_KEY).catch(() => null);
   if (!raw) return { ...EMPTY_STATE };
@@ -259,11 +293,15 @@ async function countObjectsPayloadRows(env: RetentionEnv): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-async function sampleObjectsPayload(env: RetentionEnv, probeRows: number): Promise<PayloadSample> {
+async function sampleObjectsPayload(
+  env: RetentionEnv,
+  probeRows: number,
+  cachedTotal: number | null
+): Promise<PayloadSample> {
   const max = Number(
     (await env.DB.prepare("SELECT COALESCE(MAX(rowid), 0) AS max FROM objects").first<{ max: number }>())?.max ?? 0
   );
-  const total = await countObjectsPayloadRows(env);
+  const total = cachedTotal !== null ? cachedTotal : await countObjectsPayloadRows(env);
   let sampledRows = 0;
   let sampledBytes = 0;
   let sizeAfter = 0;
@@ -287,13 +325,26 @@ async function sampleObjectsPayload(env: RetentionEnv, probeRows: number): Promi
   return { total, sampledRows, sampledBytes, sizeAfter };
 }
 
-async function sampleActivitiesPayload(env: RetentionEnv, probeRows: number): Promise<PayloadSample> {
+async function sampleActivitiesPayload(
+  env: RetentionEnv,
+  probeRows: number,
+  cachedTotal: number | null
+): Promise<PayloadSample> {
   const max = Number(
     (await env.DB.prepare("SELECT COALESCE(MAX(rowid), 0) AS max FROM activities").first<{ max: number }>())?.max ?? 0
   );
   // The count rides the smallest index (`idx_activities_published`): one entry
   // per row and no payload read.
-  const total = Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM activities").first<{ n: number }>())?.n ?? 0);
+  const total =
+    cachedTotal !== null
+      ? cachedTotal
+      : Number(
+          (
+            await env.DB
+              .prepare("SELECT COUNT(*) AS n FROM activities INDEXED BY idx_activities_published")
+              .first<{ n: number }>()
+          )?.n ?? 0
+        );
   let sampledRows = 0;
   let sampledBytes = 0;
   let sizeAfter = 0;
@@ -326,8 +377,17 @@ function estimateSample(sample: PayloadSample): number {
  */
 async function measurePayload(env: RetentionEnv, state: RetentionState, sizeBatch: number, now: Date): Promise<void> {
   const probeRows = Math.min(Math.max(50, Math.floor(sizeBatch)), MAX_SAMPLE_ROWS);
-  const objects = await sampleObjectsPayload(env, probeRows);
-  const activities = await sampleActivitiesPayload(env, probeRows);
+  // The exact counts are the expensive half of a measure (an index-only walk of
+  // every prunable row), so they are retaken at most once a day and carried over
+  // — decremented by what retention prunes — in between.
+  const stale = countIsStale(state.countedAt, now);
+  const objects = await sampleObjectsPayload(env, probeRows, stale ? null : state.objectsRows);
+  const activities = await sampleActivitiesPayload(env, probeRows, stale ? null : state.activitiesRows);
+  if (stale) {
+    state.objectsRows = objects.total;
+    state.activitiesRows = activities.total;
+    state.countedAt = now.toISOString();
+  }
 
   state.bytes = estimateSample(objects) + estimateSample(activities);
   state.rows = objects.total + activities.total;
@@ -511,6 +571,11 @@ export async function maintainStorageRetention(
     run.activitiesDeleted += pruned.activities;
     run.bytesFreed += pruned.bytes;
     state.freedBytes += pruned.bytes;
+    // Pruned rows are prunable rows by definition: keep the carried-over counts
+    // honest until the next exact count instead of reporting a stale high.
+    state.objectsRows = Math.max(0, state.objectsRows - pruned.objects);
+    state.activitiesRows = Math.max(0, state.activitiesRows - pruned.activities);
+    state.rows = state.objectsRows + state.activitiesRows;
     run.effectiveBytes = effectiveBytes(state);
   };
 

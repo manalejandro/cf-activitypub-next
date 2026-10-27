@@ -28,7 +28,7 @@ describe("anonymousTimelineAllowed", () => {
 describe("anonymousStreamAllowed", () => {
   it("gates the public stream views like the worker does at connect time", () => {
     expect(anonymousStreamAllowed("public", "public")).toBe(true);
-    expect(anonymousStreamAllowed("public:remote", "public")).toBe(false);
+    expect(anonymousStreamAllowed("public:remote", "public")).toBe(true);
     expect(anonymousStreamAllowed("public:local", "public")).toBe(false);
     expect(anonymousStreamAllowed("public:local", "public_local")).toBe(true);
     expect(anonymousStreamAllowed("public", "none")).toBe(false);

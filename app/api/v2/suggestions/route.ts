@@ -4,7 +4,7 @@ import { getAuthenticatedActor } from "@/lib/auth";
 import { getAccountSuggestions, getAllCustomEmojis } from "@/lib/db";
 import { readFollowRecommendations } from "@/lib/follow-recommendations";
 import { serializeAccount } from "@/lib/mastodon/serializers";
-import { resolveLimits } from "@/lib/constants";
+import { resolveLimits, clampLimit } from "@/lib/constants";
 import { env } from "cloudflare:workers";
 
 // GET /api/v2/suggestions — recommended accounts (Mastodon-compatible shape:
@@ -16,11 +16,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   const domain = new URL(request.url).hostname;
 
   const me = await getAuthenticatedActor(request, env.DB);
-  const limit = Math.min(
-    Math.max(parseInt(request.nextUrl.searchParams.get("limit") ?? String(limits.defaultTimelinePage)), 1),
+  const limit = clampLimit(
+    request.nextUrl.searchParams.get("limit"),
+    limits.defaultTimelinePage,
     limits.maxPageSize
   );
-  const offset = Math.max(parseInt(request.nextUrl.searchParams.get("offset") ?? "0"), 0);
+  const rawOffset = Number.parseInt(request.nextUrl.searchParams.get("offset") ?? "0", 10);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.min(rawOffset, 100000) : 0;
 
   const [recommendedIds, emojis] = await Promise.all([
     // Mastodon's `FollowRecommendation`: a daily ranking of what the active

@@ -66,7 +66,7 @@ interface Mention {
 interface MediaAttachment {
   id: string;
   type: string;
-  url: string;
+  url: string | null;
   preview_url: string | null;
   description: string | null;
   blurhash?: string | null;
@@ -465,7 +465,7 @@ function ReplyBox({
                 <div key={f.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                   <div style={{ position: "relative", flexShrink: 0, width: 64, height: 64 }}>
                     {f.type === "image" || f.type === "gifv" ? (
-                      <Image src={f.preview_url ?? f.url} alt={f.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
+                      <Image src={f.preview_url ?? f.url ?? ""} alt={f.description ?? ""} width={64} height={64} style={{ objectFit: "cover", borderRadius: "var(--radius-sm)", filter: f.sensitive ? "blur(8px)" : undefined }} />
                     ) : (
                       <div style={{ width: 64, height: 64, borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}><Icon name={mediaChipIcon(f)} size="1.4rem" /></div>
                     )}

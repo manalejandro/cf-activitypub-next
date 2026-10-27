@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { getBaseUrl, json } from "@/lib/cf";
-import { atomicRateLimit } from "@/lib/rate-limit";
+import { atomicRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getActorByEmail, getActorById, getOAuthAppByClientId, getOAuthAppById, getOAuthTokenByRefreshToken, createOAuthToken, mediaCacheId, refreshOAuthTokenAccessToken, updatePassword } from "@/lib/db";
 import { verifyPassword, generateSecureToken, setAuthCookie, hashPassword, needsPasswordRehash, timingSafeEqualStr } from "@/lib/auth";
 import { enforceTurnstilePolicy } from "@/lib/turnstile";
@@ -80,7 +80,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (!valid) {
       return json({ error: "invalid_grant", error_description: "Invalid credentials", error_code: "login_error_invalid_credentials" }, 401);
     }
-    await env.KV.delete(lockoutKey).catch(() => {});
+    // Clear the lockout counter on success. `env.KV.delete(lockoutKey)` used to
+    // be a no-op: the counter lives in the DO (or under the KV window key
+    // `ratelimit:<key>:<window>`), never under the bare key — so every
+    // SUCCESSFUL login also counted toward the 10/15-min lockout.
+    await resetRateLimit(env, lockoutKey, 900);
 
     // Transparent rehash: a hash created under the older, cheaper PBKDF2 cost
     // is upgraded to the current iterations on a successful login (best effort
