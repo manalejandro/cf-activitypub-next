@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "Nessuna anteprima per questo tipo di file. Puoi scaricarlo.",
   "document_preview_truncated": "Anteprima ridotta: vengono mostrati i primi {size}.",
   "status_metric_delivery_domains": "{n} domini in errore",
-  "status_metric_last_ok": "ultima consegna {value}"
+  "status_metric_last_ok": "ultima consegna {value}",
+  "oauth_authorize_title": "Autorizza applicazione",
+  "oauth_invalid_request": "Richiesta di autorizzazione non valida",
+  "oauth_invalid_request_body": "Parametri obbligatori mancanti: response_type=code, client_id, redirect_uri.",
+  "oauth_unknown_app": "Applicazione sconosciuta",
+  "oauth_unknown_app_body": "Nessuna applicazione registrata con client_id {client_id}.",
+  "oauth_redirect_mismatch": "URI di reindirizzamento non corrispondente",
+  "oauth_redirect_mismatch_body": "L'URI di reindirizzamento non corrisponde a quello registrato per questa applicazione.",
+  "oauth_consent_requesting": "richiede l'accesso al tuo account.",
+  "oauth_requested_permissions": "Permessi richiesti",
+  "oauth_authorize": "Autorizza",
+  "oauth_deny": "Nega"
 }

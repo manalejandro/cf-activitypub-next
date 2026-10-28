@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "Для этого типа файлов нет предпросмотра, но его можно скачать.",
   "document_preview_truncated": "Предпросмотр обрезан: показаны первые {size}.",
   "status_metric_delivery_domains": "{n} доменов с ошибками",
-  "status_metric_last_ok": "последняя доставка {value}"
+  "status_metric_last_ok": "последняя доставка {value}",
+  "oauth_authorize_title": "Авторизовать приложение",
+  "oauth_invalid_request": "Недействительный запрос авторизации",
+  "oauth_invalid_request_body": "Отсутствуют обязательные параметры: response_type=code, client_id, redirect_uri.",
+  "oauth_unknown_app": "Неизвестное приложение",
+  "oauth_unknown_app_body": "Приложение с client_id {client_id} не зарегистрировано.",
+  "oauth_redirect_mismatch": "Несовпадение redirect URI",
+  "oauth_redirect_mismatch_body": "URI перенаправления не совпадает с зарегистрированным для этого приложения.",
+  "oauth_consent_requesting": "запрашивает доступ к вашему аккаунту.",
+  "oauth_requested_permissions": "Запрошенные разрешения",
+  "oauth_authorize": "Авторизовать",
+  "oauth_deny": "Отказать"
 }

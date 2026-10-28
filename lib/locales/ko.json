@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "이 파일 형식은 미리 볼 수 없습니다. 다운로드할 수 있습니다.",
   "document_preview_truncated": "미리보기가 잘렸습니다. 처음 {size}만 표시합니다.",
   "status_metric_delivery_domains": "{n}개 도메인 실패",
-  "status_metric_last_ok": "마지막 전송 {value}"
+  "status_metric_last_ok": "마지막 전송 {value}",
+  "oauth_authorize_title": "앱 승인",
+  "oauth_invalid_request": "잘못된 승인 요청",
+  "oauth_invalid_request_body": "필수 매개변수가 누락되었습니다: response_type=code, client_id, redirect_uri.",
+  "oauth_unknown_app": "알 수 없는 애플리케이션",
+  "oauth_unknown_app_body": "client_id {client_id}(으)로 등록된 애플리케이션이 없습니다.",
+  "oauth_redirect_mismatch": "리디렉션 URI 불일치",
+  "oauth_redirect_mismatch_body": "리디렉션 URI가 이 애플리케이션에 등록된 것과 일치하지 않습니다.",
+  "oauth_consent_requesting": "이(가) 계정에 대한 액세스를 요청하고 있습니다.",
+  "oauth_requested_permissions": "요청된 권한",
+  "oauth_authorize": "승인",
+  "oauth_deny": "거부"
 }

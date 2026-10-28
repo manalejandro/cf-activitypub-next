@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "この種類のファイルはプレビューできません。ダウンロードできます。",
   "document_preview_truncated": "プレビューは先頭の {size} のみ表示しています。",
   "status_metric_delivery_domains": "{n} 件の配信失敗ドメイン",
-  "status_metric_last_ok": "最終配信 {value}"
+  "status_metric_last_ok": "最終配信 {value}",
+  "oauth_authorize_title": "アプリを承認",
+  "oauth_invalid_request": "無効な認可リクエスト",
+  "oauth_invalid_request_body": "必須パラメータが不足しています：response_type=code、client_id、redirect_uri。",
+  "oauth_unknown_app": "不明なアプリケーション",
+  "oauth_unknown_app_body": "client_id {client_id} で登録されたアプリケーションはありません。",
+  "oauth_redirect_mismatch": "リダイレクトURIの不一致",
+  "oauth_redirect_mismatch_body": "リダイレクトURIがこのアプリケーションに登録されたものと一致しません。",
+  "oauth_consent_requesting": "があなたのアカウントへのアクセスを要求しています。",
+  "oauth_requested_permissions": "要求された権限",
+  "oauth_authorize": "承認",
+  "oauth_deny": "拒否"
 }

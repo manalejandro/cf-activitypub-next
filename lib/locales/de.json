@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "Für diesen Dateityp gibt es keine Vorschau. Du kannst die Datei herunterladen.",
   "document_preview_truncated": "Vorschau gekürzt: die ersten {size} werden angezeigt.",
   "status_metric_delivery_domains": "{n} fehlgeschlagene Domains",
-  "status_metric_last_ok": "letzte Zustellung {value}"
+  "status_metric_last_ok": "letzte Zustellung {value}",
+  "oauth_authorize_title": "Anwendung autorisieren",
+  "oauth_invalid_request": "Ungültige Autorisierungsanfrage",
+  "oauth_invalid_request_body": "Erforderliche Parameter fehlen: response_type=code, client_id, redirect_uri.",
+  "oauth_unknown_app": "Unbekannte Anwendung",
+  "oauth_unknown_app_body": "Keine Anwendung mit der client_id {client_id} registriert.",
+  "oauth_redirect_mismatch": "Redirect-URI stimmt nicht überein",
+  "oauth_redirect_mismatch_body": "Der Redirect-URI stimmt nicht mit dem für diese Anwendung registrierten überein.",
+  "oauth_consent_requesting": "fordert Zugriff auf dein Konto an.",
+  "oauth_requested_permissions": "Angeforderte Berechtigungen",
+  "oauth_authorize": "Autorisieren",
+  "oauth_deny": "Ablehnen"
 }

@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "No preview for this file type. You can download it.",
   "document_preview_truncated": "Preview truncated: showing the first {size}.",
   "status_metric_delivery_domains": "{n} failing domains",
-  "status_metric_last_ok": "last delivery {value}"
+  "status_metric_last_ok": "last delivery {value}",
+  "oauth_authorize_title": "Authorize application",
+  "oauth_invalid_request": "Invalid authorization request",
+  "oauth_invalid_request_body": "Missing required parameters: response_type=code, client_id, redirect_uri.",
+  "oauth_unknown_app": "Unknown application",
+  "oauth_unknown_app_body": "No application registered with client_id {client_id}.",
+  "oauth_redirect_mismatch": "Redirect URI mismatch",
+  "oauth_redirect_mismatch_body": "The redirect URI does not match what was registered for this application.",
+  "oauth_consent_requesting": "is requesting access to your account.",
+  "oauth_requested_permissions": "Requested permissions",
+  "oauth_authorize": "Authorize",
+  "oauth_deny": "Deny"
 }

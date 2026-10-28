@@ -1328,5 +1328,16 @@
   "document_preview_unavailable": "此类文件无法预览，但可以下载。",
   "document_preview_truncated": "预览已截断：仅显示前 {size}。",
   "status_metric_delivery_domains": "{n} 个域名失败",
-  "status_metric_last_ok": "上次投递 {value}"
+  "status_metric_last_ok": "上次投递 {value}",
+  "oauth_authorize_title": "授权应用",
+  "oauth_invalid_request": "无效的授权请求",
+  "oauth_invalid_request_body": "缺少必需参数：response_type=code、client_id、redirect_uri。",
+  "oauth_unknown_app": "未知应用",
+  "oauth_unknown_app_body": "没有以 client_id {client_id} 注册的应用。",
+  "oauth_redirect_mismatch": "重定向 URI 不匹配",
+  "oauth_redirect_mismatch_body": "重定向 URI 与此应用注册的不一致。",
+  "oauth_consent_requesting": "正在请求访问你的账户。",
+  "oauth_requested_permissions": "请求的权限",
+  "oauth_authorize": "授权",
+  "oauth_deny": "拒绝"
 }
