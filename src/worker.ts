@@ -761,6 +761,47 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       });
       if (quoteId) (note as Record<string, unknown>).quote = quoteId;
 
+      // Poll shape, validated BEFORE the insert so the stored `type` is right
+      // from the start. The poll/attachment ROWS are created after the object
+      // exists: both FK-reference objects(id), and creating them first violated
+      // the FK — createPoll threw (uncaught), the schedule row survived and the
+      // cron retried the same failure forever ("never publishes"); attachment
+      // failures were swallowed and the post published WITHOUT its media.
+      const pollRaw = body.poll as { options?: unknown[]; expires_in?: number; multiple?: boolean } | undefined;
+      const validPollOptions = pollRaw && Array.isArray(pollRaw.options)
+        ? pollRaw.options.map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions)
+        : [];
+      const hasValidPoll = validPollOptions.length >= 2;
+      const pollExpiresAt = hasValidPoll
+        ? new Date(Date.now() + Math.min(Math.max(Number(pollRaw?.expires_in ?? 86400), limits.pollMinExpiration), limits.pollMaxExpiration) * 1000).toISOString()
+        : null;
+      if (hasValidPoll) (note as Record<string, unknown>).type = "Question";
+
+      await createObject(env.DB, {
+        // The FULL IRI, like the immediate post path: a bare UUID id broke
+        // decodeStatusId round trips (permalink 404, edits landing on a
+        // self-fetched remote duplicate → "Cannot edit remote status").
+        id: note.id,
+        type: (note.type as string) ?? "Note",
+        actorId: actor.id,
+        content: note.content ?? htmlContent,
+        contentWarning: sensitive ? spoilerText : null,
+        sensitive,
+        visibility,
+        inReplyToId,
+        quoteId,
+        language: language ?? null,
+        url: note.id,
+        repliesCount: 0,
+        reblogsCount: 0,
+        favouritesCount: 0,
+        published,
+        local: true,
+        locationJson,
+        licenseUrl,
+        raw: JSON.stringify(note),
+      });
+
       // Link pending media uploads (same `pending_media:` KV contract as
       // POST /api/v1/statuses; the schedule-time branch extends their TTL).
       const noteAttachments: APAttachment[] = [];
@@ -779,7 +820,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           const mimeType = (pending.mimeType as string | null) ?? null;
           const att = {
             id: mediaId,
-            objectId: noteId,
+            objectId: note.id,
             type: (pending.type as string) ?? "image",
             url: pending.url as string,
             remoteUrl: null,
@@ -806,81 +847,71 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         } catch { /* skip malformed pending media */ }
       }
 
-      // Create the poll (Question object + local poll rows) if requested.
-      const pollRaw = body.poll as { options?: unknown[]; expires_in?: number; multiple?: boolean } | undefined;
-      if (pollRaw && Array.isArray(pollRaw.options)) {
-        const validOptions = pollRaw.options.map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions);
-        if (validOptions.length >= 2) {
-          const expiresIn = Math.min(Math.max(Number(pollRaw.expires_in ?? 86400), limits.pollMinExpiration), limits.pollMaxExpiration);
-          const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-          await createPoll(env.DB, {
-            id: generateId(),
-            objectId: noteId,
-            expiresAt,
-            multiple: Boolean(pollRaw.multiple),
-            options: validOptions.map((title, i) => ({ id: generateId(), title, position: i })),
-          });
-          const pollChoices = validOptions.map((title) => ({
-            type: "Note",
-            name: title,
-            replies: { type: "Collection", totalItems: 0 },
-          }));
-          const noteAny = note as Record<string, unknown>;
-          noteAny.type = "Question";
-          if (pollRaw.multiple) noteAny.anyOf = pollChoices;
-          else noteAny.oneOf = pollChoices;
-          noteAny.endTime = expiresAt;
-          noteAny.votersCount = 0;
-        }
+      // Poll rows + the Question fields of the document.
+      if (hasValidPoll && pollExpiresAt) {
+        await createPoll(env.DB, {
+          id: generateId(),
+          objectId: note.id,
+          expiresAt: pollExpiresAt,
+          multiple: Boolean(pollRaw?.multiple),
+          options: validPollOptions.map((title, i) => ({ id: generateId(), title, position: i })),
+        });
+        const pollChoices = validPollOptions.map((title) => ({
+          type: "Note",
+          name: title,
+          replies: { type: "Collection", totalItems: 0 },
+        }));
+        const noteAny = note as Record<string, unknown>;
+        if (pollRaw?.multiple) noteAny.anyOf = pollChoices;
+        else noteAny.oneOf = pollChoices;
+        noteAny.endTime = pollExpiresAt;
+        noteAny.votersCount = 0;
       }
 
       if (noteAttachments.length > 0) note.attachment = noteAttachments;
-
-      await createObject(env.DB, {
-        id: noteId,
-        type: (note.type as string) ?? "Note",
-        actorId: actor.id,
-        content: note.content ?? htmlContent,
-        contentWarning: sensitive ? spoilerText : null,
-        sensitive,
-        visibility,
-        inReplyToId,
-        quoteId,
-        language: language ?? null,
-        url: note.id,
-        repliesCount: 0,
-        reblogsCount: 0,
-        favouritesCount: 0,
-        published,
-        local: true,
-        locationJson,
-        licenseUrl,
-        raw: JSON.stringify(note),
-      });
-
-      await maybeEnqueueLinkPreview(env.DB, {
-        id: noteId,
-        content,
-        quoteId,
-        hasAttachments: noteAttachments.length > 0,
-      });
-
-      await env.DB
-        .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
-        .bind(s.actor_id)
-        .run();
-
-      if (inReplyToId) {
+      // Persist the final document (attachment/poll fields were added after the
+      // insert). A raw-only update: this is not an edit, `updated_at` stays.
+      if (noteAttachments.length > 0 || hasValidPoll) {
         await env.DB
-          .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
-          .bind(inReplyToId)
+          .prepare("UPDATE objects SET raw = ? WHERE id = ?")
+          .bind(JSON.stringify(note), note.id)
           .run();
       }
 
+      // The schedule's job is done once the post exists: remove the row BEFORE
+      // the fan-out so a later failure can never re-publish it (and an earlier
+      // one can no longer strand it in an eternal retry).
       await env.DB
         .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
         .bind(s.id)
         .run();
+
+      // Best-effort enrichment: neither the preview crawl nor the counters may
+      // abort an already-published post.
+      try {
+        await maybeEnqueueLinkPreview(env.DB, {
+          id: note.id,
+          content,
+          quoteId,
+          hasAttachments: noteAttachments.length > 0,
+        });
+      } catch (err) {
+        console.error("[scheduled] link-preview enqueue failed", s.id, err);
+      }
+      try {
+        await env.DB
+          .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
+          .bind(s.actor_id)
+          .run();
+        if (inReplyToId) {
+          await env.DB
+            .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
+            .bind(inReplyToId)
+            .run();
+        }
+      } catch (err) {
+        console.error("[scheduled] counter update failed", s.id, err);
+      }
 
       // Fan-out delivery (through the queue), mirroring the immediate post path:
       // followers plus every remote mentioned account, so a mention — and a
@@ -916,7 +947,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
             type: "mention",
             accountId: actor.id,
             targetAccountId: mentioned.id,
-            objectId: noteId,
+            objectId: note.id,
             read: false,
             createdAt: published,
           });
@@ -938,7 +969,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
             type: "mention",
             accountId: actor.id,
             targetAccountId: parentAuthor.id,
-            objectId: noteId,
+            objectId: note.id,
             read: false,
             createdAt: published,
           });
@@ -972,7 +1003,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // in the home of the local accounts it addresses (pushing it to every
       // follower's home would leak it).
       if (env.TIMELINE_STREAM) {
-        const stored = await getObjectById(env.DB, noteId);
+        const stored = await getObjectById(env.DB, note.id);
         if (stored) {
           const serialized = await serializeStatusForStream(env.DB, stored, actor, domain);
           const tasks: Promise<void>[] = [];

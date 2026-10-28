@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, translateKey } from "@/lib/i18n";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
@@ -18,9 +18,19 @@ interface ScheduledStatus {
     visibility?: string;
     sensitive?: boolean;
     spoiler_text?: string;
+    poll?: { options?: unknown[] } | null;
+    location?: { name?: string | null } | null;
+    event?: { name?: string } | null;
   };
-  media_attachments: unknown[];
+  media_attachments: { id: string }[];
 }
+
+const VIS_META: Record<string, { icon: string; key: string }> = {
+  public: { icon: "globe", key: "vis_public" },
+  unlisted: { icon: "unlock", key: "vis_unlisted" },
+  private: { icon: "lock", key: "vis_followers" },
+  direct: { icon: "envelope", key: "vis_direct" },
+};
 
 interface Me {
   id: string;
@@ -103,9 +113,40 @@ export default function ScheduledPage() {
                       <Icon name="exclamation-triangle" /> {s.params.spoiler_text}
                     </div>
                   )}
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.2rem", display: "flex", gap: "0.5rem" }}>
-                    <span>{s.params.visibility || "public"}</span>
-                    {s.params.sensitive && <span><Icon name="eye-slash" /></span>}
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.35rem", display: "flex", gap: "0.65rem", alignItems: "center", flexWrap: "wrap" }}>
+                    {(() => {
+                      const vis = VIS_META[s.params.visibility ?? "public"] ?? VIS_META.public;
+                      return (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                          <Icon name={vis.icon} /> {translateKey(t, vis.key) ?? vis.key}
+                        </span>
+                      );
+                    })()}
+                    {s.params.sensitive && (
+                      <span title={t.media_sensitive_label} style={{ display: "inline-flex", alignItems: "center" }}>
+                        <Icon name="eye-slash" />
+                      </span>
+                    )}
+                    {s.media_attachments.length > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                        <Icon name="paperclip" /> {s.media_attachments.length}
+                      </span>
+                    )}
+                    {s.params.poll && (
+                      <span title={t.composer_poll} style={{ display: "inline-flex", alignItems: "center" }}>
+                        <Icon name="bar-chart" />
+                      </span>
+                    )}
+                    {s.params.location && (
+                      <span title={t.location_title} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", maxWidth: "12rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <Icon name="map-marker" /> {s.params.location.name || t.location_title}
+                      </span>
+                    )}
+                    {s.params.event && (
+                      <span title={t.composer_event} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", maxWidth: "14rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <Icon name="calendar" /> {s.params.event.name || t.composer_event}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
