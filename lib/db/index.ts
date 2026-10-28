@@ -2352,6 +2352,37 @@ export async function getObjectsByIds(db: D1Database, ids: string[]): Promise<Ma
 }
 
 /**
+ * Restore the content an account suspension blanked (`suspendAccount` NULLs
+ * `objects.content` so toxic posts stop spreading; the rendered document
+ * survives in `objects.raw`). Statuses deleted individually by moderation are
+ * excluded — their removal is audited in `moderation_log` as `deleted` and is
+ * independent of the account's state, so a reinstatement must not resurrect
+ * them. `updated_at` is deliberately untouched: a reinstatement is not an edit.
+ * Returns the number of restored objects.
+ */
+export async function restoreSuspendedContent(db: D1Database, actorId: string): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE objects
+          SET content = json_extract(raw, '$.content'),
+              sensitive = COALESCE(json_extract(raw, '$.sensitive'), 0)
+        WHERE actor_id = ?
+          AND content IS NULL
+          AND json_valid(raw)
+          AND json_type(raw, '$.content') = 'text'
+          AND NOT EXISTS (
+                SELECT 1 FROM moderation_log ml
+                 WHERE ml.target_type = 'status'
+                   AND ml.target_id = objects.id
+                   AND ml.action = 'deleted'
+              )`
+    )
+    .bind(actorId)
+    .run();
+  return result.meta.changes ?? 0;
+}
+
+/**
  * Resolve the account id of the status this object replies to (the parent's
  * author), or null when it is not a reply / the parent is unknown.
  */

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, notFound } from "@/lib/cf";
-import { getActorById } from "@/lib/db";
+import { getActorById, restoreSuspendedContent } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { accountActionGuard } from "@/lib/admin/account-guards";
 import { recordModeration } from "@/lib/moderation/log";
@@ -30,6 +30,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     .bind(id)
     .run();
 
+  // The moderation suspension blanked the account's posts (`suspendAccount`):
+  // reinstate them from the stored AP documents. Statuses deleted individually
+  // by moderation stay deleted (audited in moderation_log).
+  const restored = await restoreSuspendedContent(env.DB, id);
+
   // Federate the change: peers only re-read the actor document on a refetch
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
@@ -52,7 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     reason: "Account suspension lifted by an administrator.",
     confidence: null,
     model: "admin",
-    details: { username: actor.username, domain: actor.domain, forgotten },
+    details: { username: actor.username, domain: actor.domain, forgotten, restored },
     emailSent: false,
     emailTo: null,
     relatedId: null,

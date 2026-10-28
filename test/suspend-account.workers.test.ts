@@ -213,6 +213,65 @@ describe("suspending an account", () => {
     expect(lastActivity().object.suspended).toBe(true);
   });
 
+  it("restores the blanked content on reinstatement, except individually deleted statuses", async () => {
+    // Two posts with their AP documents stored in `raw` (the suspension
+    // blanket NULLs `content`; `raw` is what the reinstatement restores from).
+    for (const [n, sensitive] of [["r1", false], ["r2", true]] as const) {
+      await db
+        .prepare(
+          `INSERT INTO objects (id, type, actor_id, content, raw, visibility, published, updated_at, is_local)
+           VALUES (?, 'Note', ?, ?, ?, 'public', '2026-10-01T10:00:00Z', '2026-10-01T10:00:00Z', 1)`
+        )
+        .bind(
+          `${BASE}/objects/${n}`,
+          SPAMMER,
+          `<p>post ${n}</p>`,
+          JSON.stringify({ id: `${BASE}/objects/${n}`, content: `<p>post ${n}</p>`, sensitive })
+        )
+        .run();
+    }
+    // r2 was ALSO deleted individually by moderation before the suspension:
+    // its removal is audited and must survive the reinstatement.
+    await db
+      .prepare(
+        "INSERT INTO moderation_log (id, source, target_type, target_id, action, created_at) VALUES ('ml-r2', 'user', 'status', ?, 'deleted', datetime('now'))"
+      )
+      .bind(`${BASE}/objects/r2`)
+      .run();
+    await db
+      .prepare("UPDATE objects SET content = NULL, sensitive = 1 WHERE id = ?")
+      .bind(`${BASE}/objects/r2`)
+      .run();
+
+    const suspended = await suspendAccount(
+      { DB: env.DB, KV: env.KV, INSTANCE_URL: BASE },
+      { actorId: SPAMMER, reason: "spam", source: "ai", model: "test" }
+    );
+    expect(suspended.applied).toBe(true);
+
+    const blanked = await db
+      .prepare("SELECT id, content FROM objects WHERE actor_id = ? AND content IS NULL")
+      .bind(SPAMMER)
+      .all<{ id: string }>();
+    expect(blanked.results.map((r) => r.id).sort()).toEqual([`${BASE}/objects/r1`, `${BASE}/objects/r2`]);
+
+    await adminCall(UNSUSPEND, SPAMMER);
+
+    const r1 = await db
+      .prepare("SELECT content, sensitive, updated_at FROM objects WHERE id = ?")
+      .bind(`${BASE}/objects/r1`)
+      .first<{ content: string | null; sensitive: number; updated_at: string }>();
+    expect(r1?.content).toBe("<p>post r1</p>");
+    expect(r1?.sensitive).toBe(0); // restored from the document, not the blanket's 1
+    expect(r1?.updated_at).toBe("2026-10-01T10:00:00Z"); // a reinstatement is not an edit
+
+    const r2 = await db
+      .prepare("SELECT content FROM objects WHERE id = ?")
+      .bind(`${BASE}/objects/r2`)
+      .first<{ content: string | null }>();
+    expect(r2?.content).toBeNull(); // individually deleted: stays deleted
+  });
+
   it("marks the account entity and hides its posts", async () => {
     await seedStatus();
     await adminCall(SUSPEND, SPAMMER);

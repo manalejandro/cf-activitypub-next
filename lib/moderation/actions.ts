@@ -10,7 +10,7 @@ import { generateId, actorIRI } from "@/lib/activitypub/utils";
 import { broadcastActorState } from "@/lib/activitypub/actor-update";
 import { broadcastAccountUpdate, type DONamespace } from "@/lib/streaming/broadcast";
 import { generateKeyPair } from "@/lib/activitypub/security";
-import { createActor, getActorById, getActorByUsername, getObjectById, deleteOAuthTokensForActor } from "@/lib/db";
+import { createActor, getActorById, getActorByUsername, getObjectById, deleteOAuthTokensForActor, restoreSuspendedContent } from "@/lib/db";
 import { sendModerationNoticeEmail, type ModerationNoticeAction } from "@/lib/email";
 import { notify, type NotifyEnv } from "@/lib/notify";
 import { recordModeration, hadAction, type ModerationSource } from "./log";
@@ -379,6 +379,10 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
     .prepare("UPDATE actors SET suspended = 0, suspension_origin = NULL, suspended_at = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(actorId)
     .run();
+  // The suspension's content blanket is reversible: restore the posts from the
+  // stored AP documents (statuses deleted individually by moderation stay
+  // deleted — their removal is audited and independent of the account state).
+  const restored = await restoreSuspendedContent(env.DB, actorId);
   // Tell the followers the account is back, or they keep treating it as gone.
   await broadcastActorState(env, actorId).catch(() => {});
   // Local clients refetch: the account's posts are served again.
@@ -397,7 +401,7 @@ export async function unsuspendAccount(env: ModerationEnv, opts: ActionBase & { 
     reason: reason ?? "Cuenta restablecida.",
     confidence: opts.confidence ?? null,
     model: m.model,
-    details: { ...(opts.details ?? {}), forgotten },
+    details: { ...(opts.details ?? {}), forgotten, restored },
     emailSent: false,
     emailTo: null,
     relatedId: opts.relatedId ?? null,
