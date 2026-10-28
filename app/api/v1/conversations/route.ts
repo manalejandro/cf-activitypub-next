@@ -1,11 +1,12 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversations, getObjectById, getActorById, getActorByUri, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectId } from "@/lib/db";
+import { getConversations, getObjectsByIds, getActorsByIds, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectIds } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
+import type { LocalObject } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
 // IRIs of the other participants of a direct object: everyone addressed in
@@ -46,48 +47,79 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const conversations = await getConversations(env.DB, actor.id, limit);
 
-  const result = await Promise.all(
-    conversations.map(async (c) => {
-      // A conversation whose latest message is gone must not linger as an empty
-      // entry (messages can be deleted from the status page, a federated
-      // Delete, an account purge…): drop it, mirroring deleteObject.
-      const obj = c.last_status_id ? await getObjectById(env.DB, c.last_status_id) : null;
-      if (!obj) {
-        await deleteConversation(env.DB, c.id);
-        return null;
-      }
+  // Batch every lookup (AGENTS: never a round trip per row). The old code did
+  // ~6 queries per conversation (object, author, filters, last-status-at,
+  // author extras, attachments) plus one per participant — >100 round trips for
+  // a page of 20. Resolve all objects, then all actors (authors + participants),
+  // then the enrichment maps in one parallel round.
+  const lastIds = conversations.map((c) => c.last_status_id).filter((v): v is string => !!v);
+  const objectMap = await getObjectsByIds(env.DB, lastIds);
 
-      let lastStatus = null;
-      let accounts: unknown[] = [];
-      const lastStatusFiltered = (await getFilterResultsForStatuses(env.DB, actor.id, [obj])).get(obj.id);
-      const author = await getActorById(env.DB, obj.actorId);
-      if (author) {
-        const authorLastStatusAt = (await getLastStatusAtMap(env.DB, [obj.actorId])).get(obj.actorId) ?? null;
-        const authorExtras = (await getStatusAuthorExtras(env.DB, [obj.actorId], domain)).get(obj.actorId);
-        const lastAttachments = await getAttachmentsByObjectId(env.DB, obj.id);
-        lastStatus = serializeStatus(obj, author, domain, { attachments: lastAttachments, filtered: lastStatusFiltered, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
-        if (obj.visibility === "direct") {
-          // The conversation is "with" everyone addressed except the viewer;
-          // fall back to the last author when no other participant resolves.
-          const others = otherParticipantIds(obj.raw, actor.id);
-          let other = null;
-          for (const oid of others) {
-            const oa = await getActorByUri(env.DB, oid);
-            if (oa) { other = oa; break; }
-          }
-          if (other) accounts = [serializeAccount(other, domain)];
-          else if (author.id !== actor.id) accounts = [serializeAccount(author, domain)];
+  // A conversation whose latest message is gone must not linger as an empty
+  // entry (messages can be deleted from the status page, a federated Delete, an
+  // account purge…): drop it, mirroring deleteObject.
+  const live: { c: (typeof conversations)[number]; obj: LocalObject }[] = [];
+  for (const c of conversations) {
+    const obj = c.last_status_id ? objectMap.get(c.last_status_id) : undefined;
+    if (!obj) {
+      await deleteConversation(env.DB, c.id);
+      continue;
+    }
+    live.push({ c, obj });
+  }
+  if (live.length === 0) return json([]);
+
+  const objs = live.map((x) => x.obj);
+  const authorIds = [...new Set(objs.map((o) => o.actorId))];
+  // Participants of direct conversations are http IRIs (otherParticipantIds
+  // skips non-http), i.e. actor ids — resolve them in the same batch as authors.
+  const participantIds = new Set<string>();
+  for (const x of live) {
+    if (x.obj.visibility === "direct") {
+      for (const pid of otherParticipantIds(x.obj.raw, actor.id)) participantIds.add(pid);
+    }
+  }
+  const allActorIds = [...new Set([...authorIds, ...participantIds])];
+
+  const [actorsMap, filteredMap, lastStatusAtMap, authorExtrasMap, attachmentsMap] = await Promise.all([
+    getActorsByIds(env.DB, allActorIds),
+    getFilterResultsForStatuses(env.DB, actor.id, objs),
+    getLastStatusAtMap(env.DB, authorIds),
+    getStatusAuthorExtras(env.DB, authorIds, domain),
+    getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)),
+  ]);
+
+  const result = live.map(({ c, obj }) => {
+    let lastStatus = null;
+    let accounts: unknown[] = [];
+    const author = actorsMap.get(obj.actorId) ?? null;
+    if (author) {
+      const lastStatusFiltered = filteredMap.get(obj.id);
+      const authorLastStatusAt = lastStatusAtMap.get(obj.actorId) ?? null;
+      const authorExtras = authorExtrasMap.get(obj.actorId);
+      const lastAttachments = attachmentsMap.get(obj.id) ?? [];
+      lastStatus = serializeStatus(obj, author, domain, { attachments: lastAttachments, filtered: lastStatusFiltered, authorLastStatusAt, authorSupportsCalls: authorExtras?.supportsCalls, authorMoved: authorExtras?.moved ?? null });
+      if (obj.visibility === "direct") {
+        // The conversation is "with" everyone addressed except the viewer;
+        // fall back to the last author when no other participant resolves.
+        const others = otherParticipantIds(obj.raw, actor.id);
+        let other = null;
+        for (const oid of others) {
+          const oa = actorsMap.get(oid);
+          if (oa) { other = oa; break; }
         }
+        if (other) accounts = [serializeAccount(other, domain)];
+        else if (author.id !== actor.id) accounts = [serializeAccount(author, domain)];
       }
+    }
 
-      return {
-        id: c.id,
-        unread: c.unread,
-        accounts,
-        last_status: lastStatus,
-      };
-    })
-  );
+    return {
+      id: c.id,
+      unread: c.unread,
+      accounts,
+      last_status: lastStatus,
+    };
+  });
 
-  return json(result.filter((c) => c !== null));
+  return json(result);
 }

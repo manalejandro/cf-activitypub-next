@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
-import { getNotifications, getActorById, getObjectById, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
+import { getNotifications, getActorsByIds, getObjectsByIds, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeNotification } from "@/lib/mastodon/serializers";
 import { buildPaginationLinks } from "@/lib/mastodon/pagination";
@@ -32,9 +32,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     filtered: filteredOnly,
   });
 
-  const notifObjects = (await Promise.all(
-    notifications.map((n) => (n.objectId ? getObjectById(env.DB, n.objectId) : Promise.resolve(null)))
-  )).filter((o): o is NonNullable<typeof o> => o !== null);
+  // Batch every lookup (AGENTS: a page must never make a round trip per row).
+  // Objects are resolved once here and reused for the enrichment maps AND the
+  // serialization below — the old code fetched each object twice and each actor
+  // (sender + author) per row, ~80 D1 round trips for a page of 20.
+  const objectIds = notifications.map((n) => n.objectId).filter((v): v is string => !!v);
+  const objectMap = await getObjectsByIds(env.DB, objectIds);
+  const notifObjects = [...objectMap.values()];
   const filteredMap = await getFilterResultsForStatuses(env.DB, actor.id, notifObjects);
   const lastStatusAtMap = await getLastStatusAtMap(env.DB, notifObjects.map((o) => o.actorId));
   const authorExtrasMap = await getStatusAuthorExtras(env.DB, notifObjects.map((o) => o.actorId), domain);
@@ -42,16 +46,21 @@ export async function GET(request: NextRequest): Promise<Response> {
   const mutedIds = new Set(await getMutedActorIds(env.DB, actor.id));
   const authorFieldsMap = await getActorFieldsMap(env.DB, notifObjects.map((o) => o.actorId));
 
-  const serialized = await Promise.all(
-    notifications
-      .map(async (notif) => {
-        const fromActor = await getActorById(env.DB, notif.accountId);
-        const object = notif.objectId ? await getObjectById(env.DB, notif.objectId) : null;
-        const author = object ? await getActorById(env.DB, object.actorId) : null;
-        if (!fromActor) return null;
-        return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, object ? (filteredMap.get(object.id) ?? []) : undefined, object ? (lastStatusAtMap.get(object.actorId) ?? null) : undefined, object ? authorExtrasMap.get(object.actorId) : undefined, object ? bookmarkedIds.has(object.id) : undefined, object ? authorFieldsMap.get(object.actorId) : undefined, object ? mutedIds.has(object.actorId) : undefined);
-      })
-  );
+  // One batch for every actor the page references: the notification sender and
+  // each object's author.
+  const actorIds = new Set<string>();
+  for (const n of notifications) actorIds.add(n.accountId);
+  for (const o of notifObjects) actorIds.add(o.actorId);
+  const actorsMap = await getActorsByIds(env.DB, [...actorIds]);
+
+  const serialized = notifications
+    .map((notif) => {
+      const fromActor = actorsMap.get(notif.accountId) ?? null;
+      if (!fromActor) return null;
+      const object = notif.objectId ? objectMap.get(notif.objectId) ?? null : null;
+      const author = object ? actorsMap.get(object.actorId) ?? null : null;
+      return serializeNotification(notif, fromActor, domain, object ?? undefined, author ?? undefined, object ? (filteredMap.get(object.id) ?? []) : undefined, object ? (lastStatusAtMap.get(object.actorId) ?? null) : undefined, object ? authorExtrasMap.get(object.actorId) : undefined, object ? bookmarkedIds.has(object.id) : undefined, object ? authorFieldsMap.get(object.actorId) : undefined, object ? mutedIds.has(object.actorId) : undefined);
+    });
 
   const result = serialized.filter(Boolean);
   const response = json(result);

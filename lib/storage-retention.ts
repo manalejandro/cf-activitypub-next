@@ -58,6 +58,7 @@
 
 import { getInstanceSetting, setInstanceSetting } from "@/lib/db";
 import { resolveLimits, type InstanceLimits } from "@/lib/constants";
+import { dbTimestamp } from "@/lib/dates";
 
 /** The bindings a retention pass needs. */
 export interface RetentionEnv {
@@ -504,11 +505,17 @@ export async function pruneFederatedHistory(
 
   // Processed activities are write-only replay protection: their raw document
   // is never read again, so the oldest ones are the cheapest bytes to reclaim.
+  // `activities.published` keeps `datetime('now')`'s space-separated shape (it
+  // is a local processing stamp, not an AP-derived instant), so the cutoff —
+  // built as ISO for the `objects` branches above — is converted to the same
+  // shape here. Comparing an ISO cutoff against the space shape would prune
+  // same-day activities up to a day early (' ' sorts before 'T').
+  const activityCutoff = dbTimestamp(opts.cutoff);
   const activities = await env.DB.prepare(
     `SELECT id, LENGTH(raw) AS bytes FROM activities INDEXED BY idx_activities_published
       WHERE published < ? ORDER BY published ASC LIMIT ?`
   )
-    .bind(opts.cutoff, opts.limit)
+    .bind(activityCutoff, opts.limit)
     .all<{ id: string; bytes: number }>();
 
   const activityIds = (activities.results ?? []).map((row) => row.id);

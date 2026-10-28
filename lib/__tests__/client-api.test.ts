@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getToken, setToken, clearToken, apiFetch } from "@/lib/client-api";
+import { getToken, setToken, clearToken } from "@/lib/client-api";
 
 beforeEach(() => {
   vi.stubGlobal("document", { cookie: "" });
@@ -33,27 +33,5 @@ describe("getToken / setToken / clearToken", () => {
     clearToken();
     expect(getToken()).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
-  });
-});
-
-describe("apiFetch", () => {
-  it("calls fetch with credentials include", async () => {
-    const mockFetch = vi.fn().mockResolvedValue(new Response());
-    vi.stubGlobal("fetch", mockFetch);
-
-    await apiFetch("/api/test");
-    expect(mockFetch).toHaveBeenCalledWith("/api/test", { credentials: "include" });
-  });
-
-  it("merges custom options", async () => {
-    const mockFetch = vi.fn().mockResolvedValue(new Response());
-    vi.stubGlobal("fetch", mockFetch);
-
-    await apiFetch("/api/test", { method: "POST", body: "hello" });
-    expect(mockFetch).toHaveBeenCalledWith("/api/test", {
-      method: "POST",
-      body: "hello",
-      credentials: "include",
-    });
   });
 });

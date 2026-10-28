@@ -77,8 +77,20 @@ export async function sweepOrphanUploads(
   const { DB, R2 } = bindings;
   if (!R2) return { scanned: 0, deleted: 0 };
 
-  const cursor = (await getInstanceSetting(DB, CURSOR_KEY).catch(() => null)) || undefined;
-  const listed = await R2.list({ prefix: MEDIA_PREFIX, cursor, limit: limits.listBatch });
+  let cursor = (await getInstanceSetting(DB, CURSOR_KEY).catch(() => null)) || undefined;
+  let listed: Awaited<ReturnType<OrphanUploadBucket["list"]>>;
+  try {
+    listed = await R2.list({ prefix: MEDIA_PREFIX, cursor, limit: limits.listBatch });
+  } catch (err) {
+    // A persisted R2 cursor can expire or come from a since-changed bucket. On
+    // failure with a stored cursor, reset to the beginning and retry ONCE so the
+    // stage self-heals instead of wedging forever on the same bad cursor (the
+    // cron's try/catch would otherwise swallow the error and never clear it).
+    if (!cursor) throw err;
+    cursor = undefined;
+    await setInstanceSetting(DB, CURSOR_KEY, "").catch(() => {});
+    listed = await R2.list({ prefix: MEDIA_PREFIX, limit: limits.listBatch });
+  }
   // Persist where the next pass continues; an exhausted list restarts from the
   // beginning (keys deleted/added in between are picked up on later cycles).
   await setInstanceSetting(DB, CURSOR_KEY, listed.truncated ? listed.cursor ?? "" : "").catch(() => {});

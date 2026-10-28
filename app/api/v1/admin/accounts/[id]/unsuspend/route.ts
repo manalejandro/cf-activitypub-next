@@ -33,6 +33,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Federate the change: peers only re-read the actor document on a refetch
   // (Mastodon's `SuspendAccountService#distribute_update_actor`).
   await broadcastActorState(env, id).catch(() => {});
+  // Drop the cached actor document so a peer that PULLS `/users/:username`
+  // within the cache TTL sees the reinstated account, not the suspended copy.
+  await env.KV.delete(`ap:actor:${actor.username.toLowerCase()}`).catch(() => {});
   // Local clients refetch: the account's posts are served again.
   await broadcastAccountUpdate(env.TIMELINE_STREAM, env.DB, { actorId: id, suspended: false, local: actor.isLocal }).catch(() => {});
 

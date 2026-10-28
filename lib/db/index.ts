@@ -2316,6 +2316,27 @@ export async function getObjectById(db: D1Database, id: string): Promise<LocalOb
 }
 
 /**
+ * Batch variant of getObjectById: resolve many objects in one query. A page of
+ * notifications/conversations must never make a round trip per status (AGENTS:
+ * batch every lookup) — this replaces the per-row `getObjectById` fan-out.
+ */
+export async function getObjectsByIds(db: D1Database, ids: string[]): Promise<Map<string, LocalObject>> {
+  const map = new Map<string, LocalObject>();
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return map;
+  for (let i = 0; i < unique.length; i += 900) {
+    const chunk = unique.slice(i, i + 900);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT * FROM objects WHERE id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<Row>();
+    for (const r of rows.results) map.set(r.id, rowToObject(r));
+  }
+  return map;
+}
+
+/**
  * Resolve the account id of the status this object replies to (the parent's
  * author), or null when it is not a reply / the parent is unknown.
  */
@@ -4218,6 +4239,17 @@ export async function createBlock(db: D1Database, id: string, actorId: string, t
     .prepare("INSERT OR IGNORE INTO blocks (id, actor_id, target_id) VALUES (?,?,?)")
     .bind(id, actorId, targetId)
     .run();
+  // A block severs the follows in both directions. Adjust the denormalized
+  // counters for the ACCEPTED follows about to be removed (pending/rejected
+  // rows never counted) BEFORE deleting them, or followers_count/following_count
+  // drift from the follows table. Each decrement is guarded by an EXISTS so a
+  // direction that had no accepted follow is left untouched.
+  await db.batch([
+    db.prepare("UPDATE actors SET following_count = MAX(0, COALESCE(following_count, 0) - 1) WHERE id = ? AND EXISTS (SELECT 1 FROM follows WHERE actor_id = ? AND target_id = ? AND state = 'accepted')").bind(actorId, actorId, targetId),
+    db.prepare("UPDATE actors SET followers_count = MAX(0, COALESCE(followers_count, 0) - 1) WHERE id = ? AND EXISTS (SELECT 1 FROM follows WHERE actor_id = ? AND target_id = ? AND state = 'accepted')").bind(targetId, actorId, targetId),
+    db.prepare("UPDATE actors SET following_count = MAX(0, COALESCE(following_count, 0) - 1) WHERE id = ? AND EXISTS (SELECT 1 FROM follows WHERE actor_id = ? AND target_id = ? AND state = 'accepted')").bind(targetId, targetId, actorId),
+    db.prepare("UPDATE actors SET followers_count = MAX(0, COALESCE(followers_count, 0) - 1) WHERE id = ? AND EXISTS (SELECT 1 FROM follows WHERE actor_id = ? AND target_id = ? AND state = 'accepted')").bind(actorId, targetId, actorId),
+  ]);
   // Remove any existing follows in both directions
   await db.prepare("DELETE FROM follows WHERE (actor_id = ? AND target_id = ?) OR (actor_id = ? AND target_id = ?)")
     .bind(actorId, targetId, targetId, actorId)

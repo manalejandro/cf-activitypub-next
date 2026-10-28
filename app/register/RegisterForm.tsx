@@ -166,14 +166,18 @@ export default function RegisterForm({ turnstileSiteKey }: Props) {
     setResendSent(false);
 
     try {
-      await fetch("/api/auth/resend-verification", {
+      const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: pendingEmail }),
       });
-      setResendSent(true);
+      // Only claim success when the server accepted it: a 429 (rate-limited) or
+      // 500 used to still flip the UI to "resent", telling the user to wait for
+      // an email that was never queued.
+      if (res.ok) setResendSent(true);
+      else setError(t.network_error);
     } catch {
-      // silently ignore
+      setError(t.network_error);
     } finally {
       setResendLoading(false);
     }

@@ -1294,10 +1294,25 @@ async function handleUndo(activity: APActivity, ctx: InboxContext): Promise<void
     if (targetId) await deleteBlock(ctx.db, actorId, targetId);
   } else if (innerType === "like") {
     const objectId = typeof obj.object === "string" ? obj.object : (obj.object as APNote)?.id;
-    if (objectId) await deleteLike(ctx.db, actorId, objectId);
+    if (objectId) {
+      await deleteLike(ctx.db, actorId, objectId);
+      // Revoke the favourite notification (Mastodon does): the recipient's list
+      // must not keep showing a like that was taken back.
+      await ctx.db
+        .prepare("DELETE FROM notifications WHERE type = 'favourite' AND account_id = ? AND object_id = ?")
+        .bind(actorId, objectId)
+        .run();
+    }
   } else if (innerType === "announce") {
     const objectId = typeof obj.object === "string" ? obj.object : (obj.object as APNote)?.id;
-    if (objectId) await deleteAnnounce(ctx.db, actorId, objectId);
+    if (objectId) {
+      await deleteAnnounce(ctx.db, actorId, objectId);
+      // Revoke the reblog notification, same as above.
+      await ctx.db
+        .prepare("DELETE FROM notifications WHERE type = 'reblog' AND account_id = ? AND object_id = ?")
+        .bind(actorId, objectId)
+        .run();
+    }
   }
 }
 
@@ -1824,7 +1839,10 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
 
   if (!existing) {
     const announceId = generateId();
-    const announceCreatedAt = new Date().toISOString();
+    // Order boosts by when the peer actually announced (Mastodon reads
+    // `activity.published`): a re-relayed old Announce stamped with `new Date()`
+    // jumped to the top of the home timeline as if it were brand new.
+    const announceCreatedAt = toUtcIso(typeof activity.published === "string" ? activity.published : null);
     await createAnnounce(ctx.db, {
       id: announceId,
       actorId,
@@ -2936,13 +2954,21 @@ async function saveObjectAttachments(
   // Bounded: every attachment queues a media-cache fetch (see MAX_REMOTE_ATTACHMENTS).
   for (const att of attachment.slice(0, MAX_REMOTE_ATTACHMENTS)) {
     if (!att?.url) continue;
+    // Validate BEFORE storing and enqueue with the SAME normalized URL that
+    // lands in `remote_url`, or the media-cache hold/release joins (exact
+    // string match) never rewrite the reference to the R2 copy. A stable id is
+    // generated once so createAttachment and the cache entry agree (an
+    // `att.id || ""` enqueue used to orphan the entry when the doc had no id).
+    const safeUrl = safeMediaUrl(att.url);
+    if (!safeUrl) continue;
+    const attachmentId = att.id || generateId();
     try {
       await createAttachment(db, {
-        id: att.id || generateId(),
+        id: attachmentId,
         objectId,
-        type: apAttachmentType(att.type, att.mediaType, att.url),
-        url: att.url,
-        remoteUrl: att.url,
+        type: apAttachmentType(att.type, att.mediaType, safeUrl),
+        url: safeUrl,
+        remoteUrl: safeUrl,
         description: att.name ?? null,
         blurhash: att.blurhash ?? null,
         width: att.width ?? null,
@@ -2952,7 +2978,7 @@ async function saveObjectAttachments(
         sensitive: sensitive || (att as { sensitive?: boolean }).sensitive === true,
         createdAt: new Date().toISOString(),
       });
-      await enqueueMediaCache(db, att.url, "attachment", att.id || "");
+      await enqueueMediaCache(db, safeUrl, "attachment", attachmentId);
     } catch { /* ignore */ }
   }
   await markObjectMediaPending(db, objectId);

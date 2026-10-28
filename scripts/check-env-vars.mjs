@@ -23,7 +23,10 @@ const IGNORED = new Set([
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "dist" || entry.startsWith(".")) continue;
+    // Skip dot-entries (.git, .next, .wrangler, …) EXCEPT `.well-known`, which
+    // holds real route handlers under app/ — skipping it hid env reads there
+    // from the checker (the same blind spot tsconfig documents).
+    if (entry === "node_modules" || entry === "dist" || (entry.startsWith(".") && entry !== ".well-known")) continue;
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) walk(path, out);
     else if (/\.(ts|tsx|mts|mjs)$/.test(entry)) out.push(path);

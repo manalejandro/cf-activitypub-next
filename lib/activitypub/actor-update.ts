@@ -48,6 +48,14 @@ export async function broadcastActorUpdate(
     fields: fields.map((f) => ({ name: f.name, value: f.value })),
     alsoKnownAs: actor.alsoKnownAs ?? undefined,
     movedTo: actor.movedTo ?? undefined,
+    // Profile display toggles + attribution domains: the pushed document must
+    // carry them, or `buildActor`'s defaults (all true / empty) silently reset
+    // these settings on every peer that caches the broadcast (the actor route
+    // serves them, so the two documents must agree).
+    showFeatured: actor.showFeatured !== false,
+    showMedia: actor.showMedia !== false,
+    showMediaReplies: actor.showMediaReplies !== false,
+    attributionDomains: actor.attributionDomains ?? undefined,
     preferredLicenseUrl: (await getPreferredLicenseUrl(env.DB, actor.id)) ?? undefined,
     // The pushed document must match what the actor route serves: without these
     // a broadcast from a suspended (or memorialized) account told peers it was

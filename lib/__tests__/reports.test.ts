@@ -6,6 +6,10 @@ import type { NextRequest } from "next/server";
 const mockGetReportById = vi.hoisted(() => vi.fn());
 const mockGetActorById = vi.hoisted(() => vi.fn());
 const mockGetObjectById = vi.hoisted(() => vi.fn());
+const mockGetObjectsByIds = vi.hoisted(() => vi.fn());
+const mockGetActorsByIds = vi.hoisted(() => vi.fn());
+const mockGetAttachmentsByObjectIds = vi.hoisted(() => vi.fn());
+const mockGetAllCustomEmojis = vi.hoisted(() => vi.fn());
 const mockGetReportNotes = vi.hoisted(() => vi.fn());
 const mockCreateReportNote = vi.hoisted(() => vi.fn());
 const mockRequireAdmin = vi.hoisted(() => vi.fn());
@@ -34,6 +38,10 @@ vi.mock("@/lib/db", () => ({
   getReportById: mockGetReportById,
   getActorById: mockGetActorById,
   getObjectById: mockGetObjectById,
+  getObjectsByIds: mockGetObjectsByIds,
+  getActorsByIds: mockGetActorsByIds,
+  getAttachmentsByObjectIds: mockGetAttachmentsByObjectIds,
+  getAllCustomEmojis: mockGetAllCustomEmojis,
   getReportNotes: mockGetReportNotes,
   createReportNote: mockCreateReportNote,
 }));
@@ -87,6 +95,10 @@ beforeEach(() => {
   mockDecodeStatusId.mockImplementation((id: string) => id);
   mockGetActorById.mockResolvedValue(TARGET);
   mockGetObjectById.mockResolvedValue(null);
+  mockGetObjectsByIds.mockResolvedValue(new Map());
+  mockGetActorsByIds.mockResolvedValue(new Map());
+  mockGetAttachmentsByObjectIds.mockResolvedValue(new Map());
+  mockGetAllCustomEmojis.mockResolvedValue([]);
   mockGetReportNotes.mockResolvedValue([]);
 });
 
@@ -298,7 +310,12 @@ describe("GET /api/v1/admin/reports", () => {
     mockGetReportNotes.mockResolvedValue([
       { id: "n1", report_id: "r1", actor_id: "a-mod", content: "noted", created_at: "2026-01-02T00:00:00.000Z" },
     ]);
-    mockGetActorById.mockImplementation(async (_db: unknown, id: string) => (id === "a-target" ? TARGET : { id: "a-reporter", username: "reporter" }));
+    // The list route resolves the target/reporter (and any status authors) in
+    // one batched `getActorsByIds` call, not a per-row `getActorById`.
+    mockGetActorsByIds.mockResolvedValue(new Map([
+      ["a-target", TARGET],
+      ["a-reporter", { id: "a-reporter", username: "reporter" }],
+    ]));
 
     const { GET } = await importRoute();
     const res = await GET(makeRequest("GET", "https://example.test/api/v1/admin/reports"));

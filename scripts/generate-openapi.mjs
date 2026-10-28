@@ -222,7 +222,10 @@ function queryParams(src) {
 }
 
 function hasBody(src) {
-  return /request\.json\(\)|request\.formData\(|await request\.text\(\)/.test(src);
+  // Also match the form-encoded helpers (`readRequestBody`/`formDataToBody` in
+  // lib/request-body.ts): a Rails-built client POSTs form data, and a route that
+  // reads it only through those helpers still has a request body to document.
+  return /request\.json\(\)|request\.formData\(|await request\.text\(\)|readRequestBody\(|formDataToBody\(/.test(src);
 }
 
 function titleCase(segment) {

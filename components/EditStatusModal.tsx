@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { useLocale } from "@/lib/i18n";
+import { useLocale, translateKey } from "@/lib/i18n";
 import { useFocusTrap } from "@/components/useFocusTrap";
 import { clipboardFiles } from "@/lib/clipboard-media";
 import { getToken } from "@/lib/client-api";
@@ -40,6 +40,7 @@ export function EditStatusModal({
   const [media, setMedia] = useState<MediaAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pollMode, setPollMode] = useState(false);
@@ -93,6 +94,7 @@ export function EditStatusModal({
   async function handleSave() {
     if (!token || !text.trim() || busy) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const hasPoll = pollMode && pollOptions.filter((o) => o.trim()).length >= MIN_POLL_OPTIONS;
       const body: Record<string, unknown> = {
@@ -120,8 +122,18 @@ export function EditStatusModal({
         const updated = await res.json() as Status;
         onSaved(updated);
         onClose();
+      } else {
+        // Surface the failure: a 401 (token retired mid-edit) or 422 (edit
+        // rejected) used to leave the modal open with no feedback — the user
+        // pressed Save and nothing visibly happened.
+        let msg: string = t.network_error;
+        try {
+          const data = await res.json() as { error?: string; error_code?: string };
+          msg = (data.error_code ? translateKey(t, data.error_code) : null) ?? data.error ?? t.network_error;
+        } catch { /* non-JSON error body — keep the generic message */ }
+        setSaveError(msg);
       }
-    } catch { /* ignore */ }
+    } catch { setSaveError(t.network_error); }
     setBusy(false);
   }
 
@@ -356,6 +368,10 @@ export function EditStatusModal({
 
         {uploadError && (
           <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }}>{uploadError}</p>
+        )}
+
+        {saveError && (
+          <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }} role="alert">{saveError}</p>
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

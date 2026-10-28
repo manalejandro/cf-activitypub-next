@@ -22,14 +22,14 @@ import handler from "vinext/server/fetch-handler";
 
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
-import { buildCreate, buildDelete, buildNote, generateId } from "../lib/activitypub/utils";
+import { buildCreate, buildDelete, buildNote, generateId, followersIRI, isLocalIRI } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries, resolveDeliverySigningKey } from "../lib/activitypub/queue";
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment, MastodonStatus } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache, getAllCustomEmojis, getActorByUsername } from "../lib/db";
 import { serializeStatusForStream } from "../lib/streaming/serialize";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
@@ -46,6 +46,9 @@ import { getAnonymousTimelineAccess } from "../lib/db";
 import { anonymousStreamAllowed, type AnonymousTimelineAccess } from "../lib/anonymous-timelines";
 import { linkPreviewLimitsFrom, maybeEnqueueLinkPreview, processLinkPreviewQueue } from "../lib/link-preview";
 import { normalizeLocationInput, parseLocationJson, conversationFromRaw, conversationUri } from "../lib/activitypub/utils";
+import { processStatusContent } from "../lib/activitypub/content";
+import { resolveMentionLinks, canonicalizeMentionTags } from "../lib/activitypub/mentions";
+import { PUBLIC_ADDRESS } from "../lib/activitypub/vocab";
 import { parseEventInput } from "../lib/event";
 import { notifyExpiredPolls, refreshRemotePoll } from "../lib/activitypub/polls";
 import { retryPendingQuoteRequests } from "../lib/activitypub/quotes";
@@ -699,21 +702,63 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         ? conversationFromRaw(parentObj?.raw)
         : conversationUri(baseUrl, noteId, published);
 
+      // Render exactly like the immediate post path: resolve @mentions to actor
+      // IRIs, turn them into canonical Mention tags and produce linked HTML.
+      // Without this a scheduled post published its RAW text — mentions were
+      // never federated (no tag, no delivery to the recipient's inbox), custom
+      // emoji stayed `:shortcode:` and links were not linkified. Markdown stays
+      // off: the stored params do not carry the request's Content-Type.
+      const localEmojis = await getAllCustomEmojis(env.DB);
+      const mentionLinks = await resolveMentionLinks(env.DB, content, baseUrl, env.KV);
+      const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl, localEmojis, { markdown: false, mentions: mentionLinks });
+      const { tags: canonicalTags } = await canonicalizeMentionTags(env.DB, contentTags, env.KV);
+
+      // Addressing (Mastodon TagManager): mentions go to `cc`, except a direct
+      // message where they are the recipients (`to`). Without the right
+      // addressing a DM is not delivered to its recipients at all.
+      const mentionedIRIs = canonicalTags
+        .filter((t) => t.type === "Mention" && t.href && t.href !== actor.id)
+        .map((t) => t.href!);
+      const followersAudience = followersIRI(baseUrl, actor.username);
+      let noteTo: string[];
+      let noteCc: string[];
+      if (visibility === "public") {
+        noteTo = [PUBLIC_ADDRESS];
+        noteCc = [followersAudience, ...mentionedIRIs];
+      } else if (visibility === "unlisted") {
+        noteTo = [followersAudience];
+        noteCc = [PUBLIC_ADDRESS, ...mentionedIRIs];
+      } else if (visibility === "private") {
+        noteTo = [followersAudience];
+        noteCc = [...mentionedIRIs];
+      } else {
+        // direct: the mentioned accounts ARE the audience.
+        noteTo = [...mentionedIRIs];
+        noteCc = [];
+      }
+
+      // FEP-044f quote: preserve the quote the post was scheduled with (it was
+      // dropped before, so a scheduled quote lost its link).
+      const quoteId = typeof body.quote_id === "string" && body.quote_id.trim() ? body.quote_id.trim() : null;
+
       const note = buildNote(baseUrl, noteId, {
         actorUsername: actor.username,
-        content,
+        content: htmlContent,
         published,
         visibility,
         inReplyTo: inReplyToId ?? undefined,
         sensitive,
         summary: sensitive ? spoilerText : undefined,
         language,
-        tags: [],
+        tags: canonicalTags,
+        to: noteTo,
+        cc: noteCc,
         location: locationJson ? parseLocationJson(locationJson) : null,
         event,
         licenseUrl: licenseUrl ?? undefined,
         conversation,
       });
+      if (quoteId) (note as Record<string, unknown>).quote = quoteId;
 
       // Link pending media uploads (same `pending_media:` KV contract as
       // POST /api/v1/statuses; the schedule-time branch extends their TTL).
@@ -794,12 +839,12 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         id: noteId,
         type: (note.type as string) ?? "Note",
         actorId: actor.id,
-        content,
+        content: note.content ?? htmlContent,
         contentWarning: sensitive ? spoilerText : null,
         sensitive,
         visibility,
         inReplyToId,
-        quoteId: null,
+        quoteId,
         language: language ?? null,
         url: note.id,
         repliesCount: 0,
@@ -815,7 +860,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       await maybeEnqueueLinkPreview(env.DB, {
         id: noteId,
         content,
-        quoteId: null,
+        quoteId,
         hasAttachments: noteAttachments.length > 0,
       });
 
@@ -836,26 +881,57 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         .bind(s.id)
         .run();
 
-      // Fan-out delivery (through the queue) to followers and the replied-to
-      // author, plus a mention notification when the parent is local.
+      // Fan-out delivery (through the queue), mirroring the immediate post path:
+      // followers plus every remote mentioned account, so a mention — and a
+      // direct message — actually reaches its recipients. Previously the whole
+      // delivery was gated behind `visibility !== "direct"`, so a scheduled DM
+      // was stored and streamed locally but NEVER sent to the remote recipient.
       const fetchActor = async (id: string): Promise<APActor | null> => {
         const cached = await getActorById(env.DB, id);
         if (cached) return cached as unknown as APActor;
         const remote = await fetchRemoteObject(id, `${actor.id}#main-key`, actor.privateKeyPem!);
         return remote as APActor | null;
       };
+
+      // Remote inboxes of every mentioned account (for a DM these ARE the
+      // recipients). Local accounts are notified directly, never delivered to.
+      const mentionIRIs = canonicalTags
+        .filter((t) => t.type === "Mention" && t.href)
+        .map((t) => t.href!)
+        .filter((href) => href !== actor.id && !isLocalIRI(href, domain));
+      const mentionInboxes = await collectFollowerInboxes(mentionIRIs, fetchActor);
+
+      // Notify local mentioned users (de-duplicated per recipient).
+      const notified = new Set<string>();
+      for (const iri of canonicalTags.filter((t) => t.type === "Mention" && t.href).map((t) => t.href!)) {
+        if (iri === actor.id || !isLocalIRI(iri, domain)) continue;
+        const usernameMatch = iri.match(/\/users\/([a-zA-Z0-9_]+)$/);
+        if (!usernameMatch) continue;
+        const mentioned = await getActorByUsername(env.DB, usernameMatch[1], domain);
+        if (mentioned?.isLocal && mentioned.id !== actor.id && !notified.has(mentioned.id)) {
+          notified.add(mentioned.id);
+          await notify(env, {
+            id: generateId(),
+            type: "mention",
+            accountId: actor.id,
+            targetAccountId: mentioned.id,
+            objectId: noteId,
+            read: false,
+            createdAt: published,
+          });
+        }
+      }
+
+      // The replied-to author always receives the reply (auto-mention parity with
+      // the immediate path): remote → its inbox, local → a mention notification.
       const inboxes: string[] = [];
-      const followerRows = await env.DB
-        .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
-        .bind(actor.id)
-        .all<{ actor_id: string }>();
-      inboxes.push(...await collectFollowerInboxes(followerRows.results.map((r) => r.actor_id), fetchActor));
       if (inReplyToId) {
         const parent = await getObjectById(env.DB, inReplyToId);
         const parentAuthor = parent ? await getActorById(env.DB, parent.actorId) : null;
         if (parentAuthor && !parentAuthor.isLocal) {
           inboxes.push(...await collectFollowerInboxes([parentAuthor.id], fetchActor));
-        } else if (parentAuthor?.isLocal) {
+        } else if (parentAuthor?.isLocal && !notified.has(parentAuthor.id)) {
+          notified.add(parentAuthor.id);
           await notify(env, {
             id: generateId(),
             type: "mention",
@@ -867,41 +943,64 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           });
         }
       }
-      if (visibility !== "direct") {
-        const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
+
+      const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
+      if (visibility === "direct") {
+        // A direct message reaches only the addressed accounts (mentions + the
+        // replied-to author), never followers or relays.
+        const targets = [...new Set([...mentionInboxes, ...inboxes])];
+        if (targets.length > 0) {
+          await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+        }
+      } else {
+        const followerRows = await env.DB
+          .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
+          .bind(actor.id)
+          .all<{ actor_id: string }>();
+        inboxes.push(...await collectFollowerInboxes(followerRows.results.map((r) => r.actor_id), fetchActor));
+        inboxes.push(...mentionInboxes);
         // Public scheduled posts also go to every subscribed relay.
-        const targets = await withRelayInboxes(env.DB, visibility, inboxes);
+        const targets = await withRelayInboxes(env.DB, visibility, [...new Set(inboxes)]);
         if (targets.length > 0) {
           await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
         }
       }
 
-      // Live streaming: public/local channels + the author's and local
-      // followers' home channels.
+      // Live streaming: public/local channels + the author's home. Followers'
+      // home channels and list channels get non-direct posts; a DM only lands
+      // in the home of the local accounts it addresses (pushing it to every
+      // follower's home would leak it).
       if (env.TIMELINE_STREAM) {
         const stored = await getObjectById(env.DB, noteId);
         if (stored) {
-          const parent = await parentExclusion(env.DB, stored.inReplyToId);
           const serialized = await serializeStatusForStream(env.DB, stored, actor, domain);
           const tasks: Promise<void>[] = [];
           if ((visibility === "public" || visibility === "unlisted") && !actor.silenced && !actor.suspended) {
             tasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serialized, true));
           }
+          // The author always sees their own post.
           tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serialized));
-          const localFollowers = await env.DB
-            .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-            .bind(actor.id)
-            .all<{ id: string }>();
-          const exclusions = [await actorExclusion(env.DB, actor.id)];
-          if (parent) exclusions.push(parent);
-          const recipients = await eligibleLocalRecipients(
-            env.DB,
-            localFollowers.results.map((row) => row.id),
-            exclusions
-          );
-          for (const recipientId of recipients) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
-          // List channels get new posts live as well.
-          tasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serialized, "update"));
+          if (visibility === "direct") {
+            for (const recipientId of notified) {
+              if (recipientId !== actor.id) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
+            }
+          } else {
+            const parent = await parentExclusion(env.DB, stored.inReplyToId);
+            const localFollowers = await env.DB
+              .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+              .bind(actor.id)
+              .all<{ id: string }>();
+            const exclusions = [await actorExclusion(env.DB, actor.id)];
+            if (parent) exclusions.push(parent);
+            const recipients = await eligibleLocalRecipients(
+              env.DB,
+              localFollowers.results.map((row) => row.id),
+              exclusions
+            );
+            for (const recipientId of recipients) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
+            // List channels get new posts live as well.
+            tasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serialized, "update"));
+          }
           await Promise.allSettled(tasks);
         }
       }
@@ -964,8 +1063,17 @@ async function executeScheduled(env: Env): Promise<void> {
   if (existingLock) return;
   const runStartedAt = Date.now();
   // The stage is stored in the lock (and refreshes its TTL) so a long run can't
-  // let a second one start while a stage is still executing.
+  // let a second one start while a stage is still executing. Stages call this
+  // on EVERY tick (most are not due), so the write is throttled to once a
+  // minute per run: the 180 s TTL only needs refreshing when a slow run is
+  // near expiry, and 15 unconditional writes a tick (~20k KV writes/day) was
+  // pure churn that broke the free-plan KV budget. The first call always
+  // writes (it acquires the lock the overlap guard above checks).
+  let lastLockWrite = 0;
   const setStage = async (name: string) => {
+    const now = Date.now();
+    if (lastLockWrite !== 0 && now - lastLockWrite < 60_000) return;
+    lastLockWrite = now;
     await env.KV
       .put("cron:lock", JSON.stringify({ startedAt: new Date(runStartedAt).toISOString(), stage: name }), {
         // Long enough that a slow (media-cache) run never overlaps with the

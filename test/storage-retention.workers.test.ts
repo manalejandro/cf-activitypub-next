@@ -65,12 +65,17 @@ async function seedObject(opts: {
 }
 
 async function seedActivity(id: string, published: string, actorId = REMOTE): Promise<void> {
+  // Production stores `activities.published` with `datetime('now')`'s
+  // space-separated shape (a local processing stamp, not an AP instant). Seed
+  // it the same way so retention's cutoff comparison is exercised against the
+  // real shape (an ISO seed here hid a same-day over-prune).
+  const dbShape = published.includes("T") ? published.replace("T", " ").slice(0, 19) : published;
   await db
     .prepare(
       `INSERT INTO activities (id, type, actor_id, raw, published, is_local, delivered)
        VALUES (?, 'Create', ?, ?, ?, 0, 1)`
     )
-    .bind(id, actorId, JSON.stringify({ id, type: "Create" }), published)
+    .bind(id, actorId, JSON.stringify({ id, type: "Create" }), dbShape)
     .run();
 }
 
@@ -168,6 +173,10 @@ describe("storage retention", () => {
     await seedObject({ id: "https://local.example/objects/mine", actorId: LOCAL, isLocal: true, published: OLD });
     await seedActivity("act-old", OLD);
     await seedActivity("act-recent", RECENT);
+    // Boundary: same UTC day as the 30-day cutoff (2026-09-19T12:00:00Z) but a
+    // later hour. The space shape must compare on the time, not on ' ' < 'T' —
+    // with an ISO cutoff this was pruned a day early.
+    await seedActivity("act-boundary", "2026-09-19T18:00:00.000Z");
 
     const run = await maintainStorageRetention(env, { ...DEFAULT_STORAGE_RETENTION, days: 30 }, NOW);
 
@@ -183,7 +192,7 @@ describe("storage retention", () => {
       "https://remote.example/objects/old-private",
       "https://remote.example/objects/recent",
     ]);
-    expect(await count("SELECT COUNT(*) AS n FROM activities")).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM activities")).toBe(2);
   });
 
   it("cascades the satellites of a pruned status and releases the parent's counters", async () => {

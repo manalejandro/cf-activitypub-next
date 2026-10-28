@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, memo, type RefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo, type RefObject } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
@@ -33,11 +33,14 @@ import { MAX_EVENT_LOCATION_CHARS, MAX_EVENT_NAME_CHARS } from "@/lib/event";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
 import { Loading } from "@/components/Loading";
 
-// Earliest allowed schedule time: now + 5 minutes (computed once at module load)
-const SCHEDULE_MIN = (() => {
+// Earliest allowed schedule time: now + 5 minutes. Computed on demand (when the
+// picker opens) rather than at module load — the Worker isolate can live for
+// days and a browser tab overnight, and a stale `min` would let the user pick a
+// time already in the past (the server rejects it, but the input should not).
+function computeScheduleMin(): string {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-})();
+}
 
 interface HomeTimelineProps {
   statuses: Status[];
@@ -213,6 +216,9 @@ export default function HomePage() {
   // Scheduling state
   const [scheduling, setScheduling] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  // Recomputed each time the picker opens so `min` is never stale (see
+  // computeScheduleMin).
+  const scheduleMin = useMemo(computeScheduleMin, [scheduling]);
   // Event compose state (ActivityStreams Event): title + time range, with the
   // status text as the description.
   const [eventMode, setEventMode] = useState(false);
@@ -606,7 +612,7 @@ export default function HomePage() {
                 aria-label={t.composer_schedule}
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                min={SCHEDULE_MIN}
+                min={scheduleMin}
                 style={{ fontSize: "0.85rem", width: "100%" }}
               />
             )}

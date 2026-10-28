@@ -18,6 +18,9 @@ const cspHeader = [
   "frame-src https:",
   "media-src 'self' blob: https:",
   "worker-src 'self' blob:",
+  // No plugin content anywhere (PDFs are framed with <iframe>, never
+  // <object>/<embed>): block Flash-era vectors outright, as Mastodon does.
+  "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -69,7 +72,7 @@ const nextConfig: NextConfig = {
       {
         source: "/embed/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; frame-src https:; frame-ancestors *; base-uri 'self'" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; frame-src https:; object-src 'none'; frame-ancestors *; base-uri 'self'" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],

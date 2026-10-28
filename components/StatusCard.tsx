@@ -504,6 +504,18 @@ export function PollView({ poll: initialPoll }: { poll: Poll }) {
   const [poll, setPoll] = useState<Poll>(initialPoll);
   const [voting, setVoting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  // Re-sync when a new poll object arrives (a stream `status.update` refreshes
+  // the vote counts or flips it to expired): without this the mounted component
+  // kept the poll it first rendered forever, showing stale tallies. This is the
+  // React "adjust state during render" pattern — the reference only changes when
+  // the parent status is actually replaced (StatusCard is memoized). Placed
+  // after the state declarations it writes to.
+  const [prevPoll, setPrevPoll] = useState(initialPoll);
+  if (initialPoll !== prevPoll) {
+    setPrevPoll(initialPoll);
+    setPoll(initialPoll);
+    setSelected([]);
+  }
   const token = getToken();
   const total = poll.votes_count > 0 ? poll.votes_count : 1;
   const showResults = poll.voted || poll.expired;
@@ -1359,7 +1371,7 @@ function StatusCardInner({
                     router.push(`/reports/new?status_id=${encodeURIComponent(status.id)}&account_id=${encodeURIComponent(status.account.id)}`);
                   }}
               >
-                <Icon name="flag" /> Report @{status.account.acct}
+                <Icon name="flag" /> {t.reports_report} @{status.account.acct}
               </button>
               {me && me.id === status.account.id && (
                 <>

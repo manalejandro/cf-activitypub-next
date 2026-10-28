@@ -794,6 +794,8 @@ export default function ThreadPage() {
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => router.back()}
+              aria-label={t.a11y_back}
+              title={t.a11y_back}
               style={{ fontSize: "1.1rem" }}
             >
               <Icon name="arrow-left" />
@@ -888,7 +890,7 @@ export default function ThreadPage() {
                   textTransform: "uppercase",
                 }}
               >
-                Replies
+                {t.profile_replies}
               </div>
             )}
             {descendants.map((s) => (
