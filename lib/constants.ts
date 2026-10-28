@@ -167,6 +167,13 @@ export const MAX_IMAGE_SIZE = 16 * 1024 * 1024; // 16 MB
 export const MAX_VIDEO_SIZE = 103_809_024; // ~99 MB
 export const MAX_DOCUMENT_SIZE = 32 * 1024 * 1024; // 32 MB — PDFs and plain text
 /**
+ * Largest image sent to the vision model for auto alt-text. The model input is
+ * a `number[]` (one element per byte): spreading a 16 MB upload allocates
+ * ~150 MB+ of isolate heap and OOMs the request, so bigger images simply skip
+ * the auto-description (the user can still write their own alt text).
+ */
+export const AI_VISION_MAX_INPUT_BYTES = 4 * 1024 * 1024; // 4 MB
+/**
  * Hard cap for an inbound ActivityPub payload, enforced while streaming the
  * request body (never after buffering it): 1 MB is far above any legitimate
  * AP activity we accept.
@@ -279,6 +286,8 @@ export interface InstanceLimits {
   maxVideoSize: number;
   /** Cap for PDF/plain-text attachments. */
   maxDocumentSize: number;
+  /** Largest image the vision model receives for auto alt-text (0 disables auto-description). */
+  maxVisionInputBytes: number;
   imageMatrixLimit: number;
   sharedInboxBatch: number;
   mediaCacheEnabled: boolean;
@@ -357,6 +366,7 @@ export const DEFAULT_LIMITS: InstanceLimits = {
   maxHeaderSize: MAX_HEADER_SIZE,
   maxVideoSize: MAX_VIDEO_SIZE,
   maxDocumentSize: MAX_DOCUMENT_SIZE,
+  maxVisionInputBytes: AI_VISION_MAX_INPUT_BYTES,
   imageMatrixLimit: IMAGE_MATRIX_LIMIT,
   sharedInboxBatch: SHARED_INBOX_BATCH,
   mediaCacheEnabled: MEDIA_CACHE_ENABLED,
@@ -479,6 +489,7 @@ export function resolveLimits(env: Record<string, unknown>): InstanceLimits {
     maxHeaderSize: num(env, "MAX_HEADER_SIZE", DEFAULT_LIMITS.maxHeaderSize),
     maxVideoSize: num(env, "MAX_VIDEO_SIZE", DEFAULT_LIMITS.maxVideoSize),
     maxDocumentSize: num(env, "MAX_DOCUMENT_SIZE", DEFAULT_LIMITS.maxDocumentSize),
+    maxVisionInputBytes: num(env, "AI_VISION_MAX_BYTES", DEFAULT_LIMITS.maxVisionInputBytes),
     imageMatrixLimit: num(env, "IMAGE_MATRIX_LIMIT", DEFAULT_LIMITS.imageMatrixLimit),
     videoFrameRateLimit: num(env, "VIDEO_FRAME_RATE_LIMIT", DEFAULT_LIMITS.videoFrameRateLimit),
     videoMatrixLimit: num(env, "VIDEO_MATRIX_LIMIT", DEFAULT_LIMITS.videoMatrixLimit),

@@ -90,12 +90,22 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Auto-describe images with Cloudflare Workers AI when no description provided
   let finalDescription = description;
-  if (!description && file.type.startsWith("image/") && env.AI && (await chargeGlobalAI(env, AI_UNITS_VISION))) {
+  if (
+    !description &&
+    file.type.startsWith("image/") &&
+    limits.maxVisionInputBytes > 0 &&
+    file.size <= limits.maxVisionInputBytes &&
+    env.AI &&
+    (await chargeGlobalAI(env, AI_UNITS_VISION))
+  ) {
     try {
-      // Re-read the blob for the model instead of spreading the upload into a
-      // JS array up front: R2.put may detach the first buffer, and a whole
-      // ~99 MB video spread into array elements OOMs the isolate.
-      const imageBytes = new Uint8Array(await file.arrayBuffer());
+      // The vision model's documented input is a `number[]` (one element per
+      // byte): passing a bare Uint8Array serializes malformed and the model
+      // hallucinates a description instead of seeing the image. The spread is
+      // bounded by AI_VISION_MAX_BYTES (a ~99 MB upload spread into array
+      // elements OOMs the isolate, which is why the cap exists); the blob is
+      // re-read because R2.put may detach the first buffer.
+      const imageBytes = [...new Uint8Array(await file.arrayBuffer())];
       const aiResult = await env.AI.run(
         "@cf/meta/llama-3.2-11b-vision-instruct" as Parameters<Ai["run"]>[0],
         {

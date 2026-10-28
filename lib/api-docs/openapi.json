@@ -16572,6 +16572,10 @@
             "type": "number",
             "description": "Cap for PDF/plain-text attachments."
           },
+          "maxVisionInputBytes": {
+            "type": "number",
+            "description": "Largest image the vision model receives for auto alt-text (0 disables auto-description)."
+          },
           "imageMatrixLimit": {
             "type": "number"
           },
