@@ -1339,5 +1339,7 @@
   "oauth_consent_requesting": "запрашивает доступ к вашему аккаунту.",
   "oauth_requested_permissions": "Запрошенные разрешения",
   "oauth_authorize": "Авторизовать",
-  "oauth_deny": "Отказать"
+  "oauth_deny": "Отказать",
+  "scheduled_editing": "Редактирование отложенной публикации",
+  "scheduled_error_past": "Выберите будущие дату и время"
 }

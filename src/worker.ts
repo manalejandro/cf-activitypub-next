@@ -706,11 +706,12 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // IRIs, turn them into canonical Mention tags and produce linked HTML.
       // Without this a scheduled post published its RAW text — mentions were
       // never federated (no tag, no delivery to the recipient's inbox), custom
-      // emoji stayed `:shortcode:` and links were not linkified. Markdown stays
-      // off: the stored params do not carry the request's Content-Type.
+      // emoji stayed `:shortcode:` and links were not linkified.
+      const requestContentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
+      const markdownContent = requestContentType === "text/markdown" || requestContentType === "text/x-markdown";
       const localEmojis = await getAllCustomEmojis(env.DB);
       const mentionLinks = await resolveMentionLinks(env.DB, content, baseUrl, env.KV);
-      const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl, localEmojis, { markdown: false, mentions: mentionLinks });
+      const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl, localEmojis, { markdown: markdownContent, mentions: mentionLinks });
       const { tags: canonicalTags } = await canonicalizeMentionTags(env.DB, contentTags, env.KV);
 
       // Addressing (Mastodon TagManager): mentions go to `cc`, except a direct

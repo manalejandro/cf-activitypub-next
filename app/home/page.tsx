@@ -42,6 +42,15 @@ function computeScheduleMin(): string {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
+/** ISO instant → `datetime-local` input value (local time). */
+function toLocalInputValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface HomeTimelineProps {
   statuses: Status[];
   me: Me | null;
@@ -152,6 +161,11 @@ export default function HomePage() {
   // FEP-6757: catalogue id of the license for this status ("" = no license).
   const [license, setLicense] = useState("");
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
+  // Editing a scheduled post (/scheduled → "Edit" lands here with
+  // ?edit_scheduled=<id>): the composer is prefilled from the stored params and
+  // publishing becomes a PUT on the schedule instead of a new POST.
+  const [editingScheduledId, setEditingScheduledId] = useState<string | null>(null);
+  const [editingScheduledReplyId, setEditingScheduledReplyId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
@@ -226,6 +240,68 @@ export default function HomePage() {
   const [eventStart, setEventStart] = useState("");
   const [eventEnd, setEventEnd] = useState("");
   const [eventLocation, setEventLocation] = useState("");
+
+  // ?edit_scheduled=<id>: load the stored schedule into the composer (one-shot
+  // at mount; the URL keeps the mode across a refresh). A missing/foreign id
+  // drops back to a clean /home.
+  useEffect(() => {
+    const schedId = new URLSearchParams(window.location.search).get("edit_scheduled");
+    if (!schedId) return;
+    const token = getToken();
+    if (!token) return;
+    let cancelled = false;
+    fetch(`/api/v1/scheduled_statuses/${encodeURIComponent(schedId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) { router.replace("/home"); return; }
+        const data = (await res.json()) as {
+          id: string;
+          scheduled_at: string;
+          params: Record<string, unknown>;
+          media_attachments?: MediaAttachment[];
+        };
+        const p = data.params;
+        setComposing(typeof p.status === "string" ? p.status : "");
+        const spoiler = typeof p.spoiler_text === "string" ? p.spoiler_text : "";
+        setCwText(spoiler);
+        setShowCw(Boolean(spoiler) || p.sensitive === true || p.sensitive === "true");
+        setVisibility(p.visibility === "unlisted" || p.visibility === "private" || p.visibility === "direct" ? p.visibility : "public");
+        setLicense(typeof p.license === "string" ? p.license : "");
+        const loc = p.location as GeoLocation | null | undefined;
+        setLocation(
+          loc && typeof loc === "object" && Number.isFinite(Number(loc.latitude)) && Number.isFinite(Number(loc.longitude))
+            ? { name: typeof loc.name === "string" ? loc.name : null, latitude: Number(loc.latitude), longitude: Number(loc.longitude) }
+            : null
+        );
+        const poll = p.poll as { options?: unknown[]; expires_in?: number; multiple?: boolean } | undefined;
+        if (poll && Array.isArray(poll.options) && poll.options.length > 0) {
+          setPollMode(true);
+          setPollOptions(poll.options.map((o) => String(o)));
+          if (Number.isFinite(Number(poll.expires_in))) setPollExpiry(Number(poll.expires_in));
+          setPollMultiple(poll.multiple === true);
+        }
+        const ev = p.event as { name?: string; start_time?: string; end_time?: string | null; location?: string } | undefined;
+        if (ev && typeof ev.name === "string" && ev.start_time) {
+          setEventMode(true);
+          setEventName(ev.name);
+          setEventStart(toLocalInputValue(ev.start_time));
+          setEventEnd(ev.end_time ? toLocalInputValue(ev.end_time) : "");
+          setEventLocation(typeof ev.location === "string" ? ev.location : "");
+        }
+        setMediaFiles(Array.isArray(data.media_attachments) ? data.media_attachments : []);
+        setEditingScheduledReplyId(typeof p.in_reply_to_id === "string" ? p.in_reply_to_id : null);
+        setScheduling(true);
+        setScheduledAt(toLocalInputValue(data.scheduled_at));
+        setEditingScheduledId(data.id);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/home");
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -324,6 +400,33 @@ export default function HomePage() {
     }
     setError(null);
     try {
+      // Editing an existing scheduled post: a PUT on the schedule row (same
+      // body shape the create path stores), never a new POST — posting would
+      // create a duplicate and leave the old schedule armed.
+      if (editingScheduledId) {
+        if (!scheduledAt) {
+          setError(t.scheduled_error_past);
+          setPosting(false);
+          return;
+        }
+        body.scheduled_at = new Date(scheduledAt).toISOString();
+        if (editingScheduledReplyId) body.in_reply_to_id = editingScheduledReplyId;
+        const putRes = await fetch(`/api/v1/scheduled_statuses/${encodeURIComponent(editingScheduledId)}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (putRes.ok) {
+          setPosting(false);
+          router.push("/scheduled");
+          return;
+        }
+        const putData = (await putRes.json().catch(() => null)) as { error?: string; error_code?: string } | null;
+        setError(translateKey(t, putData?.error_code, putData?.error) ?? t.network_error);
+        setPosting(false);
+        return;
+      }
       const res = await fetch("/api/v1/statuses", {
         method: "POST",
         credentials: "include",
@@ -459,6 +562,25 @@ export default function HomePage() {
         {/* Compose */}
         <div style={{ padding: "1rem", borderBottom: "1px solid var(--border)" }}>
           <form onSubmit={handlePost} className="flex flex-col gap-3">
+            {/* Editing a scheduled post: the composer is prefilled and the
+                submit becomes a PUT on the schedule (see handlePost). */}
+            {editingScheduledId && (
+              <div
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem",
+                  padding: "0.5rem 0.75rem", borderRadius: "var(--radius)",
+                  background: "var(--accent-bg)", border: "1px solid var(--border)",
+                  fontSize: "0.85rem", color: "var(--text-secondary)",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                  <Icon name="clock-o" /> {t.scheduled_editing}
+                </span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { window.location.href = "/home"; }}>
+                  {t.profile_cancel}
+                </button>
+              </div>
+            )}
             {/* CW input */}
             {showCw && (
               <div className="flex items-center gap-2">
@@ -755,6 +877,7 @@ export default function HomePage() {
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: scheduling ? "var(--accent-bg)" : undefined }}
                   onClick={() => setScheduling((v) => !v)}
+                  disabled={Boolean(editingScheduledId)}
                   title={t.composer_schedule}
                   aria-label={t.composer_schedule}
                   aria-pressed={scheduling}

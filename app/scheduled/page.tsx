@@ -108,14 +108,24 @@ export default function ScheduledPage() {
                     {s.params.sensitive && <span><Icon name="eye-slash" /></span>}
                   </div>
                 </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ color: "var(--danger)", flexShrink: 0 }}
-                  onClick={() => void handleCancel(s.id)}
-                  disabled={cancelling === s.id}
-                >
-                  {cancelling === s.id ? "…" : t.scheduled_cancel}
-                </button>
+                <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => router.push(`/home?edit_scheduled=${encodeURIComponent(s.id)}`)}
+                    aria-label={t.action_edit}
+                    title={t.action_edit}
+                  >
+                    <Icon name="pencil" />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: "var(--danger)" }}
+                    onClick={() => void handleCancel(s.id)}
+                    disabled={cancelling === s.id}
+                  >
+                    {cancelling === s.id ? "…" : t.scheduled_cancel}
+                  </button>
+                </div>
               </div>
             </div>
           ))

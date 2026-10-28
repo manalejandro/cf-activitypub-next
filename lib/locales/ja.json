@@ -1339,5 +1339,7 @@
   "oauth_consent_requesting": "があなたのアカウントへのアクセスを要求しています。",
   "oauth_requested_permissions": "要求された権限",
   "oauth_authorize": "承認",
-  "oauth_deny": "拒否"
+  "oauth_deny": "拒否",
+  "scheduled_editing": "予約投稿を編集中",
+  "scheduled_error_past": "未来の日時を選択してください"
 }

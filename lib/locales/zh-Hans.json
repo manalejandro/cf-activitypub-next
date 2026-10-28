@@ -1339,5 +1339,7 @@
   "oauth_consent_requesting": "正在请求访问你的账户。",
   "oauth_requested_permissions": "请求的权限",
   "oauth_authorize": "授权",
-  "oauth_deny": "拒绝"
+  "oauth_deny": "拒绝",
+  "scheduled_editing": "正在编辑定时发布",
+  "scheduled_error_past": "请选择将来的日期和时间"
 }

@@ -2138,7 +2138,22 @@ export async function createScheduledStatus(db: D1Database, id: string, actorId:
     .run();
 }
 
-export async function updateScheduledStatus(db: D1Database, id: string, scheduledAt: string): Promise<void> {
+export async function updateScheduledStatus(
+  db: D1Database,
+  id: string,
+  scheduledAt: string,
+  params?: string,
+  mediaIds?: string | null
+): Promise<void> {
+  if (params !== undefined) {
+    // Full edit: the stored request body (and its media reservation list) are
+    // replaced along with the publish instant.
+    await db
+      .prepare("UPDATE scheduled_statuses SET scheduled_at = ?, params = ?, media_ids = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(scheduledAt, params, mediaIds ?? null, id)
+      .run();
+    return;
+  }
   await db
     .prepare("UPDATE scheduled_statuses SET scheduled_at = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(scheduledAt, id)

@@ -1339,5 +1339,7 @@
   "oauth_consent_requesting": "solicita acceso a tu cuenta.",
   "oauth_requested_permissions": "Permisos solicitados",
   "oauth_authorize": "Autorizar",
-  "oauth_deny": "Denegar"
+  "oauth_deny": "Denegar",
+  "scheduled_editing": "Editando publicación programada",
+  "scheduled_error_past": "Elige una fecha y hora en el futuro"
 }

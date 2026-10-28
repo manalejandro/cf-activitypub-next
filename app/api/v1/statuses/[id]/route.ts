@@ -10,14 +10,15 @@ import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { toAPAttachment } from "@/lib/activitypub/attachments";
-import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId } from "@/lib/activitypub/utils";
+import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId, followersIRI } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { extractFirstLink, maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { normalizeLocationInput, parseLocationJson } from "@/lib/activitypub/utils";
-import { eventFromRaw } from "@/lib/event";
+import { eventFromRaw, parseEventInput } from "@/lib/event";
+import { PUBLIC_ADDRESS } from "@/lib/activitypub/vocab";
 import { refreshRemotePoll, applyPollToNoteFromDb } from "@/lib/activitypub/polls";
 import { broadcastObjectDelete, broadcastStatusUpdate, broadcastHomeStatusUpdate, actorExclusion, eligibleLocalRecipients, parentExclusion } from "@/lib/streaming/broadcast";
 import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
@@ -167,7 +168,9 @@ export async function PUT(
   const pollProvided = "poll" in body;
   const pollRaw = (body.poll ?? null) as { options?: unknown; expires_in?: number; multiple?: boolean } | null;
   const hasPoll = !!pollRaw && typeof pollRaw === "object" && Array.isArray(pollRaw.options) && (pollRaw.options as unknown[]).filter((o) => String(o).trim()).length >= MIN_POLL_OPTIONS;
-  if (!content && !hasPoll) return json({ error: "status content or poll is required" }, 422);
+  // An Event may carry its whole content in the event fields (title/venue), so
+  // an edit of one does not require text (same rule as the create path).
+  if (!content && !hasPoll && obj.type !== "Event") return json({ error: "status content or poll is required" }, 422);
   // The create route enforces the character limit; an edit used to bypass it.
   if ((content ?? "").length > limits.maxStatusChars) {
     return json({ error: `Validation failed: Text must be ${limits.maxStatusChars} characters or less` }, 422);
@@ -176,8 +179,11 @@ export async function PUT(
   const sensitive = body.sensitive === true || body.sensitive === "true";
   const spoilerText = (body.spoiler_text as string | undefined) ?? "";
   const language = (body.language as string | undefined) ?? obj.language ?? undefined;
+  // `media_ids` PRESENT (even empty) replaces the attachments — an edit that
+  // removes every image must be able to say so; absent keeps them untouched.
+  const mediaProvided = body.media_ids !== undefined;
   const requestedMediaIds = normalizeMediaIds(body.media_ids);
-  const mediaIds = requestedMediaIds.length > 0 ? requestedMediaIds.slice(0, limits.maxMediaAttachments) : undefined;
+  const mediaIds = mediaProvided ? requestedMediaIds.slice(0, limits.maxMediaAttachments) : undefined;
   const locationJson = normalizeLocationInput(body.location);
   if (body.location !== undefined && locationJson === undefined) {
     return json({ error: "Invalid location", error_code: "compose_error_location" }, 422);
@@ -233,22 +239,67 @@ export async function PUT(
     }
   }
   const noteLocalId = obj.id.replace(`${baseUrl}/objects/`, "");
+  // Visibility is editable (the composer's privacy picker; everything but the
+  // scheduler belongs in the edit modal). An explicit change rebuilds the
+  // audience exactly like the create route does; when it is absent the original
+  // to/cc are preserved so an edit never re-addresses the post.
+  const VISIBILITIES = ["public", "unlisted", "private", "direct"];
+  let nextVisibility = obj.visibility as "public" | "unlisted" | "private" | "direct";
+  let noteTo = rewriteList(originalTo);
+  let noteCc = rewriteList(originalCc);
+  if (body.visibility !== undefined && (typeof body.visibility !== "string" || !VISIBILITIES.includes(body.visibility))) {
+    return json({ error: "Invalid visibility" }, 422);
+  }
+  const visibilityChanged = typeof body.visibility === "string" && body.visibility !== obj.visibility;
+  if (visibilityChanged) {
+    nextVisibility = body.visibility as typeof nextVisibility;
+    // Only an actual change rebuilds the audience (like the create route does):
+    // re-deriving to/cc when nothing changed would drop preserved addressing
+    // (e.g. the thread participants of a reply that the new text no longer
+    // mentions).
+    const mentionIRIs = canonicalTags
+      .filter((tg) => tg.type === "Mention" && tg.href && tg.href !== actor.id)
+      .map((tg) => tg.href!);
+    const followersAudience = followersIRI(baseUrl, actor.username);
+    if (nextVisibility === "public") {
+      noteTo = [PUBLIC_ADDRESS];
+      noteCc = [followersAudience, ...mentionIRIs];
+    } else if (nextVisibility === "unlisted") {
+      noteTo = [followersAudience];
+      noteCc = [PUBLIC_ADDRESS, ...mentionIRIs];
+    } else if (nextVisibility === "private") {
+      noteTo = [followersAudience];
+      noteCc = [...mentionIRIs];
+    } else {
+      noteTo = [...mentionIRIs];
+      noteCc = [];
+    }
+  }
+
+  // An Event keeps its type on edits; the body may refresh its fields (title,
+  // time range, venue). `event` on a non-Event status is ignored — converting
+  // types on edit would desync the stored `type` and every peer's copy.
+  let noteEvent = eventFromRaw(obj.raw);
+  if (body.event !== undefined && obj.type === "Event") {
+    const eventResult = parseEventInput(body.event);
+    if ("error" in eventResult) return json({ error: "Invalid event", error_code: eventResult.error }, 422);
+    noteEvent = eventResult.event;
+  }
+
   const note = buildNote(baseUrl, noteLocalId, {
     actorUsername: actor.username,
     content: htmlContent,
     published: obj.published,
-    visibility: obj.visibility as "public" | "unlisted" | "private" | "direct",
+    visibility: nextVisibility,
     inReplyTo: obj.inReplyToId ?? undefined,
     sensitive,
     summary: sensitive ? spoilerText : undefined,
     language,
     tags: canonicalTags,
-    to: rewriteList(originalTo),
-    cc: rewriteList(originalCc),
+    to: noteTo,
+    cc: noteCc,
     location: locationJson ? parseLocationJson(locationJson) : null,
-    // An edit keeps the stored `Event` shape (title + time range); only the
-    // description changes.
-    event: eventFromRaw(obj.raw),
+    event: noteEvent,
     licenseUrl: licenseUrl ?? undefined,
     // Preserve the thread identity across edits (see `conversationUri`).
     conversation: conversationFromRaw(obj.raw) ?? undefined,
@@ -350,6 +401,7 @@ export async function PUT(
     language: language ?? null,
     raw: JSON.stringify(note),
     ...(body.location !== undefined ? { locationJson: locationJson ?? null } : {}),
+    ...(visibilityChanged ? { visibility: nextVisibility } : {}),
     licenseUrl,
   });
 
@@ -369,8 +421,10 @@ export async function PUT(
     });
   }
 
-  // Fan-out Update activity to followers
-  if (obj.visibility !== "direct") {
+  // Fan-out Update activity to followers (audience = the NEW visibility: a
+  // post edited to direct is not re-announced to followers or relays, and one
+  // widened to public reaches the relays that only carry public content).
+  if (nextVisibility !== "direct") {
     const updateActivity = buildUpdate(baseUrl, actor.id, note, generateId());
     const followers = await env.DB
       .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
@@ -382,7 +436,7 @@ export async function PUT(
       return cached as unknown as APActor | null;
     };
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    const targets = await withRelayInboxes(env.DB, obj.visibility, inboxes);
+    const targets = await withRelayInboxes(env.DB, nextVisibility, inboxes);
     if (targets.length > 0) {
       await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(updateActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
@@ -404,27 +458,34 @@ export async function PUT(
     authorMoved: authorExtras?.moved ?? null,
   });
 
-  // Broadcast status.update event to streaming clients
+  // Broadcast status.update event to streaming clients (broadcastStatusUpdate
+  // only touches public channels for a `public` payload, so a narrowed
+  // visibility never reaches them).
   if (env.TIMELINE_STREAM) {
     const broadcastTasks: Promise<void>[] = [
       broadcastStatusUpdate(env.TIMELINE_STREAM, serializedUpdated, /* isLocal */ true),
       broadcastHomeStatusUpdate(env.TIMELINE_STREAM, actor.id, serializedUpdated),
     ];
-    const localFollowerRows = await env.DB
-      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-      .bind(actor.id)
-      .all<{ id: string }>();
-    // Same per-viewer filters as the REST home timeline: a follower who blocked
-    // the author (or the parent of a reply) gets no live update.
-    const exclusions = [await actorExclusion(env.DB, actor.id)];
-    if (parent) exclusions.push(parent);
-    const recipients = await eligibleLocalRecipients(
-      env.DB,
-      localFollowerRows.results.map((row) => row.id),
-      exclusions
-    );
-    for (const recipientId of recipients) {
-      broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, recipientId, serializedUpdated));
+    // A post edited INTO a direct message must not land on every follower's
+    // home stream: only the author sees the update live (addressed recipients
+    // get it through the REST conversation/home reads).
+    if (nextVisibility !== "direct") {
+      const localFollowerRows = await env.DB
+        .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+        .bind(actor.id)
+        .all<{ id: string }>();
+      // Same per-viewer filters as the REST home timeline: a follower who blocked
+      // the author (or the parent of a reply) gets no live update.
+      const exclusions = [await actorExclusion(env.DB, actor.id)];
+      if (parent) exclusions.push(parent);
+      const recipients = await eligibleLocalRecipients(
+        env.DB,
+        localFollowerRows.results.map((row) => row.id),
+        exclusions
+      );
+      for (const recipientId of recipients) {
+        broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, recipientId, serializedUpdated));
+      }
     }
     await Promise.allSettled(broadcastTasks);
   }

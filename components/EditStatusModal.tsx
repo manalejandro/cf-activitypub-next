@@ -16,6 +16,20 @@ import { useLimits } from "@/lib/limits-client";
 import { mediaChipIcon, uploadMediaFiles } from "@/lib/media/upload-client";
 import { MIN_POLL_OPTIONS } from "@/lib/constants";
 import { POLL_DEFAULT_EXPIRATION } from "@/lib/constants";
+import LocationPickerModal, { type GeoLocation } from "@/components/LocationPickerModal";
+import { VisibilityPicker } from "@/components/VisibilityPicker";
+import { LicensePicker } from "@/components/LicensePicker";
+import { fetchLicenses } from "@/lib/license-client";
+import { MAX_EVENT_NAME_CHARS, MAX_EVENT_LOCATION_CHARS } from "@/lib/event";
+
+/** ISO instant → `datetime-local` input value (local time). */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /**
  * Shared "edit status" modal: edit the text, CW, media attachments (add /
@@ -47,6 +61,19 @@ export function EditStatusModal({
   const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
   const [pollExpiry, setPollExpiry] = useState(POLL_DEFAULT_EXPIRATION);
   const [pollMultiple, setPollMultiple] = useState(false);
+  const [visibility, setVisibility] = useState<"public" | "unlisted" | "private" | "direct">("public");
+  // null = the stored license URI could not be resolved against the catalogue:
+  // save then omits `license` (sending "" would silently drop a license whose
+  // catalogue entry was removed — the status keeps its URI by design).
+  const [licenseId, setLicenseId] = useState<string | null>("");
+  const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  // An ActivityStreams Event edits its event fields; the type never changes.
+  const isEvent = status?.ap_type === "Event";
+  const [eventName, setEventName] = useState("");
+  const [eventStart, setEventStart] = useState("");
+  const [eventEnd, setEventEnd] = useState("");
+  const [eventVenue, setEventVenue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
@@ -80,6 +107,25 @@ export function EditStatusModal({
     } else {
       setPollExpiry(86400);
     }
+    const vis = status.visibility;
+    setVisibility(vis === "unlisted" || vis === "private" || vis === "direct" ? vis : "public");
+    setLocation(status.location ?? null);
+    setLicenseId(status.license_url ? null : "");
+    if (status.license_url) {
+      // The picker works with catalogue ids: resolve the stored URI against the
+      // catalogue so the current license shows selected and can be changed.
+      void fetchLicenses().then((list) => {
+        const match = list.find((l) => l.url === status.license_url);
+        if (match) setLicenseId((prev) => (prev === null ? match.id : prev));
+      });
+    }
+    if (status.ap_type === "Event") {
+      const meta = status.ap_meta;
+      setEventName(meta?.name ?? "");
+      setEventStart(toLocalInput(meta?.startTime));
+      setEventEnd(toLocalInput(meta?.endTime));
+      setEventVenue(meta?.location ?? "");
+    }
   }, [status]);
 
   if (!status) return null;
@@ -92,7 +138,9 @@ export function EditStatusModal({
   }
 
   async function handleSave() {
-    if (!token || !text.trim() || busy) return;
+    if (!token || busy) return;
+    // An Event may be all title (no body text), like in the composer.
+    if (!text.trim() && !(isEvent && eventName.trim())) return;
     setBusy(true);
     setSaveError(null);
     try {
@@ -103,7 +151,20 @@ export function EditStatusModal({
         spoiler_text: showCw ? spoiler : "",
         sensitive: !!spoiler && showCw,
         media_ids: media.map((m) => m.id),
+        visibility,
+        // Explicit null removes a stored location (the PUT treats a present
+        // `location` as the new value).
+        location: location ?? null,
       };
+      if (licenseId !== null) body.license = licenseId;
+      if (isEvent && eventName.trim() && eventStart) {
+        body.event = {
+          name: eventName.trim(),
+          start_time: new Date(eventStart).toISOString(),
+          end_time: eventEnd ? new Date(eventEnd).toISOString() : null,
+          location: eventVenue.trim(),
+        };
+      }
       if (hasPoll) {
         body.poll = {
           options: pollOptions.filter((o) => o.trim()),
@@ -273,6 +334,57 @@ export function EditStatusModal({
           </div>
         )}
 
+        {/* Event fields (ActivityStreams Event statuses): the type of the post
+            never changes on edit, but its title, time range and venue do. */}
+        {isEvent && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", padding: "0.75rem", background: "var(--bg-elevated)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)" }}>{t.composer_event}</div>
+            <input
+              type="text"
+              className="input"
+              placeholder={t.composer_event_title_ph}
+              aria-label={t.composer_event_title}
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              maxLength={MAX_EVENT_NAME_CHARS}
+              style={{ fontSize: "0.9rem" }}
+            />
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem", fontSize: "0.78rem", color: "var(--text-secondary)", flex: "1 1 11rem" }}>
+                {t.composer_event_start}
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={eventStart}
+                  onChange={(e) => setEventStart(e.target.value)}
+                  style={{ fontSize: "0.85rem" }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem", fontSize: "0.78rem", color: "var(--text-secondary)", flex: "1 1 11rem" }}>
+                {t.composer_event_end}
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={eventEnd}
+                  onChange={(e) => setEventEnd(e.target.value)}
+                  min={eventStart || undefined}
+                  style={{ fontSize: "0.85rem" }}
+                />
+              </label>
+            </div>
+            <input
+              type="text"
+              className="input"
+              placeholder={t.composer_event_location_ph}
+              aria-label={t.composer_event_location}
+              value={eventVenue}
+              onChange={(e) => setEventVenue(e.target.value)}
+              maxLength={MAX_EVENT_LOCATION_CHARS}
+              style={{ fontSize: "0.9rem" }}
+            />
+          </div>
+        )}
+
         {/* Media management */}
         {media.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -357,12 +469,23 @@ export function EditStatusModal({
             className="btn btn-ghost btn-sm"
             style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: pollMode ? "var(--accent-bg)" : undefined }}
             onClick={() => setPollMode((v) => !v)}
-            disabled={media.length > 0}
+            disabled={media.length > 0 || isEvent}
             title={t.composer_poll}
             aria-label={t.composer_poll}
             aria-pressed={pollMode}
           >
             <Icon name="bar-chart" size="1rem" />
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowLocationPicker(true)}
+            title={t.location_title}
+            aria-label={t.location_title}
+            aria-pressed={Boolean(location)}
+            style={{ fontSize: "1rem", padding: "0.3rem 0.5rem", background: location ? "var(--accent-bg)" : undefined }}
+          >
+            <Icon name="map-marker" size="1rem" />
           </button>
         </div>
 
@@ -374,15 +497,29 @@ export function EditStatusModal({
           <p style={{ color: "var(--danger)", fontSize: "0.8rem", margin: 0 }} role="alert">{saveError}</p>
         )}
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{limits.maxStatusChars}</span>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
+            {/* Same pickers as the composer (everything but the scheduler: an
+                edit publishes through the normal Update fan-out). */}
+            <VisibilityPicker value={visibility} onChange={(v) => setVisibility(v)} direction="up" />
+            <LicensePicker value={licenseId ?? ""} onChange={setLicenseId} direction="up" />
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{text.length}/{limits.maxStatusChars}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>{t.profile_cancel}</button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={!text.trim() || busy} onClick={() => void handleSave()}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={(!text.trim() && !(isEvent && eventName.trim())) || busy} onClick={() => void handleSave()}>
               {busy ? "…" : t.profile_save}
             </button>
           </div>
         </div>
+
+        {showLocationPicker && (
+          <LocationPickerModal
+            initial={location}
+            onSave={(next) => { setLocation(next); setShowLocationPicker(false); }}
+            onClose={() => setShowLocationPicker(false)}
+          />
+        )}
       </div>
     </div>
   );
