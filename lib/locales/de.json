@@ -1341,5 +1341,5 @@
   "oauth_authorize": "Autorisieren",
   "oauth_deny": "Ablehnen",
   "scheduled_editing": "Geplanten Beitrag bearbeiten",
-  "scheduled_error_past": "Wähle ein Datum und eine Uhrzeit in der Zukunft"
-}
+  "scheduled_error_past": "Wähle ein Datum und eine Uhrzeit in der Zukunft",
+  "scheduled_error_horizon": "Du kannst höchstens 30 Tage im Voraus planen"}

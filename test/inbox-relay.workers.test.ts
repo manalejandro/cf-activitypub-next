@@ -150,6 +150,52 @@ describe("relay subscription answers", () => {
 
     expect((await getRelayById(db, "r1"))?.state).toBe("rejected");
   });
+
+  it("accepts when an uncached signer shares the relay inbox's host", async () => {
+    // The Accept/Reject answer is gated by the unguessable follow_activity_id,
+    // so a signer on the relay's own host IS the relay even when its actor
+    // document was never cached (instance actors that only answer the Follow).
+    await seedRelay("pending");
+    await db.prepare("DELETE FROM actors WHERE id = ?").bind(RELAY_ACTOR).run();
+
+    await processInboxActivity(
+      {
+        id: "https://relay.example/activities/accept-2",
+        type: "Accept",
+        actor: "https://relay.example/instance-actor",
+        object: { id: FOLLOW_ID, type: "Follow", actor: `${BASE}/actor`, object: "https://www.w3.org/ns/activitystreams#Public" },
+      } as never,
+      { db, baseUrl: BASE, timelineStream: fakeStream() } as never
+    );
+
+    const relay = await getRelayById(db, "r1");
+    expect(relay?.state).toBe("accepted");
+    expect(relay?.actorUri).toBe("https://relay.example/instance-actor");
+  });
+
+  it("accepts when the cached relay actor declares the shared inbox only under endpoints", async () => {
+    // Relays registered by their SHARED inbox often serve an actor document
+    // whose `inbox` is a personal URL and the registered one lives in
+    // endpoints.sharedInbox — the top-level-only match left them pending
+    // forever.
+    await seedRelay("pending");
+    await db
+      .prepare("UPDATE actors SET inbox = ?, shared_inbox = ? WHERE id = ?")
+      .bind("https://relay.example/actor/inbox", RELAY_INBOX, RELAY_ACTOR)
+      .run();
+
+    await processInboxActivity(
+      {
+        id: "https://relay.example/activities/accept-3",
+        type: "Accept",
+        actor: RELAY_ACTOR,
+        object: { id: FOLLOW_ID, type: "Follow", actor: `${BASE}/actor`, object: "https://www.w3.org/ns/activitystreams#Public" },
+      } as never,
+      { db, baseUrl: BASE, timelineStream: fakeStream() } as never
+    );
+
+    expect((await getRelayById(db, "r1"))?.state).toBe("accepted");
+  });
 });
 
 describe("relayed announces", () => {

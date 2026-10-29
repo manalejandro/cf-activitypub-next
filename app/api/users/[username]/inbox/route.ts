@@ -122,8 +122,11 @@ export async function POST(
       fromEmail: env.FROM_EMAIL,
       instanceTitle: env.INSTANCE_TITLE,
     });
-  } catch {
-    // ignore
+  } catch (err) {
+    // Retryable, like the shared inbox: the dedup row was rolled back and a
+    // 202 here would make the sender treat a failed delivery as successful.
+    console.error("[inbox] processing failed", err);
+    return json({ error: "Internal error" }, 500);
   }
 
   return json({}, 202);

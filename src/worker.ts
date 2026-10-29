@@ -28,8 +28,8 @@ import { enqueueDeliveries, resolveDeliverySigningKey } from "../lib/activitypub
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
-import type { APAttachment, MastodonStatus } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache, getAllCustomEmojis, getActorByUsername } from "../lib/db";
+import type { APAttachment, MastodonStatus, LocalActor, LocalObject } from "@/lib/types";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, getPollByObjectId, getPollOptions, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache, getAllCustomEmojis, getActorByUsername, mediaCacheId, isActorBlockedBy, upsertDirectConversation, getAttachmentsByObjectId, setObjectQuoteAuthorizationUri } from "../lib/db";
 import { serializeStatusForStream } from "../lib/streaming/serialize";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
@@ -50,8 +50,12 @@ import { processStatusContent } from "../lib/activitypub/content";
 import { resolveMentionLinks, canonicalizeMentionTags } from "../lib/activitypub/mentions";
 import { PUBLIC_ADDRESS } from "../lib/activitypub/vocab";
 import { parseEventInput } from "../lib/event";
-import { notifyExpiredPolls, refreshRemotePoll } from "../lib/activitypub/polls";
-import { retryPendingQuoteRequests } from "../lib/activitypub/quotes";
+import { notifyExpiredPolls, refreshRemotePoll, applyPollToNote } from "../lib/activitypub/polls";
+import { retryPendingQuoteRequests, ensureLocalQuoteAuthorization, buildQuoteRequest } from "../lib/activitypub/quotes";
+import { fetchAndCacheRemoteStatus } from "../lib/activitypub/remote";
+import { toAPAttachment } from "../lib/activitypub/attachments";
+import { decodeStatusId } from "../lib/mastodon/statusId";
+import { screenStatus } from "../lib/moderation/pipeline";
 import {
   backfillRemoteSharedInboxes,
   deliveryRetryDelay,
@@ -656,9 +660,21 @@ async function handleCallSignalingUpgrade(
   return stub.fetch("https://call-do/connect", { method: request.method, headers: request.headers }) as Promise<Response>;
 }
 
+/**
+ * Deterministic UUID-shaped object id for a scheduled post, derived from the
+ * schedule row's id: a retried publish reuses the SAME IRI, so createObject's
+ * INSERT OR IGNORE turns the second pass into a no-op instead of a duplicate
+ * post. UUID-shaped because local object IRIs are /objects/<uuid> and
+ * decodeStatusId only round-trips that shape.
+ */
+async function scheduledNoteId(scheduleId: string): Promise<string> {
+  const hex = await mediaCacheId(`scheduled:${scheduleId}`);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 async function publishDueScheduled(env: Env): Promise<{ published: number; failed: number }> {
   const dueScheduled = await env.DB
-    .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now') OR replace(scheduled_at, 'T', ' ') <= datetime('now') LIMIT 100")
+    .prepare("SELECT id, actor_id, scheduled_at, params, media_ids FROM scheduled_statuses WHERE scheduled_at <= datetime('now') OR replace(scheduled_at, 'T', ' ') <= datetime('now') ORDER BY scheduled_at ASC LIMIT 100")
     .all<{ id: string; actor_id: string; scheduled_at: string; params: string; media_ids: string | null }>();
 
   let publishedCount = 0;
@@ -670,18 +686,33 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       body.scheduled_at = undefined;
       const actor = await getActorById(env.DB, s.actor_id);
       if (!actor || !actor.privateKeyPem) continue;
+      // A suspended or memorialized account must not keep publishing: the
+      // moderation decision outlives the queue, so its pending schedules are
+      // dropped (the immediate path rejects these accounts at the auth layer).
+      if (actor.suspended || actor.memorial) {
+        await env.DB.prepare("DELETE FROM scheduled_statuses WHERE id = ?").bind(s.id).run();
+        continue;
+      }
 
       const limits = resolveLimits(env as unknown as Record<string, unknown>);
       const baseUrl = `https://${actor.domain}`;
       const domain = actor.domain;
-      const content = (body.status as string | undefined)?.trim() ?? "";
+      // Coerce, never trust: `params` is client-supplied JSON, and a
+      // non-string `status` used to throw on EVERY tick — a poison pill that
+      // could occupy the whole due window and starve every other schedule.
+      const content = typeof body.status === "string" ? body.status.trim() : "";
       const visibility = ((body.visibility as string) ?? "public") as "public" | "unlisted" | "private" | "direct";
-      const sensitive = body.sensitive === true || body.sensitive === "true";
-      const spoilerText = (body.spoiler_text as string | undefined) ?? "";
-      const language = body.language as string | undefined;
-      const inReplyToId = (body.in_reply_to_id as string | undefined) ?? null;
+      let sensitive = body.sensitive === true || body.sensitive === "true";
+      let spoilerText = typeof body.spoiler_text === "string" ? body.spoiler_text : "";
+      const language = typeof body.language === "string" ? body.language : undefined;
+      // Clients store the ENCODED status id in params (a bare UUID for local
+      // posts, base64url for remote ones); the immediate path decodes it, so
+      // the cron must too — an undecoded UUID was stored as in_reply_to_id,
+      // breaking the thread locally and federating a non-IRI inReplyTo.
+      const inReplyToRaw = typeof body.in_reply_to_id === "string" && body.in_reply_to_id.trim() ? body.in_reply_to_id.trim() : null;
+      const inReplyToId = inReplyToRaw ? decodeStatusId(inReplyToRaw, domain) : null;
       const published = new Date().toISOString();
-      const noteId = generateId();
+      const noteId = await scheduledNoteId(s.id);
       const locationJson = normalizeLocationInput((body as Record<string, unknown>).location) ?? null;
       // The composer's event mode: a malformed payload (validated when it was
       // scheduled) falls back to a plain note rather than blocking the queue.
@@ -714,12 +745,59 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const { html: htmlContent, tags: contentTags } = processStatusContent(content, baseUrl, localEmojis, { markdown: markdownContent, mentions: mentionLinks });
       const { tags: canonicalTags } = await canonicalizeMentionTags(env.DB, contentTags, env.KV);
 
+      // The pending-upload ids, hoisted before the moderation gate (it reports
+      // the media count) and reused by the attachment loop below.
+      const mediaIds = Array.isArray(body.media_ids)
+        ? body.media_ids as string[]
+        : s.media_ids ? JSON.parse(s.media_ids) as string[] : [];
+
+      // Guardian pre-publish gate (parity with the immediate path): scheduled
+      // posts used to bypass it entirely — blocked content was published and
+      // federated, and only the patrol caught it minutes later. A moderation
+      // outage must not strand the queue: on error the post proceeds and the
+      // patrol reviews it (the same degradation the immediate path documents).
+      if (env.AI && content) {
+        try {
+          const accountAgeMs = Date.now() - new Date(actor.createdAt).getTime();
+          const gate = await screenStatus(env as unknown as Parameters<typeof screenStatus>[0], {
+            contentHtml: htmlContent,
+            spoilerText,
+            mediaCount: mediaIds.length,
+            isReply: Boolean(inReplyToId),
+            visibility,
+            authorId: actor.id,
+            authorUsername: actor.username,
+            accountAgeDays: Number.isFinite(accountAgeMs) ? Math.max(0, accountAgeMs / 86400000) : 0,
+            statusesCount: actor.statusesCount,
+            objectId: null,
+          });
+          if (gate.blocked) {
+            // The gate already warned/suspended the account as it sees fit;
+            // the schedule itself must not publish, ever — drop the row.
+            await env.DB.prepare("DELETE FROM scheduled_statuses WHERE id = ?").bind(s.id).run();
+            continue;
+          }
+          if (gate.markedSensitive) {
+            sensitive = true;
+            spoilerText = spoilerText || "Contenido sensible";
+          }
+        } catch (err) {
+          console.error("[scheduled] moderation gate failed", s.id, err);
+        }
+      }
+
       // Addressing (Mastodon TagManager): mentions go to `cc`, except a direct
       // message where they are the recipients (`to`). Without the right
       // addressing a DM is not delivered to its recipients at all.
       const mentionedIRIs = canonicalTags
         .filter((t) => t.type === "Mention" && t.href && t.href !== actor.id)
         .map((t) => t.href!);
+      // The replied-to author is always addressed too (Mastodon auto-mentions
+      // the thread participants): without this a scheduled DM reply had an
+      // empty `to` and the recipient's instance treated it as not-for-them.
+      if (parentObj && parentObj.actorId !== actor.id && !mentionedIRIs.includes(parentObj.actorId)) {
+        mentionedIRIs.push(parentObj.actorId);
+      }
       const followersAudience = followersIRI(baseUrl, actor.username);
       let noteTo: string[];
       let noteCc: string[];
@@ -738,9 +816,31 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         noteCc = [];
       }
 
-      // FEP-044f quote: preserve the quote the post was scheduled with (it was
-      // dropped before, so a scheduled quote lost its link).
-      const quoteId = typeof body.quote_id === "string" && body.quote_id.trim() ? body.quote_id.trim() : null;
+      // FEP-044f quote: the composer/API store the ENCODED id under
+      // `quoted_status_id` (older bodies used `quote_id`); decode it like the
+      // immediate path and re-validate the quoted post — between scheduling
+      // and publishing it may have been deleted or its visibility narrowed,
+      // and quoting a non-public post would leak it. An unresolvable or
+      // non-public quote is dropped; the post itself still publishes.
+      const quotedRaw = typeof body.quoted_status_id === "string" && body.quoted_status_id.trim()
+        ? body.quoted_status_id.trim()
+        : typeof body.quote_id === "string" && body.quote_id.trim() ? body.quote_id.trim() : null;
+      let quoteId: string | null = null;
+      let quotedObject: LocalObject | null = null;
+      let quotedAuthor: LocalActor | null = null;
+      if (quotedRaw) {
+        const quotedIri = decodeStatusId(quotedRaw, domain);
+        let quoted = await getObjectById(env.DB, quotedIri);
+        if (!quoted && /^https?:\/\//i.test(quotedIri) && !quotedIri.startsWith(`https://${domain}/`)) {
+          const resolved = await fetchAndCacheRemoteStatus(env.DB, quotedIri);
+          if (resolved.object) quoted = resolved.object;
+        }
+        if (quoted && (quoted.visibility === "public" || quoted.visibility === "unlisted")) {
+          quoteId = quoted.id;
+          quotedObject = quoted;
+          quotedAuthor = await getActorById(env.DB, quoted.actorId);
+        }
+      }
 
       const note = buildNote(baseUrl, noteId, {
         actorUsername: actor.username,
@@ -771,13 +871,15 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const validPollOptions = pollRaw && Array.isArray(pollRaw.options)
         ? pollRaw.options.map((o) => String(o).trim()).filter(Boolean).slice(0, limits.maxPollOptions)
         : [];
-      const hasValidPoll = validPollOptions.length >= 2;
+      // An event carries no poll (immediate-path rule): letting the poll win
+      // used to overwrite the Event's type and endTime with the Question's.
+      const hasValidPoll = !event && validPollOptions.length >= 2;
       const pollExpiresAt = hasValidPoll
         ? new Date(Date.now() + Math.min(Math.max(Number(pollRaw?.expires_in ?? 86400), limits.pollMinExpiration), limits.pollMaxExpiration) * 1000).toISOString()
         : null;
       if (hasValidPoll) (note as Record<string, unknown>).type = "Question";
 
-      await createObject(env.DB, {
+      const inserted = await createObject(env.DB, {
         // The FULL IRI, like the immediate post path: a bare UUID id broke
         // decodeStatusId round trips (permalink 404, edits landing on a
         // self-fetched remote duplicate → "Cannot edit remote status").
@@ -791,7 +893,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         inReplyToId,
         quoteId,
         language: language ?? null,
-        url: note.id,
+        url: note.url ?? note.id,
         repliesCount: 0,
         reblogsCount: 0,
         favouritesCount: 0,
@@ -804,12 +906,8 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
 
       // Link pending media uploads (same `pending_media:` KV contract as
       // POST /api/v1/statuses; the schedule-time branch extends their TTL).
-      const noteAttachments: APAttachment[] = [];
-      const mediaIds = Array.isArray(body.media_ids)
-        ? body.media_ids as string[]
-        : s.media_ids ? JSON.parse(s.media_ids) as string[] : [];
       for (const mediaId of mediaIds.slice(0, limits.maxMediaAttachments)) {
-        const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
+        const pendingRaw = await env.KV.get(`pending_media:${mediaId}`).catch(() => null);
         if (!pendingRaw) continue;
         try {
           const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
@@ -835,56 +933,60 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           };
           await createAttachment(env.DB, att);
           await env.KV.delete(`pending_media:${mediaId}`);
-          noteAttachments.push({
-            id: att.url,
-            type: mimeType?.startsWith("image/") ? "Image"
-              : mimeType?.startsWith("video/") ? "Video"
-              : mimeType?.startsWith("audio/") ? "Audio" : "Document",
-            ...(mimeType ? { mediaType: mimeType } : {}),
-            url: att.url,
-            ...(att.description ? { name: att.description } : {}),
-          });
         } catch { /* skip malformed pending media */ }
       }
+      // The document's attachment list is rebuilt from the stored rows: it
+      // covers both the fresh links above and a retry whose earlier pass
+      // already consumed the pending entries (or died mid-loop).
+      const noteAttachments: APAttachment[] = (await getAttachmentsByObjectId(env.DB, note.id)).map(toAPAttachment);
 
-      // Poll rows + the Question fields of the document.
+      // Poll rows + the Question fields of the document. On a retry the poll
+      // already exists: reuse it (its original expiry wins) instead of
+      // creating a second row.
       if (hasValidPoll && pollExpiresAt) {
-        await createPoll(env.DB, {
-          id: generateId(),
-          objectId: note.id,
-          expiresAt: pollExpiresAt,
-          multiple: Boolean(pollRaw?.multiple),
-          options: validPollOptions.map((title, i) => ({ id: generateId(), title, position: i })),
+        let pollDb = await getPollByObjectId(env.DB, note.id);
+        if (!pollDb) {
+          await createPoll(env.DB, {
+            id: generateId(),
+            objectId: note.id,
+            expiresAt: pollExpiresAt,
+            multiple: Boolean(pollRaw?.multiple),
+            options: validPollOptions.map((title, i) => ({ id: generateId(), title, position: i })),
+          });
+          pollDb = await getPollByObjectId(env.DB, note.id);
+        }
+        if (pollDb) applyPollToNote(note, pollDb, await getPollOptions(env.DB, pollDb.id));
+      }
+
+      // FEP-044f: a quote of one of OUR posts needs no round trip — we are the
+      // quoted server, so the authorization is minted here and the note carries
+      // it from the start (a remote quote gets its QuoteRequest with the
+      // fan-out below). Without it Mastodon 4.4+ shows the quote as pending
+      // forever.
+      let quoteAuthorizationUri: string | null = null;
+      if (quoteId && quotedObject?.local) {
+        quoteAuthorizationUri = await ensureLocalQuoteAuthorization(env, {
+          baseUrl,
+          quoted: quotedObject,
+          authorUsername: actor.username,
+          interactingObjectId: note.id,
         });
-        const pollChoices = validPollOptions.map((title) => ({
-          type: "Note",
-          name: title,
-          replies: { type: "Collection", totalItems: 0 },
-        }));
-        const noteAny = note as Record<string, unknown>;
-        if (pollRaw?.multiple) noteAny.anyOf = pollChoices;
-        else noteAny.oneOf = pollChoices;
-        noteAny.endTime = pollExpiresAt;
-        noteAny.votersCount = 0;
+        if (quoteAuthorizationUri) {
+          (note as Record<string, unknown>).quoteAuthorization = quoteAuthorizationUri;
+          await setObjectQuoteAuthorizationUri(env.DB, note.id, quoteAuthorizationUri);
+        }
       }
 
       if (noteAttachments.length > 0) note.attachment = noteAttachments;
-      // Persist the final document (attachment/poll fields were added after the
-      // insert). A raw-only update: this is not an edit, `updated_at` stays.
-      if (noteAttachments.length > 0 || hasValidPoll) {
+      // Persist the final document (attachment/poll/quote-authorization fields
+      // were added after the insert). A raw-only update: this is not an edit,
+      // `updated_at` stays.
+      if (noteAttachments.length > 0 || hasValidPoll || quoteAuthorizationUri) {
         await env.DB
           .prepare("UPDATE objects SET raw = ? WHERE id = ?")
           .bind(JSON.stringify(note), note.id)
           .run();
       }
-
-      // The schedule's job is done once the post exists: remove the row BEFORE
-      // the fan-out so a later failure can never re-publish it (and an earlier
-      // one can no longer strand it in an eternal retry).
-      await env.DB
-        .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
-        .bind(s.id)
-        .run();
 
       // Best-effort enrichment: neither the preview crawl nor the counters may
       // abort an already-published post.
@@ -898,19 +1000,23 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       } catch (err) {
         console.error("[scheduled] link-preview enqueue failed", s.id, err);
       }
-      try {
-        await env.DB
-          .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
-          .bind(s.actor_id)
-          .run();
-        if (inReplyToId) {
+      // Counters only on the inserting pass: a retry after a partial failure
+      // must not double-count the post or the parent's replies.
+      if (inserted) {
+        try {
           await env.DB
-            .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
-            .bind(inReplyToId)
+            .prepare("UPDATE actors SET statuses_count = statuses_count + 1 WHERE id = ?")
+            .bind(s.actor_id)
             .run();
+          if (inReplyToId) {
+            await env.DB
+              .prepare("UPDATE objects SET replies_count = replies_count + 1, engagement = engagement + 1 WHERE id = ?")
+              .bind(inReplyToId)
+              .run();
+          }
+        } catch (err) {
+          console.error("[scheduled] counter update failed", s.id, err);
         }
-      } catch (err) {
-        console.error("[scheduled] counter update failed", s.id, err);
       }
 
       // Fan-out delivery (through the queue), mirroring the immediate post path:
@@ -957,9 +1063,8 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // The replied-to author always receives the reply (auto-mention parity with
       // the immediate path): remote → its inbox, local → a mention notification.
       const inboxes: string[] = [];
-      if (inReplyToId) {
-        const parent = await getObjectById(env.DB, inReplyToId);
-        const parentAuthor = parent ? await getActorById(env.DB, parent.actorId) : null;
+      if (inReplyToId && parentObj) {
+        const parentAuthor = await getActorById(env.DB, parentObj.actorId);
         if (parentAuthor && !parentAuthor.isLocal) {
           inboxes.push(...await collectFollowerInboxes([parentAuthor.id], fetchActor));
         } else if (parentAuthor?.isLocal && !notified.has(parentAuthor.id)) {
@@ -976,11 +1081,63 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
         }
       }
 
+      // Notify the author of the quoted status (Mastodon sends a `quote`
+      // notification). Never for a direct post: the quoted author is not part
+      // of the DM audience and must not receive its content.
+      if (quoteId && visibility !== "direct" && quotedAuthor?.isLocal && quotedAuthor.id !== actor.id && !notified.has(quotedAuthor.id)) {
+        notified.add(quotedAuthor.id);
+        await notify(env, {
+          id: generateId(),
+          type: "quote",
+          accountId: actor.id,
+          targetAccountId: quotedAuthor.id,
+          objectId: note.id,
+          read: false,
+          createdAt: published,
+        });
+      }
+
+      // Direct messages become conversations for every local participant (same
+      // contract as the immediate path): the sender gets a read copy, each
+      // local recipient an unread one. Recipients that blocked the author are
+      // skipped — createNotification already dropped their notification, and
+      // the stream below reuses this filtered list.
+      const localDmRecipients: string[] = [];
+      if (visibility === "direct") {
+        await upsertDirectConversation(env.DB, actor.id, mentionedIRIs, note.id, false);
+        for (const recipientId of notified) {
+          if (recipientId === actor.id) continue;
+          if (await isActorBlockedBy(env.DB, recipientId, actor.id)) continue;
+          await upsertDirectConversation(env.DB, recipientId, [actor.id], note.id, true);
+          localDmRecipients.push(recipientId);
+        }
+      }
+
       const createActivity = buildCreate(baseUrl, actor.id, note, generateId());
+
+      // Quote delivery (immediate-path parity): the quoted post's author must
+      // receive the Create so their instance can raise the `quote`
+      // notification, and quoting a REMOTE post sends the FEP-044f
+      // QuoteRequest — Mastodon only approves (and shows) quotes it was asked
+      // about.
+      let quoteAuthorInboxes: string[] = [];
+      if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
+        quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
+        if (quoteAuthorInboxes.length > 0) {
+          const quoteRequest = buildQuoteRequest(baseUrl, {
+            activityId: generateId(),
+            actorId: actor.id,
+            quotingObjectId: note.id,
+            quotedObjectId: quoteId,
+          });
+          await enqueueDeliveries(env.DELIVERY_QUEUE, quoteAuthorInboxes, JSON.stringify(quoteRequest), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+        }
+      }
+
       if (visibility === "direct") {
         // A direct message reaches only the addressed accounts (mentions + the
         // replied-to author), never followers or relays.
-        const targets = [...new Set([...mentionInboxes, ...inboxes])];
+        const targets = [...new Set([...mentionInboxes, ...inboxes, ...quoteAuthorInboxes])];
         if (targets.length > 0) {
           await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
         }
@@ -990,7 +1147,7 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           .bind(actor.id)
           .all<{ actor_id: string }>();
         inboxes.push(...await collectFollowerInboxes(followerRows.results.map((r) => r.actor_id), fetchActor));
-        inboxes.push(...mentionInboxes);
+        inboxes.push(...mentionInboxes, ...quoteAuthorInboxes);
         // Public scheduled posts also go to every subscribed relay.
         const targets = await withRelayInboxes(env.DB, visibility, [...new Set(inboxes)]);
         if (targets.length > 0) {
@@ -1013,8 +1170,12 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           // The author always sees their own post.
           tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serialized));
           if (visibility === "direct") {
-            for (const recipientId of notified) {
-              if (recipientId !== actor.id) tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
+            // The block-filtered recipient list from the conversation step:
+            // iterating `notified` raw streamed the DM to local accounts that
+            // blocked the author (createNotification drops them, the set did
+            // not).
+            for (const recipientId of localDmRecipients) {
+              tasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serialized));
             }
           } else {
             const parent = await parentExclusion(env.DB, stored.inReplyToId);
@@ -1036,6 +1197,17 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           await Promise.allSettled(tasks);
         }
       }
+
+      // The schedule row comes out LAST: every step above is idempotent
+      // (deterministic object id + INSERT OR IGNORE, the notifications dedup
+      // index, upserted conversations, poll reuse), so a transient failure
+      // anywhere re-runs safely on the next tick. Deleting first meant a D1
+      // blip during the fan-out left the post local-only forever — the row
+      // was gone and nothing ever retried the delivery.
+      await env.DB
+        .prepare("DELETE FROM scheduled_statuses WHERE id = ?")
+        .bind(s.id)
+        .run();
 
       publishedCount++;
     } catch (e) {

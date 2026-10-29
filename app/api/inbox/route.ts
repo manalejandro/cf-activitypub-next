@@ -125,8 +125,13 @@ export async function POST(request: NextRequest): Promise<Response> {
       fromEmail: env.FROM_EMAIL,
       instanceTitle: env.INSTANCE_TITLE,
     });
-  } catch {
-    // Still return 202 so the remote server does not keep retrying.
+  } catch (err) {
+    // The handler failed after signature verification: answer retryable so the
+    // sender redelivers (processInboxActivity rolled back its dedup row).
+    // Acking with 202 would lose the activity permanently — a shared-inbox
+    // copy is usually the only delivery.
+    console.error("[inbox] processing failed", err);
+    return json({ error: "Internal error" }, 500);
   }
 
   return json({ status: "accepted" }, 202);

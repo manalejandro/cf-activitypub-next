@@ -20,7 +20,7 @@ import {
   enqueueMediaCache, markObjectMediaPending,
 } from "@/lib/db";
 import { validateOutboundUrl, fetchRemoteObject, safeFetch, safeFetchTracked, signedGetHeaders, signedGetHeadersRfc9421 } from "@/lib/activitypub/federation";
-import { safeMediaUrl } from "@/lib/safe-url";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { federationUserAgent, FEDERATION_BROWSER_UA } from "@/lib/user-agent";
 import { maybeEnqueueLinkPreview } from "@/lib/link-preview";
 import { extractLocationJson } from "@/lib/activitypub/utils";
@@ -752,7 +752,7 @@ async function storeObjectAttachments(
     // Validate BEFORE storing: createAttachment rejects unsafe URLs silently,
     // and the cache must be enqueued with the SAME normalized URL that lands
     // in `remote_url` or the hold/release joins never match.
-    const safeUrl = safeMediaUrl(att.url);
+    const safeUrl = safeHttpUrl(att.url);
     if (!safeUrl) continue;
     const attachmentId = att.id || generateId();
     try {
@@ -943,7 +943,7 @@ export async function fetchAndCacheRemoteActorFeatured(
         if (Array.isArray(item.attachment)) {
           for (const attachment of (item.attachment as APAttachment[]).slice(0, MAX_REMOTE_ATTACHMENTS)) {
             if (!attachment?.url || typeof attachment.url !== "string") continue;
-            const safeUrl = safeMediaUrl(attachment.url);
+            const safeUrl = safeHttpUrl(attachment.url);
             if (!safeUrl) continue;
             const attachmentId = attachment.id || generateId();
             const localAttachment: LocalAttachment = {

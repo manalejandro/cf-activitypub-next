@@ -30,14 +30,28 @@ export async function POST(request: NextRequest): Promise<Response> {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid client");
   }
 
-  // Validate redirect_uri against registered URIs (prevents open redirect)
+  // Validate redirect_uri against registered URIs (prevents open redirect).
+  // The OOB urn is accepted exactly like the consent page accepts it: apps
+  // without a browser redirect target get the code rendered inline (below),
+  // and nothing ever redirects to the urn itself.
+  const OOB_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
   const registeredUris = app.redirectUri.split(/[\n,]/).map((u) => u.trim());
-  if (!registeredUris.includes(redirect_uri)) {
+  if (!registeredUris.includes(redirect_uri) && redirect_uri !== OOB_REDIRECT_URI) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid redirect URI");
   }
 
-  // Handle deny (after validation so redirect_uri is safe)
+  // Handle deny (after validation so redirect_uri is safe). An OOB flow has no
+  // redirect target: render the outcome instead of a 302 to a urn.
   if (action === "deny") {
+    if (redirect_uri === OOB_REDIRECT_URI) {
+      return new Response(
+        `<html><body style="font-family:sans-serif;max-width:400px;margin:60px auto;padding:20px">
+          <h2>Authorization denied</h2>
+          <p>You can close this window and return to the application.</p>
+        </body></html>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } }
+      );
+    }
     const dest = buildRedirect(redirect_uri, null, "access_denied", state);
     return Response.redirect(dest, 302);
   }
@@ -57,8 +71,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   // (shared with the password grant) and the account-state checks. The web
   // login, registration and password recovery keep the captcha.
 
-  // Authenticate user
-  const actor = await getActorByEmail(env.DB, email?.toLowerCase());
+  // Authenticate user. A raw POST without the credential fields (curl, a
+  // broken client) must never reach D1 with an undefined bind — that threw a
+  // 500 instead of the clean "invalid credentials" redirect.
+  if (typeof email !== "string" || !email || typeof password !== "string" || !password) {
+    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid credentials");
+  }
+  const actor = await getActorByEmail(env.DB, email.toLowerCase());
   if (!actor || !actor.passwordHash) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Invalid credentials");
   }
@@ -68,7 +87,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   // surfaces count together, and rotating proxies cannot mount a
   // credential-stuffing (or PBKDF2-burning) run against one account. A
   // success clears the counter.
-  const lockoutKey = `login-fail:${await mediaCacheId(email?.toLowerCase() ?? "")}`;
+  const lockoutKey = `login-fail:${await mediaCacheId(email.toLowerCase())}`;
   const lockout = await atomicRateLimit(env, lockoutKey, 10, 900);
   if (!lockout.allowed) {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Too many failed attempts. Please try again later");
@@ -126,7 +145,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   await env.KV.put(`oauth_code:${code}`, payload, { expirationTtl: 600 });
 
   // Redirect back to the app
-  if (redirect_uri === "urn:ietf:wg:oauth:2.0:oob") {
+  if (redirect_uri === OOB_REDIRECT_URI) {
     return new Response(
       `<html><body style="font-family:sans-serif;max-width:400px;margin:60px auto;padding:20px">
         <h2>Authorization code</h2>

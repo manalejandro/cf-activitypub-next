@@ -327,11 +327,18 @@ export default function HomePage() {
     const res = await fetch("/api/v1/preferences", { credentials: "include" });
     if (!res.ok) return;
     const data = await res.json() as Record<string, string | boolean | null>;
-    const vis = data["posting:default:visibility"];
-    if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "private" | "direct");
-    // FEP-6757: the account's default license for new statuses ("" = none).
-    const lic = data["posting:default:license"];
-    if (typeof lic === "string") setLicense(lic);
+    // In scheduled-edit mode the prefill owns visibility/license: this fetch
+    // resolves in parallel with it, and applying the account defaults
+    // afterwards would silently rewrite e.g. a direct schedule to the default
+    // visibility when the user saves without touching the picker.
+    const editingScheduled = new URLSearchParams(window.location.search).has("edit_scheduled");
+    if (!editingScheduled) {
+      const vis = data["posting:default:visibility"];
+      if (typeof vis === "string") setVisibility(vis as "public" | "unlisted" | "private" | "direct");
+      // FEP-6757: the account's default license for new statuses ("" = none).
+      const lic = data["posting:default:license"];
+      if (typeof lic === "string") setLicense(lic);
+    }
     // Mastodon: "always mark media as sensitive" → new attachments blur by default.
     if (data["posting:default:sensitive"] === true) setDefaultSensitive(true);
   }

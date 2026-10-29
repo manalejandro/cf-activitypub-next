@@ -1,13 +1,13 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized, notFound } from "@/lib/cf";
-import { toIsoOrNull } from "@/lib/dates";
+import { toIsoOrNull, dbTimestamp } from "@/lib/dates";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getScheduledStatusById, updateScheduledStatus, deleteScheduledStatus, getLicenseById } from "@/lib/db";
 import { formDataToBody } from "@/lib/request-body";
 import { normalizeLocationInput } from "@/lib/activitypub/utils";
 import { parseEventInput } from "@/lib/event";
 import { resolveLimits } from "@/lib/constants";
-import { scheduledMediaAttachments } from "@/lib/scheduled-media";
+import { scheduledMediaAttachments, SCHEDULE_MAX_HORIZON_MS } from "@/lib/scheduled-media";
 import { env } from "cloudflare:workers";
 
 const VISIBILITIES = ["public", "unlisted", "private", "direct"];
@@ -93,9 +93,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (!scheduledAt || Number.isNaN(schedDate.getTime()) || schedDate <= new Date()) {
     return json({ error: "scheduled_at must be a valid future date", error_code: "scheduled_error_past" }, 422);
   }
+  // Same horizon as the create path — but only for a NEWLY requested instant:
+  // a schedule created before the cap existed keeps its stored date editable
+  // (its media reservations were extended under the old contract; the cap
+  // protects the new ones).
+  if (requestedAt && schedDate.getTime() - Date.now() > SCHEDULE_MAX_HORIZON_MS) {
+    return json({ error: "scheduled_at is too far in the future (30 days max)", error_code: "scheduled_error_horizon" }, 422);
+  }
 
   // Content limits mirror the create route: the stored params are published
-  // verbatim by the cron, so anything invalid must not get in here.
+  // verbatim by the cron, so anything invalid must not get in here. A
+  // non-string `status` must never reach the merge below — the publish cron
+  // would trip over it on every tick.
+  if (body.status !== undefined && typeof body.status !== "string") {
+    return json({ error: "Validation failed: Text must be a string" }, 422);
+  }
   const status = typeof body.status === "string" ? body.status : "";
   if (status.length > limits.maxStatusChars) {
     return json({ error: `Validation failed: Text must be ${limits.maxStatusChars} characters or less` }, 422);
@@ -123,22 +135,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   // Media: cap, ownership (a guessed id must not attach somebody else's
   // upload), and re-extend the pending-upload TTL to the schedule horizon —
-  // the same contract the create path establishes when scheduling.
-  const mediaIds = normalizeMediaIds(body.media_ids).slice(0, limits.maxMediaAttachments);
+  // the same contract the create path establishes when scheduling. When the
+  // body omits `media_ids` (a Mastodon-shaped reschedule sends ONLY
+  // `scheduled_at`), the stored reservations are kept and re-validated.
+  const storedParams = parseParams(s.params);
+  const requestedMediaIds = normalizeMediaIds(
+    body.media_ids !== undefined ? body.media_ids : storedParams.media_ids
+  ).slice(0, limits.maxMediaAttachments);
   const ownedMediaIds: string[] = [];
-  for (const mediaId of mediaIds) {
+  for (const mediaId of requestedMediaIds) {
     const pendingRaw = await env.KV.get(`pending_media:${mediaId}`).catch(() => null);
     if (!pendingRaw) continue;
     try {
-      const pending = JSON.parse(pendingRaw) as { actorId?: string };
-      if (pending.actorId && pending.actorId !== actor.id) continue;
+      const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+      if (typeof pending.actorId === "string" && pending.actorId !== actor.id) continue;
+      // Stamp the horizon INSIDE the entry: the description flush
+      // (PUT /api/v1/media/:id) rewrites the reservation and must not collapse
+      // a 30-day TTL back to the 1-hour default of an unattached upload.
+      pending.expiresAt = new Date(Date.now() + 30 * 86400_000).toISOString();
+      await env.KV.put(`pending_media:${mediaId}`, JSON.stringify(pending), { expirationTtl: 30 * 86400 }).catch(() => {});
     } catch { continue; }
     ownedMediaIds.push(mediaId);
-    await env.KV.put(`pending_media:${mediaId}`, pendingRaw, { expirationTtl: 30 * 86400 }).catch(() => {});
   }
 
-  const nextParams = { ...body, scheduled_at: scheduledAt };
-  const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
+  // Merge over the stored params (never replace): a reschedule-only PUT keeps
+  // the text/visibility/poll/event/location/license, and fields the editor
+  // does resend override the stored ones (an explicit null clears them).
+  const nextParams: Record<string, unknown> = { ...storedParams, ...body, scheduled_at: scheduledAt };
+  if (storedParams.media_ids !== undefined || body.media_ids !== undefined) {
+    nextParams.media_ids = ownedMediaIds;
+  }
+  const normalizedScheduledAt = dbTimestamp(schedDate);
   await updateScheduledStatus(
     env.DB,
     id,
@@ -148,7 +175,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   );
 
   const updated = await getScheduledStatusById(env.DB, id);
-  return json(await serializeScheduled(updated!));
+  if (!updated) return notFound();
+  return json(await serializeScheduled(updated));
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {

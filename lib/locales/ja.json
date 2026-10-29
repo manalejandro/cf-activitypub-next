@@ -1341,5 +1341,5 @@
   "oauth_authorize": "承認",
   "oauth_deny": "拒否",
   "scheduled_editing": "予約投稿を編集中",
-  "scheduled_error_past": "未来の日時を選択してください"
-}
+  "scheduled_error_past": "未来の日時を選択してください",
+  "scheduled_error_horizon": "予約できるのは30日先までです"}

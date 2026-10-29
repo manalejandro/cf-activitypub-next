@@ -18,6 +18,14 @@ export interface ScheduledMediaAttachment {
   meta: { original?: { size?: string } };
 }
 
+/**
+ * How far ahead a status may be scheduled. The pending-upload reservations
+ * that carry a schedule's media live 30 days (KV TTL, re-stamped by the
+ * create/edit routes): a longer horizon would publish silently without its
+ * media, so both routes refuse it (`scheduled_error_horizon`).
+ */
+export const SCHEDULE_MAX_HORIZON_MS = 30 * 86400_000;
+
 /** Minimal KV surface (structural on purpose: shared helpers must type-check in every tsconfig). */
 interface KvReader {
   get(key: string): Promise<string | null>;

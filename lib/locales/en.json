@@ -1341,5 +1341,5 @@
   "oauth_authorize": "Authorize",
   "oauth_deny": "Deny",
   "scheduled_editing": "Editing scheduled post",
-  "scheduled_error_past": "Choose a future date and time"
-}
+  "scheduled_error_past": "Choose a future date and time",
+  "scheduled_error_horizon": "You can schedule up to 30 days ahead"}

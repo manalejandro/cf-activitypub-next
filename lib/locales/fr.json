@@ -1341,5 +1341,5 @@
   "oauth_authorize": "Autoriser",
   "oauth_deny": "Refuser",
   "scheduled_editing": "Modification de la publication programmée",
-  "scheduled_error_past": "Choisissez une date et une heure futures"
-}
+  "scheduled_error_past": "Choisissez une date et une heure futures",
+  "scheduled_error_horizon": "Vous ne pouvez pas planifier plus de 30 jours à l'avance"}

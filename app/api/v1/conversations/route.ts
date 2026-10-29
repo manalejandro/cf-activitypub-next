@@ -1,12 +1,12 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
-import { getConversations, getObjectsByIds, getActorsByIds, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectIds } from "@/lib/db";
+import { getConversations, getObjectsByIds, getActorsByIds, getActorByUri, getLastStatusAtMap, deleteConversation, getAttachmentsByObjectIds } from "@/lib/db";
 import { serializeStatus, serializeAccount } from "@/lib/mastodon/serializers";
 import { clampLimit, resolveLimits } from "@/lib/constants";
 import { getFilterResultsForStatuses } from "@/lib/mastodon/filters";
 import { getStatusAuthorExtras } from "@/lib/mastodon/account-extras";
-import type { LocalObject } from "@/lib/types";
+import type { LocalActor, LocalObject } from "@/lib/types";
 import { env } from "cloudflare:workers";
 
 // IRIs of the other participants of a direct object: everyone addressed in
@@ -89,6 +89,18 @@ export async function GET(request: NextRequest): Promise<Response> {
     getAttachmentsByObjectIds(env.DB, objs.map((o) => o.id)),
   ]);
 
+  // A participant the exact-id batch missed may be addressed with another IRI
+  // spelling (a `https://host/@user` href, or an id that differs from the
+  // canonical one cached by upsertRemoteActor): getActorByUri also matches by
+  // username+host. Bounded per-id fallback, only for the misses of this page —
+  // without it the conversation rendered with an empty `accounts` list.
+  const fallbackActors = new Map<string, LocalActor>();
+  for (const pid of participantIds) {
+    if (actorsMap.has(pid)) continue;
+    const resolved = await getActorByUri(env.DB, pid);
+    if (resolved) fallbackActors.set(pid, resolved);
+  }
+
   const result = live.map(({ c, obj }) => {
     let lastStatus = null;
     let accounts: unknown[] = [];
@@ -105,7 +117,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         const others = otherParticipantIds(obj.raw, actor.id);
         let other = null;
         for (const oid of others) {
-          const oa = actorsMap.get(oid);
+          const oa = actorsMap.get(oid) ?? fallbackActors.get(oid);
           if (oa) { other = oa; break; }
         }
         if (other) accounts = [serializeAccount(other, domain)];

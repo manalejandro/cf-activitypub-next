@@ -53,14 +53,14 @@ import {
   generateId,
 } from "./utils";
 import { refreshObjectRaw, setObjectQuoteId, upsertCustomEmoji, enqueueMediaCache, createQuoteAuthorization, getQuoteAuthorizationByInteractingObject, setObjectQuoteAuthorizationUri, applyRemoteSuspension, canViewStatus, isAcceptedFollower } from "@/lib/db";
-import { safeMediaUrl } from "@/lib/safe-url";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchRemoteObject } from "./federation";
 import { enqueueDeliveries, type APDeliveryMessage } from "./queue";
 import { fetchAndCacheRemoteActor } from "./remote";
 import { featureAuthorizationIRI, syncRemoteCollections } from "./collections";
 import { recordInstanceInboundActivity } from "./instances";
-import { relayForActor, relayMatchesActor, acceptedRelayForSigner } from "./relays";
+import { relayForActor, relayMatchesFollowAnswer, acceptedRelayForSigner } from "./relays";
 import { evaluateReportWithAI } from "@/lib/moderation/reportAI";
 import { notifyReportedAccount } from "@/lib/moderation/actions";
 import { broadcastNotificationEvent, broadcastPublicStatus, broadcastHomeStatus, broadcastEvent, broadcastObjectDelete, broadcastStatusInteraction, broadcastStatusInteractionToLists, broadcastStatusCreatedToAudience, broadcastAccountUpdate, eligibleLocalRecipients, actorExclusion, parentExclusion } from "@/lib/streaming/broadcast";
@@ -253,18 +253,23 @@ export async function processInboxActivity(
   // attacker cannot poison ids for activities they didn't sign.
   const dedupActorId = activityActorId ?? ctx.signingActorId;
   if (typeof activity.id === "string" && activity.id && dedupActorId) {
-    // The activity id is the dedup primary key, so it must live on its actor's
-    // origin — or, for relays that forward original activities under their own
-    // key AND mint their own activity id, on the SIGNER's origin. An
-    // attacker-chosen id in a victim's namespace matches neither (signing for
-    // the victim's host is impossible) and used to pre-occupy the id, getting
-    // the victim's real activity dropped as a "replay".
+    // The activity id is the dedup primary key, so an http(s) id must live on
+    // its actor's origin — or, for relays that forward original activities
+    // under their own key AND mint their own activity id, on the SIGNER's
+    // origin. An attacker-chosen id in a victim's namespace matches neither
+    // (signing for the victim's host is impossible) and used to pre-occupy the
+    // id, getting the victim's real activity dropped as a "replay". Non-http
+    // ids (urn:uuid:, tag: — both legal ActivityStreams) have no host to bind:
+    // they dedupe by id alone, because dropping them would reject legitimate
+    // activities with a 202 the peer never retries.
     try {
-      const idHost = new URL(activity.id).hostname;
-      const signerHost = ctx.signingActorId ? new URL(ctx.signingActorId).hostname : null;
-      if (idHost !== new URL(dedupActorId).hostname && idHost !== signerHost) return;
+      const idUrl = new URL(activity.id);
+      if (idUrl.protocol === "http:" || idUrl.protocol === "https:") {
+        const signerHost = ctx.signingActorId ? new URL(ctx.signingActorId).hostname : null;
+        if (idUrl.hostname !== new URL(dedupActorId).hostname && idUrl.hostname !== signerHost) return;
+      }
     } catch {
-      return;
+      // Unparseable id: no host to bind — dedupe by id alone.
     }
     try {
       const dedup = await ctx.db
@@ -377,6 +382,12 @@ export async function processInboxActivity(
         .run()
         .catch(() => {});
     }
+    // Re-throw so the inbox route answers 5xx: a 202 makes the sender mark the
+    // delivery successful and never retry (shared-inbox copies are the only
+    // delivery of most activities), which is exactly what the rollback above
+    // is meant to undo. Mastodon behaves the same: a processing error is a 500
+    // and the origin retries with backoff.
+    throw err;
   }
 }
 
@@ -624,7 +635,7 @@ async function handleCreate(activity: APActivity, ctx: InboxContext): Promise<vo
     // lands in `remote_url`, so the hold/release joins match.
     for (const attachment of (obj.attachment as APAttachment[]).slice(0, MAX_REMOTE_ATTACHMENTS)) {
       if (!attachment?.url) continue;
-      const safeUrl = safeMediaUrl(attachment.url);
+      const safeUrl = safeHttpUrl(attachment.url);
       if (!safeUrl) continue;
       const localAttachment: LocalAttachment = {
         id: attachment.id || generateId(),
@@ -1004,7 +1015,7 @@ async function handleAccept(activity: APActivity, ctx: InboxContext): Promise<vo
     const relay = await getRelayByFollowActivity(ctx.db, followActivityId);
     if (relay) {
       const answerer = await getActorById(ctx.db, signerId);
-      if (relayMatchesActor(relay, answerer ?? { id: signerId })) {
+      if (relayMatchesFollowAnswer(relay, signerId, answerer)) {
         await updateRelay(ctx.db, relay.id, { state: "accepted", actorUri: signerId });
       }
       return;
@@ -1053,7 +1064,7 @@ async function handleReject(activity: APActivity, ctx: InboxContext): Promise<vo
     const relay = await getRelayByFollowActivity(ctx.db, followActivityId);
     if (relay) {
       const answerer = await getActorById(ctx.db, signerId);
-      if (relayMatchesActor(relay, answerer ?? { id: signerId })) {
+      if (relayMatchesFollowAnswer(relay, signerId, answerer)) {
         await updateRelay(ctx.db, relay.id, { state: "rejected", actorUri: signerId });
       }
       return;
@@ -1841,8 +1852,13 @@ async function handleAnnounce(activity: APActivity, ctx: InboxContext): Promise<
     const announceId = generateId();
     // Order boosts by when the peer actually announced (Mastodon reads
     // `activity.published`): a re-relayed old Announce stamped with `new Date()`
-    // jumped to the top of the home timeline as if it were brand new.
-    const announceCreatedAt = toUtcIso(typeof activity.published === "string" ? activity.published : null);
+    // jumped to the top of the home timeline as if it were brand new. Clamped
+    // to now: readers order by a.created_at DESC and only filter future
+    // o.published, so a skewed or adversarial peer clock would otherwise pin
+    // the boost to the top of every follower's home indefinitely.
+    const nowIso = new Date().toISOString();
+    const peerAnnouncedAt = toUtcIso(typeof activity.published === "string" ? activity.published : null);
+    const announceCreatedAt = peerAnnouncedAt > nowIso ? nowIso : peerAnnouncedAt;
     await createAnnounce(ctx.db, {
       id: announceId,
       actorId,
@@ -2323,14 +2339,15 @@ async function handleUpdate(activity: APActivity, ctx: InboxContext): Promise<vo
     const updates: Partial<LocalActor> = {};
     if (typeof actor.name === "string") updates.displayName = sanitizeFediversePlain(actor.name);
     if (typeof actor.summary === "string") updates.summary = sanitizeRemoteActorSummary(actor.summary);
-    // Avatar/header URLs end up in `src` attributes: only http(s) (or our own
-    // relative media paths) are stored, same rule as every federated URL.
+    // Avatar/header URLs end up in `src` attributes: a FEDERATED document must
+    // carry an absolute http(s) URL — a relative one would be served from our
+    // own origin (and can never be media-cached), so it is dropped.
     if (actor.icon?.url) {
-      const iconUrl = safeMediaUrl(actor.icon.url);
+      const iconUrl = safeHttpUrl(actor.icon.url);
       if (iconUrl) updates.avatarUrl = iconUrl;
     }
     if (actor.image?.url) {
-      const imageUrl = safeMediaUrl(actor.image.url);
+      const imageUrl = safeHttpUrl(actor.image.url);
       if (imageUrl) updates.headerUrl = imageUrl;
     }
     if (typeof actor.discoverable === "boolean") updates.discoverable = actor.discoverable;
@@ -2959,7 +2976,7 @@ async function saveObjectAttachments(
     // string match) never rewrite the reference to the R2 copy. A stable id is
     // generated once so createAttachment and the cache entry agree (an
     // `att.id || ""` enqueue used to orphan the entry when the doc had no id).
-    const safeUrl = safeMediaUrl(att.url);
+    const safeUrl = safeHttpUrl(att.url);
     if (!safeUrl) continue;
     const attachmentId = att.id || generateId();
     try {

@@ -20,7 +20,7 @@ import LocationPickerModal, { type GeoLocation } from "@/components/LocationPick
 import { VisibilityPicker } from "@/components/VisibilityPicker";
 import { LicensePicker } from "@/components/LicensePicker";
 import { fetchLicenses } from "@/lib/license-client";
-import { MAX_EVENT_NAME_CHARS, MAX_EVENT_LOCATION_CHARS } from "@/lib/event";
+import { MAX_EVENT_NAME_CHARS, MAX_EVENT_LOCATION_CHARS, parseEventInput } from "@/lib/event";
 
 /** ISO instant → `datetime-local` input value (local time). */
 function toLocalInput(iso: string | null | undefined): string {
@@ -157,13 +157,28 @@ export function EditStatusModal({
         location: location ?? null,
       };
       if (licenseId !== null) body.license = licenseId;
-      if (isEvent && eventName.trim() && eventStart) {
-        body.event = {
+      // An Event edit must ALWAYS carry the event: omitted, the PUT keeps the
+      // stored copy (clearing the title here would silently remove nothing and
+      // time edits would never travel), and `event: null` on an Event status is
+      // refused server-side (it desyncs the raw document from the stored type).
+      // Incomplete fields block the save with the composer's own errors —
+      // validated through parseEventInput, the exact contract the PUT applies.
+      if (isEvent) {
+        const startDate = eventStart ? new Date(eventStart) : null;
+        const endDate = eventEnd ? new Date(eventEnd) : null;
+        const eventPayload = {
           name: eventName.trim(),
-          start_time: new Date(eventStart).toISOString(),
-          end_time: eventEnd ? new Date(eventEnd).toISOString() : null,
+          start_time: startDate && !Number.isNaN(startDate.getTime()) ? startDate.toISOString() : "",
+          end_time: endDate && !Number.isNaN(endDate.getTime()) ? endDate.toISOString() : null,
           location: eventVenue.trim(),
         };
+        const eventResult = parseEventInput(eventPayload);
+        if ("error" in eventResult) {
+          setSaveError(translateKey(t, eventResult.error) ?? t.compose_error_event);
+          setBusy(false);
+          return;
+        }
+        body.event = eventPayload;
       }
       if (hasPoll) {
         body.poll = {

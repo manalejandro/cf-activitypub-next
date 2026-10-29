@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
 import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
-import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById } from "@/lib/db";
+import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById, upsertDirectConversation, getActorByUsername, isActorBlockedBy } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
 import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
@@ -10,7 +10,7 @@ import { getObjectQuotesCount } from "@/lib/db";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
 import { toAPAttachment } from "@/lib/activitypub/attachments";
-import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId, followersIRI } from "@/lib/activitypub/utils";
+import { buildDelete, buildUpdate, buildNote, conversationFromRaw, generateId, followersIRI, isLocalIRI } from "@/lib/activitypub/utils";
 import { collectFollowerInboxes } from "@/lib/activitypub/federation";
 import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
@@ -278,9 +278,15 @@ export async function PUT(
 
   // An Event keeps its type on edits; the body may refresh its fields (title,
   // time range, venue). `event` on a non-Event status is ignored — converting
-  // types on edit would desync the stored `type` and every peer's copy.
+  // types on edit would desync the stored `type` and every peer's copy. For
+  // the same reason an explicit `event: null` is refused: it would strip the
+  // event from the document while the `type` column stays "Event"
+  // (updateObject never rewrites it), desyncing raw, API and federation.
   let noteEvent = eventFromRaw(obj.raw);
   if (body.event !== undefined && obj.type === "Event") {
+    if (body.event === null) {
+      return json({ error: "Validation failed: Cannot remove the event from an event status" }, 422);
+    }
     const eventResult = parseEventInput(body.event);
     if ("error" in eventResult) return json({ error: "Invalid event", error_code: eventResult.error }, 422);
     noteEvent = eventResult.event;
@@ -360,8 +366,10 @@ export async function PUT(
 
   // Poll handling: when the client sends a poll field, replace the existing
   // poll (or remove it when it has no valid options). Otherwise keep as-is.
+  // An Event never carries a poll (immediate-path rule): processing one here
+  // would overwrite the document's Event type with Note/Question.
   const noteAny = note as Record<string, unknown>;
-  if (pollProvided) {
+  if (pollProvided && obj.type !== "Event") {
     await env.DB.prepare("DELETE FROM polls WHERE object_id = ?").bind(obj.id).run();
     delete noteAny.oneOf;
     delete noteAny.anyOf;
@@ -421,22 +429,56 @@ export async function PUT(
     });
   }
 
-  // Fan-out Update activity to followers (audience = the NEW visibility: a
-  // post edited to direct is not re-announced to followers or relays, and one
-  // widened to public reaches the relays that only carry public content).
-  if (nextVisibility !== "direct") {
-    const updateActivity = buildUpdate(baseUrl, actor.id, note, generateId());
+  // Fan-out Update activity (audience = the NEW visibility: a post edited to
+  // direct is not re-announced to followers or relays, and one widened to
+  // public reaches the relays that only carry public content). Mastodon
+  // delivers an edit to the status' WHOLE audience, so the mentioned accounts
+  // receive it too — a remote mention that does not follow the author never
+  // saw the edit before.
+  const updateActivity = buildUpdate(baseUrl, actor.id, note, generateId());
+  const fetchActor = async (fid: string): Promise<APActor | null> => {
+    const cached = await getActorById(env.DB, fid);
+    return cached as unknown as APActor | null;
+  };
+  // Addressed accounts of the edited document: the audience IRIs minus the
+  // public collection, the followers collection and the author.
+  const addressedIRIs = [...(noteTo ?? []), ...(noteCc ?? [])].filter(
+    (iri) => iri !== PUBLIC_ADDRESS && iri !== actor.id && !iri.endsWith("/followers")
+  );
+  const mentionInboxes = await collectFollowerInboxes(
+    addressedIRIs.filter((iri) => !isLocalIRI(iri, domain)),
+    fetchActor
+  );
+  // Local recipients of a direct edit: they drive the conversation upserts
+  // below and the live home updates in the streaming block.
+  const directRecipientIds: string[] = [];
+  if (nextVisibility === "direct") {
+    // Edited INTO (or within) a direct message: only the addressed accounts
+    // get the Update. Locals also get their conversation entry — without it
+    // the DM stayed invisible in /conversations (the create path writes it,
+    // the edit path never did).
+    for (const iri of addressedIRIs) {
+      if (!iri.startsWith(baseUrl + "/")) continue;
+      const m = iri.match(/\/users\/([a-zA-Z0-9_]+)$/);
+      if (!m) continue;
+      const mentioned = await getActorByUsername(env.DB, m[1], domain);
+      if (mentioned?.isLocal && mentioned.id !== actor.id) directRecipientIds.push(mentioned.id);
+    }
+    await upsertDirectConversation(env.DB, actor.id, addressedIRIs, obj.id, false);
+    for (const rid of directRecipientIds) {
+      await upsertDirectConversation(env.DB, rid, [actor.id], obj.id, true);
+    }
+    if (mentionInboxes.length > 0) {
+      await enqueueDeliveries(env.DELIVERY_QUEUE, [...new Set(mentionInboxes)], JSON.stringify(updateActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
+    }
+  } else {
     const followers = await env.DB
       .prepare("SELECT actor_id FROM follows WHERE target_id = ? AND state = 'accepted'")
       .bind(actor.id)
       .all<{ actor_id: string }>();
     const followerIds = followers.results.map((r) => r.actor_id);
-    const fetchActor = async (fid: string): Promise<APActor | null> => {
-      const cached = await getActorById(env.DB, fid);
-      return cached as unknown as APActor | null;
-    };
     const inboxes = await collectFollowerInboxes(followerIds, fetchActor);
-    const targets = await withRelayInboxes(env.DB, nextVisibility, inboxes);
+    const targets = await withRelayInboxes(env.DB, nextVisibility, [...new Set([...inboxes, ...mentionInboxes])]);
     if (targets.length > 0) {
       await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(updateActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
@@ -467,9 +509,15 @@ export async function PUT(
       broadcastHomeStatusUpdate(env.TIMELINE_STREAM, actor.id, serializedUpdated),
     ];
     // A post edited INTO a direct message must not land on every follower's
-    // home stream: only the author sees the update live (addressed recipients
-    // get it through the REST conversation/home reads).
-    if (nextVisibility !== "direct") {
+    // home stream: only the addressed local accounts see the update live (the
+    // same audience the create path streams a new DM to), minus those that
+    // blocked the author.
+    if (nextVisibility === "direct") {
+      for (const recipientId of directRecipientIds) {
+        if (await isActorBlockedBy(env.DB, recipientId, actor.id)) continue;
+        broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, recipientId, serializedUpdated));
+      }
+    } else {
       const localFollowerRows = await env.DB
         .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
         .bind(actor.id)

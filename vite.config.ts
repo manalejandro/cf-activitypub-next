@@ -96,10 +96,13 @@ function dotenvIntoWorkerVars(): Plugin {
         // Fail the build rather than deploy a worker with no base URL: without
         // INSTANCE_URL, getBaseUrl() falls back to http://localhost:3000 and
         // every federated IRI (actor ids, object urls, feeds) is minted wrong.
+        // Loopback by any spelling counts as localhost (127.0.0.1, [::1],
+        // 0.0.0.0) — the hostname boundary keeps `https://localhost.example`
+        // valid.
         const instanceUrl = config.vars.INSTANCE_URL;
-        if (!instanceUrl || /^https?:\/\/localhost/i.test(instanceUrl)) {
+        if (!instanceUrl || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)([:/]|$)/i.test(instanceUrl)) {
           this.error(
-            `[deploy] INSTANCE_URL is missing or points at localhost in the emitted config (${instanceUrl ?? "absent"}). ` +
+            `[deploy] INSTANCE_URL is missing or points at a loopback address in the emitted config (${instanceUrl ?? "absent"}). ` +
               `Set it in .env before deploying — a worker built without it federates as http://localhost:3000.`
           );
           return;

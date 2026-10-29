@@ -29,6 +29,7 @@ import {
   enableRelay,
   normalizeRelayInbox,
   relayMatchesActor,
+  relayMatchesFollowAnswer,
   acceptedRelayInboxes,
   withRelayInboxes,
 } from "@/lib/activitypub/relays";
@@ -71,11 +72,30 @@ describe("relayMatchesActor", () => {
     expect(relayMatchesActor({ ...RELAY, actorUri: "https://relay.example/actor" }, { id: "https://relay.example/actor" })).toBe(true);
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", inbox: "https://relay.example/inbox" })).toBe(true);
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", sharedInbox: "https://relay.example/inbox" })).toBe(true);
+    // DB rows (LocalActor) carry the shared inbox under `endpoints` — the
+    // top-level-only check was dead code with real actors and left relays
+    // that advertise a personal inbox stuck in `pending`.
+    expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor", endpoints: { sharedInbox: "https://relay.example/inbox" } })).toBe(true);
     // Same host but no actor-URI/inbox match no longer qualifies: a relay is
     // often co-hosted with an open-registration server, and the old host
     // fallback let ANY account on that host pose as the relay.
     expect(relayMatchesActor(RELAY, { id: "https://relay.example/actor" })).toBe(false);
     expect(relayMatchesActor(RELAY, { id: "https://evil.example/actor", inbox: "https://evil.example/inbox" })).toBe(false);
+  });
+});
+
+describe("relayMatchesFollowAnswer", () => {
+  it("adds a host fallback for Accept/Reject of our Follow (gated by follow_activity_id)", () => {
+    // The relay answered with an actor whose document was never cached: the
+    // unguessable follow activity id already proves it is the relay we asked.
+    expect(relayMatchesFollowAnswer(RELAY, "https://relay.example/actor", null)).toBe(true);
+    // A cached actor still goes through the strict matcher first.
+    expect(relayMatchesFollowAnswer(RELAY, "https://relay.example/actor", { id: "https://relay.example/actor", inbox: "https://relay.example/inbox" })).toBe(true);
+    // A signer from another host never matches, even with a cached actor.
+    expect(relayMatchesFollowAnswer(RELAY, "https://evil.example/actor", null)).toBe(false);
+    expect(relayMatchesFollowAnswer(RELAY, "https://evil.example/actor", { id: "https://evil.example/actor", inbox: "https://evil.example/inbox" })).toBe(false);
+    // Junk signer ids do not throw and do not match.
+    expect(relayMatchesFollowAnswer(RELAY, "not a url", null)).toBe(false);
   });
 });
 

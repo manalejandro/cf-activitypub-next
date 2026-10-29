@@ -1,6 +1,8 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
 import { json, unauthorized, checkRateLimit } from "@/lib/cf";
+import { dbTimestamp } from "@/lib/dates";
+import { SCHEDULE_MAX_HORIZON_MS } from "@/lib/scheduled-media";
 import {
   getActorById,
   getObjectById,
@@ -195,7 +197,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     body = formDataToBody(form);
   }
 
-  let content = (body.status as string | undefined)?.trim();
+  // A non-string `status` must never reach the stored params of a schedule
+  // (the publish cron used to trip over it on every tick) nor the content
+  // pipeline: refuse it like the scheduled-status PUT does.
+  if (body.status !== undefined && typeof body.status !== "string") {
+    return json({ error: "Validation failed: Text must be a string" }, 422);
+  }
+  let content = typeof body.status === "string" ? body.status.trim() : undefined;
   // Optional ActivityStreams Event (the composer's event mode): the status is
   // published as an `Event` with a title and a time range instead of a Note.
   // An event carries no poll, so a poll sent along is ignored.
@@ -328,23 +336,35 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (Number(pendingScheduled?.n ?? 0) >= 100) {
         return json({ error: "Too many scheduled statuses (max 100)" }, 422);
       }
+      // The pending-upload reservations only live 30 days: a longer horizon
+      // would publish silently without its media, so refuse it up front.
+      if (schedDate.getTime() - Date.now() > SCHEDULE_MAX_HORIZON_MS) {
+        return json({ error: "scheduled_at is too far in the future (30 days max)", error_code: "scheduled_error_horizon" }, 422);
+      }
       const schedId = generateId();
       // Same attachment cap as the immediate path: each id costs two KV
       // operations here (read + TTL extension), so an oversized array must not
       // be walked at all.
       const mediaIds = normalizeMediaIds(body.media_ids).slice(0, limits.maxMediaAttachments);
-      const normalizedScheduledAt = scheduledAt.replace("T", " ").replace(/\.\d+Z$/, "");
+      // dbTimestamp, not string surgery: the column keeps datetime('now')'s
+      // shape whatever the client sent (Z, milliseconds, a tz offset — the cron
+      // compares by string against datetime('now')).
+      const normalizedScheduledAt = dbTimestamp(schedDate);
       await createScheduledStatus(env.DB, schedId, actor.id, normalizedScheduledAt, JSON.stringify(body), mediaIds.length > 0 ? JSON.stringify(mediaIds) : null);
       // The upload TTL is 1h, but the status may be scheduled days ahead — keep
-      // the pending uploads alive until the cron publishes them.
+      // the pending uploads alive until the cron publishes them. The horizon is
+      // stamped INSIDE the entry too: a later description flush
+      // (PUT /api/v1/media/:id) rewrites the reservation and reads `expiresAt`
+      // back instead of collapsing the TTL to the 1-hour default.
       for (const mediaId of mediaIds) {
         const pendingRaw = await env.KV.get(`pending_media:${mediaId}`);
         if (!pendingRaw) continue;
         try {
-          const pending = JSON.parse(pendingRaw) as { actorId?: string };
-          if (pending.actorId && pending.actorId !== actor.id) continue;
+          const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
+          if (typeof pending.actorId === "string" && pending.actorId !== actor.id) continue;
+          pending.expiresAt = new Date(Date.now() + 30 * 86400_000).toISOString();
+          await env.KV.put(`pending_media:${mediaId}`, JSON.stringify(pending), { expirationTtl: 30 * 86400 }).catch(() => {});
         } catch { continue; }
-        await env.KV.put(`pending_media:${mediaId}`, pendingRaw, { expirationTtl: 30 * 86400 }).catch(() => {});
       }
       return json({
         id: schedId,
@@ -545,18 +565,19 @@ export async function POST(request: NextRequest): Promise<Response> {
   });
 
   // Direct messages become conversations for every local participant. The
-  // sender gets a read copy; each local recipient gets an unread one.
+  // sender gets a read copy; each local recipient gets an unread one. The
+  // recipient list also drives the streaming fan-out below.
+  const directRecipientIds: string[] = [];
   if (visibility === "direct") {
-    const localRecipientIds: string[] = [];
     for (const iri of mentionedIRIs) {
       if (!iri.startsWith(baseUrl + "/")) continue;
       const m = iri.match(/\/users\/([a-zA-Z0-9_]+)$/);
       if (!m) continue;
       const mentioned = await getActorByUsername(env.DB, m[1], domain);
-      if (mentioned?.isLocal && mentioned.id !== actor.id) localRecipientIds.push(mentioned.id);
+      if (mentioned?.isLocal && mentioned.id !== actor.id) directRecipientIds.push(mentioned.id);
     }
     await upsertDirectConversation(env.DB, actor.id, mentionedIRIs, note.id, false);
-    for (const rid of localRecipientIds) {
+    for (const rid of directRecipientIds) {
       await upsertDirectConversation(env.DB, rid, [actor.id], note.id, true);
     }
   }
@@ -802,24 +823,36 @@ export async function POST(request: NextRequest): Promise<Response> {
     broadcastTasks.push(broadcastPublicStatus(env.TIMELINE_STREAM, serializedStatus, /* isLocal */ true));
   }
   broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, actor.id, serializedStatus));
-  // Lists containing the author are home-like feeds: they must receive the new
-  // status live too (the broadcast helper already filters to public/unlisted).
-  broadcastTasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serializedStatus, "update"));
-  const localFollowerRows = await env.DB
-    .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
-    .bind(actor.id)
-    .all<{ id: string }>();
-  // Followers who blocked the author — or the account this replies to — never
-  // receive it live (the REST home timeline filters them too).
-  const exclusions = [await actorExclusion(env.DB, actor.id)];
-  if (replyToAccountId) exclusions.push(await actorExclusion(env.DB, replyToAccountId));
-  const recipients = await eligibleLocalRecipients(
-    env.DB,
-    localFollowerRows.results.map((row) => row.id),
-    exclusions
-  );
-  for (const recipientId of recipients) {
-    broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serializedStatus));
+  if (visibility === "direct") {
+    // A DM only reaches the local accounts it addresses: pushing it to every
+    // follower's home leaked it (the REST home excludes direct, so it vanished
+    // on refresh — but the live payload was served). Recipients that blocked
+    // the author are skipped, mirroring the notification drop.
+    for (const recipientId of directRecipientIds) {
+      if (recipientId === actor.id) continue;
+      if (await isActorBlockedBy(env.DB, recipientId, actor.id)) continue;
+      broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serializedStatus));
+    }
+  } else {
+    // Lists containing the author are home-like feeds: they must receive the new
+    // status live too (the broadcast helper already filters to public/unlisted).
+    broadcastTasks.push(broadcastStatusInteractionToLists(env.DB, env.TIMELINE_STREAM, actor.id, serializedStatus, "update"));
+    const localFollowerRows = await env.DB
+      .prepare("SELECT a.id FROM actors a JOIN follows f ON f.actor_id = a.id WHERE f.target_id = ? AND f.state = 'accepted' AND a.is_local = 1")
+      .bind(actor.id)
+      .all<{ id: string }>();
+    // Followers who blocked the author — or the account this replies to — never
+    // receive it live (the REST home timeline filters them too).
+    const exclusions = [await actorExclusion(env.DB, actor.id)];
+    if (replyToAccountId) exclusions.push(await actorExclusion(env.DB, replyToAccountId));
+    const recipients = await eligibleLocalRecipients(
+      env.DB,
+      localFollowerRows.results.map((row) => row.id),
+      exclusions
+    );
+    for (const recipientId of recipients) {
+      broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serializedStatus));
+    }
   }
   await Promise.allSettled(broadcastTasks);
 

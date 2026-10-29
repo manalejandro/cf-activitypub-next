@@ -1341,5 +1341,5 @@
   "oauth_authorize": "Авторизовать",
   "oauth_deny": "Отказать",
   "scheduled_editing": "Редактирование отложенной публикации",
-  "scheduled_error_past": "Выберите будущие дату и время"
-}
+  "scheduled_error_past": "Выберите будущие дату и время",
+  "scheduled_error_horizon": "Отложить публикацию можно не более чем на 30 дней"}

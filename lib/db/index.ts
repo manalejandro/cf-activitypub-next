@@ -2365,7 +2365,15 @@ export async function restoreSuspendedContent(db: D1Database, actorId: string): 
     .prepare(
       `UPDATE objects
           SET content = json_extract(raw, '$.content'),
-              sensitive = COALESCE(json_extract(raw, '$.sensitive'), 0)
+              sensitive = CASE
+                WHEN EXISTS (
+                      SELECT 1 FROM moderation_log ml2
+                       WHERE ml2.target_type = 'status'
+                         AND ml2.target_id = objects.id
+                         AND ml2.action = 'marked_sensitive'
+                    ) THEN 1
+                ELSE COALESCE(json_extract(raw, '$.sensitive'), 0)
+              END
         WHERE actor_id = ?
           AND content IS NULL
           AND json_valid(raw)

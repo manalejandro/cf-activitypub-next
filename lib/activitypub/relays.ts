@@ -57,11 +57,42 @@ export function normalizeRelayInbox(input: string): string | null {
  * matching "same host" let ANY account on that host pose as the relay and sign
  * cross-actor Create/Update/Delete/Announce through `isAcceptedRelayForward`.
  */
-export function relayMatchesActor(relay: LocalRelay, actor: { id: string; inbox?: string | null; sharedInbox?: string | null }): boolean {
+export function relayMatchesActor(
+  relay: LocalRelay,
+  actor: { id: string; inbox?: string | null; sharedInbox?: string | null; endpoints?: { sharedInbox?: string } | null }
+): boolean {
   if (relay.actorUri && relay.actorUri === actor.id) return true;
   if (actor.inbox && actor.inbox === relay.inboxUrl) return true;
-  if (actor.sharedInbox && actor.sharedInbox === relay.inboxUrl) return true;
+  // DB rows (LocalActor) carry the shared inbox under `endpoints`; the
+  // top-level spelling is kept for raw AP documents and synthetic callers.
+  const sharedInbox = actor.sharedInbox ?? actor.endpoints?.sharedInbox;
+  if (sharedInbox && sharedInbox === relay.inboxUrl) return true;
   return false;
+}
+
+/**
+ * Loose matcher EXCLUSIVELY for the `Accept`/`Reject{Follow}` of a relay
+ * subscription: it also accepts any signer on the relay inbox's host. The
+ * answer is already gated by the unguessable `follow_activity_id` (the id of
+ * the Follow WE sent — only the subscribed relay knows it), so host equality
+ * is an identity confirmation, not a trust escalation — a relay whose actor
+ * document declares a personal inbox and its shared one only under
+ * `endpoints` would otherwise stay `pending` forever. Never use it for content
+ * matching (Announce/Create forwards): the strict `relayMatchesActor` /
+ * `acceptedRelayForSigner` remain the gates there.
+ */
+export function relayMatchesFollowAnswer(
+  relay: LocalRelay,
+  signerId: string,
+  actor: { id: string; inbox?: string | null; sharedInbox?: string | null; endpoints?: { sharedInbox?: string } | null } | null
+): boolean {
+  if (actor && relayMatchesActor(relay, actor)) return true;
+  if (relay.actorUri && relay.actorUri === signerId) return true;
+  try {
+    return new URL(signerId).hostname.toLowerCase() === new URL(relay.inboxUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 /**

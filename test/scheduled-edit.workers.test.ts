@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { NextRequest } from "next/server";
 import { applyTestSchema, resetTestStorage } from "./helpers/db";
 import { createScheduledStatus } from "@/lib/db";
+import { dbTimestamp } from "@/lib/dates";
 import { GET, PUT } from "@/app/api/v1/scheduled_statuses/[id]/route";
 
 const db = env.DB;
@@ -87,6 +88,56 @@ describe("editing a scheduled status (PUT /api/v1/scheduled_statuses/:id)", () =
     expect(res.status).toBe(422);
   });
 
+  it("rejects a new instant beyond the 30-day horizon", async () => {
+    await createScheduledStatus(db, "s8", ME, "2030-01-01 00:00:00", "{}", null);
+
+    const res = await PUT(
+      request("s8", "PUT", { scheduled_at: new Date(Date.now() + 31 * 86400_000).toISOString() }),
+      ctx("s8")
+    );
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error_code?: string };
+    expect(body.error_code).toBe("scheduled_error_horizon");
+  });
+
+  it("keeps the stored params on a reschedule-only PUT (Mastodon semantics)", async () => {
+    // Mastodon's PUT accepts ONLY scheduled_at: a client that reschedules
+    // sends nothing else, and replacing the params with the incoming body
+    // wiped the text/visibility (the cron then published an empty post).
+    await createScheduledStatus(
+      db,
+      "s7",
+      ME,
+      "2030-01-01 00:00:00",
+      JSON.stringify({ status: "texto largo", visibility: "direct", spoiler_text: "CW" }),
+      null
+    );
+
+    const res = await PUT(request("s7", "PUT", { scheduled_at: future() }), ctx("s7"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { params: { status?: string; visibility?: string; spoiler_text?: string } };
+    expect(body.params.status).toBe("texto largo");
+    expect(body.params.visibility).toBe("direct");
+    expect(body.params.spoiler_text).toBe("CW");
+  });
+
+  it("normalizes a scheduled_at with a timezone offset to the UTC db shape", async () => {
+    // 12:00+02:00 IS 10:00 UTC: a string-surgery normalization stored the
+    // offset verbatim and the cron — which compares strings against
+    // datetime('now') — published two hours late.
+    const utc = new Date(Date.now() + 2 * 86400_000);
+    const shifted = new Date(utc.getTime() + 2 * 3600_000);
+    const withOffset = `${shifted.toISOString().slice(0, 19)}+02:00`;
+    await createScheduledStatus(db, "s6", ME, "2030-01-01 00:00:00", "{}", null);
+
+    const res = await PUT(request("s6", "PUT", { scheduled_at: withOffset }), ctx("s6"));
+    expect(res.status).toBe(200);
+    const row = await db
+      .prepare("SELECT scheduled_at FROM scheduled_statuses WHERE id = 's6'")
+      .first<{ scheduled_at: string }>();
+    expect(row?.scheduled_at).toBe(dbTimestamp(utc));
+  });
+
   it("is a 404 for somebody else's schedule", async () => {
     await createScheduledStatus(db, "s4", OTHER, "2030-01-01 00:00:00", "{}", null);
 
@@ -113,12 +164,19 @@ describe("editing a scheduled status (PUT /api/v1/scheduled_statuses/:id)", () =
     expect(body.media_attachments.map((m) => m.id)).toEqual(["m-mine"]);
 
     // The reservation of an edited schedule survives with an extended TTL, and
-    // the media_ids column only kept the owned one.
+    // the media_ids column only kept the owned one. Miniflare does not expose
+    // a key's remaining TTL: the horizon is stamped INSIDE the entry
+    // (`expiresAt`, read back by PUT /api/v1/media/:id so a description flush
+    // cannot collapse it to the 1-hour default), so that is what proves it.
     const row = await db.prepare("SELECT media_ids FROM scheduled_statuses WHERE id = 's5'").first<{ media_ids: string | null }>();
     expect(row?.media_ids).toBe(JSON.stringify(["m-mine"]));
-    expect(await env.KV.get("pending_media:m-mine")).not.toBeNull();
-    const ttl = await env.KV.getWithMetadata("pending_media:m-mine");
-    expect(ttl).toBeTruthy();
+    const pendingRaw = await env.KV.get("pending_media:m-mine");
+    expect(pendingRaw).not.toBeNull();
+    const pending = JSON.parse(pendingRaw ?? "{}") as { expiresAt?: string };
+    const remaining = new Date(pending.expiresAt ?? NaN).getTime() - Date.now();
+    expect(Number.isFinite(remaining)).toBe(true);
+    expect(remaining).toBeGreaterThan(29 * 86400_000);
+    expect(remaining).toBeLessThanOrEqual(30 * 86400_000);
 
     const get = await GET(request("s5", "GET"), ctx("s5"));
     const getBody = (await get.json()) as { media_attachments: { id: string; url: string; type: string }[] };

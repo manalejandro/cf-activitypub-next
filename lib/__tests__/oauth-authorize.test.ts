@@ -11,19 +11,19 @@ const mocks = vi.hoisted(() => ({
   hashPassword: vi.fn(async () => "pbkdf2:600000:aa:bb"),
   needsPasswordRehash: vi.fn(() => false),
   updatePassword: vi.fn(async () => {}),
-  enforceTurnstilePolicy: vi.fn(async () => ({ success: true })),
-  checkRateLimit:
-    vi.fn<(kv: unknown, key: string) => Promise<{ allowed: boolean; blocked: boolean }>>(
-      async () => ({ allowed: true, blocked: false })
+  atomicRateLimit:
+    vi.fn<(env: unknown, key: string) => Promise<{ allowed: boolean }>>(
+      async () => ({ allowed: true })
     ),
+  resetRateLimit: vi.fn(async () => {}),
   kv: new Map<string, string>(),
 }));
 
-vi.mock("@/lib/cf", () => ({
-  getBaseUrl: () => "https://cf-ap.com",
-  checkRateLimit: mocks.checkRateLimit,
-}));
 vi.mock("cloudflare:workers", () => ({ get env() { return mocks.env; } }));
+vi.mock("@/lib/rate-limit", () => ({
+  atomicRateLimit: mocks.atomicRateLimit,
+  resetRateLimit: mocks.resetRateLimit,
+}));
 vi.mock("@/lib/db", () => ({
   getActorByEmail: mocks.getActorByEmail,
   getOAuthAppByClientId: mocks.getOAuthAppByClientId,
@@ -37,7 +37,6 @@ vi.mock("@/lib/auth", () => ({
   needsPasswordRehash: mocks.needsPasswordRehash,
   timingSafeEqualStr: (a: string, b: string) => a === b,
 }));
-vi.mock("@/lib/turnstile", () => ({ enforceTurnstilePolicy: mocks.enforceTurnstilePolicy }));
 
 import { POST } from "@/app/api/oauth/authorize/route";
 
@@ -62,7 +61,9 @@ const ME = {
   passwordHash: "hash",
 };
 
-function makeRequest(fields: Record<string, string> = {}): Request {
+const OOB = "urn:ietf:wg:oauth:2.0:oob";
+
+function makeRequest(fields: Record<string, string> = {}, omit: string[] = []): Request {
   const form = new FormData();
   form.set("client_id", APP.clientId);
   form.set("redirect_uri", APP.redirectUri);
@@ -72,6 +73,7 @@ function makeRequest(fields: Record<string, string> = {}): Request {
   form.set("email", "me@cf-ap.com");
   form.set("password", "correct horse");
   for (const [k, v] of Object.entries(fields)) form.set(k, v);
+  for (const k of omit) form.delete(k);
   return new Request("https://cf-ap.com/api/oauth/authorize", { method: "POST", body: form });
 }
 
@@ -85,10 +87,8 @@ beforeEach(() => {
       put: async (k: string, v: string) => { mocks.kv.set(k, v); },
       delete: async (k: string) => { mocks.kv.delete(k); },
     },
-    TURNSTILE_SECRET: undefined,
   };
-  mocks.checkRateLimit.mockResolvedValue({ allowed: true, blocked: false });
-  mocks.enforceTurnstilePolicy.mockResolvedValue({ success: true });
+  mocks.atomicRateLimit.mockResolvedValue({ allowed: true });
   mocks.verifyPassword.mockResolvedValue(true);
   mocks.getOAuthAppByClientId.mockImplementation(async (_db: unknown, clientId: string) =>
     clientId === APP.clientId ? APP : null
@@ -105,6 +105,8 @@ describe("POST /api/oauth/authorize (consent form)", () => {
     const code = location.searchParams.get("code");
     expect(code).toBeTruthy();
     expect(mocks.kv.has(`oauth_code:${code}`)).toBe(true);
+    // A success clears the shared credential-stuffing lockout window.
+    expect(mocks.resetRateLimit).toHaveBeenCalled();
   });
 
   it("refuses a suspended account", async () => {
@@ -130,8 +132,8 @@ describe("POST /api/oauth/authorize (consent form)", () => {
   });
 
   it("locks the account before verifying when the failure budget is spent", async () => {
-    mocks.checkRateLimit.mockImplementation(async (_kv: unknown, key: string) =>
-      key.startsWith("login-fail:") ? { allowed: false, blocked: false } : { allowed: true, blocked: false }
+    mocks.atomicRateLimit.mockImplementation(async (_env: unknown, key: string) =>
+      key.startsWith("login-fail:") ? { allowed: false } : { allowed: true }
     );
     const res = await POST(makeRequest() as never);
     expect(res.status).toBe(302);
@@ -139,27 +141,48 @@ describe("POST /api/oauth/authorize (consent form)", () => {
     expect(mocks.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it("requires a solved Turnstile challenge when the instance configures one", async () => {
+  it("never runs the captcha here (the consent page must work inside app WebViews)", async () => {
+    // Third-party apps open this form in Android WebViews/Custom Tabs where
+    // Turnstile frequently cannot solve — the widget and its server check live
+    // only on web login/registration/recovery. Even with a secret configured
+    // and no token in the form, the credentials decide.
     mocks.env = { ...mocks.env, TURNSTILE_SECRET: "secret" };
-    mocks.enforceTurnstilePolicy.mockResolvedValue({ success: false });
     const res = await POST(makeRequest() as never);
     expect(res.status).toBe(302);
-    expect(res.headers.get("Location")).toContain("Security+check+failed");
-    expect(mocks.verifyPassword).not.toHaveBeenCalled();
+    expect(res.headers.get("Location")).toContain("code=");
   });
 
-  it("passes the form's turnstile token and login action to the policy", async () => {
-    mocks.env = { ...mocks.env, TURNSTILE_SECRET: "secret" };
-    await POST(makeRequest({ "cf-turnstile-response": "tok-1" }) as never);
-    expect(mocks.enforceTurnstilePolicy).toHaveBeenCalledWith(
-      expect.objectContaining({ secret: "secret", token: "tok-1", expectedAction: "login" })
-    );
+  it("redirects with Invalid credentials when a credential field is missing", async () => {
+    const res = await POST(makeRequest({}, ["email"]) as never);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("Invalid+credentials");
+    expect(mocks.getActorByEmail).not.toHaveBeenCalled();
+  });
+
+  it("accepts the OOB redirect_uri even when the app did not register it", async () => {
+    const res = await POST(makeRequest({ redirect_uri: OOB }) as never);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Authorization code");
+  });
+
+  it("renders the outcome of an OOB deny instead of redirecting to the urn", async () => {
+    const res = await POST(makeRequest({ redirect_uri: OOB, action: "deny" }) as never);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Authorization denied");
   });
 
   it("rejects an unknown client before touching credentials", async () => {
     const res = await POST(makeRequest({ client_id: "nope" }) as never);
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toContain("Invalid+client");
+    expect(mocks.getActorByEmail).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unregistered non-OOB redirect_uri (no open redirect)", async () => {
+    const res = await POST(makeRequest({ redirect_uri: "https://evil.example/cb" }) as never);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("Invalid+redirect+URI");
     expect(mocks.getActorByEmail).not.toHaveBeenCalled();
   });
 });

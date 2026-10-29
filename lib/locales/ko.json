@@ -1341,5 +1341,5 @@
   "oauth_authorize": "승인",
   "oauth_deny": "거부",
   "scheduled_editing": "예약 게시물 편집 중",
-  "scheduled_error_past": "미래 날짜와 시간을 선택하세요"
-}
+  "scheduled_error_past": "미래 날짜와 시간을 선택하세요",
+  "scheduled_error_horizon": "최대 30일 후까지만 예약할 수 있습니다"}

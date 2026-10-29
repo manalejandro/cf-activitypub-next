@@ -1341,5 +1341,5 @@
   "oauth_authorize": "授权",
   "oauth_deny": "拒绝",
   "scheduled_editing": "正在编辑定时发布",
-  "scheduled_error_past": "请选择将来的日期和时间"
-}
+  "scheduled_error_past": "请选择将来的日期和时间",
+  "scheduled_error_horizon": "最多只能定时 30 天以内的发布"}

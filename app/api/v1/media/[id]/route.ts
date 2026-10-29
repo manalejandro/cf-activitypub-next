@@ -173,7 +173,16 @@ export async function PUT(
     const pending = JSON.parse(pendingRaw) as Record<string, unknown>;
     if (description !== null) pending.description = description;
     if (sensitive !== undefined) pending.sensitive = sensitive;
-    await env.KV.put(`pending_media:${id}`, JSON.stringify(pending), { expirationTtl: 3600 });
+    // A scheduled upload carries a longer reservation (`expiresAt`, stamped by
+    // the schedule create/edit flows): rewriting the description must not
+    // collapse it back to the 1-hour pending default, or the cron would
+    // publish days later without its media.
+    let ttl = 3600;
+    if (typeof pending.expiresAt === "string") {
+      const until = Math.ceil((new Date(pending.expiresAt).getTime() - Date.now()) / 1000);
+      if (Number.isFinite(until) && until > ttl) ttl = Math.min(until, 30 * 86400);
+    }
+    await env.KV.put(`pending_media:${id}`, JSON.stringify(pending), { expirationTtl: ttl });
     return json(serializeAttachment({
       id: pending.id as string,
       objectId: "",
