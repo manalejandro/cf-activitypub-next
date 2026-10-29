@@ -12,11 +12,10 @@ interface Props {
 export default async function OAuthAuthorizePage({ searchParams }: Props) {
   const params = await searchParams;
   const { client_id, redirect_uri, scope = "read", state = "", response_type, code_challenge, code_challenge_method } = params;
-  const siteKey = env.TURNSTILE_SITE_KEY ?? "";
 
   // Validate required params
   if (response_type !== "code" || !client_id || !redirect_uri) {
-    return <AuthorizeUI view={{ kind: "invalid-params" }} siteKey={siteKey} />;
+    return <AuthorizeUI view={{ kind: "invalid-params" }} />;
   }
 
   let appName = client_id;
@@ -42,7 +41,7 @@ export default async function OAuthAuthorizePage({ searchParams }: Props) {
   }
 
   if (error) {
-    return <AuthorizeUI view={{ kind: "error", ...error }} siteKey={siteKey} />;
+    return <AuthorizeUI view={{ kind: "error", ...error }} />;
   }
 
   const view: AuthorizeView = {
@@ -57,5 +56,5 @@ export default async function OAuthAuthorizePage({ searchParams }: Props) {
     codeChallenge: code_challenge,
     codeChallengeMethod: code_challenge_method,
   };
-  return <AuthorizeUI view={view} siteKey={siteKey} />;
+  return <AuthorizeUI view={view} />;
 }

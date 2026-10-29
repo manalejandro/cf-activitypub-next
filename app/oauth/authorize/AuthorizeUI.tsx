@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useLocale, translateKey } from "@/lib/i18n";
-import TurnstileFormWidget from "@/components/TurnstileFormWidget";
 
 /** What the server page decided to render (data fetched/validated server-side). */
 export type AuthorizeView =
@@ -24,9 +23,12 @@ export type AuthorizeView =
 /**
  * The OAuth consent screen. A client component so every string goes through the
  * locale dictionary (the page itself stays a server component: it reads the
- * binding, validates the request and resolves the registered app).
+ * binding, validates the request and resolves the registered app). No Turnstile
+ * here on purpose: third-party apps open this page inside Android WebViews /
+ * Custom Tabs where the challenge frequently cannot solve, which bricked app
+ * logins (Mastodon's authorize page has no captcha either).
  */
-export function AuthorizeUI({ view, siteKey }: { view: AuthorizeView; siteKey: string }) {
+export function AuthorizeUI({ view }: { view: AuthorizeView }) {
   const { t } = useLocale();
 
   if (view.kind === "invalid-params") {
@@ -120,9 +122,9 @@ export function AuthorizeUI({ view, siteKey }: { view: AuthorizeView; siteKey: s
             />
           </div>
 
-          {/* The consent form verifies passwords: with Turnstile configured the
-              instance requires the same challenge as the web login. */}
-          <TurnstileFormWidget siteKey={siteKey} action="login" />
+          {/* The consent form verifies passwords; the per-account lockout and
+              the IP rate limit on POST /api/oauth/authorize are its abuse
+              gates (no captcha: it must keep working inside app WebViews). */}
 
           <div style={{ display: "flex", gap: "0.625rem" }}>
             <button

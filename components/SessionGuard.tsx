@@ -62,7 +62,16 @@ export function SessionGuard() {
         // guard, and anonymous visitors must never be redirected.
         if (!data.reason) return;
         clearToken();
-        if (window.location.pathname !== "/") window.location.replace("/");
+        const path = window.location.pathname;
+        // Auth-flow pages must survive a dead session: the OAuth consent page
+        // is opened by third-party apps (Tusky…) inside a WebView that may
+        // carry a stale cookie, and bouncing it to "/" kills the app login
+        // mid-flow. Login/register/recovery have their own unauthenticated
+        // handling — the bounce exists for the app shell only.
+        const isAuthFlow = ["/login", "/register", "/forgot-password", "/reset-password", "/oauth", "/authorize_interaction"]
+          .some((p) => path === p || path.startsWith(`${p}/`));
+        if (isAuthFlow) return;
+        if (path !== "/") window.location.replace("/");
         return;
       }
 

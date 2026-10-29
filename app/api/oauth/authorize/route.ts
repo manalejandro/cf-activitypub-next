@@ -1,9 +1,7 @@
 import { type NextRequest } from "next/server";
-import { getBaseUrl } from "@/lib/cf";
 import { atomicRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getActorByEmail, getOAuthAppByClientId, mediaCacheId, updatePassword } from "@/lib/db";
 import { verifyPassword, generateSecureToken, hashPassword, needsPasswordRehash } from "@/lib/auth";
-import { enforceTurnstilePolicy } from "@/lib/turnstile";
 import { env } from "cloudflare:workers";
 
 // POST /api/oauth/authorize — processes the authorize form submission
@@ -51,20 +49,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Too many attempts, please try again later");
   }
 
-  // Captcha (parity with the web login and the password grant): this is a
-  // second credential-checking surface, so when the instance configures
-  // Turnstile the consent form must carry a solved challenge. The policy skips
-  // only when no secret is set, and a missing token never counts as verified.
-  const turnstile = await enforceTurnstilePolicy({
-    secret: env.TURNSTILE_SECRET,
-    token: (form.get("cf-turnstile-response") as string | null) ?? "",
-    remoteIp: clientIp,
-    expectedHostname: new URL(getBaseUrl(env)).hostname,
-    expectedAction: "login",
-  });
-  if (!turnstile.success) {
-    return redirectToAuthorize(origin, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, "Security check failed. Please try again.");
-  }
+  // Deliberately NO Turnstile here (Mastodon parity): this consent page is
+  // opened by third-party apps (Tusky and friends) inside Android WebViews /
+  // Custom Tabs, where the Turnstile challenge frequently cannot render or
+  // solve — the widget bricked app logins entirely. The surface keeps its
+  // other gates: the per-IP rate limit above, the per-account lockout below
+  // (shared with the password grant) and the account-state checks. The web
+  // login, registration and password recovery keep the captcha.
 
   // Authenticate user
   const actor = await getActorByEmail(env.DB, email?.toLowerCase());
