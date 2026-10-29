@@ -322,7 +322,8 @@ export async function recordInstanceDeliverySuccess(
 /**
  * A signed inbound activity proves the host is reachable: clear an unavailable
  * state (Mastodon's inbox-side `track_success!`) and refresh last_seen at most
- * once per hour to keep D1 writes bounded.
+ * once every 6 hours to keep D1 writes bounded (`last_seen_at` only feeds the
+ * dormant-metadata expiry and the peers list — day granularity is plenty).
  */
 export async function recordInstanceInboundActivity(
   db: D1Database,
@@ -341,7 +342,7 @@ export async function recordInstanceInboundActivity(
       }
       const seenKey = `inst:seen:${host}`;
       if (await kv.get(seenKey)) return;
-      if (kv.put) await kv.put(seenKey, "1", { expirationTtl: 3_600 });
+      if (kv.put) await kv.put(seenKey, "1", { expirationTtl: 21_600 });
     } catch { /* fall through to the D1 write */ }
   }
   await touchInstanceSeen(db, host, staggerRefreshAt()).catch(() => {});

@@ -208,6 +208,46 @@ describe("refreshPollFromQuestion", () => {
     const options = await getPollOptions(db, "p-remote");
     expect(options.map((o) => o.votesCount)).toEqual([0, 0]);
   });
+
+  it("skips the rewrite when the counts did not change (D1 write quota)", async () => {
+    await seedRemotePoll(db);
+    const question = {
+      id: "https://remote.example/objects/q1",
+      type: "Question",
+      oneOf: [
+        { name: "A", replies: { totalItems: 4 } },
+        { name: "B", replies: { totalItems: 2 } },
+      ],
+      votersCount: 6,
+    };
+    // The refresh cron re-reads every live remote poll every few minutes: an
+    // identical document must not rewrite the option rows + poll row each
+    // time (tens of thousands of rows a day on a relay-fed instance).
+    let batchCalls = 0;
+    const countingDb = {
+      prepare: (sql: string) => db.prepare(sql),
+      batch: (stmts: unknown[]) => { batchCalls++; return db.batch(stmts as never); },
+    } as never;
+
+    expect(await refreshPollFromQuestion(countingDb, question)).toBe(true);
+    expect(batchCalls).toBe(1); // first refresh applies the new counts
+
+    expect(await refreshPollFromQuestion(countingDb, question)).toBe(true);
+    expect(batchCalls).toBe(1); // unchanged → no write
+
+    // A real change still lands immediately.
+    const changed = {
+      ...question,
+      oneOf: [
+        { name: "A", replies: { totalItems: 5 } },
+        { name: "B", replies: { totalItems: 2 } },
+      ],
+    };
+    expect(await refreshPollFromQuestion(countingDb, changed)).toBe(true);
+    expect(batchCalls).toBe(2);
+    const options = await getPollOptions(db, "p-remote");
+    expect(options.map((o) => o.votesCount)).toEqual([5, 2]);
+  });
 });
 
 describe("createPollVotes", () => {

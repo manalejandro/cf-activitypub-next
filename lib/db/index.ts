@@ -6580,6 +6580,12 @@ export async function recordInstanceSuccess(
   now: Date = new Date()
 ): Promise<void> {
   const nowIso = now.toISOString();
+  // This runs on EVERY successful delivery, so the upsert is gated: a host
+  // whose row is already clean (no failure state to clear) is refreshed at
+  // most once an hour — the tracker works in distinct UTC days and the graph
+  // in minutes, so nothing needs a fresher `last_ok_at`. A dirty row (failure
+  // days, unavailable, a lingering last_status) is cleared IMMEDIATELY: the
+  // availability recovery must never wait for the staleness window.
   await db
     .prepare(
       `INSERT INTO instances (domain, last_seen_at, last_ok_at)
@@ -6592,7 +6598,12 @@ export async function recordInstanceSuccess(
          last_status = NULL,
          last_ok_at = excluded.last_ok_at,
          last_seen_at = excluded.last_seen_at,
-         next_refresh_at = COALESCE(instances.next_refresh_at, excluded.next_refresh_at)`
+         next_refresh_at = COALESCE(instances.next_refresh_at, excluded.next_refresh_at)
+       WHERE instances.unavailable = 1
+          OR instances.failure_days > 0
+          OR instances.last_status IS NOT NULL
+          OR instances.last_ok_at IS NULL
+          OR instances.last_ok_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 hour')`
     )
     .bind(host(domain), nowIso, nowIso)
     .run();
@@ -6842,15 +6853,37 @@ export async function upsertPushSubscription(
  * Refresh (or clear) the focused-tab heartbeat for one device. `presentUntil`
  * is an ISO timestamp in the future, or null when the tab lost focus.
  */
+/**
+ * Renew (or release) the presence heartbeat of a push subscription.
+ *
+ * Heartbeats arrive from every focused tab on a fixed interval and used to
+ * rewrite the row unconditionally on every beat — the largest per-client D1
+ * row-write source on instances with many web users. A beat that still leaves
+ * more than half of the horizon covered writes nothing (the skip lives inside
+ * the UPDATE, so a skipped beat costs zero written rows); several tabs sharing
+ * one endpoint collapse into the same cycle. A release (`presentUntil = null`,
+ * sent on blur/pagehide) only writes when there is a presence to clear, so it
+ * stays immediate — that is what makes switching tabs take effect at once.
+ */
 export async function updatePushPresence(
   db: D1Database,
   actorId: string,
   endpoint: string,
-  presentUntil: string | null
+  presentUntil: string | null,
+  freshCutoff?: string
 ): Promise<void> {
+  if (presentUntil === null) {
+    await db
+      .prepare("UPDATE push_subscriptions SET present_until = NULL WHERE actor_id = ? AND endpoint = ? AND present_until IS NOT NULL")
+      .bind(actorId, endpoint)
+      .run();
+    return;
+  }
   await db
-    .prepare("UPDATE push_subscriptions SET present_until = ? WHERE actor_id = ? AND endpoint = ?")
-    .bind(presentUntil, actorId, endpoint)
+    .prepare(
+      "UPDATE push_subscriptions SET present_until = ? WHERE actor_id = ? AND endpoint = ? AND (? = '' OR present_until IS NULL OR present_until < ?)"
+    )
+    .bind(presentUntil, actorId, endpoint, freshCutoff ?? "", freshCutoff ?? "")
     .run();
 }
 

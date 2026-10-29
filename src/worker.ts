@@ -497,8 +497,7 @@ async function deliverOne(
       // this as TRANSIENT: retrying with backoff is Mastodon's behaviour, and
       // acking here used to lose the activity forever on a single timeout.
       const domain = new URL(inboxUrl).hostname.toLowerCase();
-      await recordDeliveryFailure(env, domain, 0, "Blocked redirect or unreachable");
-      await recordInstanceDeliveryFailure(env.DB, env.KV, domain, 0);
+      await recordDeliveryFailureThrottled(env, domain, { status: 0, error: "Blocked redirect or unreachable" }, 0);
       return { ok: false, permanent: false, status: 0, error: "Blocked redirect or unreachable" };
     }
     // We only need the status; cancel the body so concurrent deliveries don't
@@ -512,8 +511,13 @@ async function deliverOne(
     // over a transient 0 so a timeout never erases a known block.
     const inboxDomain = new URL(inboxUrl).hostname.toLowerCase();
     if (res.ok) {
+      // Staleness-gated: this ran on EVERY successful delivery, rewriting the
+      // domain's row (when one exists) just to move `last_ok_at` a few seconds.
+      // The graph compares it against `last_at` with minute granularity, so a
+      // 10-minute-old stamp is indistinguishable — and a domain without a
+      // rejections row already cost nothing here.
       await env.DB
-        .prepare("UPDATE delivery_rejections SET last_ok_at = datetime('now') WHERE domain = ?")
+        .prepare("UPDATE delivery_rejections SET last_ok_at = datetime('now') WHERE domain = ? AND (last_ok_at IS NULL OR last_ok_at < datetime('now', '-10 minutes'))")
         .bind(inboxDomain)
         .run()
         .catch(() => {});
@@ -525,15 +529,16 @@ async function deliverOne(
     // Federation engine: Mastodon's DeliveryFailureTracker counts any failure
     // (permanent or transient) on distinct UTC days, and marks the host
     // unavailable after 7 of them.
-    await recordInstanceDeliveryFailure(env.DB, env.KV, inboxDomain, res.status);
     if (permanent) {
-      await recordDeliveryFailure(env, inboxDomain, res.status, `HTTP ${res.status}`);
+      await recordDeliveryFailureThrottled(env, inboxDomain, { status: res.status, error: `HTTP ${res.status}` }, res.status);
     } else if (res.status >= 500) {
       // Server-side error (e.g. the remote's Cloudflare 52x TLS handshake
       // failure). Not a block, but the instance is unusable right now: record
       // it as unreachable (status 0, actual status in last_error) so the graph
       // reflects it instead of staying silent.
-      await recordDeliveryFailure(env, inboxDomain, 0, `HTTP ${res.status}`);
+      await recordDeliveryFailureThrottled(env, inboxDomain, { status: 0, error: `HTTP ${res.status}` }, res.status);
+    } else {
+      await recordDeliveryFailureThrottled(env, inboxDomain, null, res.status);
     }
     return {
       ok: res.ok,
@@ -546,11 +551,35 @@ async function deliverOne(
     // graph can show the instance as unreachable if retries keep failing.
     try {
       const host = new URL(inboxUrl).hostname.toLowerCase();
-      await recordDeliveryFailure(env, host, 0, String(err));
-      await recordInstanceDeliveryFailure(env.DB, env.KV, host, 0);
+      await recordDeliveryFailureThrottled(env, host, { status: 0, error: String(err) }, 0);
     } catch { /* best-effort */ }
     return { ok: false, permanent: false, status: 0, error: String(err) };
   }
+}
+
+/**
+ * Record a delivery failure — the `delivery_rejections` row (when `rejection`
+ * is given; transient 4xx like 429 only feed the instance tracker, as before)
+ * and the availability tracker — behind a per-host KV throttle (10 min). A
+ * dead host burns up to 16 retry attempts PER queued message, and every
+ * attempt used to rewrite two D1 rows: a retry storm over a big fan-out wrote
+ * tens of thousands of rows a day. The tracker counts distinct UTC days and
+ * the graph needs minute granularity at most, so nothing observable changes;
+ * the first failure of a storm is always recorded immediately.
+ */
+async function recordDeliveryFailureThrottled(
+  env: Env,
+  domain: string,
+  rejection: { status: number; error: string } | null,
+  instanceStatus: number
+): Promise<void> {
+  const key = `delivery:failrec:${domain}`;
+  try {
+    if (await env.KV.get(key)) return;
+    await env.KV.put(key, "1", { expirationTtl: 600 });
+  } catch { /* a KV outage must not drop the record */ }
+  if (rejection) await recordDeliveryFailure(env, domain, rejection.status, rejection.error);
+  await recordInstanceDeliveryFailure(env.DB, env.KV, domain, instanceStatus);
 }
 
 /** Upsert a per-domain delivery failure (permanent HTTP status or 0 = timeout). */
@@ -2099,8 +2128,14 @@ const worker = {
 
           const result = await deliverOne(inboxUrl, activityJson, actorId, env);
           if (result.ok) {
-            await env.KV.delete(`dead:inbox:${host}`).catch(() => {});
-            await env.KV.delete(`fail:inbox:${host}`).catch(() => {});
+            // Reset the consecutive-failure counter only when it exists: the
+            // unconditional KV deletes on EVERY success were pure write quota
+            // (dead:inbox was just verified absent — a set marker skips the
+            // delivery above — and its 1 h TTL bounds any cross-isolate race).
+            const okFailKey = `fail:inbox:${host}`;
+            if (await env.KV.get(okFailKey).catch(() => null)) {
+              await env.KV.delete(okFailKey).catch(() => {});
+            }
             message.ack();
           } else if (result.permanent) {
             console.warn(

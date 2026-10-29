@@ -18,9 +18,14 @@ type HitsDb = {
 const pending = new Map<string, number>();
 let lastFlush = Date.now();
 
-const FLUSH_INTERVAL_MS = 60_000;
-const FLUSH_AT_KEYS = 200;
-const FLUSH_MAX_STATEMENTS = 500;
+// The signal is statistical (it only orders eviction), so freshness beyond a
+// few minutes buys nothing: a 60 s window rewrote every served key's row up to
+// 24 times an hour per isolate — one of the largest D1 row-write sources on a
+// media-serving instance. A 5-minute window cuts those writes ~5x, and the
+// larger key cap keeps a busy isolate from dropping counts between flushes.
+const FLUSH_INTERVAL_MS = 300_000;
+const FLUSH_AT_KEYS = 1000;
+const FLUSH_MAX_STATEMENTS = 1000;
 
 /** Count one served media object (in memory, no I/O). */
 export function recordMediaHit(r2Key: string): void {

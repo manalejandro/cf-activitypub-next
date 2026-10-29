@@ -49,10 +49,15 @@ export async function getAuthenticatedActor(
   // A write-only posting client must not hijack the account's push endpoint.
   if (requiredScope && !scopesAllow(tokenRow.scope, requiredScope)) return null;
 
-  // Throttled last-access tracking (at most one write per actor per hour).
+  // Throttled last-access tracking (at most one write per actor per 6 hours).
+  // The column feeds the account-expiration clock (months of granularity,
+  // warnings 7 days out) and the suggestions' "active locals" pool — a
+  // 6-hour-old stamp changes nothing observable, and the UPDATE is gated in
+  // SQL so a fresh actor costs zero written rows on every authenticated
+  // request.
   try {
     const now = new Date().toISOString();
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const updated = await db
       .prepare(
         "UPDATE actors SET last_active_at = ? WHERE id = ? AND (last_active_at IS NULL OR last_active_at < ?)"

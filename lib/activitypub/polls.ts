@@ -166,7 +166,22 @@ export async function refreshPollFromQuestion(
     return Number.isFinite(n) && n >= 0 ? n : 0;
   });
   const voters = Number(question.votersCount);
+  const total = counts.reduce((sum, n) => sum + n, 0);
+  const nextVoters = Number.isFinite(voters) && voters > 0 ? voters : total;
 
-  await setPollVoteCounts(db, poll.id, counts, Number.isFinite(voters) && voters > 0 ? voters : null);
+  // Skip the write when nothing changed. The refresh cron re-reads every live
+  // remote poll every few minutes and used to rewrite all option rows plus the
+  // poll row even with identical counts — tens of thousands of D1 row writes a
+  // day on a relay-fed instance, where vote totals rarely move between
+  // refreshes. A real change still writes: votes also arrive pushed as
+  // Update{Question}, and both paths land here.
+  const unchanged =
+    options.length === counts.length &&
+    options.every((opt, i) => Number(opt.votesCount ?? 0) === counts[i]) &&
+    Number(poll.votesCount ?? 0) === total &&
+    Number(poll.votersCount ?? 0) === nextVoters;
+  if (unchanged) return true;
+
+  await setPollVoteCounts(db, poll.id, counts, nextVoters);
   return true;
 }

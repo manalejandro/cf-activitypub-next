@@ -236,6 +236,26 @@ describe("availability tracker", () => {
     expect(await kv.get(instanceDownKey("dead.example"))).toBeNull();
   });
 
+  it("does not rewrite a clean host's row on every success (D1 write quota)", async () => {
+    // recordInstanceSuccess runs on EVERY successful delivery: a host whose
+    // row is already clean is refreshed at most once an hour, while a dirty
+    // row (failure state) is still cleared immediately.
+    await recordInstanceDeliverySuccess(db, kv, "quiet.example");
+    await db
+      .prepare("UPDATE instances SET last_seen_at = '2020-01-01T00:00:00.000Z' WHERE domain = 'quiet.example'")
+      .run();
+
+    await recordInstanceDeliverySuccess(db, kv, "quiet.example");
+    let row = await getInstance(db, "quiet.example");
+    expect(row?.lastSeenAt).toBe("2020-01-01T00:00:00.000Z");
+
+    await db.prepare("UPDATE instances SET failure_days = 3 WHERE domain = 'quiet.example'").run();
+    await recordInstanceDeliverySuccess(db, kv, "quiet.example");
+    row = await getInstance(db, "quiet.example");
+    expect(row?.failureDays).toBe(0);
+    expect(row?.lastSeenAt).not.toBe("2020-01-01T00:00:00.000Z");
+  });
+
   it("clears an unavailable host when it reaches us (signed inbound activity)", async () => {
     const start = Date.UTC(2026, 0, 1, 12);
     for (let i = 0; i < 7; i++) {

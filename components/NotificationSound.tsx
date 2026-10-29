@@ -91,12 +91,14 @@ export function NotificationSound() {
    * Push for this device — the in-app streaming event already plays the sound
    * and updates the badge. Without it Chrome shows an OS notification (and
    * beeps) while the user is looking at the app. Best-effort: a failed request
-   * just means the OS notification still shows.
+   * just means the OS notification still shows. The interval matches the
+   * server's 15-minute presence TTL (a beat leaving more than half of it
+   * covered skips the D1 write), and blur/pagehide release immediately.
    */
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
 
-    const HEARTBEAT_MS = 60_000;
+    const HEARTBEAT_MS = 240_000;
     let endpoint: string | null = null;
     let timer: number | null = null;
     let desired: boolean | null = null;
