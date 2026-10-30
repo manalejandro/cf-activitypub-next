@@ -9,6 +9,7 @@ import { useInstanceTitle, useInstanceVersion } from "@/lib/instance-context";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { Icon, type IconName } from "@/components/Icon";
 import { RichText } from "@/components/RichText";
+import { useAnonymousTimelineAccess } from "@/lib/limits-client";
 
 interface InstanceSettings {
   rules?: { id: string; text: string; html: string }[];
@@ -23,6 +24,9 @@ export default function Home() {
   const { authenticated, loading } = useAuth();
   const { t } = useLocale();
   const [settings, setSettings] = useState<InstanceSettings | null>(null);
+  // With the anonymous timelines open (admin → Settings), the landing offers a
+  // direct look at the public feeds — no account needed.
+  const anonymousTimelines = useAnonymousTimelineAccess();
 
   useEffect(() => {
     fetch("/api/v1/instance/settings")
@@ -130,6 +134,18 @@ export default function Home() {
             ) : (
               <Link href="/register" className="btn btn-primary btn-lg">
                 {t.landing_register}
+              </Link>
+            )}
+            {anonymousTimelines !== "none" && (
+              <Link
+                href="/timelines"
+                className="btn btn-lg"
+                style={{
+                  background: "rgba(255,255,255,0.12)", color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                }}
+              >
+                <Icon name="globe" /> {t.landing_whats_happening}
               </Link>
             )}
             <a

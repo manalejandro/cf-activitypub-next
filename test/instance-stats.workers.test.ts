@@ -233,23 +233,45 @@ describe("instance status", () => {
 });
 
 describe("public status endpoint", () => {
+  const statusRequest = (fresh = false) =>
+    new NextRequest(`http://local.example/api/v1/status${fresh ? "?fresh=1" : ""}`);
+
   it("serves the snapshot from the KV cache", async () => {
     const marker = JSON.stringify({ checked_at: "2026-10-22T12:00:00.000Z", overall: "operational", components: [], metrics: {} });
     await env.KV.put("status:snapshot", marker);
 
-    const response = await getPublicStatus();
+    const response = await getPublicStatus(statusRequest());
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("application/json");
+    // The refresh button must never be answered from a browser cache.
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.text()).toBe(marker);
   });
 
   it("computes and caches the snapshot when there is none", async () => {
     await seedActors();
-    const first = await getPublicStatus();
+    const first = await getPublicStatus(statusRequest());
     expect(first.status).toBe(200);
     const body = (await first.json()) as { overall: string; components: { key: string }[] };
     expect(body.components.map((component) => component.key)).toContain("federation");
     expect(await env.KV.get("status:snapshot")).not.toBeNull();
+  });
+
+  it("recomputes on ?fresh=1 (the page's refresh button) even inside the cache window", async () => {
+    await seedActors();
+    const stale = JSON.stringify({ checked_at: "2020-01-01T00:00:00.000Z", overall: "operational", components: [], metrics: {} });
+    await env.KV.put("status:snapshot", stale);
+
+    const response = await getPublicStatus(statusRequest(true));
+    const body = (await response.json()) as { checked_at: string };
+    expect(body.checked_at).not.toBe("2020-01-01T00:00:00.000Z");
+  });
+
+  it("throttles manual refreshes globally: a second ?fresh=1 inside the lock window serves the cache", async () => {
+    await seedActors();
+    const first = (await (await getPublicStatus(statusRequest(true))).json()) as { checked_at: string };
+    const second = (await (await getPublicStatus(statusRequest(true))).json()) as { checked_at: string };
+    expect(second.checked_at).toBe(first.checked_at);
   });
 });
 

@@ -34,10 +34,16 @@ export default function InstanceStatusPage() {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
+    // `fresh` is the manual button: it asks the API to recompute the snapshot
+    // (behind its own global throttle) instead of serving the minute-long KV
+    // cache — without it, clicking inside the cache window returned a
+    // byte-identical body and the button looked dead.
+    if (fresh) setRefreshing(true);
     try {
-      const response = await fetch("/api/v1/status");
+      const response = await fetch(fresh ? "/api/v1/status?fresh=1" : "/api/v1/status", { cache: "no-store" });
       if (!response.ok) throw new Error(`status ${response.status}`);
       setSnapshot((await response.json()) as StatusSnapshot);
       setFailed(false);
@@ -45,6 +51,7 @@ export default function InstanceStatusPage() {
       setFailed(true);
     } finally {
       setLoading(false);
+      if (fresh) setRefreshing(false);
     }
   }, []);
 
@@ -131,8 +138,8 @@ export default function InstanceStatusPage() {
                 {" · "}
                 {t.status_auto_refresh}
               </span>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => void load()}>
-                <Icon name="refresh" /> {t.status_refresh}
+              <button type="button" className="btn btn-outline btn-sm" disabled={refreshing} onClick={() => void load(true)}>
+                <Icon name="refresh" spin={refreshing} /> {refreshing ? t.status_refreshing : t.status_refresh}
               </button>
             </div>
           </>

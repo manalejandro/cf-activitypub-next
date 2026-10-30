@@ -10935,6 +10935,15 @@
         "tags": [
           "Status"
         ],
+        "parameters": [
+          {
+            "name": "fresh",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "security": [],
         "responses": {
           "200": {
