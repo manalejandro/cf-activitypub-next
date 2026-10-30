@@ -11,13 +11,17 @@
  *  - MP4/MOV and MP3: metadata boxes/tags are zero-filled **in place**, so the
  *    byte length never changes and the file can keep streaming straight into
  *    R2 through a TransformStream (fixed-length uploads stay valid).
+ *  - PDF: the document is rebuilt as a single fresh revision without its
+ *    /Info dictionary, XMP /Metadata stream, revision history or file ID
+ *    (lib/media/strip-pdf.ts); the length changes, so callers must buffer.
+ *    Encrypted or unparseable files pass through untouched (fail open).
  */
 
 // ─────────────────────────────────────────
 // Which media types we can clean
 // ─────────────────────────────────────────
 
-export type MetadataStripKind = "image" | "stream";
+export type MetadataStripKind = "image" | "stream" | "pdf";
 
 /** Whether (and how) a content type can be stripped; null = pass through. */
 export function metadataStripKind(contentType: string): MetadataStripKind | null {
@@ -29,12 +33,22 @@ export function metadataStripKind(contentType: string): MetadataStripKind | null
     || type === "audio/x-m4a" || type === "audio/mpeg" || type === "audio/mp3") {
     return "stream";
   }
+  if (type === "application/pdf") {
+    return "pdf";
+  }
   return null;
+}
+
+/** Length-changing kinds must take the buffered download/upload path. */
+export function metadataStripBuffers(kind: MetadataStripKind | null): boolean {
+  return kind === "image" || kind === "pdf";
 }
 
 // ─────────────────────────────────────────
 // Images (length changes: callers buffer)
 // ─────────────────────────────────────────
+
+import { stripPdfMetadata } from "@/lib/media/strip-pdf";
 
 function concatParts(parts: Uint8Array[], totalLength: number): Uint8Array {
   const out = new Uint8Array(totalLength);
@@ -562,12 +576,14 @@ export function metadataStripTransform(contentType: string): TransformStream<Uin
 }
 
 /**
- * Clean a buffered body. Images use the length-changing strippers; stream
- * containers go through their transform (same byte length).
+ * Clean a buffered body. Images use the length-changing strippers, PDFs are
+ * rebuilt as a single clean revision; stream containers go through their
+ * transform (same byte length).
  */
 export async function stripMetadataBytes(bytes: Uint8Array, contentType: string): Promise<Uint8Array> {
   const kind = metadataStripKind(contentType);
   if (kind === "image") return stripImageMetadata(bytes, contentType);
+  if (kind === "pdf") return stripPdfMetadata(bytes);
   const transform = metadataStripTransform(contentType);
   if (!transform) return bytes;
 

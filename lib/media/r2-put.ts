@@ -19,8 +19,10 @@ function contentTypeOf(options: R2PutOptions): string {
 /**
  * Store a media object in R2 with EXIF/XMP/IPTC/ID3 metadata stripped, the way
  * Mastodon processes every attachment it stores (uploads, avatars, headers and
- * the federated media cache). Image files are rewritten losslessly (shorter);
- * MP4/MOV/MP3 are cleaned in place so their byte length never changes.
+ * the federated media cache). Image files are rewritten losslessly (shorter),
+ * PDF documents are rebuilt as a single revision without their Info/XMP/
+ * history, and MP4/MOV/MP3 are cleaned in place so their byte length never
+ * changes.
  */
 export async function putMediaObject(
   r2: MediaR2Like,

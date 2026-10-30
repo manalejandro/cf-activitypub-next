@@ -21,7 +21,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { DOCUMENT_MIME_TYPES, resolveLimits, type InstanceLimits } from "@/lib/constants";
 import { dbTimestamp } from "@/lib/dates";
-import { metadataStripKind, metadataStripTransform, stripMetadataBytes } from "@/lib/media/strip-metadata";
+import { metadataStripBuffers, metadataStripKind, metadataStripTransform, stripMetadataBytes } from "@/lib/media/strip-metadata";
 import { validateOutboundUrl } from "@/lib/activitypub/federation";
 import { fetchWithUserAgents, readBoundedBytes } from "@/lib/media/fetch";
 import {
@@ -349,7 +349,7 @@ async function cacheOne(
       };
     }).FixedLengthStream;
 
-    if (body && fetched.declaredLength > 0 && FixedLength && stripKind !== "image") {
+    if (body && fetched.declaredLength > 0 && FixedLength && !metadataStripBuffers(stripKind)) {
       // R2 rejects streams without a known length ("Provided readable stream
       // must have a known length"): FixedLengthStream declares the
       // content-length that `fetchWithUserAgents` already size-checked, and
@@ -373,8 +373,9 @@ async function cacheOne(
           oversized = true;
           return;
         }
-        // Images get shorter when their metadata segments are dropped, so they
-        // always take this buffered path.
+        // Images get shorter when their metadata segments are dropped and
+        // PDFs are rebuilt as a single clean revision, so both always take
+        // this buffered path.
         const stripped = stripKind ? await stripMetadataBytes(bytes, contentType) : bytes;
         size = stripped.byteLength;
         upload = stripped;
