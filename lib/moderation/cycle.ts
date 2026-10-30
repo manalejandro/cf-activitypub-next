@@ -9,6 +9,7 @@
 
 import { generateId } from "@/lib/activitypub/utils";
 import { getActorById } from "@/lib/db";
+import { parseDbDate } from "@/lib/dates";
 import { evaluateAccount, GUARDIAN_MODEL } from "./ai";
 import { contentHash, computeAccountSignals, computeContentSignals, hasAbuseSignals } from "./heuristics";
 import { screenStatus } from "./pipeline";
@@ -79,7 +80,10 @@ async function screenRecentLocalStatuses(env: GuardianCycleEnv): Promise<void> {
     try {
       const author = await getActorById(env.DB, row.actor_id);
       if (!author) continue;
-      const ageMs = Date.now() - new Date(author.createdAt).getTime();
+      // actors.created_at is DB-shape: parse through the shared converter (a
+      // bare `new Date(...)` reads it as local time outside workerd).
+      const createdMs = parseDbDate(author.createdAt)?.getTime() ?? NaN;
+      const ageMs = Number.isFinite(createdMs) ? Date.now() - createdMs : NaN;
       await screenStatus(env, {
         contentHtml: row.content,
         spoilerText: row.content_warning ?? "",
@@ -150,16 +154,23 @@ async function screenSuspiciousAccounts(env: GuardianCycleEnv): Promise<void> {
       const actor = await getActorById(env.DB, id);
       if (!actor || actor.suspended) continue;
 
-      const ageMs = Date.now() - new Date(actor.createdAt).getTime();
+      const createdMs = parseDbDate(actor.createdAt)?.getTime() ?? NaN;
+      const ageMs = Number.isFinite(createdMs) ? Date.now() - createdMs : NaN;
       const ageDays = Number.isFinite(ageMs) ? Math.max(0, ageMs / 86400000) : 0;
-      if (ageMs < MIN_ACCOUNT_AGE * 1000) continue;
+      if (Number.isFinite(ageMs) && ageMs < MIN_ACCOUNT_AGE * 1000) continue;
 
       const [postsLastHour, postsLastDay, followsLastHour, linkCount] = await Promise.all([
         countStatusesSince(env.DB, id, hourCutoff),
         countStatusesSince(env.DB, id, dayCutoff),
         env.DB
-          .prepare("SELECT COUNT(*) AS c FROM follows WHERE actor_id = ? AND created_at >= datetime('now', '-1 hour')")
-          .bind(id)
+          // follows.created_at is ISO-Z (like objects.published, which the
+          // countStatusesSince cutoffs above already compare correctly): the
+          // old `datetime('now', '-1 hour')` cutoff was DB-shape, and since
+          // 'T' > ' ' the "last hour" window really spanned up to ~25 h —
+          // inflating the Guardian's follow-velocity signal into false
+          // positives.
+          .prepare("SELECT COUNT(*) AS c FROM follows WHERE actor_id = ? AND created_at >= ?")
+          .bind(id, hourCutoff)
           .first<{ c: number }>(),
         env.DB
           .prepare("SELECT COUNT(*) AS c FROM objects WHERE actor_id = ? AND type = 'Note' AND has_link = 1")

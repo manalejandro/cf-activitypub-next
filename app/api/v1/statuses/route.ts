@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
-import { json, unauthorized, checkRateLimit } from "@/lib/cf";
-import { dbTimestamp } from "@/lib/dates";
+import { json, unauthorized } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
+import { dbTimestamp, parseDbDate } from "@/lib/dates";
 import { SCHEDULE_MAX_HORIZON_MS } from "@/lib/scheduled-media";
 import {
   getActorById,
@@ -46,7 +47,7 @@ import { withRelayInboxes } from "@/lib/activitypub/relays";
 import { enqueueDeliveries } from "@/lib/activitypub/queue";
 import { processStatusContent } from "@/lib/activitypub/content";
 import { fetchAndCacheRemoteStatus } from "@/lib/activitypub/remote";
-import { buildQuoteRequest, ensureLocalQuoteAuthorization } from "@/lib/activitypub/quotes";
+import { buildQuoteRequest, ensureLocalQuoteAuthorization, quoteAllowed, remoteQuoteAllowed } from "@/lib/activitypub/quotes";
 import { setObjectQuoteAuthorizationUri } from "@/lib/db";
 import { buildReplyMentions, collectThreadParticipants, expandBareMentions, mentionKey, type ThreadNode } from "@/lib/activitypub/replies";
 import { canonicalizeMentionTags, resolveMentionLinks } from "@/lib/activitypub/mentions";
@@ -81,69 +82,9 @@ async function fetchReplyParent(actor: LocalActor, iri: string): Promise<ThreadN
   }
 }
 
-// Whether `actor` is allowed to quote `author`'s status given the author's
-// quote policy (Mastodon: public → anyone, followers → followers+author,
-// followed → accounts the author follows, nobody → only the author).
-async function quoteAllowed(
-  db: D1Database,
-  actor: { id: string },
-  author: { id: string },
-  policy: string
-): Promise<boolean> {
-  if (actor.id === author.id) return true;
-  // Blocked users are never allowed to quote.
-  if (await isActorBlockedBy(db, author.id, actor.id)) return false;
-  switch (policy) {
-    case "public":
-      return true;
-    case "followers":
-      return isAcceptedFollower(db, actor.id, author.id);
-    case "followed":
-      return isAcceptedFollower(db, author.id, actor.id);
-    default:
-      return false; // nobody
-  }
-}
-
-/**
- * Resolve a REMOTE author's federated quote policy (Mastodon 4.5 / FEP-044f
- * `interactionPolicy.canQuote`) and decide whether `actorId` may quote one of
- * their posts. Falls back to the conservative "followers" when no policy is
- * present or it cannot be parsed.
- */
-async function remoteQuoteAllowed(
-  db: D1Database,
-  actorId: string,
-  author: { id: string; domain: string; username: string },
-  raw: string | undefined
-): Promise<boolean> {
-  if (actorId === author.id) return true;
-  if (await isActorBlockedBy(db, author.id, actorId)) return false;
-
-  let canQuote: { automaticApproval?: unknown[] } | null = null;
-  try {
-    const ap = raw ? JSON.parse(raw) : null;
-    canQuote = ap?.interactionPolicy?.canQuote ?? null;
-  } catch { /* ignore malformed */ }
-
-  if (!canQuote || !Array.isArray(canQuote.automaticApproval)) {
-    return isAcceptedFollower(db, actorId, author.id); // conservative: followers
-  }
-
-  const auto = canQuote.automaticApproval.map((v) => String(v));
-  if (auto.some((v) => /public/i.test(v))) return true;
-
-  const followersIri = `https://${author.domain}/users/${author.username}/followers`;
-  const followingIri = `https://${author.domain}/users/${author.username}/following`;
-  if (auto.includes(followersIri) || auto.some((v) => /followers/i.test(v))) {
-    return isAcceptedFollower(db, actorId, author.id);
-  }
-  if (auto.includes(followingIri) || auto.some((v) => /following/i.test(v))) {
-    return isAcceptedFollower(db, author.id, actorId);
-  }
-  if (auto.includes(actorId)) return true;
-  return false;
-}
+// The quote-policy helpers (`quoteAllowed`, `remoteQuoteAllowed`) live in
+// lib/activitypub/quotes.ts: the scheduled-publish cron re-validates quotes at
+// release time with the exact same rules.
 
 /** `media_ids` as an array: `media_ids[]`, a JSON array, or a single id. */
 export function normalizeMediaIds(value: unknown): string[] {
@@ -163,7 +104,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   // Posting fans out to every follower plus mentions (and can trigger signed
   // outbound fetches): bound the rate per account.
-  const { allowed: canPost } = await checkRateLimit(env.KV, `post:${actor.id}`, 30, 60);
+  const { allowed: canPost } = await atomicRateLimit(env, `post:${actor.id}`, 30, 60);
   if (!canPost) return json({ error: "Too many requests. Please try again later." }, 429);
   if (!actor.privateKeyPem) return json({ error: "Account misconfigured" }, 500);
 
@@ -459,7 +400,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   // sensitive. When the AI is unavailable the post proceeds and the scheduled
   // moderation cycle reviews it later.
   if (env.AI && (content ?? "").trim()) {
-    const accountAgeMs = Date.now() - new Date(actor.createdAt).getTime();
+    // actors.created_at is DB-shape: parse through the shared converter (a
+    // bare `new Date(...)` would read it as local time outside workerd).
+    const accountAgeMs = Date.now() - (parseDbDate(actor.createdAt)?.getTime() ?? NaN);
     const gate = await screenStatus(env, {
       contentHtml: htmlContent,
       spoilerText,
@@ -577,6 +520,15 @@ export async function POST(request: NextRequest): Promise<Response> {
       if (mentioned?.isLocal && mentioned.id !== actor.id) directRecipientIds.push(mentioned.id);
     }
     await upsertDirectConversation(env.DB, actor.id, mentionedIRIs, note.id, false);
+    // Recipients that blocked the author get nothing: no conversation entry
+    // (their notification is already dropped by createNotification) and no
+    // live update below — the same filter the scheduled-publish cron applies.
+    const eligible: string[] = [];
+    for (const rid of directRecipientIds) {
+      if (!(await isActorBlockedBy(env.DB, rid, actor.id))) eligible.push(rid);
+    }
+    directRecipientIds.length = 0;
+    directRecipientIds.push(...eligible);
     for (const rid of directRecipientIds) {
       await upsertDirectConversation(env.DB, rid, [actor.id], note.id, true);
     }
@@ -693,8 +645,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
   }
 
-  // Notify the author of the quoted status (Mastodon sends a `quote` notification).
-  if (quoteId && quotedAuthor?.isLocal && quotedAuthor.id !== actor.id && !notified.has(quotedAuthor.id)) {
+  // Notify the author of the quoted status (Mastodon sends a `quote`
+  // notification). NEVER for a direct post: the notification embeds the full
+  // status, so the quoted author — who is not part of the DM audience — could
+  // read a message not addressed to them (the scheduled path already guards
+  // this).
+  if (quoteId && visibility !== "direct" && quotedAuthor?.isLocal && quotedAuthor.id !== actor.id && !notified.has(quotedAuthor.id)) {
     notified.add(quotedAuthor.id);
     await notify(env, {
       id: generateId(),
@@ -768,9 +724,12 @@ export async function POST(request: NextRequest): Promise<Response> {
   // Quote delivery: the quoted post's author must receive the Create activity
   // so their instance can raise a `quote` notification (Mastodon behaviour).
   // Mastodon only accepts/notifies remote quotes after a FEP-044f QuoteRequest,
-  // so send one alongside the Create when quoting a remote post.
+  // so send one alongside the Create when quoting a remote post. NEVER for a
+  // direct message: the QuoteRequest leaks the DM's IRI and delivering the
+  // Create to the quoted author's server hands them the full DM content — a
+  // third party outside the audience (the same leak Mastodon fixed in #36688).
   let quoteAuthorInboxes: string[] = [];
-  if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
+  if (quoteId && visibility !== "direct" && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
     quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
     if (quoteAuthorInboxes.length > 0) {
       const quoteRequest = buildQuoteRequest(baseUrl, {
@@ -784,8 +743,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   if (visibility === "direct") {
-    // Direct replies are delivered only to the addressed accounts
-    const targets = [...mentionInboxes, ...quoteAuthorInboxes];
+    // Direct replies are delivered only to the addressed accounts (the quoted
+    // author's inboxes are empty here by construction — see the guard above).
+    const targets = [...new Set(mentionInboxes)];
     if (targets.length > 0) {
       await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
     }
@@ -826,11 +786,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (visibility === "direct") {
     // A DM only reaches the local accounts it addresses: pushing it to every
     // follower's home leaked it (the REST home excludes direct, so it vanished
-    // on refresh — but the live payload was served). Recipients that blocked
-    // the author are skipped, mirroring the notification drop.
+    // on refresh — but the live payload was served). directRecipientIds is
+    // already block-filtered where the conversations were created.
     for (const recipientId of directRecipientIds) {
-      if (recipientId === actor.id) continue;
-      if (await isActorBlockedBy(env.DB, recipientId, actor.id)) continue;
       broadcastTasks.push(broadcastHomeStatus(env.TIMELINE_STREAM, recipientId, serializedStatus));
     }
   } else {

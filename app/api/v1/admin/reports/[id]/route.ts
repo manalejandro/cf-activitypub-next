@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { recordModeration } from "@/lib/moderation/log";
 import { generateId } from "@/lib/activitypub/utils";
 import { env } from "cloudflare:workers";
+import { toIsoOrNull } from "@/lib/dates";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const domain = new URL(request.url).hostname;
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const notes = (await getReportNotes(env.DB, id)).map((n) => ({
     id: n.id,
     content: n.content,
-    created_at: n.created_at,
+    created_at: toIsoOrNull(n.created_at) ?? n.created_at,
   }));
 
   return json({
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     category: report.category,
     comment: report.comment,
     forwarded: report.forwarded,
-    created_at: report.created_at,
+    created_at: toIsoOrNull(report.created_at) ?? report.created_at,
     status_ids: statuses.map((s) => s.id),
     statuses,
     rule_ids: report.rule_ids ? JSON.parse(report.rule_ids) : [],

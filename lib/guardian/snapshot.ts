@@ -31,7 +31,7 @@ export async function getGuardianSnapshot(env: SnapshotEnv): Promise<GuardianSna
     ).first<Record<string, number>>(),
     env.DB.prepare(
       `SELECT COUNT(*) AS statuses FROM objects
-        WHERE is_local = 1 AND published >= datetime('now', '-1 day')`
+        WHERE is_local = 1 AND published >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')`
     ).first<{ statuses: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS open FROM reports WHERE action_taken = 0").first<{ open: number }>(),
     env.DB.prepare(

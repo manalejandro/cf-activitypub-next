@@ -129,9 +129,13 @@ export function applyPollToNote(note: APNote, poll: LocalPoll, options: LocalPol
   else target.oneOf = choices;
   // ISO-8601, like every other timestamp we federate: the row may still hold
   // SQLite's `YYYY-MM-DD HH:MM:SS` and strict parsers (Rust `time`) reject it.
-  target.endTime = isoTimestamp(poll.expiresAt);
-  // Mastodon marks a finished poll with `closed` (and keeps `endTime`).
-  if (new Date(poll.expiresAt) <= new Date()) target.closed = poll.expiresAt;
+  const expiresIso = isoTimestamp(poll.expiresAt);
+  target.endTime = expiresIso;
+  // Mastodon marks a finished poll with `closed` (and keeps `endTime`). The
+  // value is normalized too — emitting the stored string could federate a
+  // non-ISO timestamp, and the expiry comparison parses the normalized ISO
+  // (a DB-shape string would be read as local time).
+  if (new Date(expiresIso) <= new Date()) target.closed = expiresIso;
   if (poll.votersCount > 0) target.votersCount = poll.votersCount;
 }
 

@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getMarkers, upsertMarker } from "@/lib/db";
+import { toIsoOrNull } from "@/lib/dates";
 import { generateId } from "@/lib/activitypub/utils";
 import { env } from "cloudflare:workers";
 
@@ -20,7 +21,10 @@ export async function GET(request: NextRequest): Promise<Response> {
     result[m.timeline] = {
       last_read_id: m.lastReadId,
       version: m.version,
-      updated_at: m.updatedAt,
+      // The column keeps datetime('now')'s shape; Mastodon's markers API (and
+      // any third-party client's Date parser) expects ISO — the POST below
+      // already answered ISO, so the two verbs disagreed on the same entity.
+      updated_at: toIsoOrNull(m.updatedAt) ?? m.updatedAt,
     };
   }
 

@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
-import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import { getObjectById, getActorById, deleteAnnounce } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
@@ -24,7 +25,7 @@ export async function POST(
   if (!actor) return unauthorized();
 
   // Shares the reblog budget: the Undo{Announce} federates to the same inboxes.
-  const { allowed: canReblog } = await checkRateLimit(env.KV, `reblog:${actor.id}`, 30, 60);
+  const { allowed: canReblog } = await atomicRateLimit(env, `reblog:${actor.id}`, 30, 60);
   if (!canReblog) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));

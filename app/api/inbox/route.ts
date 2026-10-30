@@ -36,7 +36,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   }
 
   const actorId = typeof body.actor === "string" ? body.actor : (body.actor as { id?: string })?.id;
-  if (!actorId) return json({ error: "Missing actor" }, 400);
+  // Type-checked, not just truthy: a non-string id (`{id: 123}`) would explode
+  // deep inside a handler as a deterministic 500 — the sender retries that
+  // forever and our 5xx feeds THEIR delivery-failure tracker. Impossible
+  // shapes are a permanent 400.
+  if (typeof actorId !== "string" || !actorId) return json({ error: "Missing actor" }, 400);
 
   const headers: Record<string, string> = {};
   request.headers.forEach((v, k) => { headers[k] = v; });

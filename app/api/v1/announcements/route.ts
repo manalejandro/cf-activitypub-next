@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { json, unauthorized } from "@/lib/cf";
-import { toIsoOrNull } from "@/lib/dates";
+import { toIsoOrNull, dbTimestamp } from "@/lib/dates";
 import { resolveLimits } from "@/lib/constants";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getAdminRole } from "@/lib/admin-auth";
@@ -90,7 +90,11 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (content.length > maxAnnouncementChars) return json({ error: `content is too long (max ${maxAnnouncementChars} chars)` }, 422);
 
   const id = crypto.randomUUID();
-  const now = new Date().toISOString().replace("T", " ").replace("Z", "").slice(0, 19);
+  // dbTimestamp, not string surgery (the column keeps datetime('now')'s
+  // shape); the response normalizes to ISO like the GET does — the client
+  // renders `new Date(published_at)` and the raw DB shape parses as local.
+  const now = dbTimestamp();
+  const nowIso = toIsoOrNull(now) ?? new Date().toISOString();
 
   await env.DB
     .prepare(
@@ -106,8 +110,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     starts_at: null,
     ends_at: null,
     all_day: false,
-    published_at: now,
-    updated_at: now,
+    published_at: nowIso,
+    updated_at: nowIso,
     read: false,
   });
 }

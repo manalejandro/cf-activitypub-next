@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { discardBody } from "@/lib/http";
-import { json, checkRateLimit } from "@/lib/cf";
+import { json } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { getActorById, getActorsByIds, getAttachmentsByObjectIds, getAllCustomEmojis, searchCollections, getLastStatusAtMap , getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap } from "@/lib/db";
 import { serializeAccount, serializeStatus, serializeCollection } from "@/lib/mastodon/serializers";
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest): Promise<Response> {
     const rlKey = me
       ? `search-resolve:${me.id}`
       : `search-resolve:ip:${request.headers.get("CF-Connecting-IP") ?? "unknown"}`;
-    const { allowed: canResolve } = await checkRateLimit(env.KV, rlKey, 15, 60);
+    const { allowed: canResolve } = await atomicRateLimit(env, rlKey, 15, 60);
     if (!canResolve) return json({ error: "Too many requests. Please try again later." }, 429);
   }
 

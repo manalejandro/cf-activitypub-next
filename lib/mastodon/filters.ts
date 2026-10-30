@@ -13,6 +13,7 @@
  */
 
 import { MAX_FILTER_KEYWORD_CHARS, MAX_FILTER_KEYWORDS } from "@/lib/constants";
+import { toIsoOrNull } from "@/lib/dates";
 import type { D1Database } from "@cloudflare/workers-types";
 import { encodeStatusId } from "@/lib/mastodon/statusId";
 import {
@@ -211,7 +212,11 @@ export function serializeFilter(f: {
     id: f.id,
     title: f.title,
     context: f.context,
-    expires_at: f.expires_at,
+    // ISO like the v1 serializer (toIsoOrNull): the column is written ISO by
+    // every current writer, but normalizing keeps the v1/v2 shapes identical
+    // and any legacy/foreign row parseable by clients (`new Date` reads the
+    // DB shape as local time).
+    expires_at: toIsoOrNull(f.expires_at),
     filter_action: f.filter_action,
     keywords: f.keywords,
     statuses: f.statuses,

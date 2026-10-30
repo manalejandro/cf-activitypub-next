@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
-import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import { getObjectById, getActorById, createLike, getLike, isAcceptedFollower, canViewStatus } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatusForStream, loadViewerStatusState } from "@/lib/streaming/serialize";
@@ -27,7 +28,7 @@ export async function POST(
 
   // Every action federates a Like (and may fetch the remote status first):
   // a favourite/unfavourite loop must not turn into outbound-fetch flooding.
-  const { allowed: canFavourite } = await checkRateLimit(env.KV, `favourite:${actor.id}`, 60, 60);
+  const { allowed: canFavourite } = await atomicRateLimit(env, `favourite:${actor.id}`, 60, 60);
   if (!canFavourite) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));

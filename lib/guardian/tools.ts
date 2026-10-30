@@ -216,7 +216,7 @@ export function buildGuardianTools(env: GuardianToolEnv) {
                   a.username, a.domain, a.is_local, a.suspended
              FROM objects o JOIN actors a ON a.id = o.actor_id
             WHERE o.content LIKE ? ESCAPE '\\'
-              AND o.published >= datetime('now', ?)
+              AND o.published >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
             ORDER BY o.published DESC
             LIMIT ?`
         )

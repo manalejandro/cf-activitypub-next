@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useLocale, type Translations } from "@/lib/i18n";
+import { parseDbDate } from "@/lib/dates";
 import { Icon } from "@/components/Icon";
 import { MediaPlayer } from "@/components/MediaPlayer";
 import { mediaDownloadName } from "@/lib/media/filename";
@@ -77,8 +78,12 @@ function typeLabel(t: Translations, apType: string): string {
 
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  // parseDbDate, not a bare `new Date(...)`: the value may come from a REMOTE
+  // AP document stored verbatim (ap_meta reads objects.raw), and a peer
+  // emitting a zone-less ISO or a DB-shape string would be rendered in the
+  // viewer's zone instead of UTC.
+  const d = parseDbDate(iso);
+  if (!d) return "";
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 

@@ -418,7 +418,7 @@ async function readObjectSummary(db: D1Database): Promise<ObjectSummary> {
   const rows = await db.batch<{ n: number }>([
     db.prepare("SELECT COUNT(*) AS n FROM objects WHERE is_local = 1"),
     db.prepare("SELECT COUNT(*) AS n FROM objects WHERE is_local = 0"),
-    db.prepare("SELECT COUNT(*) AS n FROM objects WHERE is_local = 1 AND published >= datetime('now', '-1 day')"),
+    db.prepare("SELECT COUNT(*) AS n FROM objects WHERE is_local = 1 AND published >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')"),
   ]);
   return {
     local: num(rows[0]?.results?.[0]?.n),

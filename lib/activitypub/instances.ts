@@ -315,7 +315,11 @@ export async function recordInstanceDeliverySuccess(
   if (!host) return;
   await recordInstanceSuccess(db, host).catch(() => {});
   try {
-    if (kv?.delete) await kv.delete(instanceDownKey(host));
+    // Gated delete: a KV delete counts as a write even when the key is absent,
+    // and this runs on EVERY successful delivery (the queue consumer applies
+    // the same rule to its breaker keys).
+    const downKey = instanceDownKey(host);
+    if (kv?.get && (await kv.get(downKey))) await kv.delete?.(downKey);
   } catch { /* marker is best-effort */ }
 }
 

@@ -10,6 +10,7 @@ import { deleteLocalAccount } from "@/lib/account-deletion";
 import { notifyAccountOwner } from "@/lib/moderation/actions";
 import { sendWelcomeEmail } from "@/lib/email";
 import { env } from "cloudflare:workers";
+import { toIsoOrNull } from "@/lib/dates";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const domain = new URL(request.url).hostname;
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     id: actor.id,
     username: actor.username,
     domain: actor.domain,
-    created_at: actor.createdAt,
+    created_at: toIsoOrNull(actor.createdAt) ?? actor.createdAt,
     email: actor.email,
     ip: null,
     role: { id: row.role === "admin" ? "1" : row.role === "moderator" ? "2" : "3", name: row.role === "admin" ? "Admin" : row.role === "moderator" ? "Moderator" : "User", color: "" },

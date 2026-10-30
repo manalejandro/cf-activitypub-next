@@ -8,6 +8,7 @@ import { serializeAccount } from "@/lib/mastodon/serializers";
 import { decodeStatusId } from "@/lib/mastodon/statusId";
 import type { LocalObject, LocalActor, LocalAttachment, LocalCustomEmoji } from "@/lib/types";
 import { env } from "cloudflare:workers";
+import { toIsoOrNull } from "@/lib/dates";
 
 interface ReportRow {
   id: string;
@@ -84,7 +85,10 @@ export async function GET(request: NextRequest): Promise<Response> {
       const notes = (await getReportNotes(env.DB, r.id)).map((n) => ({
         id: n.id,
         content: n.content,
-        created_at: n.created_at,
+        // Admin::Report is a Mastodon-shaped API: created_at must be ISO, and
+        // the columns keep datetime('now')'s shape (external admin tools parse
+        // it as local time otherwise).
+        created_at: toIsoOrNull(n.created_at) ?? n.created_at,
       }));
       const target = actorsMap.get(r.target_id) ?? null;
       const reporter = actorsMap.get(r.actor_id) ?? null;
@@ -95,7 +99,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         category: r.category,
         comment: r.comment,
         forwarded: Boolean(r.forwarded),
-        created_at: r.created_at,
+        created_at: toIsoOrNull(r.created_at) ?? r.created_at,
         status_ids: statuses.map((s) => s.id),
         statuses,
         rule_ids: r.rule_ids ? JSON.parse(r.rule_ids) : [],

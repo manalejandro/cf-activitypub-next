@@ -73,7 +73,7 @@ import { serializeQuote } from "@/lib/mastodon/quote";
 import { sanitizeRemoteNoteContent, sanitizeRemoteActorSummary, sanitizeFediversePlain } from "./sanitize";
 import { apAttachmentType } from "./content";
 import { extractQuoteId } from "./utils";
-import { isPublishedInFuture } from "@/lib/dates";
+import { isPublishedInFuture, toIsoOrNull } from "@/lib/dates";
 import {
   approvalUriFrom,
   buildAcceptQuoteRequest,
@@ -2645,8 +2645,10 @@ function sameHost(a: string, b: string): boolean {
 
 /** Normalize any ISO8601 date string (including tz-offset variants) to UTC Z format. */
 function toUtcIso(dateStr: string | undefined | null): string {
-  if (!dateStr) return new Date().toISOString();
-  try { return new Date(dateStr).toISOString(); } catch { return new Date().toISOString(); }
+  // Delegates to the shared converter: it also fixes a Z-less ISO from a peer
+  // (a bare `new Date(...)` reads that shape as LOCAL time — correct by luck
+  // under workerd's UTC, wrong in any test runtime with another zone).
+  return toIsoOrNull(dateStr) ?? new Date().toISOString();
 }
 
 /**

@@ -1,5 +1,5 @@
 import { ANONYMOUS_TIMELINES_KEY, normalizeAnonymousTimelineAccess, type AnonymousTimelineAccess } from "@/lib/anonymous-timelines";
-import { isPublishedInFuture } from "@/lib/dates";
+import { isPublishedInFuture, dbTimestamp } from "@/lib/dates";
 import type { D1Database } from "@cloudflare/workers-types";
 import { sanitizeFediversePlain, sanitizeRemoteActorSummary } from "@/lib/activitypub/sanitize";
 import { safeMediaUrl } from "@/lib/safe-url";
@@ -1833,10 +1833,13 @@ export async function upsertCollectionItem(
   await db
     .prepare(
       `INSERT INTO collection_items (id, collection_id, account_id, state, created_at)
-       VALUES (?,?,?,?,datetime('now'))
+       VALUES (?,?,?,?,?)
        ON CONFLICT(collection_id, account_id) DO UPDATE SET state = excluded.state`
     )
-    .bind(id, collectionId, accountId, state)
+    // ISO, like every other writer of the column (addAccountToCollection,
+    // replaceRemoteCollectionItems): the old datetime('now') mixed shapes and
+    // getCollectionItems ORDERs by created_at.
+    .bind(id, collectionId, accountId, state, new Date().toISOString())
     .run();
 }
 
@@ -2081,9 +2084,13 @@ async function repointOrDropConversation(
     const recipientIsOwner = addressed(ownerId);
     const recipientIsOther = others.some(addressed);
     if ((recipientIsOwner && recipientIsOther) || (authorIsOwner && recipientIsOther) || (authorIsOther && recipientIsOwner)) {
+      // conversations.updated_at keeps datetime('now')'s shape (every other
+      // writer uses it and getConversations ORDERs by it): row.published is
+      // the ISO objects.published — storing it raw mixed shapes in the column
+      // and a repointed conversation sorted above every same-day one.
       await db
         .prepare("UPDATE conversations SET last_status_id = ?, updated_at = ? WHERE id = ?")
-        .bind(row.id, row.published, conversationId)
+        .bind(row.id, dbTimestamp(row.published), conversationId)
         .run();
       return;
     }
@@ -6490,8 +6497,8 @@ export async function upsertInstanceMetadata(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO instances (domain, software, version, title, description, open_registrations, languages, metadata_updated_at, next_refresh_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `INSERT INTO instances (domain, software, version, title, description, open_registrations, languages, metadata_updated_at, next_refresh_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
        ON CONFLICT(domain) DO UPDATE SET
          software = excluded.software,
          version = excluded.version,
@@ -6511,7 +6518,12 @@ export async function upsertInstanceMetadata(
       meta.description,
       meta.openRegistrations === null ? null : meta.openRegistrations ? 1 : 0,
       JSON.stringify(meta.languages ?? []),
-      meta.nextRefreshAt
+      meta.nextRefreshAt,
+      // last_seen_at keeps ISO shape (recordInstanceSuccess/touchInstanceSeen
+      // write it and the dormant/order readers compare it as ISO): without
+      // this bind a NEW row inherited the DEFAULT datetime('now') and mixed
+      // shapes inside the column.
+      new Date().toISOString()
     )
     .run();
 }
@@ -6524,13 +6536,13 @@ export async function recordInstanceRefreshFailure(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO instances (domain, refresh_failures, next_refresh_at)
-       VALUES (?, 1, ?)
+      `INSERT INTO instances (domain, refresh_failures, next_refresh_at, last_seen_at)
+       VALUES (?, 1, ?, ?)
        ON CONFLICT(domain) DO UPDATE SET
          refresh_failures = instances.refresh_failures + 1,
          next_refresh_at = excluded.next_refresh_at`
     )
-    .bind(domain.toLowerCase(), nextRefreshAt)
+    .bind(domain.toLowerCase(), nextRefreshAt, new Date().toISOString())
     .run();
 }
 
@@ -6557,8 +6569,8 @@ export async function recordInstanceFailure(
   const unavailable = failureDays >= failureDaysThreshold;
   await db
     .prepare(
-      `INSERT INTO instances (domain, failure_days, last_failure_day, unavailable, unavailable_at, last_failure_at, last_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO instances (domain, failure_days, last_failure_day, unavailable, unavailable_at, last_failure_at, last_status, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(domain) DO UPDATE SET
          failure_days = excluded.failure_days,
          last_failure_day = excluded.last_failure_day,
@@ -6569,7 +6581,7 @@ export async function recordInstanceFailure(
          last_failure_at = excluded.last_failure_at,
          last_status = excluded.last_status`
     )
-    .bind(host, failureDays, day, unavailable ? 1 : 0, unavailable ? nowIso : null, nowIso, status)
+    .bind(host, failureDays, day, unavailable ? 1 : 0, unavailable ? nowIso : null, nowIso, status, nowIso)
     .run();
   return getInstance(db, host);
 }
@@ -6635,21 +6647,21 @@ export async function setInstanceSuspended(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO instances (domain, suspended)
-       VALUES (?, ?)
+      `INSERT INTO instances (domain, suspended, last_seen_at)
+       VALUES (?, ?, ?)
        ON CONFLICT(domain) DO UPDATE SET suspended = excluded.suspended`
     )
-    .bind(host(domain), suspended ? 1 : 0)
+    .bind(host(domain), suspended ? 1 : 0, new Date().toISOString())
     .run();
 }
 
 export async function setInstanceNote(db: D1Database, domain: string, note: string | null): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO instances (domain, note) VALUES (?, ?)
+      `INSERT INTO instances (domain, note, last_seen_at) VALUES (?, ?, ?)
        ON CONFLICT(domain) DO UPDATE SET note = excluded.note`
     )
-    .bind(host(domain), note)
+    .bind(host(domain), note, new Date().toISOString())
     .run();
 }
 

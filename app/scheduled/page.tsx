@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { PageLayout } from "@/components/PageLayout";
 import { useLocale, translateKey } from "@/lib/i18n";
+import { parseDbDate } from "@/lib/dates";
 import { getToken } from "@/lib/client-api";
 import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
@@ -103,7 +104,7 @@ export default function ScheduledPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
-                    <Icon name="calendar" /> {new Date(s.scheduled_at + (s.scheduled_at.includes("T") || s.scheduled_at.includes("Z") ? "" : "Z")).toLocaleString()}
+                    <Icon name="calendar" /> {(parseDbDate(s.scheduled_at) ?? new Date(s.scheduled_at)).toLocaleString()}
                   </div>
                   <div style={{ fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.params.status || s.params.text || t.scheduled_no_content}

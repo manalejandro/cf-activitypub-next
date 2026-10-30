@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { formDataToBody } from "@/lib/request-body";
-import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import { getObjectById, getActorById, deleteObject, updateObject, updateActor, getLikedObjectIds, getAnnouncedObjectIds, getAttachmentsByObjectId, getPollByObjectId, getPollOptions, getPollVotesByActor, getAllCustomEmojis, isAcceptedFollower, canViewStatus, getReplyToAccountId, createAttachment, createPoll, getLastStatusAtMap, clearObjectPreviewCard, getBookmarkedObjectIds, getMutedActorIds, getActorFieldsMap, getLicenseById, upsertDirectConversation, getActorByUsername, isActorBlockedBy } from "@/lib/db";
 import { getAuthenticatedActor } from "@/lib/auth";
 import { serializeStatus, serializePoll } from "@/lib/mastodon/serializers";
@@ -144,7 +145,7 @@ export async function PUT(
 
   // An edit fans an Update out to every original recipient (followers plus
   // mention targets): bound the per-account rate like the create route does.
-  const { allowed: canEdit } = await checkRateLimit(env.KV, `edit:${actor.id}`, 20, 60);
+  const { allowed: canEdit } = await atomicRateLimit(env, `edit:${actor.id}`, 20, 60);
   if (!canEdit) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));
@@ -285,7 +286,7 @@ export async function PUT(
   let noteEvent = eventFromRaw(obj.raw);
   if (body.event !== undefined && obj.type === "Event") {
     if (body.event === null) {
-      return json({ error: "Validation failed: Cannot remove the event from an event status" }, 422);
+      return json({ error: "Validation failed: Cannot remove the event from an event status", error_code: "compose_error_event" }, 422);
     }
     const eventResult = parseEventInput(body.event);
     if ("error" in eventResult) return json({ error: "Invalid event", error_code: eventResult.error }, 422);
@@ -465,6 +466,15 @@ export async function PUT(
       if (mentioned?.isLocal && mentioned.id !== actor.id) directRecipientIds.push(mentioned.id);
     }
     await upsertDirectConversation(env.DB, actor.id, addressedIRIs, obj.id, false);
+    // Recipients that blocked the author get no conversation entry and no
+    // live update (the create path and the scheduled cron apply the same
+    // filter).
+    const eligible: string[] = [];
+    for (const rid of directRecipientIds) {
+      if (!(await isActorBlockedBy(env.DB, rid, actor.id))) eligible.push(rid);
+    }
+    directRecipientIds.length = 0;
+    directRecipientIds.push(...eligible);
     for (const rid of directRecipientIds) {
       await upsertDirectConversation(env.DB, rid, [actor.id], obj.id, true);
     }
@@ -510,11 +520,10 @@ export async function PUT(
     ];
     // A post edited INTO a direct message must not land on every follower's
     // home stream: only the addressed local accounts see the update live (the
-    // same audience the create path streams a new DM to), minus those that
-    // blocked the author.
+    // same audience the create path streams a new DM to) — the list is
+    // already block-filtered where the conversations were created.
     if (nextVisibility === "direct") {
       for (const recipientId of directRecipientIds) {
-        if (await isActorBlockedBy(env.DB, recipientId, actor.id)) continue;
         broadcastTasks.push(broadcastHomeStatusUpdate(env.TIMELINE_STREAM, recipientId, serializedUpdated));
       }
     } else {

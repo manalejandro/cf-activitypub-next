@@ -42,13 +42,47 @@ async function seedObject(id: string, actorId: string): Promise<void> {
     .run();
 }
 
-/** Current fixed-window bucket of lib/cf's checkRateLimit. */
+/** Current fixed-window bucket of lib/cf's checkRateLimit (the KV fallback). */
 function windowKey(key: string): string {
   return `ratelimit:${key}:${Math.floor(Date.now() / 1000 / 60)}`;
 }
 
+/**
+ * Exhaust the limiter of `key` on BOTH backends: the atomic Durable Object
+ * (the routes call `atomicRateLimit`, which prefers it whenever the
+ * RATE_LIMIT binding exists — the KV seed alone no longer reaches them) and
+ * the KV fixed-window counter (instances without the binding). After `count`
+ * hits the route's own call is the one over budget.
+ */
 async function exhaust(key: string, count: number): Promise<void> {
   await env.KV.put(windowKey(key), String(count), { expirationTtl: 120 });
+  const ns = (env as unknown as { RATE_LIMIT?: DurableObjectNamespace }).RATE_LIMIT;
+  if (!ns) return;
+  const stub = ns.get(ns.idFromName(key));
+  for (let i = 0; i < count; i++) {
+    const res = await stub.fetch("https://rate-limit/hit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max: count, windowSeconds: 60 }),
+    });
+    await res.body?.cancel();
+  }
+}
+
+/**
+ * Assert the route answers 429 once the budget of `key` is spent. Retries
+ * once: a fixed window can roll between the exhaustion and the call (the
+ * second exhaustion then lands in the fresh window for sure — two boundaries
+ * cannot pass inside a second).
+ */
+async function expectLimited(key: string, budget: number, call: () => Promise<Response>): Promise<void> {
+  let last = 0;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await exhaust(key, budget);
+    last = (await call()).status;
+    if (last === 429) return;
+  }
+  expect(last).toBe(429);
 }
 
 function authed(
@@ -66,6 +100,18 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 beforeEach(async () => {
   await resetTestStorage();
+  // The atomic limiter lives in a Durable Object whose storage SURVIVES
+  // resetTestStorage: clear the windows this file uses, or an exhausted
+  // budget leaks into the next test (an oversized edit answered 429 before
+  // its validation ran).
+  const ns = (env as unknown as { RATE_LIMIT?: DurableObjectNamespace }).RATE_LIMIT;
+  if (ns) {
+    for (const key of [`favourite:${ALICE}`, `reblog:${ALICE}`, `edit:${ALICE}`, `search-resolve:${ALICE}`]) {
+      const stub = ns.get(ns.idFromName(key));
+      const res = await stub.fetch("https://rate-limit/reset", { method: "POST" });
+      await res.body?.cancel();
+    }
+  }
   await seedActor(ALICE);
   await seedActor(BOB);
   await seedObject(BOB_OBJ, BOB);
@@ -80,42 +126,42 @@ beforeEach(async () => {
 
 describe("interaction rate limits", () => {
   it("429s a favourite once the per-account budget is spent", async () => {
-    await exhaust(`favourite:${ALICE}`, 60);
-    const res = await FAVOURITE(
-      authed(`${BASE}/api/v1/statuses/x/favourite`, { method: "POST" }),
-      params(BOB_OBJ)
+    await expectLimited(`favourite:${ALICE}`, 60, () =>
+      FAVOURITE(
+        authed(`${BASE}/api/v1/statuses/x/favourite`, { method: "POST" }),
+        params(BOB_OBJ)
+      )
     );
-    expect(res.status).toBe(429);
   });
 
   it("429s a reblog once the per-account budget is spent", async () => {
-    await exhaust(`reblog:${ALICE}`, 30);
-    const res = await REBLOG(
-      authed(`${BASE}/api/v1/statuses/x/reblog`, { method: "POST" }),
-      params(BOB_OBJ)
+    await expectLimited(`reblog:${ALICE}`, 30, () =>
+      REBLOG(
+        authed(`${BASE}/api/v1/statuses/x/reblog`, { method: "POST" }),
+        params(BOB_OBJ)
+      )
     );
-    expect(res.status).toBe(429);
   });
 
   it("429s an edit once the per-account budget is spent", async () => {
-    await exhaust(`edit:${ALICE}`, 20);
-    const res = await EDIT_STATUS(
-      authed(`${BASE}/api/v1/statuses/x`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "hello" }),
-      }),
-      params(ALICE_OBJ)
+    await expectLimited(`edit:${ALICE}`, 20, () =>
+      EDIT_STATUS(
+        authed(`${BASE}/api/v1/statuses/x`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "hello" }),
+        }),
+        params(ALICE_OBJ)
+      )
     );
-    expect(res.status).toBe(429);
   });
 
   it("429s a resolving search once the per-account budget is spent", async () => {
-    await exhaust(`search-resolve:${ALICE}`, 15);
-    const res = await SEARCH(
-      authed(`${BASE}/api/v2/search?q=${encodeURIComponent("https://remote.example/users/x")}&resolve=true`)
+    await expectLimited(`search-resolve:${ALICE}`, 15, () =>
+      SEARCH(
+        authed(`${BASE}/api/v2/search?q=${encodeURIComponent("https://remote.example/users/x")}&resolve=true`)
+      )
     );
-    expect(res.status).toBe(429);
   });
 });
 

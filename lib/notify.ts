@@ -25,15 +25,18 @@ async function serializeFullNotification(
   fallbackDomain: string
 ): Promise<string> {
   try {
-    const [fromActor, target, object, objectAuthor] = await Promise.all([
+    const [fromActor, target, object] = await Promise.all([
       getActorById(db, notif.accountId),
       getActorById(db, notif.targetAccountId),
-      notif.objectId ? getObjectById(db, notif.objectId) : Promise.resolve(null),
       notif.objectId ? getObjectById(db, notif.objectId) : Promise.resolve(null),
     ]);
     if (!fromActor) return "{}";
     const localDomain = target?.isLocal && target.domain ? target.domain : fallbackDomain;
-    const author = objectAuthor ? await getActorById(db, objectAuthor.actorId) : null;
+    // The object's author (the status card of a mention/quote notification
+    // renders the replied-to/quoted account) — derived from the object read
+    // above; this used to fetch the SAME object a second time per
+    // notification.
+    const author = object ? await getActorById(db, object.actorId) : null;
     return JSON.stringify(serializeNotification(notif, fromActor, localDomain, object ?? undefined, author ?? undefined));
   } catch {
     return "{}";

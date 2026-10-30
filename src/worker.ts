@@ -22,21 +22,21 @@ import handler from "vinext/server/fetch-handler";
 
 import type { MessageBatch, ScheduledEvent } from "@cloudflare/workers-types";
 import type { APDeliveryMessage } from "../lib/activitypub/queue";
-import { buildCreate, buildDelete, buildNote, generateId, followersIRI, isLocalIRI } from "../lib/activitypub/utils";
+import { buildCreate, buildDelete, buildNote, generateId, followersIRI, isLocalIRI, objectIRI } from "../lib/activitypub/utils";
 import { collectFollowerInboxes, fetchRemoteObject, postToInboxSigned, validateOutboundUrl } from "../lib/activitypub/federation";
 import { enqueueDeliveries, resolveDeliverySigningKey } from "../lib/activitypub/queue";
 import { acceptedRelayInboxes, withRelayInboxes } from "../lib/activitypub/relays";
 import { broadcastHomeStatus, broadcastObjectDelete, broadcastPublicStatus, broadcastStatusCreatedToAudience, broadcastStatusInteractionToLists, broadcastStatusRefresh, parentExclusion, actorExclusion, eligibleLocalRecipients } from "../lib/streaming/broadcast";
 import type { DONamespace } from "../lib/streaming/broadcast";
 import type { APAttachment, MastodonStatus, LocalActor, LocalObject } from "@/lib/types";
-import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, getPollByObjectId, getPollOptions, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache, getAllCustomEmojis, getActorByUsername, mediaCacheId, isActorBlockedBy, upsertDirectConversation, getAttachmentsByObjectId, setObjectQuoteAuthorizationUri } from "../lib/db";
+import { createAttachment, createObject, createPoll, getActorById, getObjectById, listInstancesDueForRefresh, expireDormantInstanceMetadata, recordInstanceRefreshFailure, getInstanceSetting, repairMediaCacheReferences, releaseMediaPendingObjects, releaseStaleMediaPendingObjects, clearMediaPending, PUBLIC_STATUS_TYPE_SQL, getPollById, getPollByObjectId, getPollOptions, listRemotePollsForRefresh, cleanupUnusedOAuthApps, getLicenseById, enqueueMediaCache, listLicensesMissingIconCache, getAllCustomEmojis, getActorByUsername, mediaCacheId, isActorBlockedBy, upsertDirectConversation, getAttachmentsByObjectId, setObjectQuoteAuthorizationUri, canViewStatus, isAcceptedFollower, getActorPreference } from "../lib/db";
 import { serializeStatusForStream } from "../lib/streaming/serialize";
 import { notify } from "../lib/notify";
 import { resolveLimits } from "../lib/constants";
 import { verifyAccountFields } from "../lib/activitypub/verification";
 import { scopesAllow } from "../lib/auth";
 import { atomicRateLimit } from "../lib/rate-limit";
-import { isPublishedInFuture } from "../lib/dates";
+import { isPublishedInFuture, parseDbDate } from "../lib/dates";
 import { backfillMediaCache, processMediaCacheQueue, maintainMediaCache, mediaCacheLimitsFrom } from "../lib/media/remote-cache";
 import { sweepOrphanUploads } from "../lib/media/orphan-uploads";
 import { serveMediaObject } from "../lib/media/serve";
@@ -51,7 +51,7 @@ import { resolveMentionLinks, canonicalizeMentionTags } from "../lib/activitypub
 import { PUBLIC_ADDRESS } from "../lib/activitypub/vocab";
 import { parseEventInput } from "../lib/event";
 import { notifyExpiredPolls, refreshRemotePoll, applyPollToNote } from "../lib/activitypub/polls";
-import { retryPendingQuoteRequests, ensureLocalQuoteAuthorization, buildQuoteRequest } from "../lib/activitypub/quotes";
+import { retryPendingQuoteRequests, ensureLocalQuoteAuthorization, buildQuoteRequest, quoteAllowed, remoteQuoteAllowed } from "../lib/activitypub/quotes";
 import { fetchAndCacheRemoteStatus } from "../lib/activitypub/remote";
 import { toAPAttachment } from "../lib/activitypub/attachments";
 import { decodeStatusId } from "../lib/mastodon/statusId";
@@ -714,7 +714,13 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       const body = JSON.parse(s.params) as Record<string, unknown>;
       body.scheduled_at = undefined;
       const actor = await getActorById(env.DB, s.actor_id);
-      if (!actor || !actor.privateKeyPem) continue;
+      if (!actor || !actor.privateKeyPem) {
+        // The row can never publish (account purged without cascade, or a
+        // lost key): drop it instead of letting it regroup at the front of
+        // the date-ordered due window on every tick and starve the rest.
+        await env.DB.prepare("DELETE FROM scheduled_statuses WHERE id = ?").bind(s.id).run().catch(() => {});
+        continue;
+      }
       // A suspended or memorialized account must not keep publishing: the
       // moderation decision outlives the queue, so its pending schedules are
       // dropped (the immediate path rejects these accounts at the auth layer).
@@ -739,9 +745,15 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // the cron must too — an undecoded UUID was stored as in_reply_to_id,
       // breaking the thread locally and federating a non-IRI inReplyTo.
       const inReplyToRaw = typeof body.in_reply_to_id === "string" && body.in_reply_to_id.trim() ? body.in_reply_to_id.trim() : null;
-      const inReplyToId = inReplyToRaw ? decodeStatusId(inReplyToRaw, domain) : null;
-      const published = new Date().toISOString();
+      let inReplyToId = inReplyToRaw ? decodeStatusId(inReplyToRaw, domain) : null;
       const noteId = await scheduledNoteId(s.id);
+      // On a retry after a partial failure reuse the STORED publish instant:
+      // recomputing `published` made the raw document diverge from the
+      // objects.published column, re-federated a Create whose timestamp
+      // drifted, and — for a root post crossing midnight UTC between passes —
+      // even minted a different ostatus:conversation tag.
+      const retryObj = await getObjectById(env.DB, objectIRI(baseUrl, noteId));
+      const published = retryObj?.published ?? new Date().toISOString();
       const locationJson = normalizeLocationInput((body as Record<string, unknown>).location) ?? null;
       // The composer's event mode: a malformed payload (validated when it was
       // scheduled) falls back to a plain note rather than blocking the queue.
@@ -756,8 +768,19 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       }
 
       // Scheduled posts keep the thread identity: a reply joins its parent's
-      // conversation, a root starts one (see `conversationUri`).
-      const parentObj = inReplyToId ? await getObjectById(env.DB, inReplyToId) : null;
+      // conversation, a root starts one (see `conversationUri`). A parent that
+      // EXISTS but is no longer viewable by the author (narrowed to
+      // followers-only/direct after scheduling, or an arbitrary id injected
+      // through the schedule-edit route, which does not revalidate) drops the
+      // reply: joining an invisible thread would leak its conversation tag,
+      // notify its author and bump the counters of a post the author cannot
+      // see. An uncached parent stays allowed — it may be a remote post we
+      // have not fetched (the immediate path behaves the same).
+      let parentObj = inReplyToId ? await getObjectById(env.DB, inReplyToId) : null;
+      if (parentObj && !(await canViewStatus(parentObj, actor.id, await isAcceptedFollower(env.DB, actor.id, parentObj.actorId)))) {
+        parentObj = null;
+        inReplyToId = null;
+      }
       const conversation = inReplyToId
         ? conversationFromRaw(parentObj?.raw)
         : conversationUri(baseUrl, noteId, published);
@@ -787,7 +810,9 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // patrol reviews it (the same degradation the immediate path documents).
       if (env.AI && content) {
         try {
-          const accountAgeMs = Date.now() - new Date(actor.createdAt).getTime();
+          // actors.created_at is DB-shape: parse through the shared converter
+          // (a bare `new Date(...)` reads it as local time outside workerd).
+          const accountAgeMs = Date.now() - (parseDbDate(actor.createdAt)?.getTime() ?? NaN);
           const gate = await screenStatus(env as unknown as Parameters<typeof screenStatus>[0], {
             contentHtml: htmlContent,
             spoilerText,
@@ -865,9 +890,28 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
           if (resolved.object) quoted = resolved.object;
         }
         if (quoted && (quoted.visibility === "public" || quoted.visibility === "unlisted")) {
-          quoteId = quoted.id;
-          quotedObject = quoted;
-          quotedAuthor = await getActorById(env.DB, quoted.actorId);
+          // Revalidate the quote policy at PUBLISH time: the immediate path
+          // validated it when the post was composed, but the schedule-edit
+          // route accepts a new `quoted_status_id` without validation, and a
+          // policy/block can also change in between. The cron is the single
+          // choke point, so a disallowed quote is dropped here — the post
+          // itself still publishes (and no authorization is ever minted for
+          // a dropped quote).
+          const qAuthor = await getActorById(env.DB, quoted.actorId);
+          let allowed = true;
+          if (qAuthor && qAuthor.id !== actor.id) {
+            if (qAuthor.isLocal) {
+              const policy = (await getActorPreference(env.DB, qAuthor.id, "posting:default:quote_policy")) ?? "followers";
+              allowed = await quoteAllowed(env.DB, actor, qAuthor, policy);
+            } else {
+              allowed = await remoteQuoteAllowed(env.DB, actor.id, qAuthor, quoted.raw);
+            }
+          }
+          if (allowed) {
+            quoteId = quoted.id;
+            quotedObject = quoted;
+            quotedAuthor = qAuthor;
+          }
         }
       }
 
@@ -1148,9 +1192,11 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
       // receive the Create so their instance can raise the `quote`
       // notification, and quoting a REMOTE post sends the FEP-044f
       // QuoteRequest — Mastodon only approves (and shows) quotes it was asked
-      // about.
+      // about. NEVER for a direct post: the quoted author is outside the DM
+      // audience, and both the QuoteRequest (the DM's IRI) and the Create (the
+      // full content) would leak it to a third-party server (Mastodon #36688).
       let quoteAuthorInboxes: string[] = [];
-      if (quoteId && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
+      if (quoteId && visibility !== "direct" && quotedAuthor && !quotedAuthor.isLocal && quotedAuthor.id !== actor.id) {
         quoteAuthorInboxes = await collectFollowerInboxes([quotedAuthor.id], fetchActor);
         if (quoteAuthorInboxes.length > 0) {
           const quoteRequest = buildQuoteRequest(baseUrl, {
@@ -1165,8 +1211,8 @@ async function publishDueScheduled(env: Env): Promise<{ published: number; faile
 
       if (visibility === "direct") {
         // A direct message reaches only the addressed accounts (mentions + the
-        // replied-to author), never followers or relays.
-        const targets = [...new Set([...mentionInboxes, ...inboxes, ...quoteAuthorInboxes])];
+        // replied-to author), never followers, relays or a quoted author.
+        const targets = [...new Set([...mentionInboxes, ...inboxes])];
         if (targets.length > 0) {
           await enqueueDeliveries(env.DELIVERY_QUEUE, targets, JSON.stringify(createActivity), actor.id, `${actor.id}#main-key`, actor.privateKeyPem);
         }
@@ -1944,7 +1990,7 @@ const localRows = await env.DB
              SELECT 1 FROM actor_fields f2
              WHERE f2.actor_id = af.actor_id
                AND f2.verified_at IS NOT NULL
-               AND f2.verified_at > datetime('now', '-30 days')
+               AND f2.verified_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
            )
          LIMIT 50`
       )

@@ -8,6 +8,7 @@ import { Icon } from "@/components/Icon";
 import { Loading } from "@/components/Loading";
 import { InstanceStatusPanel, OverallBanner, type StatusComponentDTO } from "@/components/InstanceStatusPanel";
 import { formatBytes, formatCount } from "@/lib/format";
+import { parseDbDate } from "@/lib/dates";
 
 interface StatusSnapshot {
   checked_at: string;
@@ -19,14 +20,6 @@ interface StatusSnapshot {
 
 /** The API answers from a minute-long KV cache: no point asking more often. */
 const REFRESH_MS = 60_000;
-
-/** SQLite writes `datetime('now')` without a zone: parse it as UTC. */
-function parseDbDate(value: unknown): Date | null {
-  if (typeof value !== "string" || !value) return null;
-  const iso = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 export default function InstanceStatusPage() {
   const { t } = useLocale();

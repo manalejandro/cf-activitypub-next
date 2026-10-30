@@ -5,6 +5,7 @@ import { serializeAccount } from "@/lib/mastodon/serializers";
 import { requireAdmin } from "@/lib/admin-auth";
 import { clampLimit, resolveLimits } from "@/lib/constants";
 import { env } from "cloudflare:workers";
+import { toIsoOrNull } from "@/lib/dates";
 
 export async function GET(request: NextRequest): Promise<Response> {
   const limits = resolveLimits(env as unknown as Record<string, unknown>);
@@ -84,10 +85,13 @@ export async function GET(request: NextRequest): Promise<Response> {
       id: actor.id,
       username: actor.username,
       domain: actor.domain,
-      created_at: actor.createdAt,
+      // Admin::Account is Mastodon-shaped: every timestamp leaves as ISO.
+      // created_at is DB-shape; last_active_at/suspended_at are ISO on new
+      // rows but legacy backfills left DB-shape ones — normalize all three.
+      created_at: toIsoOrNull(actor.createdAt) ?? actor.createdAt,
       email: actor.email,
-      last_active_at: r.last_active_at ? String(r.last_active_at) : null,
-      suspended_at: r.suspended_at ? String(r.suspended_at) : null,
+      last_active_at: toIsoOrNull(r.last_active_at),
+      suspended_at: toIsoOrNull(r.suspended_at),
       role: String(r.role ?? "user"),
       // Reserved rows (the instance's Guardian) are immutable: the table hides
       // their action buttons, the API refuses the actions anyway.

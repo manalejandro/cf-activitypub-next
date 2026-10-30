@@ -50,7 +50,12 @@ export interface RecommendationsEnv {
  * very followed account cannot drown one people engage with.
  */
 export async function refreshFollowRecommendations(env: RecommendationsEnv): Promise<number> {
-  const since = `-${RECOMMENDATION_WINDOW_DAYS} days`;
+  // ISO cutoff, bound as a value: the columns compared below (actors.
+  // last_active_at, objects.published) carry ISO-Z timestamps, and a
+  // `datetime('now', '-N days')` cutoff (DB-shape, space separator) compares
+  // wrongly against them — since 'T' > ' ', the window silently stretched up
+  // to a day past its own boundary.
+  const sinceIso = new Date(Date.now() - RECOMMENDATION_WINDOW_DAYS * 86400_000).toISOString();
   const [followed, interacted] = await Promise.all([
     env.DB.prepare(
       `SELECT f.target_id AS id, COUNT(*) AS n
@@ -58,14 +63,14 @@ export async function refreshFollowRecommendations(env: RecommendationsEnv): Pro
        JOIN actors follower ON follower.id = f.actor_id AND follower.is_local = 1
        JOIN actors a ON a.id = f.target_id
        WHERE f.state = 'accepted'
-         AND follower.last_active_at >= datetime('now', ?)
+         AND follower.last_active_at >= ?
          AND a.suspended = 0 AND a.silenced = 0 AND COALESCE(a.memorial, 0) = 0 AND a.moved_to IS NULL
          AND NOT EXISTS (SELECT 1 FROM instance_domain_blocks idb WHERE idb.domain = a.domain AND idb.severity = 'suspend')
        GROUP BY f.target_id
        ORDER BY n DESC, f.target_id
        LIMIT ?`
     )
-      .bind(since, RECOMMENDATION_LIMIT)
+      .bind(sinceIso, RECOMMENDATION_LIMIT)
       .all<{ id: string; n: number }>(),
     // `INDEXED BY` + one branch per visibility keeps this an index seek: without
     // it the scan reads every object of the window (8.8 s vs 1.4 ms on cf-ap).
@@ -73,14 +78,14 @@ export async function refreshFollowRecommendations(env: RecommendationsEnv): Pro
       `SELECT actor_id AS id, SUM(engagement) AS n FROM (
          SELECT o.actor_id, o.engagement FROM objects o INDEXED BY idx_objects_trending
          WHERE o.visibility = 'public' AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
-           AND o.engagement >= ${INTERACTION_FLOOR} AND o.published >= datetime('now', ?)
+           AND o.engagement >= ${INTERACTION_FLOOR} AND o.published >= ?
          UNION ALL
          SELECT o.actor_id, o.engagement FROM objects o INDEXED BY idx_objects_trending
          WHERE o.visibility = 'unlisted' AND o.type IN (${PUBLIC_STATUS_TYPE_SQL})
-           AND o.engagement >= ${INTERACTION_FLOOR} AND o.published >= datetime('now', ?)
+           AND o.engagement >= ${INTERACTION_FLOOR} AND o.published >= ?
        ) GROUP BY actor_id ORDER BY n DESC, actor_id LIMIT ?`
     )
-      .bind(since, since, RECOMMENDATION_LIMIT)
+      .bind(sinceIso, sinceIso, RECOMMENDATION_LIMIT)
       .all<{ id: string; n: number }>(),
   ]);
 

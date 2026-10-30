@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
-import { json, notFound, unauthorized, checkRateLimit } from "@/lib/cf";
+import { json, notFound, unauthorized } from "@/lib/cf";
+import { atomicRateLimit } from "@/lib/rate-limit";
 import {
   getObjectById, getActorById, createAnnounce, getAnnounce,
   isAcceptedFollower, canViewStatus,
@@ -31,7 +32,7 @@ export async function POST(
 
   // A boost fans an Announce out to every follower inbox (and may fetch the
   // remote original first): bound the per-account rate.
-  const { allowed: canReblog } = await checkRateLimit(env.KV, `reblog:${actor.id}`, 30, 60);
+  const { allowed: canReblog } = await atomicRateLimit(env, `reblog:${actor.id}`, 30, 60);
   if (!canReblog) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const obj = await getObjectById(env.DB, decodeStatusId(id, domain));

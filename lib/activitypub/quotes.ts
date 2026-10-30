@@ -26,6 +26,8 @@ import {
   getActorById,
   getObjectById,
   getQuoteAuthorizationByInteractingObject,
+  isActorBlockedBy,
+  isAcceptedFollower,
 } from "@/lib/db";
 import { generateId, objectIRI } from "@/lib/activitypub/utils";
 import { QUOTE_AUTHORIZATION_CONTEXT } from "@/lib/activitypub/vocab";
@@ -42,6 +44,76 @@ export interface QuoteEnv {
   DB: D1Database;
   DELIVERY_QUEUE?: Queue | null;
   KV?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> } | null;
+}
+
+/**
+ * Whether `actor` is allowed to quote `author`'s status given the author's
+ * quote policy (Mastodon: public → anyone, followers → followers+author,
+ * followed → accounts the author follows, nobody → only the author). Shared
+ * by the immediate post route and the scheduled-publish cron: a quote is
+ * validated when it is composed AND re-validated when it publishes (the
+ * policy or a block may have changed in between, and the schedule-edit route
+ * accepts a new `quoted_status_id` without its own validation).
+ */
+export async function quoteAllowed(
+  db: D1Database,
+  actor: { id: string },
+  author: { id: string },
+  policy: string
+): Promise<boolean> {
+  if (actor.id === author.id) return true;
+  // Blocked users are never allowed to quote.
+  if (await isActorBlockedBy(db, author.id, actor.id)) return false;
+  switch (policy) {
+    case "public":
+      return true;
+    case "followers":
+      return isAcceptedFollower(db, actor.id, author.id);
+    case "followed":
+      return isAcceptedFollower(db, author.id, actor.id);
+    default:
+      return false; // nobody
+  }
+}
+
+/**
+ * Resolve a REMOTE author's federated quote policy (Mastodon 4.5 / FEP-044f
+ * `interactionPolicy.canQuote`) and decide whether `actorId` may quote one of
+ * their posts. Falls back to the conservative "followers" when no policy is
+ * present or it cannot be parsed.
+ */
+export async function remoteQuoteAllowed(
+  db: D1Database,
+  actorId: string,
+  author: { id: string; domain: string; username: string },
+  raw: string | undefined
+): Promise<boolean> {
+  if (actorId === author.id) return true;
+  if (await isActorBlockedBy(db, author.id, actorId)) return false;
+
+  let canQuote: { automaticApproval?: unknown[] } | null = null;
+  try {
+    const ap = raw ? JSON.parse(raw) : null;
+    canQuote = ap?.interactionPolicy?.canQuote ?? null;
+  } catch { /* ignore malformed */ }
+
+  if (!canQuote || !Array.isArray(canQuote.automaticApproval)) {
+    return isAcceptedFollower(db, actorId, author.id); // conservative: followers
+  }
+
+  const auto = canQuote.automaticApproval.map((v) => String(v));
+  if (auto.some((v) => /public/i.test(v))) return true;
+
+  const followersIri = `https://${author.domain}/users/${author.username}/followers`;
+  const followingIri = `https://${author.domain}/users/${author.username}/following`;
+  if (auto.includes(followersIri) || auto.some((v) => /followers/i.test(v))) {
+    return isAcceptedFollower(db, actorId, author.id);
+  }
+  if (auto.includes(followingIri) || auto.some((v) => /following/i.test(v))) {
+    return isAcceptedFollower(db, author.id, actorId);
+  }
+  if (auto.includes(actorId)) return true;
+  return false;
 }
 
 export function quoteAuthorizationIRI(baseUrl: string, id: string): string {

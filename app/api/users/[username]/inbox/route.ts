@@ -50,7 +50,9 @@ export async function POST(
     ? activity.actor
     : (activity.actor as { id?: string })?.id;
 
-  if (!actorId) {
+  // Type-checked, not just truthy: a non-string id would surface later as a
+  // deterministic 500 the sender keeps retrying (see the shared inbox).
+  if (typeof actorId !== "string" || !actorId) {
     return json({ error: "Missing actor" }, 400);
   }
 

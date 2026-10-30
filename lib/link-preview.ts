@@ -18,7 +18,7 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { youTubeOEmbedEndpoint, youTubeThumbnailUrl, youTubeVideoId } from "@/lib/youtube";
-import { dbTimestamp } from "@/lib/dates";
+import { dbTimestamp, parseDbDate } from "@/lib/dates";
 // Re-exported for callers/tests that imported it from this module.
 export { youTubeVideoId } from "@/lib/youtube";
 import type { LocalObject } from "@/lib/types";
@@ -905,7 +905,10 @@ async function processJob(
   const existing = await getPreviewCardBySourceUrl(db, url);
 
   if (existing) {
-    const fetchedMs = Date.parse(existing.fetchedAt ?? "");
+    // fetched_at/next_attempt_at are DB-shape (`datetime('now')`): a bare
+    // Date.parse reads that form as LOCAL time (implementation-defined) —
+    // correct by luck under workerd's UTC, wrong in any other runtime.
+    const fetchedMs = parseDbDate(existing.fetchedAt)?.getTime() ?? NaN;
     const fresh = Number.isFinite(fetchedMs) && Date.now() - fetchedMs < limits.days * 86_400_000;
     if (existing.status === "ready" && fresh) {
       // The image must be served from R2: keep waiting (job stays queued,
@@ -931,7 +934,8 @@ async function processJob(
       await deleteLinkPreviewQueue(db, objectId);
       return true;
     }
-    if (existing.status === "failed" && Date.parse(existing.nextAttemptAt) > Date.now()) {
+    const nextAttemptMs = parseDbDate(existing.nextAttemptAt)?.getTime() ?? NaN;
+    if (existing.status === "failed" && Number.isFinite(nextAttemptMs) && nextAttemptMs > Date.now()) {
       // Negative cache: don't hit the origin again yet.
       await deleteLinkPreviewQueue(db, objectId);
       return false;
